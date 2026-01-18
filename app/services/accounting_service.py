@@ -891,7 +891,8 @@ class AccountingService:
         self.initialize_chart_of_accounts(company)
         
         # Get required accounts
-        ar_account = self.get_account_by_code("1100", company)  # Accounts Receivable
+        # Prefer Sundry Debtors (1110) for Indian accounting, fallback to Accounts Receivable (1100)
+        ar_account = self.get_account_by_code("1110", company) or self.get_account_by_code("1100", company)  # Sundry Debtors / Accounts Receivable
         sales_account = self.get_account_by_code("4000", company)  # Sales Revenue
         cgst_account = self.get_account_by_code("2110", company)  # CGST Payable
         sgst_account = self.get_account_by_code("2120", company)  # SGST Payable

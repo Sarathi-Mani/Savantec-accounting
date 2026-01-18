@@ -370,6 +370,7 @@ DEFAULT_CHART_OF_ACCOUNTS = [
     {"code": "1000", "name": "Cash", "type": AccountType.ASSET, "is_system": True},
     {"code": "1010", "name": "Bank Accounts", "type": AccountType.ASSET, "is_system": True},
     {"code": "1100", "name": "Accounts Receivable", "type": AccountType.ASSET, "is_system": True},
+    {"code": "1110", "name": "Sundry Debtors", "type": AccountType.ASSET, "is_system": True},
     {"code": "1120", "name": "Cheques in Hand", "type": AccountType.ASSET, "is_system": True},
     {"code": "1200", "name": "Inventory", "type": AccountType.ASSET, "is_system": False},
     {"code": "1300", "name": "Prepaid Expenses", "type": AccountType.ASSET, "is_system": False},

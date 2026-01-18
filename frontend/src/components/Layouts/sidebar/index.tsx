@@ -128,7 +128,7 @@ export function Sidebar() {
                                 role="menu"
                               >
                                 {item.items.map((subItem) => (
-                                  <li key={subItem.title} role="none">
+                                  <li key={subItem.url || subItem.title} role="none">
                                     <MenuItem
                                       as="link"
                                       href={subItem.url}

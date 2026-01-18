@@ -33,7 +33,6 @@ export const NAV_DATA = [
         items: [
           { title: "All Employees", url: "/payroll/employees" },
           { title: "Add Employee", url: "/payroll/employees/new" },
-          { title: "Add Employee", url: "/payroll/employees/new" },
           { title: "Departments", url: "/payroll/departments" },
           { title: "Roles", url: "/payroll/designations" },
         ],
@@ -44,7 +43,7 @@ export const NAV_DATA = [
     label : "PRODUCTS",
     items : [
       {
-        title: "brand",
+        title: "Brand",
         icon: Icons.Tags,
         items: [
           { title: "All Brands", url: "/products/brands"},

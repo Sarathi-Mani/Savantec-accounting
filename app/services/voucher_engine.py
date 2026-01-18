@@ -56,6 +56,7 @@ class VoucherEngine:
         "CASH": "1001",
         "BANK": "1010",
         "ACCOUNTS_RECEIVABLE": "1100",
+        "SUNDRY_DEBTORS": "1110",  # Indian accounting term for receivables
         "INVENTORY": "1200",
         "INPUT_CGST": "1301",
         "INPUT_SGST": "1302",
@@ -127,6 +128,7 @@ class VoucherEngine:
             (self.ACCOUNTS["CASH"], "Cash in Hand", AccountType.ASSET),
             (self.ACCOUNTS["BANK"], "Bank Account", AccountType.ASSET),
             (self.ACCOUNTS["ACCOUNTS_RECEIVABLE"], "Accounts Receivable", AccountType.ASSET),
+            (self.ACCOUNTS["SUNDRY_DEBTORS"], "Sundry Debtors", AccountType.ASSET),
             (self.ACCOUNTS["INVENTORY"], "Inventory", AccountType.ASSET),
             (self.ACCOUNTS["INPUT_CGST"], "Input CGST", AccountType.ASSET),
             (self.ACCOUNTS["INPUT_SGST"], "Input SGST", AccountType.ASSET),
@@ -264,14 +266,17 @@ class VoucherEngine:
         """Create accounting entries for a sales invoice.
         
         Double Entry:
-        - Debit: Accounts Receivable (or Cash/Bank if cash sale)
+        - Debit: Sundry Debtors / Accounts Receivable (or Cash/Bank if cash sale)
         - Credit: Sales Revenue
         - Credit: Output CGST/SGST or IGST (based on GST type)
         """
         entries = []
         
-        # Get accounts
+        # Get accounts - Prefer Sundry Debtors for Indian accounting
         ar_account = self.get_or_create_account(
+            company, self.ACCOUNTS["SUNDRY_DEBTORS"],
+            "Sundry Debtors", AccountType.ASSET
+        ) or self.get_or_create_account(
             company, self.ACCOUNTS["ACCOUNTS_RECEIVABLE"],
             "Accounts Receivable", AccountType.ASSET
         )
