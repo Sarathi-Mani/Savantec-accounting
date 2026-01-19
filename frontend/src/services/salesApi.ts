@@ -110,6 +110,93 @@ export interface SalesReturn {
   status: string;
 }
 
+
+export interface SalesOrderCreate {
+  company_id: string;
+  customer_id: string;
+  sales_order_date: string;
+  expire_date?: string;
+  status: 'pending' | 'approved' | 'cancelled' | 'completed';
+  reference_no?: string;
+  reference_date?: string;
+  payment_terms?: string;
+  sales_person_id?: string;
+  contact_person?: string;
+  notes?: string;
+  terms?: string;
+  other_charges?: number;
+  discount_on_all?: number;
+  subtotal: number;
+  total_tax: number;
+  total_amount: number;
+  send_message?: boolean;
+  items: SalesOrderItemCreate[];
+}
+
+export interface SalesOrderItemCreate {
+  product_id?: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  discount_percent?: number;
+  discount_amount?: number;
+  gst_rate: number;
+  cgst_rate?: number;
+  sgst_rate?: number;
+  igst_rate?: number;
+  taxable_amount: number;
+  total_amount: number;
+}
+
+export interface SalesOrder {
+  id: string;
+  order_number: string;
+  sales_order_date: string;
+  customer_id: string;
+  customer_name?: string;
+  status: string;
+  total_amount: number;
+  company_id: string;
+  expire_date?: string;
+  reference_no?: string;
+  reference_date?: string;
+  payment_terms?: string;
+  sales_person_id?: string;
+  contact_person?: string;
+  notes?: string;
+  terms?: string;
+  other_charges?: number;
+  discount_on_all?: number;
+  subtotal: number;
+  total_tax: number;
+  items?: SalesOrderItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SalesOrderItem {
+  id: string;
+  sales_order_id: string;
+  product_id?: string;
+  product_name?: string;
+  description: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  discount_percent: number;
+  discount_amount: number;
+  gst_rate: number;
+  cgst_rate: number;
+  sgst_rate: number;
+  igst_rate: number;
+  taxable_amount: number;
+  total_amount: number;
+}
+
+
+
+
 export const salesApi = {
     // Create a new sales invoice (should call your invoices API)
   create: async (companyId: string, data: SaleCreate) => {
@@ -150,17 +237,6 @@ export const salesApi = {
     return response.data;
   },
 
-  // Sales orders
-  listOrders: async (companyId: string, params?: any) => {
-    const response = await api.get(`/api/companies/${companyId}/sales-orders`, { params });
-    return response.data;
-  },
-
-  createOrder: async (companyId: string, data: any) => {
-    const response = await api.post(`/api/companies/${companyId}/sales-orders`, data);
-    return response.data;
-  },
-
   // Proforma invoices
   listProforma: async (companyId: string, params?: any) => {
     const response = await api.get(`/api/companies/${companyId}/proforma-invoices`, { params });
@@ -191,6 +267,71 @@ export const salesApi = {
 
   createReturn: async (companyId: string, data: any) => {
     const response = await api.post(`/api/companies/${companyId}/sales-returns`, data);
+    return response.data;
+  },
+
+
+   // Sales orders API endpoints
+  listOrders: async (companyId: string, params?: any) => {
+    const response = await api.get(`/companies/${companyId}/sales-orders`, { params });
+    return response.data;
+  },
+
+  createOrder: async (companyId: string, data: SalesOrderCreate) => {
+    const response = await api.post(`/companies/${companyId}/sales-orders`, data);
+    return response.data;
+  },
+
+  getOrder: async (companyId: string, orderId: string) => {
+    const response = await api.get(`/companies/${companyId}/sales-orders/${orderId}`);
+    return response.data;
+  },
+
+  updateOrder: async (companyId: string, orderId: string, data: Partial<SalesOrderCreate>) => {
+    const response = await api.put(`/companies/${companyId}/sales-orders/${orderId}`, data);
+    return response.data;
+  },
+
+  deleteOrder: async (companyId: string, orderId: string) => {
+    const response = await api.delete(`/companies/${companyId}/sales-orders/${orderId}`);
+    return response.data;
+  },
+
+  updateOrderStatus: async (companyId: string, orderId: string, status: string) => {
+    const response = await api.patch(`/companies/${companyId}/sales-orders/${orderId}/status`, { status });
+    return response.data;
+  },
+};
+
+
+export const salesOrdersApi = {
+  list: async (companyId: string, params?: any) => {
+    const response = await api.get(`/companies/${companyId}/sales-orders`, { params });
+    return response.data;
+  },
+
+  create: async (companyId: string, data: SalesOrderCreate) => {
+    const response = await api.post(`/companies/${companyId}/sales-orders`, data);
+    return response.data;
+  },
+
+  get: async (companyId: string, orderId: string) => {
+    const response = await api.get(`/companies/${companyId}/sales-orders/${orderId}`);
+    return response.data;
+  },
+
+  update: async (companyId: string, orderId: string, data: Partial<SalesOrderCreate>) => {
+    const response = await api.put(`/companies/${companyId}/sales-orders/${orderId}`, data);
+    return response.data;
+  },
+
+  delete: async (companyId: string, orderId: string) => {
+    const response = await api.delete(`/companies/${companyId}/sales-orders/${orderId}`);
+    return response.data;
+  },
+
+  updateStatus: async (companyId: string, orderId: string, status: string) => {
+    const response = await api.patch(`/companies/${companyId}/sales-orders/${orderId}/status`, { status });
     return response.data;
   },
 };
