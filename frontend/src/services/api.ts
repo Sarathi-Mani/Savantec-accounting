@@ -1,5 +1,5 @@
 import axios from "axios";
-
+export * from "./salesApi";
 /**
  * Extract error message from API error response
  * Handles both string errors and Pydantic validation error arrays
@@ -2407,6 +2407,7 @@ export interface Employee {
   phone?: string;
   department_id?: string;
   designation_id?: string;
+  designation?: string;
   employee_type: string;
   date_of_joining: string;
   work_state?: string;
@@ -2566,6 +2567,16 @@ export interface PayrollSettings {
   pay_day: number;
   working_days_per_month: number;
 }
+
+// =============== employees api ================
+export const employeesApi = {
+  list: async (companyId: string): Promise<Employee[]> => {
+    const response = await api.get(`/companies/${companyId}/employees`);
+    return response.data;
+  },
+  
+  // Add other methods as needed...
+};
 
 // ============== Payroll API ==============
 

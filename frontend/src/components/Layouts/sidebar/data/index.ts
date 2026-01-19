@@ -40,22 +40,22 @@ export const NAV_DATA = [
     ]
   },
   {
-    label : "PRODUCTS",
-    items : [
+    label: "PRODUCTS",
+    items: [
       {
         title: "Brand",
         icon: Icons.Tags,
         items: [
-          { title: "All Brands", url: "/products/brands"},
-          { title: "Add Brand", url: "/products/brands/new"}
+          { title: "All Brands", url: "/products/brands" },
+          { title: "Add Brand", url: "/products/brands/new" }
         ]
       },
       {
         title: "Categories",
         icon: Icons.Folder,
         items: [
-          { title: "All Categories", url: "/products/categories"},
-          { title: "Add Category", url: "/products/categories/new"}
+          { title: "All Categories", url: "/products/categories" },
+          { title: "Add Category", url: "/products/categories/new" }
         ]
       },
       {
@@ -79,20 +79,88 @@ export const NAV_DATA = [
         icon: Icons.PieChart,
         items: [],
       },
+
+      {
+        title: "Sales",
+        icon: Icons.FileText,
+        items: [
+          {
+            title: "Add Sales",
+            url: "/sales/new",
+          },
+          {
+            title: "Sales List",
+            url: "/sales/sales-list",
+          }
+        ],
+      },
+
+      {
+        title: "Sales Orders",
+        icon: Icons.ShoppingCart,
+        items: [
+          {
+            title: "Sales Order List",
+            url: "/sales/sales-orders",
+          },
+          {
+            title: "Add Sales Order",
+            url: "/sales/sales-orders/new",
+          },
+        ],
+      },
+
+      {
+        title: "Proforma Invoices",
+        icon: Icons.FileText,
+        items: [
+          {
+            title: "Proforma Invoice List",
+            url: "/sales/proforma-invoices",
+          },
+          {
+            title: "Add Proforma Invoice",
+            url: "/sales/proforma-invoices/new",
+          },
+        ],
+      },
+
+      {
+        title: "Sales Payments",
+        url: "/sales/sales-payments",
+        icon: Icons.Currency,
+        items: [],
+      },
+
+      {
+        title: "Sales Returns",
+        url: "/sales/sales-returns",
+        icon: Icons.Repeat,
+        items: [],
+      },
+
       {
         title: "Enquiries",
         icon: Icons.MessageSquare,
         items: [
-          { title: "All Enquiries", url: "/enquiries" },
-          { title: "New Enquiry", url: "/enquiries/new" },
+          {
+            title: "All Enquiries",
+            url: "/enquiries",
+          },
+          {
+            title: "New Enquiry",
+            url: "/enquiries/new",
+          },
         ],
       },
+
       {
         title: "Sales Tickets",
         url: "/sales/tickets",
         icon: Icons.Ticket,
         items: [],
       },
+
       {
         title: "Contacts",
         url: "/contacts",
@@ -101,6 +169,8 @@ export const NAV_DATA = [
       },
     ],
   },
+
+
   {
     label: "SALES",
     items: [
