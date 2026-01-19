@@ -69,7 +69,7 @@ export default function SalesReturnsPage() {
           <h1 className="text-2xl font-bold text-dark dark:text-white">Sales Returns</h1>
           <p className="text-sm text-dark-6">Manage customer returns and refunds</p>
         </div>
-        <button
+        {/* <button
           onClick={() => router.push('/sales/returns/new')}
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 font-medium text-white transition hover:bg-opacity-90"
         >
@@ -77,7 +77,7 @@ export default function SalesReturnsPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
           New Return
-        </button>
+        </button> */}
       </div>
 
       {/* Stats Cards */}
