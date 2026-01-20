@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect ,useMemo} from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
@@ -171,10 +171,14 @@ export default function AddSalesOrderPage() {
     const [customers, setCustomers] = useState<any[]>([]);
     const [products, setProducts] = useState<any[]>([]);
     const [salesmen, setSalesmen] = useState<any[]>([]);
+    const [contactPersons, setContactPersons] = useState<any[]>([]);
+    const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+    
     const [loading, setLoading] = useState({
         customers: false,
         products: false,
         salesmen: false,
+        contactPersons: false,
     });
 
     // Form state
@@ -272,21 +276,164 @@ export default function AddSalesOrderPage() {
         }
     };
 
-    const loadSalesmen = async () => {
+   const loadSalesmen = async () => {
+    try {
+        setLoading(prev => ({ ...prev, salesmen: true }));
+        
+        // Use the sales-engineers API endpoint
+        const token = localStorage.getItem("access_token");
+        const response = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/companies/${company!.id}/sales-engineers`,
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        // Process the data - adjust based on your API response structure
+        let salesEngineers: any[] = [];
+        
+        if (Array.isArray(data)) {
+            salesEngineers = data;
+        } else if (data && typeof data === 'object') {
+            salesEngineers = data.sales_engineers || data.data || data.items || [];
+        }
+        
+        // Format the data to match your frontend structure
+        const formattedSalesmen = salesEngineers.map(engineer => ({
+            id: engineer.id,
+            name: engineer.full_name || engineer.name || 'Unnamed Engineer',
+            email: engineer.email || '',
+            phone: engineer.phone || engineer.mobile || '',
+            designation: engineer.designation_name || engineer.designation || 'Sales Engineer',
+            employee_code: engineer.employee_code || engineer.code || ''
+        }));
+
+        setSalesmen(formattedSalesmen);
+        
+    } catch (error) {
+        console.error("Failed to load sales engineers:", error);
+        // Fallback to employees API if sales-engineers endpoint fails
         try {
-            setLoading(prev => ({ ...prev, salesmen: true }));
             const employees = await employeesApi.list(company!.id);
             const salesEmployees = employees.filter(emp =>
                 emp.designation?.toLowerCase().includes('sales') ||
-                emp.employee_type?.toLowerCase().includes('sales')
+                emp.employee_type?.toLowerCase().includes('sales') ||
+                emp.department?.toLowerCase().includes('sales')
             );
             setSalesmen(salesEmployees);
+        } catch (fallbackError) {
+            console.error("Failed to load employees as fallback:", fallbackError);
+            setSalesmen([]);
+        }
+    } finally {
+        setLoading(prev => ({ ...prev, salesmen: false }));
+    }
+};
+
+    // Fetch contact persons for a specific customer
+    const fetchContactPersons = async (customerId: string) => {
+        if (!company?.id || !customerId) return;
+        
+        try {
+            setLoading(prev => ({ ...prev, contactPersons: true }));
+            
+            // Try to fetch contact persons from API
+            // First check if customer has contact_persons field
+            const customer = customers.find(c => c.id === customerId);
+            if (customer && customer.contact_persons && Array.isArray(customer.contact_persons)) {
+                setContactPersons(customer.contact_persons);
+            } else {
+                // If not, try to fetch from API endpoint
+                try {
+                    const token = localStorage.getItem("access_token");
+                    const response = await fetch(
+                        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/customers/${customerId}/contact-persons`,
+                        {
+                            headers: {
+                                Authorization: `Bearer ${token}`,
+                            },
+                        }
+                    );
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        let persons: any[] = [];
+                        
+                        if (Array.isArray(data)) {
+                            persons = data;
+                        } else if (data && typeof data === 'object') {
+                            persons = data.contact_persons || data.contacts || data.data || data.items || [];
+                        }
+                        
+                        setContactPersons(persons);
+                    }
+                } catch (apiError) {
+                    console.warn("Failed to fetch contact persons from API:", apiError);
+                    // If API fails, try to extract from customer data
+                    if (customer) {
+                        const persons = [];
+                        // Check if customer has contact person fields
+                        if (customer.contact_person_name || customer.contact_person) {
+                            persons.push({
+                                id: 'primary',
+                                name: customer.contact_person_name || customer.contact_person || "Primary Contact",
+                                email: customer.contact_email || customer.email || "",
+                                phone: customer.contact_phone || customer.phone || customer.mobile || "",
+                                designation: customer.contact_designation || ""
+                            });
+                        }
+                        // Add customer itself as a contact option
+                        persons.push({
+                            id: 'customer',
+                            name: customer.name || "Customer",
+                            email: customer.email || "",
+                            phone: customer.phone || customer.mobile || "",
+                            designation: "Customer"
+                        });
+                        setContactPersons(persons);
+                    }
+                }
+            }
         } catch (error) {
-            console.error("Failed to load salesmen:", error);
+            console.error("Error fetching contact persons:", error);
         } finally {
-            setLoading(prev => ({ ...prev, salesmen: false }));
+            setLoading(prev => ({ ...prev, contactPersons: false }));
         }
     };
+
+    // Prepare customer options for dropdown
+    const customerOptions = useMemo(() => {
+        return customers.map(customer => ({
+            value: customer.id,
+            label: `${customer.name} ${customer.gstin ? `(${customer.gstin})` : ''}`,
+            data: customer
+        }));
+    }, [customers]);
+
+    // Prepare salesman options for dropdown
+    const salesmanOptions = useMemo(() => {
+        return salesmen.map(salesman => ({
+            value: salesman.id,
+            label: `${salesman.name} ${salesman.employee_code ? `(${salesman.employee_code})` : ''} ${salesman.designation ? `- ${salesman.designation}` : ''}`
+        }));
+    }, [salesmen]);
+
+    // Prepare contact person options for dropdown
+    const contactPersonOptions = useMemo(() => {
+        return contactPersons.map(person => ({
+            value: person.id || person.name,
+            label: `${person.name} ${person.designation ? `(${person.designation})` : ''} ${person.email ? `- ${person.email}` : ''} ${person.phone ? `- ${person.phone}` : ''}`
+        }));
+    }, [contactPersons]);
 
     // Calculate totals based on items
     const calculateTotals = () => {
@@ -424,22 +571,64 @@ export default function AddSalesOrderPage() {
         }));
     };
 
-    // Update form data handler
-    const handleFormChange = (field: string, value: any) => {
+    // Handle customer change - load contact persons
+    const handleCustomerChange = async (customerId: string) => {
         setFormData(prev => ({
             ...prev,
-            [field]: value,
+            customer_id: customerId,
+            contact_person: "" // Clear contact person when customer changes
         }));
-
-        // When customer is selected, auto-fill contact person
-        if (field === 'customer_id' && value) {
-            const selectedCustomer = customers.find(c => c.id === value);
-            if (selectedCustomer) {
+        
+        // Find and set selected customer
+        const customer = customers.find(c => c.id === customerId);
+        setSelectedCustomer(customer);
+        
+        if (customerId) {
+            // Fetch contact persons for this customer
+            await fetchContactPersons(customerId);
+            
+            // If customer has a default contact person, set it
+            if (customer?.contact_person) {
                 setFormData(prev => ({
                     ...prev,
-                    contact_person: selectedCustomer.contact_person || "",
+                    contact_person: customer.contact_person
                 }));
             }
+        } else {
+            // Clear contact persons if no customer selected
+            setContactPersons([]);
+        }
+    };
+
+    // Handle contact person change
+    const handleContactPersonChange = (value: string) => {
+        setFormData(prev => ({
+            ...prev,
+            contact_person: value
+        }));
+    };
+
+    // Handle salesman change
+    const handleSalesmanChange = (value: string) => {
+        setFormData(prev => ({
+            ...prev,
+            sales_person_id: value
+        }));
+    };
+
+    // Update form data handler
+    const handleFormChange = (field: string, value: any) => {
+        if (field === 'customer_id') {
+            handleCustomerChange(value);
+        } else if (field === 'contact_person') {
+            handleContactPersonChange(value);
+        } else if (field === 'sales_person_id') {
+            handleSalesmanChange(value);
+        } else {
+            setFormData(prev => ({
+                ...prev,
+                [field]: value,
+            }));
         }
     };
 
@@ -554,15 +743,12 @@ export default function AddSalesOrderPage() {
                             <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Sales Order Basic Details</h2>
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div>
-                                    <SelectField
-                                        label="Company"
-                                        name="company_id"
-                                        value={company?.id || ""}
-                                        onChange={() => { }}
-                                        options={company ? [{ value: company.id, label: company.name }] : []}
-                                        required={true}
-                                        placeholder="Select Company"
-                                    />
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                        Company
+                                    </label>
+                                    <div className="rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 dark:border-dark-3 dark:bg-dark-2">
+                                        {company?.name || "Select Company"}
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
@@ -596,19 +782,38 @@ export default function AddSalesOrderPage() {
                                     />
                                 </div>
                                 <div>
-                                    <SelectField
-                                        label="Customer Name"
-                                        name="customer_id"
-                                        value={formData.customer_id}
-                                        onChange={handleFormChange}
-                                        options={customers.map(customer => ({
-                                            value: customer.id,
-                                            label: `${customer.name} ${customer.gstin ? `(${customer.gstin})` : ''}`
-                                        }))}
-                                        required={true}
-                                        placeholder="Select Customer"
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                        Customer Name <span className="text-red-500">*</span>
+                                    </label>
+                                    <Select
+                                        options={customerOptions}
+                                        value={customerOptions.find(opt => opt.value === formData.customer_id)}
+                                        onChange={(selected) => handleFormChange('customer_id', selected?.value || "")}
+                                        placeholder={loading.customers ? "Loading customers..." : "Select Customer"}
+                                        isClearable
+                                        isSearchable
+                                        isLoading={loading.customers}
+                                        styles={{
+                                            control: (base: any, state: any) => ({
+                                                ...base,
+                                                minHeight: "42px",
+                                                borderRadius: "0.5rem",
+                                                borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
+                                                boxShadow: state.isFocused
+                                                    ? "0 0 0 2px rgba(99,102,241,0.4)"
+                                                    : "none",
+                                                backgroundColor: "transparent",
+                                                "&:hover": {
+                                                    borderColor: "#6366f1",
+                                                },
+                                            }),
+                                            menuPortal: (base: any) => ({
+                                                ...base,
+                                                zIndex: 9999,
+                                            }),
+                                        }}
+                                        classNamePrefix="react-select"
                                     />
-                                    {/* <p className="mt-1 text-sm text-red-600">Previous Due: ₹2,500</p> */}
                                 </div>
                                 <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
@@ -617,7 +822,7 @@ export default function AddSalesOrderPage() {
                                     <input
                                         type="text"
                                         value={formData.reference_no || ""}
-                                        onChange={(e) => setFormData({ ...formData, reference_no: e.target.value })}
+                                        onChange={(e) => handleFormChange('reference_no', e.target.value)}
                                         className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                     />
                                 </div>
@@ -648,30 +853,89 @@ export default function AddSalesOrderPage() {
                                         <option value="completed">Completed</option>
                                     </select>
                                 </div>
-                                <div className="md:col-span-2">
-                                    <SelectField
-                                        label="Salesman"
-                                        name="sales_person_id"
-                                        value={formData.sales_person_id}
-                                        onChange={handleFormChange}
-                                        options={salesmen.map(salesman => ({
-                                            value: salesman.id,
-                                            label: `${salesman.name} ${salesman.employee_code ? `(${salesman.employee_code})` : ''}`
-                                        }))}
-                                        required={true}
-                                        placeholder="Select Salesman"
+                                {/* Salesman Dropdown */}
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                        Salesman <span className="text-red-500">*</span>
+                                    </label>
+                                    <Select
+                                        options={salesmanOptions}
+                                        value={salesmanOptions.find(opt => opt.value === formData.sales_person_id)}
+                                        onChange={(selected) => handleFormChange('sales_person_id', selected?.value || "")}
+                                        placeholder={loading.salesmen ? "Loading salesmen..." : "Select Salesman"}
+                                        isClearable
+                                        isSearchable
+                                        isLoading={loading.salesmen}
+                                        styles={{
+                                            control: (base: any, state: any) => ({
+                                                ...base,
+                                                minHeight: "42px",
+                                                borderRadius: "0.5rem",
+                                                borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
+                                                boxShadow: state.isFocused
+                                                    ? "0 0 0 2px rgba(99,102,241,0.4)"
+                                                    : "none",
+                                                backgroundColor: "transparent",
+                                                "&:hover": {
+                                                    borderColor: "#6366f1",
+                                                },
+                                            }),
+                                            menuPortal: (base: any) => ({
+                                                ...base,
+                                                zIndex: 9999,
+                                            }),
+                                        }}
+                                        classNamePrefix="react-select"
                                     />
                                 </div>
+                                {/* Contact Person Dropdown */}
                                 <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                                         Contact Person
                                     </label>
-                                    <input
-                                        type="text"
-                                        value={formData.contact_person}
-                                        onChange={(e) => handleFormChange('contact_person', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                    <Select
+                                        options={contactPersonOptions}
+                                        value={contactPersonOptions.find(opt => opt.value === formData.contact_person)}
+                                        onChange={(selected) => handleFormChange('contact_person', selected?.value || "")}
+                                        placeholder={
+                                            !formData.customer_id 
+                                                ? "Select customer first" 
+                                                : loading.contactPersons 
+                                                    ? "Loading contact persons..." 
+                                                    : contactPersonOptions.length > 0 
+                                                        ? "Select Contact Person" 
+                                                        : "No contact persons found"
+                                        }
+                                        isClearable
+                                        isSearchable
+                                        isLoading={loading.contactPersons}
+                                        isDisabled={!formData.customer_id || contactPersonOptions.length === 0}
+                                        styles={{
+                                            control: (base: any, state: any) => ({
+                                                ...base,
+                                                minHeight: "42px",
+                                                borderRadius: "0.5rem",
+                                                borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
+                                                boxShadow: state.isFocused
+                                                    ? "0 0 0 2px rgba(99,102,241,0.4)"
+                                                    : "none",
+                                                backgroundColor: "transparent",
+                                                "&:hover": {
+                                                    borderColor: "#6366f1",
+                                                },
+                                            }),
+                                            menuPortal: (base: any) => ({
+                                                ...base,
+                                                zIndex: 9999,
+                                            }),
+                                        }}
+                                        classNamePrefix="react-select"
                                     />
+                                    {!formData.customer_id && (
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Please select a customer first to load contact persons
+                                        </p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
@@ -912,13 +1176,13 @@ export default function AddSalesOrderPage() {
                                                 <input
                                                     type="number"
                                                     value={formData.other_charges}
-                                                    onChange={(e) => setFormData({ ...formData, other_charges: parseFloat(e.target.value) })}
+                                                    onChange={(e) => handleFormChange('other_charges', parseFloat(e.target.value))}
                                                     className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                 />
                                                 <select
                                                     value={formData.charges_type}
-                                                    onChange={(e) => setFormData({ ...formData, charges_type: e.target.value })}
+                                                    onChange={(e) => handleFormChange('charges_type', e.target.value)}
                                                     className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
@@ -932,13 +1196,13 @@ export default function AddSalesOrderPage() {
                                                 <input
                                                     type="number"
                                                     value={formData.discount_on_all}
-                                                    onChange={(e) => setFormData({ ...formData, discount_on_all: parseFloat(e.target.value) })}
+                                                    onChange={(e) => handleFormChange('discount_on_all', parseFloat(e.target.value))}
                                                     className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                 />
                                                 <select
                                                     value={formData.discount_type}
-                                                    onChange={(e) => setFormData({ ...formData, discount_type: e.target.value })}
+                                                    onChange={(e) => handleFormChange('discount_type', e.target.value)}
                                                     className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="percentage">%</option>
@@ -950,7 +1214,7 @@ export default function AddSalesOrderPage() {
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Remarks</label>
                                             <textarea
                                                 value={formData.notes}
-                                                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                                onChange={(e) => handleFormChange('notes', e.target.value)}
                                                 rows={3}
                                                 className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                             />
@@ -961,7 +1225,7 @@ export default function AddSalesOrderPage() {
                                                     type="checkbox"
                                                     id="send_message"
                                                     checked={formData.send_message}
-                                                    onChange={(e) => setFormData({ ...formData, send_message: e.target.checked })}
+                                                    onChange={(e) => handleFormChange('send_message', e.target.checked)}
                                                     className="h-4 w-4 rounded border-stroke text-primary focus:ring-primary dark:border-dark-3"
                                                 />
                                                 <label htmlFor="send_message" className="ml-2 text-sm text-dark dark:text-white">
@@ -1033,15 +1297,13 @@ export default function AddSalesOrderPage() {
                                 <div className="p-6">
                                     <textarea
                                         value={formData.terms}
-                                        onChange={(e) => setFormData({ ...formData, terms: e.target.value })}
+                                        onChange={(e) => handleFormChange('terms', e.target.value)}
                                         rows={6}
                                         className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                                     />
                                 </div>
                             )}
                         </div>
-
-                      
 
                         {/* Action Buttons */}
                         <div className="rounded-lg p-6 dark:bg-gray-dark">

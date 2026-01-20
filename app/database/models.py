@@ -3473,6 +3473,14 @@ class Quotation(Base):
     sales_ticket_id = Column(String(36), ForeignKey("sales_tickets.id", ondelete="SET NULL"))
     contact_id = Column(String(36), ForeignKey("contacts.id", ondelete="SET NULL"))
     sales_person_id = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"))
+    contact_person = Column(String(255), nullable=True)
+    sales_person_name = Column(String(255), nullable=True)
+    reference = Column(String(255), nullable=True)
+    reference_no = Column(String(255), nullable=True)
+    reference_date = Column(Date, nullable=True)
+    payment_terms = Column(Text, nullable=True)
+    remarks = Column(Text, nullable=True)
+    excel_notes_file_url = Column(Text, nullable=True)
     
     # Quotation identification
     quotation_number = Column(String(50), nullable=False, index=True)

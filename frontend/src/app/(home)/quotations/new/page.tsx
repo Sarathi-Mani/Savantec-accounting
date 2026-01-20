@@ -1,18 +1,7 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { 
-  customersApi, 
-  productsApi, 
-  Customer, 
-  Product, 
-  salesmenApi, 
-  Salesman, 
-  CustomerListResponse, 
-  ProductListResponse, 
-  SalesmanListResponse, 
-  ContactPerson 
-} from "@/services/api";
+import { customersApi, productsApi, salesmenApi } from "@/services/api";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Select from "react-select";
@@ -20,15 +9,13 @@ import Select from "react-select";
 interface QuotationItem {
   product_id?: string;
   description: string;
-  hsn_code: string;
+  hsn: string;
   quantity: number;
   unit: string;
   unit_price: number;
   discount_percent: number;
   gst_rate: number;
 }
-
-
 
 interface OtherCharge {
   id: string;
@@ -37,7 +24,7 @@ interface OtherCharge {
   type: "fixed" | "percentage";
   tax: number;
 }
-// Add this interface for Excel cell
+
 interface ExcelCell {
   id: string;
   value: string;
@@ -51,33 +38,21 @@ interface ExcelCell {
 interface FormData {
   quotation_code: string;
   quotation_date: string;
-  expire_date: string;
-  status: "open" | "closed" | "po_converted" | "lost";
-  customer_id?: string;
-  contact_person: string;
-  salesman_id?: string;
-  reference: string;
-  reference_no: string;
-  reference_date: string;
-  tax_type: string;
-  tax_regime: string;
-  payment_terms: string;
-  notes: string;
-  description: string;
-  subtotal: number;
-  total_discount: number;
-  cgst: number;
-  sgst: number;
-  igst: number;
-  grand_total: number;
-  taxable_amount: number;
-  total_tax: number;
-  round_off: number;
-  other_charges_total: number;
-  place_of_supply?: string;
-  subject?: string;
-  terms?: string;
   validity_days: number;
+  customer_id?: string;
+  notes: string;
+  terms: string;
+  subject?: string;
+  tax_regime?: "cgst_sgst" | "igst";
+  status?: "open" | "closed" | "po_converted" | "lost";
+  salesman_id?: string;
+  reference?: string;
+  reference_no?: string;
+  reference_date?: string;
+  payment_terms?: string;
+  place_of_supply?: string;
+  remarks?: string; // Added remarks field
+  contact_person?: string; // Added contact person field
 }
 
 // Simple toast notification component
@@ -105,315 +80,249 @@ const Toast = ({ message, type = "success", onClose }: {
   );
 };
 
+// Helper function to convert column letter to index
+const getColumnIndex = (colLetter: string): number => {
+  if (!colLetter || typeof colLetter !== 'string') return 0;
+  
+  let index = 0;
+  for (let i = 0; i < colLetter.length; i++) {
+    const charCode = colLetter.charCodeAt(i);
+    if (charCode >= 65 && charCode <= 90) { // A-Z
+      index = index * 26 + (charCode - 64);
+    } else if (charCode >= 97 && charCode <= 122) { // a-z
+      index = index * 26 + (charCode - 96);
+    }
+  }
+  return index - 1;
+};
+
+// Helper function to convert index to column letter
+const getColumnLetter = (index: number): string => {
+  let letter = '';
+  while (index >= 0) {
+    letter = String.fromCharCode(65 + (index % 26)) + letter;
+    index = Math.floor(index / 26) - 1;
+  }
+  return letter;
+};
+
 export default function NewQuotationPage() {
   const { company } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [salesmen, setSalesmen] = useState<Salesman[]>([]);
-  const [contactPersons, setContactPersons] = useState<ContactPerson[]>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [selectedContactPerson, setSelectedContactPerson] = useState<ContactPerson | null>(null);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [salesmen, setSalesmen] = useState<any[]>([]);
+  const [contactPersons, setContactPersons] = useState<any[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [selectedContactPerson, setSelectedContactPerson] = useState<any>(null);
   const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: "success" | "error" | "info" | "warning" }>>([]);
-
-  // Generate quotation code
+  const [activeCell, setActiveCell] = useState<{row: number, col: number} | null>(null);
+  const [showCopyModal, setShowCopyModal] = useState(false);
+const [copyQuotationNumber, setCopyQuotationNumber] = useState("");
+const [isFetchingQuotation, setIsFetchingQuotation] = useState(false);
+const [copyError, setCopyError] = useState("");
+  
+  // Generate quotation code function
   const generateQuotationCode = useCallback(() => {
-    const year = new Date().getFullYear();
-    const month = String(new Date().getMonth() + 1).padStart(2, '0');
     return `QT-0001`;
   }, []);
 
 
-  const [excelGrid, setExcelGrid] = useState<ExcelCell[][]>(() => {
-  // Initialize 5x10 grid
-  const grid: ExcelCell[][] = [];
-  for (let r = 0; r < 5; r++) {
-    const row: ExcelCell[] = [];
-    for (let c = 0; c < 10; c++) {
-      row.push({
-        id: `${r}_${c}`,
-        value: '',
-        isFormula: false,
-        row: r,
-        col: c,
-        computedValue: ''
-      });
-    }
-    grid.push(row);
-  }
-  return grid;
-});
-
-// Add these functions for Excel operations
-const updateCell = (row: number, col: number, value: string) => {
-  const newGrid = [...excelGrid.map(rowArr => [...rowArr])];
-  const cell = newGrid[row][col];
+  const fetchQuotationByNumber = async (quotationNumber: string) => {
+  if (!company?.id || !quotationNumber.trim()) return null;
   
-  // Check if it's a formula (starts with =)
-  if (value.trim().startsWith('=')) {
-    cell.isFormula = true;
-    cell.formula = value.trim();
-    cell.value = value.trim();
+  try {
+    setIsFetchingQuotation(true);
+    setCopyError("");
     
-    // Try to compute the formula
-    try {
-      cell.computedValue = evaluateFormula(value, newGrid);
-    } catch (error) {
-      console.error('Formula error:', error);
-      cell.computedValue = '#ERROR';
-    }
-  } else {
-    cell.isFormula = false;
-    cell.formula = undefined;
-    cell.value = value;
-    
-    // Try to convert to number if it looks like a number
-    const numValue = parseFloat(value);
-    cell.computedValue = !isNaN(numValue) ? numValue : value;
-  }
-  
-  // Update dependent cells
-  updateDependentCells(newGrid);
-  
-  setExcelGrid(newGrid);
-};
-
-const evaluateFormula = (formula: string, grid: ExcelCell[][]): number | string => {
-  const expr = formula.substring(1).toUpperCase();
-  
-  // SUM function
-  if (expr.startsWith('SUM(')) {
-    const range = expr.match(/SUM\(([A-Z])([0-9]+):([A-Z])([0-9]+)\)/);
-    if (range) {
-      const startCol = range[1];
-      const startRow = parseInt(range[2]) - 1;
-      const endCol = range[3];
-      const endRow = parseInt(range[4]) - 1;
-      
-      const startColIndex = startCol.charCodeAt(0) - 65;
-      const endColIndex = endCol.charCodeAt(0) - 65;
-      
-      let sum = 0;
-      for (let r = startRow; r <= endRow; r++) {
-        for (let c = startColIndex; c <= endColIndex; c++) {
-          if (r < grid.length && c < grid[r].length) {
-            const cellValue = grid[r][c].computedValue;
-            const numValue = typeof cellValue === 'number' ? cellValue : 
-                            (typeof cellValue === 'string' && !isNaN(Number(cellValue)) ? Number(cellValue) : 0);
-            sum += numValue;
-          }
-        }
+    const token = localStorage.getItem("access_token");
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations?search=${encodeURIComponent(quotationNumber)}&page_size=100`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       }
-      return sum;
-    }
-  }
-  
-  // AVG function
-  if (expr.startsWith('AVG(')) {
-    const range = expr.match(/AVG\(([A-Z])([0-9]+):([A-Z])([0-9]+)\)/);
-    if (range) {
-      const startCol = range[1];
-      const startRow = parseInt(range[2]) - 1;
-      const endCol = range[3];
-      const endRow = parseInt(range[4]) - 1;
-      
-      const startColIndex = startCol.charCodeAt(0) - 65;
-      const endColIndex = endCol.charCodeAt(0) - 65;
-      
-      let sum = 0;
-      let count = 0;
-      for (let r = startRow; r <= endRow; r++) {
-        for (let c = startColIndex; c <= endColIndex; c++) {
-          if (r < grid.length && c < grid[r].length) {
-            const cellValue = grid[r][c].computedValue;
-            const numValue = typeof cellValue === 'number' ? cellValue : 
-                            (typeof cellValue === 'string' && !isNaN(Number(cellValue)) ? Number(cellValue) : null);
-            if (numValue !== null) {
-              sum += numValue;
-              count++;
+    );
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.items && data.items.length > 0) {
+        // Find exact match for quotation number
+        const exactMatch = data.items.find(
+          (q: any) => q.quotation_number === quotationNumber.trim()
+        );
+        
+        if (exactMatch) {
+          // Fetch full quotation details including items
+          const detailResponse = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${exactMatch.id}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
             }
+          );
+          
+          if (detailResponse.ok) {
+            const quotationDetails = await detailResponse.json();
+            return quotationDetails;
           }
         }
       }
-      return count > 0 ? parseFloat((sum / count).toFixed(2)) : 0;
     }
-  }
-  
-  // COUNT function
-  if (expr.startsWith('COUNT(')) {
-    const range = expr.match(/COUNT\(([A-Z])([0-9]+):([A-Z])([0-9]+)\)/);
-    if (range) {
-      const startCol = range[1];
-      const startRow = parseInt(range[2]) - 1;
-      const endCol = range[3];
-      const endRow = parseInt(range[4]) - 1;
-      
-      const startColIndex = startCol.charCodeAt(0) - 65;
-      const endColIndex = endCol.charCodeAt(0) - 65;
-      
-      let count = 0;
-      for (let r = startRow; r <= endRow; r++) {
-        for (let c = startColIndex; c <= endColIndex; c++) {
-          if (r < grid.length && c < grid[r].length) {
-            const val = grid[r][c].computedValue;
-            if (val !== '' && val !== undefined && val !== null) {
-              count++;
-            }
-          }
-        }
-      }
-      return count;
-    }
-  }
-  
-  // MIN function
-  if (expr.startsWith('MIN(')) {
-    const range = expr.match(/MIN\(([A-Z])([0-9]+):([A-Z])([0-9]+)\)/);
-    if (range) {
-      const startCol = range[1];
-      const startRow = parseInt(range[2]) - 1;
-      const endCol = range[3];
-      const endRow = parseInt(range[4]) - 1;
-      
-      const startColIndex = startCol.charCodeAt(0) - 65;
-      const endColIndex = endCol.charCodeAt(0) - 65;
-      
-      let min = Infinity;
-      for (let r = startRow; r <= endRow; r++) {
-        for (let c = startColIndex; c <= endColIndex; c++) {
-          if (r < grid.length && c < grid[r].length) {
-            const cellValue = grid[r][c].computedValue;
-            const numValue = typeof cellValue === 'number' ? cellValue : 
-                            (typeof cellValue === 'string' && !isNaN(Number(cellValue)) ? Number(cellValue) : Infinity);
-            if (numValue < min) {
-              min = numValue;
-            }
-          }
-        }
-      }
-      return min === Infinity ? 0 : min;
-    }
-  }
-  
-  // MAX function
-  if (expr.startsWith('MAX(')) {
-    const range = expr.match(/MAX\(([A-Z])([0-9]+):([A-Z])([0-9]+)\)/);
-    if (range) {
-      const startCol = range[1];
-      const startRow = parseInt(range[2]) - 1;
-      const endCol = range[3];
-      const endRow = parseInt(range[4]) - 1;
-      
-      const startColIndex = startCol.charCodeAt(0) - 65;
-      const endColIndex = endCol.charCodeAt(0) - 65;
-      
-      let max = -Infinity;
-      for (let r = startRow; r <= endRow; r++) {
-        for (let c = startColIndex; c <= endColIndex; c++) {
-          if (r < grid.length && c < grid[r].length) {
-            const cellValue = grid[r][c].computedValue;
-            const numValue = typeof cellValue === 'number' ? cellValue : 
-                            (typeof cellValue === 'string' && !isNaN(Number(cellValue)) ? Number(cellValue) : -Infinity);
-            if (numValue > max) {
-              max = numValue;
-            }
-          }
-        }
-      }
-      return max === -Infinity ? 0 : max;
-    }
-  }
-  
-  // Basic arithmetic
-  if (expr.includes('+') || expr.includes('-') || expr.includes('*') || expr.includes('/')) {
-    // Use a simpler approach without complex regex replace
-    let evalExpr = expr;
-    
-    // Manually find and replace cell references
-    const cellPattern = /([A-Z])(\d+)/g;
-    let match;
-    
-    // Create a copy of matches to avoid infinite loop
-    const matches: Array<{match: string, replacement: string}> = [];
-    while ((match = cellPattern.exec(expr)) !== null) {
-      const col = match[1];
-      const row = parseInt(match[2]) - 1;
-      const colIndex = col.charCodeAt(0) - 65;
-      
-      let replacement = '0';
-      if (row < grid.length && colIndex < grid[row].length) {
-        const cellVal = grid[row][colIndex].computedValue;
-        if (typeof cellVal === 'number') {
-          replacement = cellVal.toString();
-        } else if (typeof cellVal === 'string' && !isNaN(Number(cellVal))) {
-          replacement = cellVal;
-        }
-      }
-      
-      matches.push({ match: match[0], replacement });
-    }
-    
-    // Replace all matches
-    matches.forEach(({ match, replacement }) => {
-      evalExpr = evalExpr.replace(new RegExp(match, 'g'), replacement);
-    });
-    
-    // Clean up expression - remove any non-numeric/non-operator characters
-    evalExpr = evalExpr.replace(/[^0-9+\-*/().]/g, '');
-    
-    try {
-      // Safer evaluation using Function constructor
-      const result = Function('"use strict"; return (' + evalExpr + ')')();
-      return typeof result === 'number' && !isNaN(result) ? result : '#ERROR';
-    } catch {
-      return '#ERROR';
-    }
-  }
-  
-  // Cell reference (single cell)
-  const cellRef = expr.match(/^([A-Z])([0-9]+)$/);
-  if (cellRef) {
-    const col = cellRef[1];
-    const row = parseInt(cellRef[2]) - 1;
-    const colIndex = col.charCodeAt(0) - 65;
-    
-    if (row < grid.length && colIndex < grid[row].length) {
-      const val = grid[row][colIndex].computedValue;
-      return val || '';
-    }
-  }
-  
-  // Try to evaluate as a simple number
-  const simpleNumber = parseFloat(expr);
-  if (!isNaN(simpleNumber)) {
-    return simpleNumber;
-  }
-  
-  return '#ERROR';
-};
-
-const updateDependentCells = (grid: ExcelCell[][]) => {
-  for (let r = 0; r < grid.length; r++) {
-    for (let c = 0; c < grid[r].length; c++) {
-      const cell = grid[r][c];
-      if (cell.isFormula && cell.formula) {
-        try {
-          cell.computedValue = evaluateFormula(cell.formula, grid);
-        } catch (error) {
-          console.error('Error evaluating formula:', cell.formula, error);
-          cell.computedValue = '#ERROR';
-        }
-      }
-    }
+    return null;
+  } catch (error) {
+    console.error("Failed to fetch quotation:", error);
+    setCopyError("Failed to fetch quotation. Please check the quotation number.");
+    return null;
+  } finally {
+    setIsFetchingQuotation(false);
   }
 };
 
-const getColumnLetter = (index: number): string => {
-  return String.fromCharCode(65 + index);
+// Add this function to prefill form with quotation data
+// Add this function to fetch customer details by ID
+const fetchCustomerById = async (customerId: string) => {
+  if (!company?.id || !customerId) return null;
+  
+  try {
+    const token = localStorage.getItem("access_token");
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/customers/${customerId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    
+    if (response.ok) {
+      return await response.json();
+    }
+    return null;
+  } catch (error) {
+    console.error("Failed to fetch customer:", error);
+    return null;
+  }
 };
 
-const clearGrid = () => {
+// Update the prefillFormWithQuotation function
+const prefillFormWithQuotation = async (quotationNumber: string) => {
+  const quotation = await fetchQuotationByNumber(quotationNumber);
+  
+  if (!quotation) {
+    setCopyError("Quotation not found. Please check the quotation number.");
+    return;
+  }
+  
+  // FIRST: Update form data with quotation details
+  setFormData(prev => ({
+    ...prev,
+    quotation_code: generateQuotationCode(),
+    quotation_date: new Date().toISOString().split("T")[0],
+    validity_days: quotation.validity_days || 30,
+    customer_id: quotation.customer_id || "",
+    notes: quotation.notes || "",
+    terms: quotation.terms || "",
+    subject: `Quotation ${generateQuotationCode()} - Copy of ${quotation.quotation_number}`,
+    place_of_supply: quotation.place_of_supply || "",
+    status: "open",
+    salesman_id: quotation.sales_person_id || "",
+    reference: quotation.reference || "",
+    reference_no: quotation.reference_no || "",
+    reference_date: quotation.reference_date ? 
+      new Date(quotation.reference_date).toISOString().split("T")[0] : "",
+    payment_terms: quotation.payment_terms || standardTermsTemplate,
+    remarks: quotation.remarks || "",
+    contact_person: quotation.contact_person || ""
+  }));
+  
+  // Update customer selection if customer exists
+  if (quotation.customer_id) {
+    // First check if customer exists in local customers list
+    let customer = customers.find(c => c.id === quotation.customer_id);
+    
+    // If not found locally, fetch from API
+    if (!customer) {
+      const customerDetails = await fetchCustomerById(quotation.customer_id);
+      if (customerDetails) {
+        // Add to local customers list
+        setCustomers(prev => [...prev, customerDetails]);
+        customer = customerDetails;
+      }
+    }
+    
+    if (customer) {
+      // Create the customer option object for React Select
+      const name = customer.name || "Unnamed Customer";
+      const phone = customer.phone || customer.mobile || "";
+      const email = customer.email || "";
+      const label = `${name}${phone ? ` (${phone})` : ''}${email ? ` - ${email}` : ''}`;
+      
+      const customerOption = {
+        value: customer.id,
+        label: label,
+        data: customer
+      };
+      
+      // Set selected customer and trigger customer change handler
+      setSelectedCustomer(customer);
+      
+      // IMPORTANT: Update the form state with customer_id
+      setFormData(prev => ({
+        ...prev,
+        customer_id: customer.id,
+        contact_person: quotation.contact_person || ""
+      }));
+      
+      // Fetch contact persons for this customer
+      await fetchContactPersons(customer.id);
+      
+      // If the API response includes customer_name, use it
+      if (quotation.customer_name) {
+        console.log("Quotation includes customer name:", quotation.customer_name);
+      }
+      
+      // Determine tax regime if customer has billing_state
+      if (customer.billing_state && company?.state) {
+        const isSameState = customer.billing_state === company.state;
+        setFormData(prev => ({
+          ...prev,
+          tax_regime: isSameState ? "cgst_sgst" : "igst"
+        }));
+      }
+    } else {
+      showToast("Customer not found. Please check if customer still exists.", "warning");
+    }
+  }
+  
+  // Update items from quotation
+  if (quotation.items && quotation.items.length > 0) {
+    const newItems = quotation.items.map((item: any) => ({
+      product_id: item.product_id || "",
+      description: item.description || "",
+      hsn: item.hsn || "",
+      quantity: item.quantity || 1,
+      unit: item.unit || "unit",
+      unit_price: item.unit_price || 0,
+      discount_percent: item.discount_percent || 0,
+      gst_rate: item.gst_rate || 18
+    }));
+    setItems(newItems);
+  }
+  
+  // Update salesman selection if exists
+  if (quotation.sales_person_id && salesmen.length > 0) {
+    // This will be handled by the form data update
+    // The salesman will be selected when the Select component renders with formData.salesman_id
+  }
+  
+  // Reset other charges
+  setOtherCharges([{ id: Date.now().toString(), name: "", amount: 0, type: "fixed", tax: 18 }]);
+  
+  // Clear Excel grid
   const newGrid = [...excelGrid.map(row => [...row])];
   for (let r = 0; r < newGrid.length; r++) {
     for (let c = 0; c < newGrid[r].length; c++) {
@@ -427,121 +336,93 @@ const clearGrid = () => {
     }
   }
   setExcelGrid(newGrid);
-};
-
-const exportToCSV = () => {
-  let csv = '';
   
-  // Add headers
-  const headers = ['', ...Array.from({ length: 10 }, (_, i) => getColumnLetter(i))];
-  csv += headers.join(',') + '\n';
-  
-  // Add rows
-  excelGrid.forEach((row, rowIndex) => {
-    const rowNumber = rowIndex + 1;
-    const rowData = [rowNumber, ...row.map(cell => cell.computedValue || '')];
-    csv += rowData.join(',') + '\n';
-  });
-  
-  // Create download link
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'quotation_notes.csv';
-  a.click();
-  window.URL.revokeObjectURL(url);
-  
-  showToast('CSV exported successfully!', 'success');
-};
-
-const importFromCSV = () => {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.csv';
-  
-  input.onchange = (e) => {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        const lines = text.split('\n').slice(1); // Skip header row
-        
-        const newGrid = [...excelGrid.map(row => [...row])];
-        
-        lines.forEach((line, rowIndex) => {
-          if (rowIndex >= 5) return; // Only process first 5 rows
-          
-          const cells = line.split(',').slice(1); // Skip row number
-          cells.forEach((cell, colIndex) => {
-            if (colIndex >= 10) return; // Only process first 10 columns
-            
-            if (rowIndex < newGrid.length && colIndex < newGrid[rowIndex].length) {
-              updateCell(rowIndex, colIndex, cell.trim());
-            }
-          });
-        });
-        
-        showToast('CSV imported successfully!', 'success');
-      } catch (error) {
-        showToast('Error importing CSV file', 'error');
+  // Fetch Excel notes if available
+  if (quotation.excel_notes_file_url && company?.id) {
+    try {
+      const token = localStorage.getItem("access_token");
+      const excelResponse = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${quotation.id}/excel-notes`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      
+      if (excelResponse.ok) {
+        const excelData = await excelResponse.json();
+        if (excelData.content) {
+          showToast("Loaded Excel notes from quotation", "info");
+        }
       }
-    };
-    
-    reader.readAsText(file);
-  };
-  
-  input.click();
-};
-
-// Add this function to your handleSubmit to include Excel data in submission
-const getExcelDataAsText = () => {
-  let text = '';
-  excelGrid.forEach((row, rowIndex) => {
-    const rowValues = row.map(cell => cell.computedValue || '').filter(val => val !== '');
-    if (rowValues.length > 0) {
-      text += `Row ${rowIndex + 1}: ${rowValues.join(' | ')}\n`;
+    } catch (error) {
+      console.error("Failed to fetch Excel notes:", error);
     }
-  });
-  return text.trim();
+  }
+  
+  showToast(`Quotation "${quotation.quotation_number}" loaded successfully!`, "success");
+  setShowCopyModal(false);
+  setCopyQuotationNumber("");
 };
-
-  const [formData, setFormData] = useState<FormData>({
-    quotation_code: generateQuotationCode(),
-    quotation_date: new Date().toISOString().split("T")[0],
-    expire_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-    status: "open",
-    customer_id: "",
-    contact_person: "",
-    salesman_id: "",
-    reference: "",
-    reference_no: "",
-    reference_date: "",
-    tax_type: "",
-    tax_regime: "",
-    payment_terms: "",
-    notes: "",
-    description: "",
-    subtotal: 0,
-    total_discount: 0,
-    cgst: 0,
-    sgst: 0,
-    igst: 0,
-    grand_total: 0,
-    taxable_amount: 0,
-    total_tax: 0,
-    round_off: 0,
-    other_charges_total: 0,
-    validity_days: 30
+  // Excel Grid State - Create dynamic grid system
+  const [excelGrid, setExcelGrid] = useState<ExcelCell[][]>(() => {
+    const initialRows = 10;
+    const initialCols = 10;
+    const grid: ExcelCell[][] = [];
+    
+    for (let r = 0; r < initialRows; r++) {
+      const row: ExcelCell[] = [];
+      for (let c = 0; c < initialCols; c++) {
+        row.push({
+          id: `${r}_${c}`,
+          value: '',
+          isFormula: false,
+          row: r,
+          col: c,
+          computedValue: ''
+        });
+      }
+      grid.push(row);
+    }
+    return grid;
   });
+
+  // Track visible rows/columns
+  const [gridRows, setGridRows] = useState(10);
+  const [gridCols, setGridCols] = useState(10);
+
+  // Store total rows/columns (can be much larger than visible)
+  const [totalRows, setTotalRows] = useState(10);
+  const [totalCols, setTotalCols] = useState(10);
+
+  // Standard Terms Template
+  const standardTermsTemplate = `1. Packing/Forwarding: Nil\n2. Freight: Actual\n3. Payment: 30 Days\n4. Delivery: 4 Weeks\n5. Validity: 30 days\n6. Taxes: All taxes as applicable\n7. Installation: At actual\n8. Warranty: As per product warranty`;
+
+const [formData, setFormData] = useState<FormData>({
+  quotation_code: generateQuotationCode(),
+  quotation_date: new Date().toISOString().split("T")[0],
+  validity_days: 30,
+  customer_id: "",
+  notes: "",
+  terms: "", // This is for additional terms
+  subject: `Quotation ${generateQuotationCode()}`,
+  place_of_supply: "",
+  tax_regime: undefined,
+  status: "open",
+  salesman_id: "",
+  reference: "",
+  reference_no: "",
+  reference_date: "",
+  payment_terms: standardTermsTemplate,
+  remarks: "", // Will be stored in remarks column
+  contact_person: "" 
+});
 
   const [items, setItems] = useState<QuotationItem[]>([
     { 
       product_id: "", 
-      hsn_code: "", 
+      hsn: "", 
       description: "", 
       quantity: 1, 
       unit: "unit", 
@@ -565,144 +446,851 @@ const getExcelDataAsText = () => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, message, type }]);
     
-    // Auto remove toast after 3 seconds
     setTimeout(() => {
       setToasts(prev => prev.filter(toast => toast.id !== id));
     }, 3000);
   };
 
-  // Prepare options
-  const productOptions = useMemo(() => 
-    products.map((product) => ({
-      value: product.id,
-      label: product.name,
-      hsn_code: product.hsn || product.hsn_code || "",
-      description: product.description,
-      unit_price: product.unit_price || product.sales_price || 0,
-      discount_percent: product.discount || 0,
-      gst_rate: product.tax_rate || product.gst_rate || 18
-    })), [products]);
-
-const customerOptions = useMemo(() => 
-  customers.map((customer) => ({
-    value: customer.id,
-    label: `${customer.name}${customer.phone ? ` (${customer.phone})` : ''}${customer.email ? ` - ${customer.email}` : ''}`,
-    data: customer // Store the full customer object
-  })), [customers]);
-
-  const salesmanOptions = useMemo(() => 
-    salesmen.map((salesman) => ({
-      value: salesman.id,
-      label: salesman.name
-    })), [salesmen]);
-
- const contactPersonOptions = useMemo(() => 
-  contactPersons
-    .filter(person => !selectedCustomer || person.customer_id === selectedCustomer.id)
-    .map((person) => ({
-      value: person.id,
-      label: `${person.name} ${person.email ? `- ${person.email}` : ''} ${person.phone ? `- ${person.phone}` : ''}`,
-      person
-    })), [contactPersons, selectedCustomer]);
-
-
-// Alternative API endpoint
-const fetchContactPersons = async (customerId: string) => {
-  if (!company?.id) return;
-  try {
-    // Use this endpoint for contact persons
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/companies/${company.id}/contact-persons?customer_id=${customerId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-        },
+  // Get or create cell - ensures grid can expand dynamically
+  const getOrCreateCell = (grid: ExcelCell[][], row: number, col: number): ExcelCell => {
+    // Ensure row exists
+    while (grid.length <= row) {
+      const newRow: ExcelCell[] = [];
+      for (let c = 0; c < Math.max(gridCols, col + 1); c++) {
+        newRow.push({
+          id: `${grid.length}_${c}`,
+          value: '',
+          isFormula: false,
+          row: grid.length,
+          col: c,
+          computedValue: ''
+        });
       }
-    );
+      grid.push(newRow);
+    }
     
-    if (response.ok) {
-      const data = await response.json();
-      console.log("Contact persons response:", data);
+    // Ensure column exists in row
+    const currentRow = grid[row];
+    while (currentRow.length <= col) {
+      currentRow.push({
+        id: `${row}_${currentRow.length}`,
+        value: '',
+        isFormula: false,
+        row: row,
+        col: currentRow.length,
+        computedValue: ''
+      });
+    }
+    
+    return grid[row][col];
+  };
+
+ // Evaluate formula - FIXED VERSION
+const evaluateFormula = (expr: string, grid: ExcelCell[][]): number | string => {
+  try {
+    // Remove the = sign if present
+    expr = expr.trim();
+    if (expr.startsWith('=')) {
+      expr = expr.substring(1).trim();
+    }
+
+    // If expression is empty, return empty string
+    if (expr === '') {
+      return '';
+    }
+
+    // Handle single cell reference
+    const singleCellPattern = /^([A-Z]+)(\d+)$/;
+    const singleCellMatch = expr.match(singleCellPattern);
+    if (singleCellMatch) {
+      const col = singleCellMatch[1];
+      const rowStr = singleCellMatch[2];
+      const row = parseInt(rowStr) - 1;
       
-      // Handle response based on your actual API structure
-      let persons: ContactPerson[] = [];
-      
-      if (Array.isArray(data)) {
-        persons = data;
-      } else if (data && typeof data === 'object') {
-        persons = data.contact_persons || data.data || data.items || [];
+      if (isNaN(row) || row < 0) {
+        return '#ERROR';
       }
       
-      setContactPersons(persons);
+      const colIndex = getColumnIndex(col);
       
-      // Auto-select first contact person if available
-      if (persons.length > 0) {
-        const firstPerson = persons[0];
-        setSelectedContactPerson(firstPerson);
-        setFormData(prev => ({
-          ...prev,
-          contact_person: firstPerson.name || ""
-        }));
+      if (row >= 0 && row < grid.length && colIndex >= 0 && colIndex < (grid[row]?.length || 0)) {
+        const cell = grid[row][colIndex];
+        if (cell) {
+          const val = cell.computedValue;
+          // If value is undefined or empty, treat as 0 for calculations
+          if (val === undefined || val === '' || val === null) {
+            return 0;
+          }
+          // Convert to number if it's a string representation of a number
+          if (typeof val === 'string') {
+            const num = parseFloat(val);
+            return isNaN(num) ? 0 : num;
+          }
+          return val;
+        }
+      }
+      return '#REF!';
+    }
+
+    // Handle cell references in expressions
+    const cellReferencePattern = /([A-Z]+)(\d+)/g;
+    let processedExpr = expr;
+    let hasCellReference = false;
+    let match;
+
+    while ((match = cellReferencePattern.exec(expr)) !== null) {
+      hasCellReference = true;
+      const colLetter = match[1];
+      const rowStr = match[2];
+      const rowNum = parseInt(rowStr) - 1;
+      
+      if (isNaN(rowNum) || rowNum < 0) {
+        continue;
+      }
+      
+      const colIndex = getColumnIndex(colLetter);
+      
+      if (rowNum >= 0 && rowNum < grid.length && colIndex >= 0 && colIndex < (grid[rowNum]?.length || 0)) {
+        const cell = grid[rowNum][colIndex];
+        if (cell) {
+          let cellValue = cell.computedValue;
+          // Convert cell value to number
+          if (cellValue === undefined || cellValue === '' || cellValue === null) {
+            cellValue = 0;
+          } else if (typeof cellValue === 'string') {
+            // Try to parse string as number
+            const num = parseFloat(cellValue);
+            cellValue = isNaN(num) ? 0 : num;
+          }
+          processedExpr = processedExpr.replace(match[0], cellValue.toString());
+        } else {
+          processedExpr = processedExpr.replace(match[0], '0');
+        }
+      } else {
+        processedExpr = processedExpr.replace(match[0], '0');
       }
     }
+
+    // Handle percentages
+    processedExpr = processedExpr.replace(/(\d+(\.\d+)?)%/g, (match, p1) => {
+      const percentageValue = parseFloat(p1);
+      return isNaN(percentageValue) ? match : (percentageValue / 100).toString();
+    });
+
+    // If no cell references and it's just a number, return it
+    if (!hasCellReference) {
+      const num = parseFloat(processedExpr);
+      if (!isNaN(num)) {
+        return num;
+      }
+      // If it's not a number but has no cell references, it might be a string
+      return processedExpr;
+    }
+
+    // Try to evaluate the mathematical expression
+    try {
+      // Validate expression contains only safe characters
+      const safeExpr = processedExpr.replace(/[^0-9+\-*/().%\s]/g, '');
+      
+      if (safeExpr.trim() === '') {
+        return '#ERROR';
+      }
+
+      // Use Function constructor for safe evaluation
+      const result = Function(`'use strict'; try { return (${safeExpr}) } catch(e) { return '#ERROR' }`)();
+      
+      // Validate result
+      if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
+        return result;
+      }
+      return '#ERROR';
+    } catch (error) {
+      console.error('Formula evaluation error:', error);
+      return '#ERROR';
+    }
   } catch (error) {
-    console.error("Failed to fetch contact persons:", error);
-    setContactPersons([]);
+    console.error('Formula evaluation error:', error);
+    return '#ERROR';
   }
 };
 
-useEffect(() => {
-  const fetchData = async () => {
-    if (!company?.id) return;
+  // Update dependent cells recursively with dynamic grid
+  const updateDependentCells = (grid: ExcelCell[][]) => {
+    let updated = false;
+    do {
+      updated = false;
+      for (let r = 0; r < grid.length; r++) {
+        for (let c = 0; c < (grid[r]?.length || 0); c++) {
+          const cell = grid[r][c];
+          if (cell && cell.isFormula && cell.formula) {
+            const oldValue = cell.computedValue;
+            try {
+              cell.computedValue = evaluateFormula(cell.formula, grid);
+            } catch {
+              cell.computedValue = '#ERROR';
+            }
+            if (cell.computedValue !== oldValue) {
+              updated = true;
+            }
+          }
+        }
+      }
+    } while (updated);
+  };
+
+  
+// Update cell value with dynamic grid expansion
+const updateCell = (row: number, col: number, value: string) => {
+  const newGrid = [...excelGrid.map(rowArr => [...rowArr])];
+  
+  // Expand grid if needed
+  const cell = getOrCreateCell(newGrid, row, col);
+  
+  // Update total rows/columns if needed
+  if (row >= totalRows) {
+    setTotalRows(row + 1);
+  }
+  if (col >= totalCols) {
+    setTotalCols(col + 1);
+  }
+  
+  if (value.trim().startsWith('=')) {
+    cell.isFormula = true;
+    cell.formula = value.trim();
+    cell.value = value.trim();
+    
     try {
-      setLoading(true);
+      const result = evaluateFormula(value, newGrid);
+      // Ensure result is properly typed
+      if (typeof result === 'number') {
+        cell.computedValue = result;
+      } else if (typeof result === 'string') {
+        cell.computedValue = result;
+      } else {
+        cell.computedValue = '#ERROR';
+      }
+    } catch (error) {
+      console.error('Formula error:', error);
+      cell.computedValue = '#ERROR';
+    }
+  } else {
+    cell.isFormula = false;
+    cell.formula = undefined;
+    cell.value = value;
+    
+    const numValue = parseFloat(value);
+    // Ensure we only store numbers or strings, not mixed types
+    if (!isNaN(numValue) && value.trim() !== '') {
+      cell.computedValue = numValue;
+    } else {
+      cell.computedValue = value;
+    }
+  }
+  
+  // Update dependent cells
+  updateDependentCells(newGrid);
+  
+  setExcelGrid(newGrid);
+};
+
+  // Add rows to the grid
+  const addRows = (count: number = 5) => {
+    const newRows = gridRows + count;
+    const newGrid = [...excelGrid];
+    
+    for (let r = gridRows; r < newRows; r++) {
+      const row: ExcelCell[] = [];
+      for (let c = 0; c < gridCols; c++) {
+        row.push({
+          id: `${r}_${c}`,
+          value: '',
+          isFormula: false,
+          row: r,
+          col: c,
+          computedValue: ''
+        });
+      }
+      newGrid.push(row);
+    }
+    
+    setGridRows(newRows);
+    setExcelGrid(newGrid);
+    showToast(`Added ${count} rows`, 'info');
+  };
+
+  // Add columns to the grid
+  const addColumns = (count: number = 5) => {
+    const newCols = gridCols + count;
+    const newGrid = [...excelGrid.map(row => [...row])];
+    
+    for (let r = 0; r < newGrid.length; r++) {
+      for (let c = gridCols; c < newCols; c++) {
+        newGrid[r].push({
+          id: `${r}_${c}`,
+          value: '',
+          isFormula: false,
+          row: r,
+          col: c,
+          computedValue: ''
+        });
+      }
+    }
+    
+    setGridCols(newCols);
+    setExcelGrid(newGrid);
+    showToast(`Added ${count} columns`, 'info');
+  };
+
+  // Remove rows from the grid - remove minimum limit
+  const removeRows = (count: number = 5) => {
+    // No minimum limit
+    const newRows = Math.max(1, gridRows - count);
+    
+    setGridRows(newRows);
+    showToast(`Removed ${count} rows`, 'info');
+  };
+
+  // Remove columns from the grid - remove minimum limit
+  const removeColumns = (count: number = 5) => {
+    // No minimum limit
+    const newCols = Math.max(1, gridCols - count);
+    
+    setGridCols(newCols);
+    showToast(`Removed ${count} columns`, 'info');
+  };
+
+ // Update the handlePasteEnhanced function to properly parse pasted data
+const handlePasteEnhanced = (e: React.ClipboardEvent, startRow: number, startCol: number) => {
+  e.preventDefault();
+  
+  const pastedData = e.clipboardData.getData('text');
+  const rows = pastedData.trim().split('\n');
+  
+  // Calculate required dimensions
+  const neededRows = startRow + rows.length;
+  const neededCols = startCol + Math.max(...rows.map(row => {
+    // Split by tab (Excel/Google Sheets) or by comma (CSV)
+    if (row.includes('\t')) {
+      return row.split('\t').length;
+    } else if (row.includes(',')) {
+      return row.split(',').length;
+    }
+    return 1; // Single cell
+  }));
+  
+ 
+    // Create a new grid copy
+    const newGrid = [...excelGrid.map(row => [...row])];
+    
+    // Expand grid to accommodate pasted data
+    for (let r = 0; r < neededRows; r++) {
+      if (!newGrid[r]) {
+        newGrid[r] = [];
+      }
+      for (let c = 0; c < neededCols; c++) {
+        if (!newGrid[r][c]) {
+          newGrid[r][c] = {
+            id: `${r}_${c}`,
+            value: '',
+            isFormula: false,
+            row: r,
+            col: c,
+            computedValue: ''
+          };
+        }
+      }
+    }
+    
+    // Update total dimensions
+    setTotalRows(Math.max(totalRows, neededRows));
+    setTotalCols(Math.max(totalCols, neededCols));
+    
+    // Update visible dimensions if pasted data exceeds current view
+    if (neededRows > gridRows) {
+      setGridRows(neededRows);
+    }
+    if (neededCols > gridCols) {
+      setGridCols(neededCols);
+    }
+    
+    // Fill pasted data
+    rows.forEach((rowStr, rowOffset) => {
+      const cells = rowStr.split('\t');
+      cells.forEach((cellValue, colOffset) => {
+        const targetRow = startRow + rowOffset;
+        const targetCol = startCol + colOffset;
+        
+        const cell = newGrid[targetRow][targetCol];
+        const value = cellValue.trim();
+        
+        if (value.startsWith('=')) {
+          cell.isFormula = true;
+          cell.formula = value;
+          cell.value = value;
+          try {
+            cell.computedValue = evaluateFormula(value, newGrid);
+          } catch {
+            cell.computedValue = '#ERROR';
+          }
+        } else {
+          cell.isFormula = false;
+          cell.formula = undefined;
+          cell.value = value;
+          const numValue = parseFloat(value);
+          cell.computedValue = !isNaN(numValue) ? numValue : value;
+        }
+      });
+    });
+    
+    // Update dependent cells
+    updateDependentCells(newGrid);
+    setExcelGrid(newGrid);
+    
+    showToast(`Pasted ${rows.length} rows × ${Math.max(...rows.map(row => row.split('\t').length))} columns`, 'success');
+  };
+
+  // Clear the grid
+  const clearGrid = () => {
+    const newGrid = [...excelGrid.map(row => [...row])];
+    for (let r = 0; r < newGrid.length; r++) {
+      for (let c = 0; c < newGrid[r].length; c++) {
+        newGrid[r][c] = {
+          ...newGrid[r][c],
+          value: '',
+          isFormula: false,
+          formula: undefined,
+          computedValue: ''
+        };
+      }
+    }
+    setExcelGrid(newGrid);
+    showToast('Grid cleared', 'info');
+  };
+
+  // Export grid to CSV - export all data, not just visible
+  const exportToCSV = () => {
+    let csv = '';
+    
+    // Use total columns for headers
+    const headers = ['', ...Array.from({ length: totalCols }, (_, i) => getColumnLetter(i))];
+    csv += headers.join(',') + '\n';
+    
+    // Export all rows
+    for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
+      const rowNumber = rowIndex + 1;
+      const row = excelGrid[rowIndex] || [];
+      const rowData = [rowNumber];
       
-      // Fetch customers
-      const customersData = await customersApi.list(company.id, { page_size: 100 });
-      console.log("Customers API response:", customersData); // Debug log
-      
-      // Handle different response structures
-      let customersArray: Customer[] = [];
-      if (Array.isArray(customersData)) {
-        customersArray = customersData;
-      } else if (customersData && typeof customersData === 'object') {
-        // Try different possible response structures
-        customersArray = (customersData as any).customers || 
-                        (customersData as any).data || 
-                        (customersData as any).items || 
-                        [];
+      // Add all columns
+      for (let colIndex = 0; colIndex < totalCols; colIndex++) {
+        const cell = row[colIndex];
+        if (cell && cell.isFormula && cell.formula) {
+          rowData.push(cell.formula);
+        } else if (cell) {
+          rowData.push(cell.computedValue || cell.value || '');
+        } else {
+          rowData.push('');
+        }
       }
       
-      // Fetch products
-      const productsData = await productsApi.list(company.id, { page_size: 100 });
-      const productsArray: Product[] = Array.isArray(productsData) ? productsData : 
-                                      (productsData as any)?.products || 
-                                      (productsData as any)?.data || 
-                                      [];
+      csv += rowData.join(',') + '\n';
+    }
+    
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `quotation_notes_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    showToast(`CSV exported with ${totalRows} rows × ${totalCols} columns!`, 'success');
+  };
+
+  
+ // Get Excel data as text for submission - FIXED VERSION
+const getExcelDataAsText = () => {
+  // Create CSV content instead of custom text format
+  let csv = '';
+  
+  // Export all rows
+  for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
+    const row = excelGrid[rowIndex] || [];
+    const rowData = [];
+    
+    // Add all columns
+    for (let colIndex = 0; colIndex < totalCols; colIndex++) {
+      const cell = row[colIndex];
+      let cellValue = '';
       
-      // Fetch salesmen
-      const salesmenData = await salesmenApi.list(company.id, { page_size: 100 });
-      const salesmenArray: Salesman[] = Array.isArray(salesmenData) ? salesmenData : 
-                                       (salesmenData as any)?.salesmen || 
-                                       (salesmenData as any)?.data || 
-                                       [];
+      if (cell) {
+        if (cell.isFormula && cell.formula) {
+          cellValue = String(cell.formula);
+        } else {
+          cellValue = String(cell.computedValue || cell.value || '');
+        }
+      }
+      
+      // Escape CSV special characters
+      if (cellValue.includes(',') || cellValue.includes('"') || cellValue.includes('\n') || cellValue.includes('\r')) {
+        cellValue = '"' + cellValue.replace(/"/g, '""') + '"';
+      }
+      
+      rowData.push(cellValue);
+    }
+    
+    // Only add row if it has data
+    if (rowData.some(cell => cell !== '' && cell !== '""')) {
+      csv += rowData.join(',') + '\n';
+    }
+  }
+  
+  return csv.trim();
+};
 
-      setCustomers(customersArray);
-      setProducts(productsArray);
-      setSalesmen(salesmenArray);
+  // Prepare options
+ const productOptions = useMemo(() => 
+  products
+    .filter(product => product.name && product.name.trim()) // Filter out products without names
+    .map((product) => {
+      // Create a descriptive label with item code and name
+      const name = product.name || "Unnamed Product";
+      const itemCode = product.item_code || product.code || "";
+      const description = product.description || "";
+      
+      // Format label to show both item code and name
+      const label = itemCode 
+        ? `${itemCode} - ${name}`
+        : name;
+      
+      // Add description as tooltip or secondary info
+      const subLabel = description ? `${description}` : '';
+      
+      return {
+        value: product.id,
+        label: label,
+        subLabel: subLabel, // For tooltip or secondary display
+        item_code: itemCode,
+        hsn: product.hsn|| product.hsn || "",
+        description: description || name,
+        unit_price: product.unit_price || product.sales_price || 0,
+        discount_percent: product.discount || 0,
+        gst_rate: product.tax_rate || product.gst_rate || 18,
+        unit: product.unit || "unit",
+        sku: product.sku || "",
+        stock_quantity: product.stock_quantity || 0,
+        // Store complete product data for reference
+        product
+      };
+    }), [products]);
 
-      showToast("Data loaded successfully", "success");
+  const customerOptions = useMemo(() => {
+    if (!customers || customers.length === 0) {
+      return [];
+    }
+    
+    return customers.map((customer) => {
+      const name = customer.name || "Unnamed Customer";
+      const phone = customer.phone || customer.mobile || "";
+      const email = customer.email || "";
+      
+      const label = `${name}${phone ? ` (${phone})` : ''}${email ? ` - ${email}` : ''}`;
+      
+      return {
+        value: customer.id,
+        label: label,
+        data: customer
+      };
+    });
+  }, [customers]);
+
+  const salesmanOptions = useMemo(() => {
+    return salesmen
+      .filter(salesman => salesman.name && salesman.name.trim())
+      .map((salesman) => {
+        const label = salesman.designation 
+          ? `${salesman.name} (${salesman.designation})`
+          : salesman.name;
+        
+        return {
+          value: salesman.id,
+          label: label,
+          salesman: salesman
+        };
+      });
+  }, [salesmen]);
+
+  const contactPersonOptions = useMemo(() => {
+    const filtered = contactPersons
+      .filter(person => !selectedCustomer || person.customer_id === selectedCustomer.id);
+    
+    return filtered.map((person) => {
+      const label = `${person.name} ${person.email ? `- ${person.email}` : ''} ${person.phone ? `- ${person.phone}` : ''}`;
+      return {
+        value: person.id,
+        label: label,
+        person
+      };
+    });
+  }, [contactPersons, selectedCustomer]);
+
+  useEffect(() => {
+    console.log("Current salesmen state:", salesmen);
+    console.log("Salesman options:", salesmanOptions);
+  }, [salesmen, salesmanOptions]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        addRows(1);
+      }
+      
+      if (e.ctrlKey && e.shiftKey && e.key === 'Enter') {
+        e.preventDefault();
+        addColumns(1);
+      }
+      
+      if (e.key === 'Escape' && activeCell) {
+        setActiveCell(null);
+      }
+      
+      if (activeCell && !e.ctrlKey && !e.altKey) {
+        switch(e.key) {
+          case 'ArrowDown':
+            e.preventDefault();
+            if (activeCell.row < gridRows - 1) {
+              setActiveCell({ row: activeCell.row + 1, col: activeCell.col });
+            }
+            break;
+          case 'ArrowUp':
+            e.preventDefault();
+            if (activeCell.row > 0) {
+              setActiveCell({ row: activeCell.row - 1, col: activeCell.col });
+            }
+            break;
+          case 'ArrowRight':
+            e.preventDefault();
+            if (activeCell.col < gridCols - 1) {
+              setActiveCell({ row: activeCell.row, col: activeCell.col + 1 });
+            }
+            break;
+          case 'ArrowLeft':
+            e.preventDefault();
+            if (activeCell.col > 0) {
+              setActiveCell({ row: activeCell.row, col: activeCell.col - 1 });
+            }
+            break;
+          case 'Tab':
+            e.preventDefault();
+            if (activeCell.col < gridCols - 1) {
+              setActiveCell({ row: activeCell.row, col: activeCell.col + 1 });
+            } else if (activeCell.row < gridRows - 1) {
+              setActiveCell({ row: activeCell.row + 1, col: 0 });
+            }
+            break;
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeCell, gridRows, gridCols]);
+
+  // Fetch contact persons
+  const fetchContactPersons = async (customerId: string) => {
+    if (!company?.id) return;
+    try {
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/contact-persons?customer_id=${customerId}`;
+      
+      const response = await fetch(
+        apiUrl,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+          },
+        }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        let persons: any[] = [];
+        
+        if (Array.isArray(data)) {
+          persons = data;
+        } else if (data && typeof data === 'object') {
+          persons = data.contact_persons || data.contacts || data.data || data.items || [];
+        }
+        
+        setContactPersons(persons);
+        
+        if (persons.length > 0) {
+          const firstPerson = persons[0];
+          setSelectedContactPerson(firstPerson);
+          setFormData(prev => ({
+            ...prev,
+            contact_person: firstPerson.name || ""
+          }));
+        }
+      }
     } catch (error) {
-      console.error("Failed to fetch data:", error);
-      showToast("Failed to load data", "error");
-    } finally {
-      setLoading(false);
+      console.error("Failed to fetch contact persons:", error);
+      setContactPersons([]);
     }
   };
-  fetchData();
-}, [company?.id]);
 
-  // Calculate item total based on your Laravel logic
+  // Fetch initial data
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!company?.id) return;
+      
+      try {
+        setLoading(true);
+        
+        // Fetch customers
+        try {
+          const customersData = await customersApi.list(company.id, { page_size: 100 });
+          let customersArray: any[] = [];
+          if (customersData && typeof customersData === 'object') {
+            customersArray = customersData.customers || [];
+          }
+          
+          if (customersArray.length > 0) {
+            setCustomers(customersArray);
+            showToast(`Loaded ${customersArray.length} customers`, "success");
+          } else {
+            showToast("No customers found. Please add customers first.", "warning");
+          }
+        } catch (customerError: any) {
+          console.error("Failed to fetch customers:", customerError);
+          showToast("Failed to load customers", "error");
+        }
+        
+     // In the fetchData useEffect, update the product fetching section:
+try {
+  const productsData: any = await productsApi.list(company.id, { page_size: 100 });
+  let productsArray: any[] = [];
+  
+  console.log("Products API response:", productsData);
+  
+  if (Array.isArray(productsData)) {
+    productsArray = productsData;
+  } else if (productsData && typeof productsData === 'object') {
+    if (productsData.products && Array.isArray(productsData.products)) {
+      productsArray = productsData.products;
+    } else if (productsData.data && Array.isArray(productsData.data)) {
+      productsArray = productsData.data;
+    } else if (productsData.items && Array.isArray(productsData.items)) {
+      productsArray = productsData.items;
+    }
+  }
+  
+  // Filter and validate products
+  const validProducts = productsArray.filter(product => {
+    // Ensure required fields exist
+    if (!product || !product.id) return false;
+    
+    // Handle null/undefined values
+    product.name = product.name || "Unnamed Product";
+    product.item_code = product.item_code || "";
+    product.description = product.description || "";
+    product.hsn = product.hsn || "";
+    product.unit_price = parseFloat(product.unit_price) || 0;
+    product.sales_price = parseFloat(product.sales_price) || product.unit_price || 0;
+    product.tax_rate = parseFloat(product.tax_rate) || 18;
+    product.discount = parseFloat(product.discount) || 0;
+    product.stock_quantity = parseFloat(product.stock_quantity) || 0;
+    product.unit = product.unit || "unit";
+    
+    return true;
+  });
+  
+  setProducts(validProducts);
+  console.log(`Loaded ${validProducts.length} valid products`);
+} catch (productError: any) {
+  console.error("Product fetch error:", productError);
+  showToast("Failed to load products. Some products may have invalid data.", "warning");
+}
+        
+        // Fetch sales engineers (employees with sales designation)
+        await fetchSalesEngineers();
+        
+      } catch (error) {
+        console.error("Unexpected error in fetchData:", error);
+        showToast("Failed to load data", "error");
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchData();
+  }, [company?.id]);
+
+
+  useEffect(() => {
+  console.log("Products loaded:", products);
+  if (products.length > 0) {
+    console.log("Sample product:", products[0]);
+    console.log("Available fields:", Object.keys(products[0]));
+  }
+}, [products]);
+
+  const fetchSalesEngineers = async () => {
+    if (!company?.id) return;
+    
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        showToast("Authentication required", "error");
+        return;
+      }
+
+      const salesEngineersUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/sales-engineers`;
+      
+      console.log("Fetching sales engineers from:", salesEngineersUrl);
+      
+      const response = await fetch(salesEngineersUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("Sales engineers API response:", data);
+
+      // Process the data correctly
+      if (data && Array.isArray(data) && data.length > 0) {
+        // Format the data to match your frontend structure
+        const formattedSalesmen = data.map(engineer => ({
+          id: engineer.id,
+          name: engineer.full_name || 'Unnamed Engineer',
+          email: engineer.email || '',
+          phone: engineer.phone || '',
+          designation: engineer.designation_name || 'Sales Engineer',
+          employee_code: engineer.employee_code || ''
+        }));
+
+        setSalesmen(formattedSalesmen);
+        console.log("Formatted salesmen:", formattedSalesmen);
+        showToast(`Loaded ${formattedSalesmen.length} sales engineers`, "success");
+      } else {
+        showToast("No sales engineers found", "warning");
+        setSalesmen([]);
+      }
+    } catch (error: any) {
+      console.error("Failed to fetch sales engineers:", error);
+      showToast("Failed to load sales engineers", "error");
+      setSalesmen([]);
+    }
+  };
+
+  // Calculate item total
   const calculateItemTotal = useCallback((item: QuotationItem) => {
     const subtotal = item.quantity * item.unit_price;
     const discountAmount = subtotal * (item.discount_percent / 100);
@@ -719,7 +1307,7 @@ useEffect(() => {
     };
   }, []);
 
-  // Calculate all totals based on your Laravel logic
+  // Calculate all totals
   const totals = useMemo(() => {
     let subtotal = 0;
     let totalDiscount = 0;
@@ -742,7 +1330,6 @@ useEffect(() => {
       totalDiscount += itemCalc.discountAmount;
       totalTaxable += itemCalc.taxableAmount;
 
-      // Calculate tax based on tax regime - using gst_rate from item
       if (formData.tax_regime === "cgst_sgst") {
         totalCgst += itemCalc.taxAmount / 2;
         totalSgst += itemCalc.taxAmount / 2;
@@ -751,7 +1338,7 @@ useEffect(() => {
       }
     });
 
-    // Calculate other charges (handled separately in backend)
+    // Calculate other charges
     let otherChargesTotal = 0;
     otherCharges.forEach(charge => {
       if (!charge.name.trim() && charge.amount === 0) return;
@@ -794,10 +1381,11 @@ useEffect(() => {
     };
   }, [items, otherCharges, formData.tax_regime, calculateItemTotal]);
 
+  // Item management functions
   const addItem = () => {
     setItems([...items, { 
       product_id: "", 
-      hsn_code: "", 
+      hsn: "", 
       description: "", 
       quantity: 1, 
       unit: "unit", 
@@ -826,23 +1414,26 @@ useEffect(() => {
         newItems[index] = {
           ...newItems[index],
           product_id: value,
-          hsn_code: product.hsn || product.hsn_code || "",
-          description: product.description || product.name,
+          hsn: product.hsn ||"",
+          description: product.description || product.name || "Product",
           unit_price: product.unit_price || product.sales_price || 0,
           discount_percent: product.discount || 0,
-          gst_rate: product.tax_rate || product.gst_rate || 18
+          gst_rate: Number(product.tax_rate || product.gst_rate || 18)
         };
       }
-    } else if (field === "gst_rate") {
-      // Ensure gst_rate is a number
-      newItems[index] = { ...newItems[index], [field]: Number(value) };
     } else {
       newItems[index] = { ...newItems[index], [field]: value };
+    }
+    
+    // Ensure description is never empty
+    if (field === "description" && !value.trim()) {
+      newItems[index] = { ...newItems[index], description: "Item" };
     }
     
     setItems(newItems);
   };
 
+  // Other charges management
   const addOtherCharge = () => {
     setOtherCharges([...otherCharges, { 
       id: Date.now().toString(), 
@@ -867,6 +1458,7 @@ useEffect(() => {
     ));
   };
 
+  // Apply global discount
   const applyGlobalDiscount = () => {
     if (globalDiscount.value <= 0) {
       showToast("Please enter a discount value", "warning");
@@ -878,7 +1470,6 @@ useEffect(() => {
         const finalDiscount = Math.min(globalDiscount.value, 100);
         return { ...item, discount_percent: finalDiscount };
       } else {
-        // For fixed discount, convert to percentage for this item
         const itemSubtotal = item.quantity * item.unit_price;
         const percentageDiscount = (globalDiscount.value / itemSubtotal) * 100;
         const finalDiscount = Math.min(percentageDiscount, 100);
@@ -890,87 +1481,60 @@ useEffect(() => {
     showToast("Discount applied to all items", "success");
   };
 
- const handleCustomerChange = async (option: any) => {
-  if (option) {
-    const customer = option.data; // Use 'data' instead of 'customer'
-    console.log("Selected customer:", customer);
-    setSelectedCustomer(customer);
-    setFormData(prev => ({
-      ...prev,
-      customer_id: option.value,
-      contact_person: ""
-    }));
-    
-    // Clear selected contact person
-    setSelectedContactPerson(null);
-    setContactPersons([]);
-    
-    // Fetch contact persons for this customer
-    console.log("Fetching contact persons for customer:", customer.id);
-    await fetchContactPersons(customer.id);
-    
-    // Set tax regime based on customer state
-    if (customer.billing_state && company?.state) {
-      const isSameState = customer.billing_state === company.state;
+  // Customer change handler
+  const handleCustomerChange = async (option: any) => {
+    if (option) {
+      const customer = option.data;
+      setSelectedCustomer(customer);
       setFormData(prev => ({
         ...prev,
-        tax_regime: isSameState ? "cgst_sgst" : "igst"
+        customer_id: option.value,
+        contact_person: ""
+      }));
+      
+      setSelectedContactPerson(null);
+      setContactPersons([]);
+      
+      await fetchContactPersons(customer.id);
+      
+      if (customer.billing_state && company?.state) {
+        const isSameState = customer.billing_state === company.state;
+        setFormData(prev => ({
+          ...prev,
+          tax_regime: isSameState ? "cgst_sgst" : "igst"
+        }));
+      }
+    } else {
+      setSelectedCustomer(null);
+      setSelectedContactPerson(null);
+      setContactPersons([]);
+      setFormData(prev => ({
+        ...prev,
+        customer_id: "",
+        contact_person: "",
+        tax_regime: undefined  
       }));
     }
-  } else {
-    setSelectedCustomer(null);
-    setSelectedContactPerson(null);
-    setContactPersons([]);
-    setFormData(prev => ({
-      ...prev,
-      customer_id: "",
-      contact_person: "",
-      tax_regime: ""
-    }));
-  }
-};
+  };
+
   const handleContactPersonChange = (option: any) => {
-  if (option) {
-    const contactPerson = option.person;
-    setSelectedContactPerson(contactPerson);
-    setFormData(prev => ({
-      ...prev,
-      contact_person: contactPerson.name || ""
-    }));
-  } else {
-    setSelectedContactPerson(null);
-    setFormData(prev => ({
-      ...prev,
-      contact_person: ""
-    }));
-  }
-};
+    if (option) {
+      const contactPerson = option.person;
+      setSelectedContactPerson(contactPerson);
+      setFormData(prev => ({
+        ...prev,
+        contact_person: contactPerson.name || ""
+      }));
+    } else {
+      setSelectedContactPerson(null);
+      setFormData(prev => ({
+        ...prev,
+        contact_person: ""
+      }));
+    }
+  };
 
-// Add this debug function
-const debugCustomersApi = async () => {
-  if (!company?.id) return;
-  try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/companies/${company.id}/customers`,
-      {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-        },
-      }
-    );
-    const data = await response.json();
-    console.log("Direct API customers response:", data);
-  } catch (error) {
-    console.error("Debug API error:", error);
-  }
-};
-
-// Call it in useEffect
-useEffect(() => {
-  debugCustomersApi();
-  fetchData();
-}, [company?.id]);
-
+  // Format currency
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
@@ -979,116 +1543,158 @@ useEffect(() => {
     }).format(amount);
   };
 
-  const validateForm = () => {
-    const errors: string[] = [];
+  // Form validation
+  // Form validation
+const validateForm = () => {
+  const errors: string[] = [];
 
-    if (!formData.customer_id) {
-      errors.push("Please select a customer");
+  if (!formData.customer_id) {
+    errors.push("Please select a customer");
+  }
+
+  if (!formData.contact_person) {
+    errors.push("Please select a contact person");
+  }
+
+  if (!formData.salesman_id) {
+    errors.push("Please select a sales engineer");
+  }
+
+  // Check for valid items
+  const validItems = items.filter(item => 
+    item.quantity > 0 && item.unit_price > 0 && item.description.trim()
+  );
+
+  if (validItems.length === 0) {
+    errors.push("Please add at least one valid item with quantity > 0, price > 0, and description");
+  }
+
+  return errors;
+};
+
+  // Handle form submission
+  // Handle form submission - UPDATED for FormData
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  const validationErrors = validateForm();
+  if (validationErrors.length > 0) {
+    validationErrors.forEach(error => showToast(error, "error"));
+    return;
+  }
+
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  if (!company?.id || !token) {
+    showToast("Authentication required", "error");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    // Get Excel data as text
+    const excelDataText = exportToCSVForSubmission();
+    
+    // Prepare items for backend - filter out empty items
+    const itemsForBackend = items
+      .filter(item => item.quantity > 0 && item.unit_price >= 0)
+      .map(item => ({
+        product_id: item.product_id || undefined,
+        description: item.description || "Item",
+        hsn: item.hsn || "",
+        quantity: item.quantity,
+        unit: item.unit || "unit",
+        unit_price: item.unit_price,
+        discount_percent: item.discount_percent,
+        gst_rate: item.gst_rate
+      }));
+
+    // Validate we have at least one valid item
+    if (itemsForBackend.length === 0) {
+      showToast("Please add at least one valid item", "error");
+      setLoading(false);
+      return;
     }
 
-    if (!formData.contact_person.trim()) {
-      errors.push("Please select a contact person");
+    // Prepare the JSON payload
+    const payload = {
+      customer_id: formData.customer_id || undefined,
+      quotation_date: new Date(formData.quotation_date).toISOString(),
+      validity_days: formData.validity_days,
+      place_of_supply: selectedCustomer?.billing_state || undefined,
+      subject: formData.subject || `Quotation`,
+      notes: formData.notes || undefined,
+      terms: formData.terms || undefined, // Additional terms
+      remarks: formData.remarks || undefined,
+      contact_person: formData.contact_person || undefined,
+      sales_person_id: formData.salesman_id || undefined,
+      reference: formData.reference || undefined,
+      reference_no: formData.reference_no || undefined,
+      reference_date: formData.reference_date || undefined,
+      payment_terms: formData.payment_terms || undefined,
+      excel_notes: excelDataText || undefined,
+      items: itemsForBackend
+    };
+
+    // Create FormData
+    const formDataToSend = new FormData();
+    formDataToSend.append('data', JSON.stringify(payload));
+    
+    // Optionally add CSV file
+    if (excelDataText) {
+      const csvBlob = new Blob([excelDataText], { type: 'text/csv' });
+      formDataToSend.append('excel_file', csvBlob, 'excel_notes.csv');
     }
 
-    if (!formData.salesman_id) {
-      errors.push("Please select a sales engineer");
-    }
+    console.log("Sending FormData payload:", payload);
 
-    if (!formData.quotation_code.trim()) {
-      errors.push("Please enter quotation number");
-    }
-
-    // Validate items
-    const validItems = items.filter(item => 
-      item.quantity > 0 && item.unit_price >= 0
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          // Do NOT set Content-Type header for FormData - browser will set it automatically
+        },
+        body: formDataToSend, // Use FormData instead of JSON
+      }
     );
 
-    if (validItems.length === 0) {
-      errors.push("Please add at least one valid item");
-    }
-
-    // Validate other charges
-    otherCharges.forEach((charge, index) => {
-      if (charge.name.trim() === "" && charge.amount > 0) {
-        errors.push(`Other Charge ${index + 1}: Please enter charge name`);
-      }
-    });
-
-    return errors;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    const validationErrors = validateForm();
-    if (validationErrors.length > 0) {
-      validationErrors.forEach(error => showToast(error, "error"));
-      return;
-    }
-
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-    if (!company?.id || !token) {
-      showToast("Authentication required", "error");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      // Prepare items for backend - matching the QuotationItemCreate schema
-      const itemsForBackend = items.filter(item => item.quantity > 0 && item.unit_price >= 0)
-        .map(item => ({
-          product_id: item.product_id || undefined,
-          description: item.description || "Item",
-          hsn_code: item.hsn_code || "",
-          quantity: item.quantity,
-          unit: item.unit || "unit",
-          unit_price: item.unit_price,
-          discount_percent: item.discount_percent,
-          gst_rate: item.gst_rate
-        }));
-
-      // Prepare payload matching your backend QuotationCreate schema
-      const payload = {
-        customer_id: formData.customer_id || undefined,
-        quotation_date: new Date(formData.quotation_date).toISOString(),
-        validity_days: formData.validity_days,
-        place_of_supply: selectedCustomer?.billing_state || undefined,
-        subject: `Quotation ${formData.quotation_code}`,
-        notes: formData.notes || formData.payment_terms || undefined,
-        terms: formData.terms || formData.description || undefined,
-        items: itemsForBackend
-      };
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/companies/${company.id}/quotations`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(payload),
+    if (response.ok) {
+      const data = await response.json();
+      showToast("Quotation created successfully!", "success");
+      router.push(`/quotations`);
+    } else {
+      const errorText = await response.text();
+      console.error("Backend error response:", errorText);
+      
+      let errorMessage = "Failed to create quotation";
+      try {
+        const errorData = JSON.parse(errorText);
+        if (errorData.detail) {
+          if (Array.isArray(errorData.detail)) {
+            errorMessage = errorData.detail.map((err: any) => err.msg || err.message).join(", ");
+          } else if (typeof errorData.detail === 'string') {
+            errorMessage = errorData.detail;
+          } else if (errorData.detail?.msg) {
+            errorMessage = errorData.detail.msg;
+          }
         }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        showToast("Quotation created successfully!", "success");
-        router.push(`/quotations/${data.id}`);
-      } else {
-        const errorData = await response.json();
-        console.error("Backend error:", errorData);
-        showToast(errorData.detail || "Failed to create quotation", "error");
+      } catch (parseError) {
+        errorMessage = errorText || "Unknown error occurred";
       }
-    } catch (err) {
-      console.error("Submission error:", err);
-      showToast("Failed to create quotation", "error");
-    } finally {
-      setLoading(false);
+      
+      showToast(errorMessage, "error");
     }
-  };
-
+  } catch (err: any) { 
+    console.error("Submission error:", err);
+    const errorMessage = err instanceof Error ? err.message : "Network error";
+    showToast("Failed to create quotation: " + errorMessage, "error");
+  } finally {
+    setLoading(false);
+  }
+};
+  // Handle cancel
   const handleCancel = () => {
     if (items.some(item => item.product_id) || formData.customer_id) {
       if (window.confirm("Are you sure? Any unsaved changes will be lost.")) {
@@ -1099,6 +1705,51 @@ useEffect(() => {
     }
   };
 
+
+ const exportToCSVForSubmission = () => {
+  let csv = '';
+  
+  // Export all rows
+  for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
+    const row = excelGrid[rowIndex] || [];
+    const rowData = [];
+    
+    // Add all columns
+    for (let colIndex = 0; colIndex < totalCols; colIndex++) {
+      const cell = row[colIndex];
+      let cellValue = '';
+      
+      if (cell) {
+        // For submission, use the computed value or actual value
+        if (cell.computedValue !== '' && cell.computedValue !== undefined && cell.computedValue !== null) {
+          // Ensure it's a string
+          cellValue = String(cell.computedValue);
+        } else {
+          cellValue = String(cell.value || '');
+        }
+      }
+      
+      // Escape CSV special characters
+      if (typeof cellValue === 'string') {
+        // If contains commas, quotes, or newlines, wrap in quotes
+        if (cellValue.includes(',') || cellValue.includes('"') || cellValue.includes('\n') || cellValue.includes('\r')) {
+          cellValue = '"' + cellValue.replace(/"/g, '""') + '"';
+        }
+      }
+      
+      rowData.push(cellValue);
+    }
+    
+    // Only add row if it has data
+    if (rowData.some(cell => cell !== '' && cell !== '""')) {
+      csv += rowData.join(',') + '\n';
+    }
+  }
+  
+  return csv.trim();
+};
+
+  // Remove toast
   const removeToast = (id: number) => {
     setToasts(prev => prev.filter(toast => toast.id !== id));
   };
@@ -1117,17 +1768,119 @@ useEffect(() => {
             />
           ))}
         </div>
-
-        {/* Header */}
-        <div className="mb-6 md:mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
-            Create New Quotation
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Create a detailed quotation for your customer
+        {showCopyModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+          Copy Existing Quotation
+        </h3>
+        <button
+          type="button"
+          onClick={() => {
+            setShowCopyModal(false);
+            setCopyQuotationNumber("");
+            setCopyError("");
+          }}
+          className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Enter Quotation Number *
+          </label>
+          <input
+            type="text"
+            value={copyQuotationNumber}
+            onChange={(e) => setCopyQuotationNumber(e.target.value)}
+            placeholder="e.g., QT-2024-001"
+            className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+            disabled={isFetchingQuotation}
+          />
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Enter the exact quotation number you want to copy
           </p>
         </div>
+        
+        {copyError && (
+          <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <p className="text-sm text-red-600 dark:text-red-400">{copyError}</p>
+          </div>
+        )}
+        
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={() => {
+              setShowCopyModal(false);
+              setCopyQuotationNumber("");
+              setCopyError("");
+            }}
+            className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+            disabled={isFetchingQuotation}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => prefillFormWithQuotation(copyQuotationNumber)}
+            disabled={!copyQuotationNumber.trim() || isFetchingQuotation}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isFetchingQuotation ? (
+              <>
+                <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Searching...
+              </>
+            ) : (
+              <>
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Load Quotation
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
+        {/* Header */}
+    <div className="mb-6 md:mb-8">
+  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
+        Create New Quotation
+      </h1>
+      <p className="text-gray-600 dark:text-gray-400 mt-1">
+        Create a detailed quotation for your customer
+      </p>
+    </div>
+    <div className="flex gap-2">
+      <button
+        type="button"
+        onClick={() => setShowCopyModal(true)}
+        className="inline-flex items-center gap-2 rounded-lg border border-blue-600 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
+      >
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+        Copy Existing Quotation
+      </button>
+    </div>
+  </div>
+</div>
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Main Form Sections */}
@@ -1184,7 +1937,7 @@ useEffect(() => {
                       Status *
                     </label>
                     <select
-                      value={formData.status}
+                      value={formData.status || "open"}
                       onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
                       className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm"
                       required
@@ -1221,32 +1974,68 @@ useEffect(() => {
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Customer *
                     </label>
-                    <Select
-                      options={customerOptions}
-                      onChange={handleCustomerChange}
-                      placeholder="Search Customer..."
-                      className="react-select-container"
-                      classNamePrefix="react-select"
-                      isLoading={loading}
-                      isClearable
-                    />
+                    
+                    <div className="mb-2 flex items-center gap-2 text-sm">
+                      {loading ? (
+                        <span className="text-blue-600">Loading customers...</span>
+                      ) : customerOptions.length > 0 ? (
+                        <span className="text-green-600">✓ {customerOptions.length} customer(s) available</span>
+                      ) : (
+                        <span className="text-yellow-600">No customers found</span>
+                      )}
+                    </div>
+                    
+                   <Select
+  options={customerOptions}
+  value={customerOptions.find(opt => opt.value === formData.customer_id)}
+  onChange={handleCustomerChange}
+  placeholder={loading ? "Loading customers..." : "Click here to select customer"}
+  className="react-select-container"
+  classNamePrefix="react-select"
+  isLoading={loading}
+  isClearable
+  isSearchable
+  noOptionsMessage={() => "No customers found. Add customers first."}
+  styles={{
+    control: (base, state) => ({
+      ...base,
+      borderColor: customerOptions.length > 0 ? '#10b981' : '#d1d5db',
+      '&:hover': {
+        borderColor: customerOptions.length > 0 ? '#059669' : '#9ca3af',
+      },
+      backgroundColor: state.isFocused ? '#f3f4f6' : base.backgroundColor,
+    }),
+    menu: (base) => ({
+      ...base,
+      zIndex: 9999,
+    })
+  }}
+/>
                   </div>
+                  
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Contact Person *
                     </label>
                     <Select
-                      options={contactPersonOptions}
-                      value={contactPersonOptions.find(opt => opt.value === selectedContactPerson?.id)}
-                      onChange={handleContactPersonChange}
-                      placeholder={selectedCustomer ? "Select Contact Person..." : "Please select a customer first"}
-                      className="react-select-container"
-                      classNamePrefix="react-select"
-                      isLoading={loading}
-                      isClearable
-                      isDisabled={!selectedCustomer}
-                    />
+  options={salesmanOptions}
+  value={salesmanOptions.find(opt => opt.value === formData.salesman_id)}
+  onChange={(option) => {
+    setFormData({ ...formData, salesman_id: option?.value || "" });
+    if (option?.salesman) {
+      console.log("Selected sales engineer:", option.salesman);
+    }
+  }}
+  placeholder={salesmen.length > 0 ? "Select Sales Engineer..." : "No sales engineers available"}
+  className="react-select-container"
+  classNamePrefix="react-select"
+  isLoading={loading && salesmen.length === 0}
+  isClearable
+  isSearchable
+  noOptionsMessage={() => salesmen.length === 0 ? "No sales engineers available" : "No options found"}
+/>
+                    
                     {selectedCustomer && contactPersonOptions.length === 0 && (
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         No contact persons found for this customer. Please add contact persons in the customer management section.
@@ -1254,34 +2043,19 @@ useEffect(() => {
                     )}
                   </div>
 
-                  {selectedContactPerson && (
-                    <div className="rounded-lg bg-gray-50 dark:bg-gray-700/50 p-4 space-y-3">
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                            Email
-                          </label>
-                          <input
-                            type="text"
-                            value={selectedContactPerson.email || ""}
-                            readOnly
-                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                            Phone
-                          </label>
-                          <input
-                            type="text"
-                            value={selectedContactPerson.phone || ""}
-                            readOnly
-                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
+
+<div>
+  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+    Place of Supply
+  </label>
+  <input
+    type="text"
+    value={formData.place_of_supply}
+    onChange={(e) => setFormData({ ...formData, place_of_supply: e.target.value })}
+    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm"
+    placeholder="State name or code"
+  />
+</div>
                 </div>
               </div>
             </div>
@@ -1300,12 +2074,20 @@ useEffect(() => {
                     </label>
                     <Select
                       options={salesmanOptions}
-                      onChange={(option) => setFormData({ ...formData, salesman_id: option?.value || "" })}
-                      placeholder="Search Sales Engineer..."
+                      value={salesmanOptions.find(opt => opt.value === formData.salesman_id)}
+                      onChange={(option) => {
+                        setFormData({ ...formData, salesman_id: option?.value || "" });
+                        if (option?.salesman) {
+                          console.log("Selected sales engineer:", option.salesman);
+                        }
+                      }}
+                      placeholder={salesmen.length > 0 ? "Select Sales Engineer..." : "No sales engineers available"}
                       className="react-select-container"
                       classNamePrefix="react-select"
-                      isLoading={loading}
+                      isLoading={loading && salesmen.length === 0}
                       isClearable
+                      isSearchable
+                      noOptionsMessage={() => salesmen.length === 0 ? "No sales engineers available" : "No options found"}
                     />
                   </div>
 
@@ -1348,99 +2130,56 @@ useEffect(() => {
                 </div>
               </div>
 
-              {/* Customer Details Section */}
-              {selectedCustomer && (
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                    Customer Details
-                  </h2>
-                  <div className="space-y-4">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Customer Name
-                        </label>
-                        <input
-                          type="text"
-                          value={selectedCustomer.name || ""}
-                          readOnly
-                          className="w-full rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          GST No
-                        </label>
-                        <input
-                          type="text"
-                          value={selectedCustomer.gstin || ""}
-                          readOnly
-                          className="w-full rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 text-sm"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Email
-                      </label>
-                      <input
-                        type="text"
-                        value={selectedCustomer.email || ""}
-                        readOnly
-                        className="w-full rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 text-sm"
-                      />
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          Phone
-                        </label>
-                        <input
-                          type="text"
-                          value={selectedCustomer.phone || selectedCustomer.mobile || ""}
-                          readOnly
-                          className="w-full rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          State
-                        </label>
-                        <input
-                          type="text"
-                          value={selectedCustomer.billing_state || ""}
-                          readOnly
-                          className="w-full rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 text-sm"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        GST Regime
-                      </label>
-                      <select
-                        value={formData.tax_regime}
-                        onChange={(e) => setFormData({ ...formData, tax_regime: e.target.value })}
-                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm"
-                      >
-                        <option value="">Select GST Regime...</option>
-                        <option value="cgst_sgst">CGST + SGST</option>
-                        <option value="igst">IGST</option>
-                      </select>
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        {formData.tax_regime === "cgst_sgst" 
-                          ? "Same state - CGST + SGST applicable" 
-                          : formData.tax_regime === "igst"
-                          ? "Interstate - IGST applicable"
-                          : "Select based on customer location"}
-                      </p>
-                    </div>
+              {/* Terms & Conditions */}
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                  Terms & Conditions
+                </h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Standard Terms *
+                    </label>
+                    <textarea
+                      value={formData.payment_terms}
+                      onChange={(e) => setFormData({ ...formData, payment_terms: e.target.value })}
+                      rows={8}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="Enter standard terms and conditions..."
+                      required
+                    />
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Pre-filled with standard terms. You can edit as needed.
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Additional Terms
+                    </label>
+                    <textarea
+                      value={formData.terms || ""}
+                      onChange={(e) => setFormData({ ...formData, terms: e.target.value })}
+                      rows={4}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="Enter any additional terms and conditions..."
+                    />
+                  </div>
+
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                      Remarks
+                    </h2>
+                    <textarea
+                      value={formData.remarks}
+                      onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
+                      rows={4}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="Enter any additional remarks or notes..."
+                    />
                   </div>
                 </div>
-              )}
-
-              {/* Tax Type Section */}
-           
+              </div>
             </div>
           </div>
 
@@ -1496,36 +2235,94 @@ useEffect(() => {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
                       Discount %
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                      GST %
-                    </th>
+                  
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
                       Total
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                      Action
-                    </th>
+                   
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {items.map((item, index) => (
                     <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                       <td className="px-4 py-3">
-                        <Select
-                          options={productOptions}
-                          value={productOptions.find(opt => opt.value === item.product_id)}
-                          onChange={(option) => updateItem(index, "product_id", option?.value || "")}
-                          placeholder="Search Item..."
-                          className="react-select-container"
-                          classNamePrefix="react-select"
-                          isClearable
-                        />
-                      </td>
+     <Select
+  options={productOptions}
+  value={productOptions.find(opt => opt.value === item.product_id)}
+  onChange={(option) => {
+    if (option) {
+      // Get the full product object from the option
+      const selectedProduct = option.product || products.find(p => p.id === option.value);
+      
+      if (selectedProduct) {
+        // Update all fields at once in a single updateItem call
+        const updatedItem = {
+          product_id: selectedProduct.id,
+          hsn: selectedProduct.hsn||"",
+          description: selectedProduct.description || selectedProduct.name || "Product",
+          unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
+          discount_percent: selectedProduct.discount || selectedProduct.discount_percent || 0,
+          gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
+          // Keep existing values for other fields
+          quantity: item.quantity,
+          unit: item.unit || "unit"
+        };
+        
+        // Update the item with all new values
+        setItems(prev => prev.map((it, idx) => 
+          idx === index ? { ...it, ...updatedItem } : it
+        ));
+        
+        // Show toast with item details
+        const stockInfo = selectedProduct.stock_quantity > 0 
+          ? ` (Stock: ${selectedProduct.stock_quantity})`
+          : " (Out of stock)";
+        showToast(`Selected: ${selectedProduct.name || selectedProduct.item_code}${stockInfo}`, "info");
+      }
+    } else {
+      // Clear all fields if product is deselected
+      setItems(prev => prev.map((it, idx) => 
+        idx === index ? { 
+          ...it,
+          product_id: "",
+          hsn: "",
+          description: "",
+          unit_price: 0,
+          discount_percent: 0,
+          gst_rate: 18
+        } : it
+      ));
+    }
+  }}
+  placeholder="Search by item code or name..."
+  className="react-select-container"
+  classNamePrefix="react-select"
+  isClearable
+  isSearchable
+  formatOptionLabel={(option, { context }) => (
+    <div className="flex flex-col">
+      <div className="font-medium">{option.label}</div>
+      {option.subLabel && (
+        <div className="text-xs text-gray-500 truncate">{option.subLabel}</div>
+      )}
+      <div className="flex gap-2 text-xs text-gray-600 mt-1">
+        <span>Price: ₹{option.unit_price?.toFixed(2) || '0.00'}</span>
+        <span>•</span>
+        <span>Stock: {option.stock_quantity || 0}</span>
+        <span>•</span>
+        <span>HSN: {option.hsn || 'N/A'}</span>
+        <span>•</span>
+        <span>GST: {option.gst_rate || 18}%</span>
+      </div>
+    </div>
+  )}
+  noOptionsMessage={() => "No products found. Add products first."}
+/>                </td>
                       <td className="px-4 py-3">
                         <input
                           type="text"
-                          value={item.hsn_code}
-                          onChange={(e) => updateItem(index, "hsn_code", e.target.value)}
+                          value={item.hsn}
+                          onChange={(e) => updateItem(index, "hsn", e.target.value)}
                           className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
                           placeholder="HSN Code"
                         />
@@ -1572,19 +2369,7 @@ useEffect(() => {
                           className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
                         />
                       </td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={item.gst_rate}
-                          onChange={(e) => updateItem(index, "gst_rate", Number(e.target.value) || 0)}
-                          className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                        >
-                          <option value={0}>0%</option>
-                          <option value={5}>5%</option>
-                          <option value={12}>12%</option>
-                          <option value={18}>18%</option>
-                          <option value={28}>28%</option>
-                        </select>
-                      </td>
+                     
                       <td className="px-4 py-3">
                         <input
                           type="text"
@@ -1593,18 +2378,7 @@ useEffect(() => {
                           className="w-full rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-1.5 text-sm font-medium"
                         />
                       </td>
-                      <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => removeItem(index)}
-                          disabled={items.length === 1}
-                          className="rounded p-1 text-red-600 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                        >
-                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </td>
+                     
                     </tr>
                   ))}
                 </tbody>
@@ -1614,136 +2388,156 @@ useEffect(() => {
 
           {/* Summary and Terms Section */}
           <div className="grid gap-6 lg:grid-cols-2">
-            {/* Terms & Conditions */}
+            {/* Excel Grid Section */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Terms & Conditions
-              </h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Remarks (Notes)
-                  </label>
-                  <textarea
-                    value={formData.payment_terms}
-                    onChange={(e) => setFormData({ ...formData, payment_terms: e.target.value })}
-                    rows={3}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="Enter payment terms or notes..."
-                  />
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Additional Notes (Excel Grid)
+                </h2>
+                <div className="flex flex-wrap gap-2 mt-2 sm:mt-0">
+                  <div className="flex items-center gap-2">
+                   
+                  </div>
+                  <div className="flex items-center gap-2">
+                    
+                  </div>
                 </div>
-                <div>
-                 {/* Excel-like Grid for Additional Notes */}
-<div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
-  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
-    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-      Additional Notes (Excel Grid)
-    </h2>
-    <div className="flex gap-2 mt-2 sm:mt-0">
-      <button
-        type="button"
-        onClick={clearGrid}
-        className="inline-flex items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-      >
-        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-        Clear Grid
-      </button>
-      <button
-        type="button"
-        onClick={importFromCSV}
-        className="inline-flex items-center gap-2 rounded-lg border border-blue-600 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
-      >
-        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        Import CSV
-      </button>
-      <button
-        type="button"
-        onClick={exportToCSV}
-        className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
-      >
-        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        Export CSV
-      </button>
-    </div>
-  </div>
+              </div>
 
-  <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-    <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Available Formulas:</h3>
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-      <code className="bg-gray-100 dark:bg-gray-800 p-2 rounded">=SUM(A1:C3)</code>
-      <code className="bg-gray-100 dark:bg-gray-800 p-2 rounded">=AVG(A1:C3)</code>
-      <code className="bg-gray-100 dark:bg-gray-800 p-2 rounded">=COUNT(A1:C3)</code>
-      <code className="bg-gray-100 dark:bg-gray-800 p-2 rounded">=MIN(A1:C3)</code>
-      <code className="bg-gray-100 dark:bg-gray-800 p-2 rounded">=MAX(A1:C3)</code>
-      <code className="bg-gray-100 dark:bg-gray-800 p-2 rounded">=A1+B2*C3</code>
-    </div>
-  </div>
-
-  <div className="overflow-x-auto">
-    <div className="inline-block min-w-full">
-      {/* Header Row */}
-      <div className="flex border-b border-gray-300 dark:border-gray-600">
-        <div className="w-12 flex items-center justify-center border-r border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 p-2">
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">#</span>
-        </div>
-        {Array.from({ length: 10 }).map((_, colIndex) => (
-          <div key={colIndex} className="w-32 flex items-center justify-center border-r border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 p-2 last:border-r-0">
-            <span className="text-xs font-medium text-gray-900 dark:text-white">
-              {getColumnLetter(colIndex)}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* Data Rows */}
-      {excelGrid.map((row, rowIndex) => (
-        <div key={rowIndex} className="flex border-b border-gray-300 dark:border-gray-600 last:border-b-0">
-          {/* Row Number */}
-          <div className="w-12 flex items-center justify-center border-r border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 p-2">
-            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-              {rowIndex + 1}
-            </span>
-          </div>
-
-          {/* Cells */}
-          {row.map((cell, colIndex) => (
-            <div key={cell.id} className="w-32 border-r border-gray-300 dark:border-gray-600 last:border-r-0">
-              <input
-                type="text"
-                value={cell.value}
-                onChange={(e) => updateCell(rowIndex, colIndex, e.target.value)}
-                placeholder={`${getColumnLetter(colIndex)}${rowIndex + 1}`}
-                className={`w-full h-full px-3 py-2 text-sm border-0 focus:ring-2 focus:ring-blue-500 focus:z-10 ${
-                  cell.isFormula 
-                    ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' 
-                    : 'bg-white dark:bg-gray-800'
-                } ${cell.computedValue === '#ERROR' ? 'text-red-600 dark:text-red-400' : ''}`}
-                title={cell.isFormula ? `Formula: ${cell.formula}` : cell.value}
-              />
-              {cell.isFormula && cell.computedValue !== '#ERROR' && (
-                <div className="text-xs text-gray-500 dark:text-gray-400 px-2 pb-1 truncate">
-                  ={cell.computedValue}
+              <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Grid Info:</h3>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      Visible: {gridRows} rows × {gridCols} columns | 
+                      Total: {totalRows} rows × {totalCols} columns
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={clearGrid}
+                      className="inline-flex items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Clear Grid
+                    </button>
+                    <button
+                      type="button"
+                      onClick={exportToCSV}
+                      className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Export CSV
+                    </button>
+                  </div>
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  </div>
+              </div>
 
-  <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-    <p>• Start with = for formulas (e.g., =SUM(A1:C3), =A1+B2)</p>
-    <p>• Use column letters (A-J) and row numbers (1-5)</p>
-    <p>• Supports: SUM, AVG, COUNT, MIN, MAX, and basic math operations</p>
-  </div>
-</div>
+              <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Available Formulas:</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                  <code className="bg-white dark:bg-gray-800 p-2 rounded border border-gray-300 dark:border-gray-600">=A1+B2</code>
+                  <code className="bg-white dark:bg-gray-800 p-2 rounded border border-gray-300 dark:border-gray-600">=A1-B2</code>
+                  <code className="bg-white dark:bg-gray-800 p-2 rounded border border-gray-300 dark:border-gray-600">=A1*B2</code>
+                  <code className="bg-white dark:bg-gray-800 p-2 rounded border border-gray-300 dark:border-gray-600">=A1/B2</code>
+                  <code className="bg-white dark:bg-gray-800 p-2 rounded border border-gray-300 dark:border-gray-600">=A1*10%</code>
+                  <code className="bg-white dark:bg-gray-800 p-2 rounded border border-gray-300 dark:border-gray-600">=(A1+B2)*C3</code>
+                  <code className="bg-white dark:bg-gray-800 p-2 rounded border border-gray-300 dark:border-gray-600">=A1+B2*C3/D4</code>
+                  <code className="bg-white dark:bg-gray-800 p-2 rounded border border-gray-300 dark:border-gray-600">=A1/B2-C3</code>
+                  <code className="bg-white dark:bg-gray-800 p-2 rounded border border-gray-300 dark:border-gray-600">=A1+10-5%</code>
+                  <code className="bg-white dark:bg-gray-800 p-2 rounded border border-gray-300 dark:border-gray-600">=A1*(1+B1%)</code>
+                </div>
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                  • Use +, -, *, / for basic arithmetic • Use % for percentages • Use parentheses for complex formulas
+                </p>
+              </div>
+
+              <div className="overflow-x-auto max-h-[500px] border border-gray-300 dark:border-gray-600 rounded-lg">
+                <div className="inline-block min-w-full">
+                  {/* Header Row */}
+                  <div className="flex sticky top-0 z-10 bg-gray-100 dark:bg-gray-700 border-b border-gray-300 dark:border-gray-600">
+                    <div className="w-16 flex-shrink-0 flex items-center justify-center border-r border-gray-300 dark:border-gray-600 p-2">
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400">#</span>
+                    </div>
+                    {Array.from({ length: gridCols }).map((_, colIndex) => (
+                      <div key={`header-${colIndex}`} className="w-32 flex-shrink-0 flex items-center justify-center border-r border-gray-300 dark:border-gray-600 p-2 last:border-r-0">
+                        <span className="text-xs font-medium text-gray-900 dark:text-white">
+                          {getColumnLetter(colIndex)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Data Rows */}
+                  <div className="overflow-y-auto max-h-[600px]">
+                    {Array.from({ length: gridRows }).map((_, rowIndex) => {
+                      const row = excelGrid[rowIndex] || [];
+                      return (
+                        <div key={`row-${rowIndex}`} className="flex border-b border-gray-300 dark:border-gray-600 last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                          {/* Row Number - Sticky */}
+                          <div className="w-16 flex-shrink-0 flex items-center justify-center border-r border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 p-2 sticky left-0">
+                            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                              {rowIndex + 1}
+                            </span>
+                          </div>
+
+                          {/* Cells */}
+                          {Array.from({ length: gridCols }).map((_, colIndex) => {
+                            const cell = row[colIndex] || {
+                              id: `${rowIndex}_${colIndex}`,
+                              value: '',
+                              isFormula: false,
+                              row: rowIndex,
+                              col: colIndex,
+                              computedValue: ''
+                            };
+                            
+                            return (
+                              <div key={cell.id} className="w-32 flex-shrink-0 border-r border-gray-300 dark:border-gray-600 last:border-r-0">
+                                <input
+                                  type="text"
+                                  value={cell.value}
+                                  onChange={(e) => updateCell(rowIndex, colIndex, e.target.value)}
+                                  onPaste={(e) => handlePasteEnhanced(e, rowIndex, colIndex)}
+                                  onFocus={() => setActiveCell({ row: rowIndex, col: colIndex })}
+                                  placeholder={`${getColumnLetter(colIndex)}${rowIndex + 1}`}
+                                  className={`w-full h-full px-3 py-2 text-sm border-0 focus:ring-2 focus:ring-blue-500 focus:z-20 focus:outline-none ${
+                                    cell.isFormula 
+                                      ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' 
+                                      : 'bg-white dark:bg-gray-800'
+                                  } ${cell.computedValue === '#ERROR' || cell.computedValue === '#REF!' 
+                                    ? 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20' 
+                                    : ''}`}
+                                  title={cell.isFormula ? `Formula: ${cell.formula}\nValue: ${cell.computedValue}` : cell.value}
+                                />
+                                {cell.isFormula && cell.computedValue !== '#ERROR' && cell.computedValue !== '#REF!' && (
+                                  <div className="text-xs text-gray-500 dark:text-gray-400 px-2 pb-1 truncate">
+                                    ={typeof cell.computedValue === 'number' 
+                                      ? cell.computedValue.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                                      : cell.computedValue}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Grid Statistics */}
+              <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  <p>• Active Cell: {activeCell ? `${getColumnLetter(activeCell.col)}${activeCell.row + 1}` : 'None'}</p>
+                  <p>• Use column letters (A-Z, AA, AB...) and row numbers (1-∞)</p>
+                  <p>• Ctrl+Enter: Add Row | Ctrl+Shift+Enter: Add Column</p>
                 </div>
               </div>
             </div>

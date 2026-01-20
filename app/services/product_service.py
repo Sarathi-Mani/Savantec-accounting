@@ -100,7 +100,8 @@ class ProductService:
             "created_at": product.created_at,
             "updated_at": product.updated_at,
             "current_stock": float(product.quantity) if hasattr(product, 'quantity') else None,
-            "min_stock_level": float(product.alert_quantity) if hasattr(product, 'alert_quantity') else None,
+
+            "min_stock_level": float(product.alert_quantity) if hasattr(product, 'alert_quantity') and product.alert_quantity is not None else None,
             "opening_stock": float(product.opening_stock) if hasattr(product, 'opening_stock') else None,
         }
         

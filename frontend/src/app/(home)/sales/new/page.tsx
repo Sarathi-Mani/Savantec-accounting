@@ -342,6 +342,8 @@ export default function AddSalesPage() {
         }
     }, [company?.id]);
 
+
+ 
     const loadCustomers = async () => {
         try {
             setLoading(prev => ({ ...prev, customers: true }));
@@ -372,35 +374,95 @@ export default function AddSalesPage() {
         }
     };
 
-    const loadSalesmen = async () => {
-        try {
-            setLoading(prev => ({ ...prev, salesmen: true }));
-            // First, we need to get employees with sales designation
-            // You'll need to implement an API endpoint for this
-            // For now, let's fetch all employees and filter by designation
-            const employees = await employeesApi.list(company!.id);
+   const loadSalesmen = async () => {
+  try {
+    setLoading(prev => ({ ...prev, salesmen: true }));
+    
+    // Check if we have a token
+    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    if (!token || !company?.id) {
+      console.error("No access token or company ID found");
+      return;
+    }
 
-            // Filter employees who are sales people (you need to check your designation system)
-            // This assumes you have a way to identify sales people
-            const salesEmployees = employees.filter(emp =>
-                emp.designation?.toLowerCase().includes('sales') ||
-                emp.employee_type?.toLowerCase().includes('sales')
-            );
+    // Try to fetch sales engineers from the correct endpoint
+    try {
+      const salesEngineersUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/sales-engineers`;
+      
+      console.log("Fetching sales engineers from:", salesEngineersUrl);
+      
+      const response = await fetch(salesEngineersUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
-            setSalesmen(salesEmployees);
-        } catch (error) {
-            console.error("Failed to load salesmen:", error);
-            // Fallback: Use salesmenApi if available
-            try {
-                const response = await salesmenApi.list(company!.id);
-                setSalesmen(response.salesmen || []);
-            } catch (err) {
-                console.error("Also failed to load salesmen:", err);
-            }
-        } finally {
-            setLoading(prev => ({ ...prev, salesmen: false }));
-        }
-    };
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("Sales engineers API response:", data);
+
+      // Process the data correctly
+      if (data && Array.isArray(data)) {
+        // Format the data to match your frontend structure
+        const formattedSalesmen = data.map(engineer => ({
+          id: engineer.id,
+          name: engineer.full_name || engineer.name || 'Unnamed Engineer',
+          email: engineer.email || '',
+          phone: engineer.phone || '',
+          designation: engineer.designation_name || engineer.designation || 'Sales Engineer',
+          employee_code: engineer.employee_code || ''
+        }));
+
+        setSalesmen(formattedSalesmen);
+        console.log(`Loaded ${formattedSalesmen.length} sales engineers`);
+      } else {
+        console.warn("No sales engineers found or invalid data format");
+        setSalesmen([]);
+      }
+    } catch (error: any) {
+      console.error("Failed to fetch sales engineers:", error);
+      
+      // Fallback: Try to get from employees API and filter
+      try {
+        const employees = await employeesApi.list(company.id);
+        console.log("Employees API response for fallback:", employees);
+        
+        // Filter employees who are sales people
+        const salesEmployees = employees.filter(emp => {
+          const designation = emp.designation || emp.designation_name || emp.employee_type || '';
+          const role = emp.role || '';
+          return designation.toLowerCase().includes('sales') || 
+                 role.toLowerCase().includes('sales') ||
+                 emp.employee_type?.toLowerCase().includes('sales');
+        });
+        
+        const formattedSalesmen = salesEmployees.map(emp => ({
+          id: emp.id,
+          name: emp.full_name || emp.name || 'Unnamed Engineer',
+          email: emp.email || '',
+          phone: emp.phone || '',
+          designation: emp.designation || emp.designation_name || emp.employee_type || 'Sales Engineer',
+          employee_code: emp.employee_code || emp.code || ''
+        }));
+        
+        setSalesmen(formattedSalesmen);
+        console.log(`Using ${formattedSalesmen.length} filtered employees as salesmen`);
+      } catch (fallbackError) {
+        console.error("Also failed to load employees:", fallbackError);
+        setSalesmen([]);
+      }
+    }
+  } catch (error: any) {
+    console.error("Failed to load salesmen:", error);
+    setSalesmen([]);
+  } finally {
+    setLoading(prev => ({ ...prev, salesmen: false }));
+  }
+};
 
     // Calculate totals based on items
     const calculateTotals = () => {
@@ -818,18 +880,112 @@ export default function AddSalesPage() {
                                     />
                                 </div>
                                 <div className="md:col-span-2">
-                                    <SelectField
-                                        label="Salesman"
-                                        name="sales_person_id"
-                                        value={formData.sales_person_id}
-                                        onChange={handleFormChange}
-                                        options={salesmen.map(salesman => ({
-                                            value: salesman.id,
-                                            label: `${salesman.name} ${salesman.employee_code ? `(${salesman.employee_code})` : ''}`
-                                        }))}
-                                        required={true}
-                                        placeholder="Select Salesman"
-                                    />
+                          <div>
+  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+    Salesman <span className="text-red-500">*</span>
+  </label>
+  
+  {/* Debug info */}
+  <div className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+    {loading.salesmen ? (
+      <span>Loading salesmen...</span>
+    ) : salesmen.length > 0 ? (
+      <span>✓ {salesmen.length} salesman available</span>
+    ) : (
+      <span className="text-yellow-600">No salesmen found</span>
+    )}
+  </div>
+  
+  <Select
+    options={salesmen
+      .filter(salesman => salesman.name && salesman.name.trim())
+      .map((salesman) => {
+        const label = salesman.designation 
+          ? `${salesman.name} (${salesman.designation})`
+          : salesman.name;
+        
+        return {
+          value: salesman.id,
+          label: label,
+          salesman: salesman
+        };
+      })}
+    value={salesmen
+      .filter(salesman => salesman.name && salesman.name.trim())
+      .map((salesman) => {
+        const label = salesman.designation 
+          ? `${salesman.name} (${salesman.designation})`
+          : salesman.name;
+        
+        return {
+          value: salesman.id,
+          label: label,
+          salesman: salesman
+        };
+      })
+      .find(opt => opt.value === formData.sales_person_id)}
+    onChange={(option) => {
+      handleFormChange('sales_person_id', option?.value || "");
+      if (option?.salesman) {
+        console.log("Selected sales engineer:", option.salesman);
+      }
+    }}
+    placeholder={loading.salesmen ? "Loading sales engineers..." : "Select Sales Engineer"}
+    className="react-select-container"
+    classNamePrefix="react-select"
+    isLoading={loading.salesmen}
+    isClearable
+    isSearchable
+    noOptionsMessage={() => 
+      loading.salesmen ? "Loading..." : "No sales engineers available"
+    }
+    styles={{
+      control: (base: any, state: any) => ({
+        ...base,
+        minHeight: "42px",
+        borderRadius: "0.5rem",
+        borderWidth: "1px",
+        borderStyle: "solid",
+        borderColor: salesmen.length > 0 ? '#10b981' : '#d1d5db',
+        backgroundColor: state.isFocused ? '#f3f4f6' : base.backgroundColor,
+        '&:hover': {
+          borderColor: salesmen.length > 0 ? '#059669' : '#9ca3af',
+        },
+        boxShadow: state.isFocused
+          ? "0 0 0 2px rgba(99,102,241,0.4)"
+          : "none",
+      }),
+      menu: (base: any) => ({
+        ...base,
+        zIndex: 9999,
+      }),
+      option: (base: any, state: any) => ({
+        ...base,
+        backgroundColor: state.isSelected
+          ? "#6366f1"
+          : state.isFocused
+            ? "#eef2ff"
+            : "white",
+        color: state.isSelected ? "white" : "#111827",
+      }),
+    }}
+  />
+  
+  {!loading.salesmen && salesmen.length === 0 && (
+    <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded">
+      <p className="text-xs text-yellow-700 dark:text-yellow-300">
+        No sales engineers found. Please add sales engineers first in the employee management section.
+      </p>
+      <button
+        type="button"
+        onClick={() => router.push("/employees")}
+        className="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+      >
+        Go to Employees →
+      </button>
+    </div>
+  )}
+</div>
                                 </div>
                             </div>
                         </div>

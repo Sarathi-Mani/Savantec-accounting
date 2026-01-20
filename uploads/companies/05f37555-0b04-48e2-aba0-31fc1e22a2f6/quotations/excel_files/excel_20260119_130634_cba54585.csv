@@ -1,0 +1,21 @@
+Row 1: Date | Module | Updates | Status | Completed Date
+Row 2: Dec 27th,2025 | User | Add  staff DOB, address, additional phone number, date of joining, blood group, other person details, etc | Completed
+Row 3: Items Management | Remove Variant option in item group,tax inclusive, exclusive,mrp | Completed
+Row 4: Add tax creation option | Completed
+Row 5: Margin profit move into purchase price section | Completed
+Row 6: Customer | add  option for more contacts person - name, num, mail id department | Completed
+Row 7: sundry debtors ( it will reflect in p & l , balance sheet)
+Row 8: register type ( registered,  unregistered, consumer, sez , etc | Completed
+Row 9: customer pan , vendor code, opening balance ( it may be outstanding or advance) | Completed
+Row 10: Quotation | terms & condition, quotation copy option | Completed
+Row 11: Remove tax information | Completed
+Row 12: Enquiry | In Create Enquiry, show Customer Name instead of Company Name | Completed
+Row 20: Jan 7th | payroll/employees/new | 1 | Completed
+Row 22: customer creation | bill wise opening balance (date, invoice date, invoice number,amount, details, advance date, voucher number, received, amount) | Completed
+Row 24: enquiry | 1 | Completed
+Row 27: Jan 9th | Quotaion | Margin workut excel unlimited rows, columns
+Row 28: Item image in quotation
+Row 29: (+) add image in quotation
+Row 30: Item code need separete column
+Row 31: Copy quotation
+Row 32: Remarks separately, terms & condition separately needed

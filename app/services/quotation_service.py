@@ -1,14 +1,20 @@
 """Quotation service for business logic with GST calculations."""
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_,or_
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
+import os
+from pathlib import Path
+import tempfile
+import json
+
 from app.database.models import (
-    Quotation, QuotationItem, Company, Customer, Product,
+    Quotation, QuotationItem, Company, Customer, Product, 
     QuotationStatus, Invoice, InvoiceItem, InvoiceStatus, InvoiceType,
     INDIAN_STATE_CODES, generate_uuid
 )
+from app.database.payroll_models import Employee
 
 
 class QuotationService:
@@ -54,25 +60,82 @@ class QuotationService:
             }
     
     def _get_next_quotation_number(self, company: Company) -> str:
-        """Generate next quotation number."""
-        prefix = company.quotation_prefix if hasattr(company, 'quotation_prefix') and company.quotation_prefix else "QT"
-        current_year = datetime.now().year
+       """Generate next quotation number."""
+       prefix = company.quotation_prefix if hasattr(company, 'quotation_prefix') and company.quotation_prefix else "QT"
+    
+       # Get the last quotation for this company
+       last_quotation = self.db.query(Quotation).filter(
+           Quotation.company_id == company.id,
+           Quotation.quotation_number.like(f"{prefix}-%")
+       ).order_by(Quotation.quotation_number.desc()).first()
+    
+       if last_quotation and last_quotation.quotation_number:
+           try:
+              # Extract the numeric part from the last quotation number
+              # Handle formats like QT-001, QT-002, etc.
+              last_num_str = last_quotation.quotation_number.split('-')[-1]
+              # Remove any non-numeric characters
+              last_num_str = ''.join(filter(str.isdigit, last_num_str))
+              last_num = int(last_num_str) if last_num_str else 0
+              next_num = last_num + 1
+           except (ValueError, IndexError, AttributeError) as e:
+              print(f"Error parsing quotation number: {e}")
+              next_num = 1
+       else:
+         next_num = 1
+    
+       return f"{prefix}-{next_num:04d}"
+    
+    def _save_excel_data(self, company_id: str, excel_data: Optional[str]) -> Optional[str]:
+      """Save Excel notes as a CSV file and return the file path."""
+      if not excel_data or not excel_data.strip():
+        return None
+    
+      try:
+        # Create uploads directory if it doesn't exist
+        upload_dir = Path("uploads") / "companies" / company_id / "quotations" / "excel_notes"
+        upload_dir.mkdir(parents=True, exist_ok=True)
         
-        last_quotation = self.db.query(Quotation).filter(
-            Quotation.company_id == company.id,
-            func.extract('year', Quotation.quotation_date) == current_year
-        ).order_by(Quotation.quotation_number.desc()).first()
+        # Generate unique filename with .csv extension
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"excel_notes_{timestamp}_{generate_uuid()[:8]}.csv"  # Changed to .csv
+        file_path = upload_dir / filename
         
-        if last_quotation and last_quotation.quotation_number:
-            try:
-                last_num = int(last_quotation.quotation_number.split('-')[-1])
-                next_num = last_num + 1
-            except (ValueError, IndexError):
-                next_num = 1
-        else:
-            next_num = 1
+        # Save the Excel data as CSV
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(excel_data)
         
-        return f"{prefix}-{current_year}-{next_num:04d}"
+        # Return relative path
+        return str(file_path.relative_to("uploads"))
+      except Exception as e:
+        print(f"Error saving Excel data: {e}")
+        return None
+    
+    def _save_excel_file(self, company_id: str, file_content: bytes, filename: str) -> Optional[str]:
+        """Save uploaded Excel/CSV file and return the file path."""
+        if not file_content:
+            return None
+        
+        try:
+            # Create uploads directory if it doesn't exist
+            upload_dir = Path("uploads") / "companies" / company_id / "quotations" / "excel_files"
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate unique filename preserving extension
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            file_ext = Path(filename).suffix if '.' in filename else '.csv'
+            unique_filename = f"excel_{timestamp}_{generate_uuid()[:8]}{file_ext}"
+            file_path = upload_dir / unique_filename
+            
+            # Save the file
+            with open(file_path, "wb") as f:
+                f.write(file_content)
+            
+            # Return relative path
+            return str(file_path.relative_to("uploads"))
+        except Exception as e:
+            print(f"Error saving Excel file: {e}")
+            return None
     
     def create_quotation(
         self,
@@ -85,8 +148,19 @@ class QuotationService:
         subject: Optional[str] = None,
         notes: Optional[str] = None,
         terms: Optional[str] = None,
+        contact_person: Optional[str] = None,
+        remarks: Optional[str] = None,
+        sales_person_id: Optional[str] = None,
+        reference: Optional[str] = None,
+        reference_no: Optional[str] = None,
+        reference_date: Optional[date] = None,
+        payment_terms: Optional[str] = None,
+        excel_notes: Optional[str] = None,
+        excel_file_content: Optional[bytes] = None,
+        excel_filename: Optional[str] = None,
+        **kwargs  # Accept additional fields
     ) -> Quotation:
-        """Create a new quotation with GST calculations."""
+        """Create a new quotation with all fields and GST calculations."""
         # Get customer
         customer = None
         if customer_id:
@@ -94,6 +168,23 @@ class QuotationService:
                 Customer.id == customer_id,
                 Customer.company_id == company.id
             ).first()
+        
+        # Get sales person details
+        sales_person_name = None
+        if sales_person_id:
+            sales_person = self.db.query(Employee).filter(
+                Employee.id == sales_person_id,
+                Employee.company_id == company.id
+            ).first()
+            if sales_person:
+                sales_person_name = sales_person.full_name or sales_person.name
+        
+        # Handle Excel data
+        excel_notes_file_url = None
+        if excel_file_content and excel_filename:
+            excel_notes_file_url = self._save_excel_file(company.id, excel_file_content, excel_filename)
+        elif excel_notes:
+            excel_notes_file_url = self._save_excel_data(company.id, excel_notes)
         
         # Determine place of supply
         if not place_of_supply and customer:
@@ -107,19 +198,28 @@ class QuotationService:
         quote_date = quotation_date or datetime.utcnow()
         validity_date = quote_date + timedelta(days=validity_days)
         
-        # Create quotation
+        # Create quotation with all fields
         quotation = Quotation(
             id=generate_uuid(),
             company_id=company.id,
             customer_id=customer.id if customer else None,
+            contact_person=contact_person,
+            sales_person_id=sales_person_id,
+            sales_person_name=sales_person_name,
             quotation_number=self._get_next_quotation_number(company),
             quotation_date=quote_date,
             validity_date=validity_date,
             place_of_supply=place_of_supply,
             place_of_supply_name=place_of_supply_name,
-            subject=subject,
+            subject=subject or f"Quotation {self._get_next_quotation_number(company)}",
             notes=notes,
-            terms=terms or (company.invoice_terms if hasattr(company, 'invoice_terms') else None),
+            terms=terms,  # Additional terms from form
+            remarks=remarks,
+            reference=reference,
+            reference_no=reference_no,
+            reference_date=reference_date,
+            payment_terms=payment_terms or (company.invoice_terms if hasattr(company, 'invoice_terms') else None),
+            excel_notes_file_url=excel_notes_file_url,
             status=QuotationStatus.DRAFT,
         )
         
@@ -215,19 +315,66 @@ class QuotationService:
         subject: Optional[str] = None,
         notes: Optional[str] = None,
         terms: Optional[str] = None,
+        contact_person: Optional[str] = None,
+        remarks: Optional[str] = None,
+        sales_person_id: Optional[str] = None,
+        reference: Optional[str] = None,
+        reference_no: Optional[str] = None,
+        reference_date: Optional[date] = None,
+        payment_terms: Optional[str] = None,
+        excel_notes: Optional[str] = None,
+        excel_file_content: Optional[bytes] = None,
+        excel_filename: Optional[str] = None,
     ) -> Quotation:
         """Update a quotation (only if in DRAFT status)."""
         if quotation.status != QuotationStatus.DRAFT:
             raise ValueError("Can only update quotations in DRAFT status")
         
+        # Update basic fields
         if subject is not None:
             quotation.subject = subject
         if notes is not None:
             quotation.notes = notes
         if terms is not None:
             quotation.terms = terms
+        if contact_person is not None:
+            quotation.contact_person = contact_person
+        if remarks is not None:
+            quotation.remarks = remarks
+        if reference is not None:
+            quotation.reference = reference
+        if reference_no is not None:
+            quotation.reference_no = reference_no
+        if reference_date is not None:
+            quotation.reference_date = reference_date
+        if payment_terms is not None:
+            quotation.payment_terms = payment_terms
+        
+        # Update sales person
+        if sales_person_id is not None:
+            quotation.sales_person_id = sales_person_id
+            if sales_person_id:
+                sales_person = self.db.query(Employee).filter(
+                    Employee.id == sales_person_id,
+                    Employee.company_id == quotation.company_id
+                ).first()
+                if sales_person:
+                    quotation.sales_person_name = sales_person.full_name or sales_person.name
+            else:
+                quotation.sales_person_name = None
+        
         if validity_days is not None:
             quotation.validity_date = quotation.quotation_date + timedelta(days=validity_days)
+        
+        # Handle Excel data update
+        if excel_file_content and excel_filename:
+            excel_notes_file_url = self._save_excel_file(quotation.company_id, excel_file_content, excel_filename)
+            if excel_notes_file_url:
+                quotation.excel_notes_file_url = excel_notes_file_url
+        elif excel_notes:
+            excel_notes_file_url = self._save_excel_data(quotation.company_id, excel_notes)
+            if excel_notes_file_url:
+                quotation.excel_notes_file_url = excel_notes_file_url
         
         if items is not None:
             # Remove existing items
@@ -396,7 +543,7 @@ class QuotationService:
         if customer and customer.gstin:
             invoice_type = InvoiceType.B2B
         
-        # Create invoice
+        # Create invoice with all quotation fields
         invoice = Invoice(
             id=generate_uuid(),
             company_id=quotation.company_id,
@@ -418,6 +565,8 @@ class QuotationService:
             outstanding_amount=quotation.total_amount,
             notes=quotation.notes,
             terms=quotation.terms,
+            remarks=quotation.remarks,
+            contact_person=quotation.contact_person,
             status=InvoiceStatus.DRAFT,
         )
         
@@ -488,6 +637,7 @@ class QuotationService:
         customer_id: Optional[str] = None,
         from_date: Optional[date] = None,
         to_date: Optional[date] = None,
+        search: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> Dict[str, Any]:
@@ -502,6 +652,17 @@ class QuotationService:
             query = query.filter(Quotation.quotation_date >= from_date)
         if to_date:
             query = query.filter(Quotation.quotation_date <= to_date)
+        if search:
+            search_term = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Quotation.quotation_number.ilike(search_term),
+                    Quotation.subject.ilike(search_term),
+                    Quotation.contact_person.ilike(search_term),
+                    Quotation.reference.ilike(search_term),
+                    Quotation.reference_no.ilike(search_term),
+                )
+            )
         
         total = query.count()
         
@@ -518,7 +679,7 @@ class QuotationService:
         }
     
     def get_quotation(self, company_id: str, quotation_id: str) -> Optional[Quotation]:
-        """Get a single quotation by ID."""
+        """Get a single quotation by ID with all details."""
         return self.db.query(Quotation).filter(
             Quotation.id == quotation_id,
             Quotation.company_id == company_id,
@@ -529,17 +690,29 @@ class QuotationService:
         if quotation.status != QuotationStatus.DRAFT:
             raise ValueError("Can only delete quotations in DRAFT status")
         
+        # Delete associated Excel files if they exist
+        if quotation.excel_notes_file_url:
+            try:
+                file_path = Path("uploads") / quotation.excel_notes_file_url
+                if file_path.exists():
+                    file_path.unlink()
+            except Exception as e:
+                print(f"Error deleting Excel file: {e}")
+        
         self.db.delete(quotation)
         self.db.commit()
         return True
     
     def revise_quotation(self, quotation: Quotation) -> Quotation:
         """Create a revised version of a quotation."""
-        # Create new quotation as revision
+        # Create new quotation as revision with all fields
         new_quotation = Quotation(
             id=generate_uuid(),
             company_id=quotation.company_id,
             customer_id=quotation.customer_id,
+            contact_person=quotation.contact_person,
+            sales_person_id=quotation.sales_person_id,
+            sales_person_name=quotation.sales_person_name,
             quotation_number=quotation.quotation_number + f"-R{quotation.revision_number + 1}",
             quotation_date=datetime.utcnow(),
             validity_date=datetime.utcnow() + timedelta(days=30),
@@ -557,6 +730,12 @@ class QuotationService:
             subject=quotation.subject,
             notes=quotation.notes,
             terms=quotation.terms,
+            remarks=quotation.remarks,
+            reference=quotation.reference,
+            reference_no=quotation.reference_no,
+            reference_date=quotation.reference_date,
+            payment_terms=quotation.payment_terms,
+            excel_notes_file_url=quotation.excel_notes_file_url,
             status=QuotationStatus.DRAFT,
         )
         
@@ -592,4 +771,18 @@ class QuotationService:
         self.db.refresh(new_quotation)
         
         return new_quotation
-
+    
+    def get_excel_notes_content(self, quotation: Quotation) -> Optional[str]:
+        """Get the content of Excel notes file if it exists."""
+        if not quotation.excel_notes_file_url:
+            return None
+        
+        try:
+            file_path = Path("uploads") / quotation.excel_notes_file_url
+            if file_path.exists():
+                with open(file_path, "r", encoding="utf-8") as f:
+                    return f.read()
+        except Exception as e:
+            print(f"Error reading Excel notes file: {e}")
+        
+        return None

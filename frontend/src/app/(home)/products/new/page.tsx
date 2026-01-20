@@ -2,7 +2,6 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { productsApi, brandsApi, categoriesApi, getErrorMessage } from "@/services/api";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
@@ -28,7 +27,7 @@ export default function NewProductPage() {
   const [loadingCategories, setLoadingCategories] = useState(false);
 
   const [formData, setFormData] = useState({
-    // Item Basic Details
+    // Item Basic Details - Required fields
     name: "",
     hsn_code: "",
     barcode: "",
@@ -36,26 +35,30 @@ export default function NewProductPage() {
     brand_id: "",
     category_id: "",
     unit: "unit",
-    alert_quantity: "0",
-    opening_stock: "0",
+    alert_quantity: 0,
+    opening_stock: 0,
     description: "",
     
-    // Service toggle
+    // Service toggle - Check if this exists in backend
     is_service: false,
     
     // Pricing Information
-    price: "",
-    seller_points: "0",
+    unit_price: 0,
+    seller_points: 0,
     discount_type: "percentage",
-    discount: "0",
-    gst_rate: "18",
+    discount: 0,
+    gst_rate: "18", // Changed from tax_rate to gst_rate
     
-    // Purchase Price Calculation
-    purchase_price: "",
-    profit_margin: "",
+    // Purchase Price Calculation - backend doesn't seem to use these
+    purchase_price: 0,
+    profit_margin: 0,
     
-    // Sales & Profit Calculation
-    sales_price: "",
+    // Sales price - backend uses unit_price as sales_price too
+    sales_price: 0,
+    
+    // Additional fields from backend schema
+    min_stock_level: 0, // This maps to alert_quantity in backend
+    is_inclusive: false,
   });
 
   const [mainImage, setMainImage] = useState<File | null>(null);
@@ -68,11 +71,11 @@ export default function NewProductPage() {
       try {
         setLoadingBrands(true);
         const brandsResult = await brandsApi.list(company.id, { page: 1, page_size: 100 });
-        setBrands(brandsResult.brands);
+        setBrands(brandsResult.brands || brandsResult.data || []);
 
         setLoadingCategories(true);
         const categoriesResult = await categoriesApi.list(company.id, { page: 1, page_size: 100 });
-        setCategories(categoriesResult.categories);
+        setCategories(categoriesResult.categories || categoriesResult.data || []);
       } catch (error) {
         console.error("Failed to fetch brands/categories:", error);
       } finally {
@@ -84,6 +87,28 @@ export default function NewProductPage() {
     fetchBrandsAndCategories();
   }, [company?.id]);
 
+  // Auto-calculate sales price and purchase price
+  useEffect(() => {
+    const unitPrice = formData.unit_price || 0;
+    const discount = formData.discount || 0;
+    const gstRate = parseFloat(formData.gst_rate) || 18;
+    const profitMargin = formData.profit_margin || 0;
+
+    // Calculate purchase price (unit price + tax)
+    const taxAmount = unitPrice * (gstRate / 100);
+    const purchasePrice = unitPrice + taxAmount;
+
+    // Calculate sales price (purchase price + profit margin)
+    const profitAmount = purchasePrice * (profitMargin / 100);
+    const salesPrice = purchasePrice + profitAmount;
+
+    setFormData(prev => ({
+      ...prev,
+      purchase_price: Number(purchasePrice.toFixed(2)),
+      sales_price: Number(salesPrice.toFixed(2))
+    }));
+  }, [formData.unit_price, formData.discount, formData.gst_rate, formData.profit_margin]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     
@@ -92,6 +117,11 @@ export default function NewProductPage() {
       setFormData((prev) => ({
         ...prev,
         [name]: checked,
+      }));
+    } else if (type === "number") {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: value === '' ? 0 : Number(value),
       }));
     } else {
       setFormData((prev) => ({
@@ -106,9 +136,10 @@ export default function NewProductPage() {
     const { name, value } = e.target;
     // Allow only numbers and decimal points
     if (value === '' || /^\d*\.?\d*$/.test(value)) {
+      const numValue = value === '' ? 0 : Number(value);
       setFormData((prev) => ({
         ...prev,
-        [name]: value,
+        [name]: numValue,
       }));
     }
   };
@@ -126,77 +157,172 @@ export default function NewProductPage() {
       }
     };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!company?.id) return;
+ const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!company?.id) return;
 
-    if (!formData.name.trim()) {
-      setError("Item name is required");
-      return;
-    }
+  if (!formData.name.trim()) {
+    setError("Item name is required");
+    return;
+  }
 
-    if (!formData.price || parseFloat(formData.price) <= 0) {
-      setError("Valid price is required");
-      return;
-    }
+  if (formData.unit_price <= 0) {
+    setError("Valid price is required");
+    return;
+  }
 
-    // Validate HSN code if provided
-    if (formData.hsn_code && (!/^\d{4,8}$/.test(formData.hsn_code))) {
-      setError("HSN code must be 4-8 digits");
-      return;
-    }
+  // Validate HSN code if provided
+  if (formData.hsn_code && (!/^\d{4,8}$/.test(formData.hsn_code))) {
+    setError("HSN code must be 4-8 digits");
+    return;
+  }
 
-    // Convert numeric fields
-    const price = parseFloat(formData.price) || 0;
-    const openingStock = parseFloat(formData.opening_stock) || 0;
-    const alertQuantity = parseFloat(formData.alert_quantity) || 0;
-    const sellerPoints = parseFloat(formData.seller_points) || 0;
-    const discount = parseFloat(formData.discount) || 0;
-    const gstRate = parseFloat(formData.gst_rate) || 18;
-    const purchasePrice = parseFloat(formData.purchase_price) || 0;
-    const profitMargin = parseFloat(formData.profit_margin) || 0;
-    const salesPrice = parseFloat(formData.sales_price) || 0;
+  setLoading(true);
+  setError(null);
 
-    setLoading(true);
-    setError(null);
+  try {
+    // Prepare the product data according to backend schema
+    // Send only the fields that match ProductCreate schema
+    const productData = {
+      name: formData.name.trim(),
+      hsn_code: formData.hsn_code || undefined,
+      barcode: formData.barcode || undefined,
+      sku: formData.sku || undefined,
+      brand_id: formData.brand_id || undefined,
+      category_id: formData.category_id || undefined,
+      unit: formData.unit,
+      alert_quantity: formData.alert_quantity,
+      min_stock_level: formData.alert_quantity,
+      opening_stock: formData.opening_stock,
+      description: formData.description || undefined,
+      is_service: formData.is_service,
+      is_inclusive: formData.is_inclusive,
+      unit_price: formData.unit_price,
+      gst_rate: formData.gst_rate,
+      company_id: company.id
+    };
 
-    try {
-      const formDataToSend = new FormData();
+    // Remove undefined values
+    Object.keys(productData).forEach(key => {
+      if (productData[key] === undefined) {
+        delete productData[key];
+      }
+    });
+
+    console.log("Sending product data:", JSON.stringify(productData, null, 2));
+
+    // Try sending as JSON without images first
+    const token = localStorage.getItem("access_token");
+    const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/products`;
+    
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(productData),
+    });
+
+    console.log("Response status:", response.status);
+    
+    const responseText = await response.text();
+    console.log("Response text:", responseText);
+
+    if (response.ok) {
+      const data = JSON.parse(responseText);
+      console.log("Product created successfully:", data);
       
-      // Append all form data
-      Object.entries(formData).forEach(([key, value]) => {
-        formDataToSend.append(key, value.toString());
+      // Now upload images if we have them
+      if (mainImage || additionalImage) {
+        await uploadImages(company.id, data.id, mainImage, additionalImage);
+      }
+      
+      showToast("Product created successfully!", "success");
+      setTimeout(() => {
+        router.push("/products");
+      }, 1500);
+    } else {
+      let errorMessage = "Failed to create product";
+      try {
+        const errorData = JSON.parse(responseText);
+        console.log("Error data:", errorData);
+        
+        if (errorData.detail) {
+          if (Array.isArray(errorData.detail)) {
+            errorMessage = errorData.detail.map((err: any) => {
+              if (err.loc && err.msg) {
+                return `${err.loc[1]}: ${err.msg}`;
+              }
+              return err.msg || err.message;
+            }).join(", ");
+          } else if (typeof errorData.detail === 'string') {
+            errorMessage = errorData.detail;
+          } else if (errorData.detail?.msg) {
+            errorMessage = errorData.detail.msg;
+          }
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+      } catch (parseError) {
+        console.error("Parse error:", parseError);
+        errorMessage = responseText || "Unknown error occurred";
+      }
+      
+      setError(errorMessage);
+    }
+    
+  } catch (error: any) {
+    console.error("Network or other error:", error);
+    setError(error.message || "Network error occurred");
+  } finally {
+    setLoading(false);
+  }
+};
+
+// Helper function to upload images
+const uploadImages = async (companyId: string, productId: string, mainImage: File | null, additionalImage: File | null) => {
+  try {
+    const token = localStorage.getItem("access_token");
+    
+    if (mainImage) {
+      const mainImageFormData = new FormData();
+      mainImageFormData.append('main_image', mainImage);
+      
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/companies/${companyId}/products/${productId}/images`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+        body: mainImageFormData,
       });
-      
-      // Append company ID
-      formDataToSend.append('company_id', company.id);
-      
-      // Append numeric values properly
-      formDataToSend.append('unit_price', price.toString());
-      formDataToSend.append('opening_stock', openingStock.toString());
-      formDataToSend.append('alert_quantity', alertQuantity.toString());
-      formDataToSend.append('seller_points', sellerPoints.toString());
-      formDataToSend.append('discount', discount.toString());
-      formDataToSend.append('gst_rate', gstRate.toString());
-      formDataToSend.append('purchase_price', purchasePrice.toString());
-      formDataToSend.append('profit_margin', profitMargin.toString());
-      formDataToSend.append('sales_price', salesPrice.toString());
-      
-      // Append images
-      if (mainImage) {
-        formDataToSend.append("main_image", mainImage);
-      }
-      if (additionalImage) {
-        formDataToSend.append("additional_image", additionalImage);
-      }
-
-      await productsApi.create(company.id, formDataToSend);
-      router.push("/products");
-    } catch (error: any) {
-      setError(getErrorMessage(error, "Failed to create product"));
-    } finally {
-      setLoading(false);
     }
+    
+    if (additionalImage) {
+      const additionalImageFormData = new FormData();
+      additionalImageFormData.append('additional_image', additionalImage);
+      
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/companies/${companyId}/products/${productId}/images`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+        body: additionalImageFormData,
+      });
+    }
+  } catch (error) {
+    console.error("Failed to upload images:", error);
+    // Don't fail the whole process if image upload fails
+    showToast("Product created but image upload failed", "warning");
+  }
+};
+
+  // Toast notification component
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
   };
 
   if (!company) {
@@ -208,7 +334,16 @@ export default function NewProductPage() {
   }
 
   return (
-    <div>
+    <div className="relative">
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 rounded-lg px-6 py-3 text-white ${
+          toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'
+        }`}>
+          {toast.message}
+        </div>
+      )}
+
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-dark dark:text-white">Create Item</h1>
@@ -228,7 +363,8 @@ export default function NewProductPage() {
       <form onSubmit={handleSubmit} className="max-w-4xl">
         {error && (
           <div className="mb-6 rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">
-            {error}
+            <p className="font-medium">Error: {error}</p>
+            <p className="mt-2 text-sm">Please check all required fields and try again.</p>
           </div>
         )}
 
@@ -418,12 +554,12 @@ export default function NewProductPage() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                    Price <span className="text-red-500">*</span>
+                    Unit Price <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
-                    name="price"
-                    value={formData.price}
+                    name="unit_price"
+                    value={formData.unit_price}
                     onChange={handleNumberChange}
                     placeholder="Base price without tax"
                     min="0"
@@ -476,7 +612,7 @@ export default function NewProductPage() {
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                    Tax %
+                    GST % <span className="text-red-500">*</span>
                   </label>
                   <select
                     name="gst_rate"
@@ -508,13 +644,10 @@ export default function NewProductPage() {
                     type="number"
                     name="purchase_price"
                     value={formData.purchase_price}
-                    onChange={handleNumberChange}
-                    placeholder="Price + Tax Amount"
-                    min="0"
-                    step="0.01"
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                    readOnly
+                    className="w-full rounded-lg border border-stroke bg-gray-50 px-4 py-3 text-dark-6 dark:border-dark-3 dark:bg-dark-2"
                   />
-                  <p className="mt-1 text-xs text-dark-6">Auto Calculate</p>
+                  <p className="mt-1 text-xs text-dark-6">Auto Calculated: Price + GST Amount</p>
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
@@ -547,13 +680,10 @@ export default function NewProductPage() {
                     type="number"
                     name="sales_price"
                     value={formData.sales_price}
-                    onChange={handleNumberChange}
-                    placeholder="Final selling price"
-                    min="0"
-                    step="0.01"
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                    readOnly
+                    className="w-full rounded-lg border border-stroke bg-gray-50 px-4 py-3 text-dark-6 dark:border-dark-3 dark:bg-dark-2"
                   />
-                  <p className="mt-1 text-xs text-dark-6">Auto Calculate</p>
+                  <p className="mt-1 text-xs text-dark-6">Auto Calculated: Purchase Price + Profit Margin</p>
                 </div>
               </div>
             </div>
@@ -592,20 +722,38 @@ export default function NewProductPage() {
             </div>
           </div>
 
-          {/* Service Toggle */}
-          <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="is_service"
-                name="is_service"
-                checked={formData.is_service}
-                onChange={handleChange}
-                className="h-5 w-5 rounded border-stroke text-primary focus:ring-primary dark:border-dark-3"
-              />
-              <label htmlFor="is_service" className="text-sm font-medium text-dark dark:text-white">
-                This is a service (no inventory tracking)
-              </label>
+          {/* Service Toggle and Inclusive Tax */}
+          <div className="space-y-4">
+            <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="is_service"
+                  name="is_service"
+                  checked={formData.is_service}
+                  onChange={handleChange}
+                  className="h-5 w-5 rounded border-stroke text-primary focus:ring-primary dark:border-dark-3"
+                />
+                <label htmlFor="is_service" className="text-sm font-medium text-dark dark:text-white">
+                  This is a service (no inventory tracking)
+                </label>
+              </div>
+            </div>
+            
+            <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="is_inclusive"
+                  name="is_inclusive"
+                  checked={formData.is_inclusive}
+                  onChange={handleChange}
+                  className="h-5 w-5 rounded border-stroke text-primary focus:ring-primary dark:border-dark-3"
+                />
+                <label htmlFor="is_inclusive" className="text-sm font-medium text-dark dark:text-white">
+                  Price is inclusive of tax
+                </label>
+              </div>
             </div>
           </div>
 
@@ -623,7 +771,15 @@ export default function NewProductPage() {
               disabled={loading}
               className="rounded-lg bg-primary px-6 py-3 font-medium text-white transition hover:bg-opacity-90 disabled:opacity-50"
             >
-              {loading ? "Saving..." : "Save"}
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Saving...
+                </span>
+              ) : "Save"}
             </button>
           </div>
         </div>

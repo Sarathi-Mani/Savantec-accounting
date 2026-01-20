@@ -1,15 +1,31 @@
 """Quotation API endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Form, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy import text 
+from sqlalchemy import or_, literal
 from typing import Optional, List
 from datetime import datetime, date
 from decimal import Decimal
 from pydantic import BaseModel
+import json
+import os
+from pathlib import Path
 
 from app.database.connection import get_db
-from app.database.models import User, Company, Customer, QuotationStatus
+from app.database.models import User, Company, Customer, QuotationStatus, ContactPerson
 from app.auth.dependencies import get_current_active_user
 from app.services.quotation_service import QuotationService
+
+# Import payroll models
+try:
+    from app.database.payroll_models import Employee, Designation, Department
+except ImportError:
+    # Try alternate import path if needed
+    try:
+        from app.database.models.payroll_models import Employee, Designation, Department
+    except ImportError:
+        # Fallback if payroll models are in a different location
+        pass
 
 router = APIRouter(tags=["Quotations"])
 
@@ -29,7 +45,7 @@ def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
 
 class QuotationItemCreate(BaseModel):
     product_id: Optional[str] = None
-    description: Optional[str] = None
+    description: str
     hsn_code: Optional[str] = None
     quantity: float
     unit: Optional[str] = "unit"
@@ -38,7 +54,37 @@ class QuotationItemCreate(BaseModel):
     gst_rate: float = 18
 
 
-class QuotationCreate(BaseModel):
+# ==================== CONTACT PERSON SCHEMAS ====================
+
+class ContactPersonResponse(BaseModel):
+    id: str
+    customer_id: str
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    designation: Optional[str] = None
+    is_primary: bool = False
+    
+    class Config:
+        from_attributes = True
+
+
+# ==================== SALES ENGINEER SCHEMAS ====================
+
+class SalesEngineerResponse(BaseModel):
+    id: str
+    employee_code: str
+    full_name: str
+    designation_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    department_name: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class QuotationCreateRequest(BaseModel):
     customer_id: Optional[str] = None
     quotation_date: Optional[datetime] = None
     validity_days: int = 30
@@ -46,14 +92,30 @@ class QuotationCreate(BaseModel):
     subject: Optional[str] = None
     notes: Optional[str] = None
     terms: Optional[str] = None
+    remarks: Optional[str] = None
+    contact_person: Optional[str] = None
+    sales_person_id: Optional[str] = None
+    reference: Optional[str] = None
+    reference_no: Optional[str] = None
+    reference_date: Optional[datetime] = None
+    payment_terms: Optional[str] = None
+    excel_notes: Optional[str] = None
     items: List[QuotationItemCreate]
 
 
-class QuotationUpdate(BaseModel):
+class QuotationUpdateRequest(BaseModel):
     validity_days: Optional[int] = None
     subject: Optional[str] = None
     notes: Optional[str] = None
     terms: Optional[str] = None
+    remarks: Optional[str] = None
+    contact_person: Optional[str] = None
+    sales_person_id: Optional[str] = None
+    reference: Optional[str] = None
+    reference_no: Optional[str] = None
+    reference_date: Optional[datetime] = None
+    payment_terms: Optional[str] = None
+    excel_notes: Optional[str] = None
     items: Optional[List[QuotationItemCreate]] = None
 
 
@@ -85,6 +147,9 @@ class QuotationResponse(BaseModel):
     validity_date: Optional[datetime]
     customer_id: Optional[str]
     customer_name: Optional[str] = None
+    contact_person: Optional[str] = None
+    sales_person_id: Optional[str] = None
+    sales_person_name: Optional[str] = None
     status: str
     subject: Optional[str]
     place_of_supply: Optional[str]
@@ -98,6 +163,12 @@ class QuotationResponse(BaseModel):
     total_amount: float
     notes: Optional[str]
     terms: Optional[str]
+    remarks: Optional[str]
+    reference: Optional[str]
+    reference_no: Optional[str]
+    reference_date: Optional[datetime]
+    payment_terms: Optional[str]
+    excel_notes_file_url: Optional[str] = None
     email_sent_at: Optional[datetime]
     approved_at: Optional[datetime]
     converted_invoice_id: Optional[str]
@@ -133,35 +204,280 @@ class RejectionRequest(BaseModel):
     reason: Optional[str] = None
 
 
+class ExcelNotesResponse(BaseModel):
+    content: Optional[str] = None
+    file_url: Optional[str] = None
+
+
 # ==================== ENDPOINTS ====================
+
+@router.get("/companies/{company_id}/contact-persons", response_model=List[ContactPersonResponse])
+async def get_contact_persons(
+    company_id: str,
+    customer_id: Optional[str] = Query(None, description="Filter by customer ID"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get contact persons for a company, optionally filtered by customer."""
+    # Verify company belongs to user
+    company = db.query(Company).filter(
+        Company.id == company_id,
+        Company.user_id == current_user.id
+    ).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    
+    # Build query
+    query = db.query(ContactPerson).join(Customer).filter(
+        Customer.company_id == company_id
+    )
+    
+    # Filter by customer if provided
+    if customer_id:
+        query = query.filter(ContactPerson.customer_id == customer_id)
+    
+    contact_persons = query.order_by(ContactPerson.name).all()
+    return contact_persons
+
+
+@router.get("/companies/{company_id}/sales-engineers", response_model=List[SalesEngineerResponse])
+async def get_sales_engineers(
+    company_id: str,
+    search: Optional[str] = Query(None, description="Search by name or employee code"),
+    include_without_designation: bool = Query(False, description="Include employees without designations"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get sales engineers from payroll database.
+    ONLY includes employees with sales/engineer designations.
+    """
+    # Verify company belongs to user
+    company = db.query(Company).filter(
+        Company.id == company_id,
+        Company.user_id == current_user.id
+    ).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    
+    try:
+        # Query employees with designation containing 'sales' or 'engineer'
+        query = db.query(
+            Employee,
+            Designation.name.label("designation_name"),
+            Designation.id.label("designation_id")
+        ).join(
+            Designation, Employee.designation_id == Designation.id
+        ).filter(
+            Employee.company_id == company_id,
+            Employee.status == "active",
+            Designation.id.isnot(None)  # Ensure employee has a designation
+        )
+        
+        # Build the designation filter - ONLY sales/engineer related designations
+        designation_filters = [
+            Designation.name.ilike('%sales%'),
+            Designation.name.ilike('%engineer%'),
+            Designation.name.ilike('%sales engineer%'),
+            Designation.name.ilike('%field engineer%'),
+            Designation.name.ilike('%technical sales%'),
+            Designation.name.ilike('%business development%'),
+            Designation.name.ilike('%account executive%'),
+            Designation.name.ilike('%sales executive%'),
+            Designation.name.ilike('%account manager%'),
+            Designation.name.ilike('%sales manager%')
+        ]
+        
+        # Apply the OR filter for designation patterns
+        query = query.filter(or_(*designation_filters))
+        
+        # Only include without designation if explicitly requested
+        if include_without_designation:
+            query = query.union_all(
+                db.query(
+                    Employee,
+                    literal("No Designation").label("designation_name"),
+                    literal(None).label("designation_id")
+                ).filter(
+                    Employee.company_id == company_id,
+                    Employee.status == "active",
+                    Employee.designation_id.is_(None)  # Employees without designations
+                )
+            )
+        
+        # Apply search filter if provided
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Employee.full_name.ilike(search_pattern),
+                    Employee.employee_code.ilike(search_pattern),
+                    Employee.email.ilike(search_pattern),
+                    Employee.first_name.ilike(search_pattern),
+                    Employee.last_name.ilike(search_pattern),
+                    Designation.name.ilike(search_pattern)
+                )
+            )
+        
+        # Execute query
+        results = query.order_by(Employee.full_name).all()
+        
+        # Transform results to response
+        sales_engineers = []
+        for employee, designation_name, designation_id in results:
+            # Get department name if needed
+            department_name = None
+            if employee.department_id:
+                department = db.query(Department).filter(
+                    Department.id == employee.department_id
+                ).first()
+                if department:
+                    department_name = department.name
+            
+            sales_engineers.append({
+                "id": employee.id,
+                "employee_code": employee.employee_code,
+                "full_name": employee.full_name or f"{employee.first_name} {employee.last_name or ''}".strip(),
+                "designation_name": designation_name,
+                "email": employee.email,
+                "phone": employee.phone,
+                "department_name": department_name
+            })
+        
+        return sales_engineers
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error fetching sales engineers: {str(e)}")
+        print(f"Traceback: {error_details}")
+        
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error fetching sales engineers: {str(e)}"
+        )
+
+
+@router.get("/companies/{company_id}/customers/{customer_id}/contact-persons", response_model=List[ContactPersonResponse])
+async def get_customer_contact_persons(
+    company_id: str,
+    customer_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get contact persons for a specific customer."""
+    # Verify company belongs to user
+    company = db.query(Company).filter(
+        Company.id == company_id,
+        Company.user_id == current_user.id
+    ).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    
+    # Check if customer exists and belongs to company
+    customer = db.query(Customer).filter(
+        Customer.id == customer_id,
+        Customer.company_id == company_id
+    ).first()
+    
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
+    # Get contact persons for this customer
+    contact_persons = db.query(ContactPerson).filter(
+        ContactPerson.customer_id == customer_id
+    ).order_by(ContactPerson.name).all()
+    
+    return contact_persons
+
 
 @router.post("/companies/{company_id}/quotations", response_model=QuotationResponse)
 async def create_quotation(
     company_id: str,
-    data: QuotationCreate,
+    data: str = Form(...),
+    excel_file: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Create a new quotation."""
-    company = get_company_or_404(company_id, current_user, db)
-    service = QuotationService(db)
-    
+    """Create a new quotation with all fields including Excel data."""
     try:
-        items = [item.model_dump() for item in data.items]
+        # Parse the JSON data
+        quotation_data = json.loads(data)
+        
+        # Verify company belongs to user
+        company = db.query(Company).filter(
+            Company.id == company_id,
+            Company.user_id == current_user.id
+        ).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        
+        # Parse dates
+        def parse_date(date_str):
+            if date_str:
+                try:
+                    # Handle different date formats
+                    if 'T' in date_str:
+                        return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                    else:
+                        return datetime.strptime(date_str, '%Y-%m-%d')
+                except Exception as e:
+                    print(f"Error parsing date {date_str}: {e}")
+                    return None
+            return None
+        
+        # Get Excel file content if uploaded
+        excel_file_content = None
+        excel_filename = None
+        if excel_file:
+            excel_file_content = await excel_file.read()
+            excel_filename = excel_file.filename or "excel_data.csv"
+        
+        # Create quotation using service
+        service = QuotationService(db)
+        
+        # Convert items to dict
+        items = []
+        for item in quotation_data.get("items", []):
+            items.append({
+                "product_id": item.get("product_id"),
+                "description": item.get("description", "Item"),
+                "hsn_code": item.get("hsn_code", ""),
+                "quantity": float(item.get("quantity", 0)),
+                "unit": item.get("unit", "unit"),
+                "unit_price": float(item.get("unit_price", 0)),
+                "discount_percent": float(item.get("discount_percent", 0)),
+                "gst_rate": float(item.get("gst_rate", 18))
+            })
+        
         quotation = service.create_quotation(
             company=company,
-            customer_id=data.customer_id,
+            customer_id=quotation_data.get("customer_id"),
             items=items,
-            quotation_date=data.quotation_date,
-            validity_days=data.validity_days,
-            place_of_supply=data.place_of_supply,
-            subject=data.subject,
-            notes=data.notes,
-            terms=data.terms,
+            quotation_date=parse_date(quotation_data.get("quotation_date")),
+            validity_days=quotation_data.get("validity_days", 30),
+            place_of_supply=quotation_data.get("place_of_supply"),
+            subject=quotation_data.get("subject"),
+            notes=quotation_data.get("notes"),
+            terms=quotation_data.get("terms"),  # Additional terms
+            contact_person=quotation_data.get("contact_person"),
+            remarks=quotation_data.get("remarks"),
+            sales_person_id=quotation_data.get("sales_person_id"),
+            reference=quotation_data.get("reference"),
+            reference_no=quotation_data.get("reference_no"),
+            reference_date=parse_date(quotation_data.get("reference_date")),
+            payment_terms=quotation_data.get("payment_terms"),
+            excel_notes=quotation_data.get("excel_notes"),
+            excel_file_content=excel_file_content,
+            excel_filename=excel_filename,
         )
         
         return _quotation_to_response(quotation, db)
+        
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON data: {str(e)}")
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -172,13 +488,14 @@ async def list_quotations(
     customer_id: Optional[str] = None,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
+    search: Optional[str] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """List quotations with filters."""
-    get_company_or_404(company_id, current_user, db)
+    company = get_company_or_404(company_id, current_user, db)
     service = QuotationService(db)
     
     # Parse status
@@ -190,8 +507,15 @@ async def list_quotations(
             pass
     
     # Parse dates
-    from_dt = datetime.fromisoformat(from_date).date() if from_date else None
-    to_dt = datetime.fromisoformat(to_date).date() if to_date else None
+    from_dt = None
+    to_dt = None
+    try:
+        if from_date:
+            from_dt = datetime.fromisoformat(from_date).date() if 'T' in from_date else datetime.strptime(from_date, '%Y-%m-%d').date()
+        if to_date:
+            to_dt = datetime.fromisoformat(to_date).date() if 'T' in to_date else datetime.strptime(to_date, '%Y-%m-%d').date()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
     
     result = service.list_quotations(
         company_id=company_id,
@@ -199,6 +523,7 @@ async def list_quotations(
         customer_id=customer_id,
         from_date=from_dt,
         to_date=to_dt,
+        search=search,
         page=page,
         page_size=page_size,
     )
@@ -220,7 +545,7 @@ async def get_quotation(
     db: Session = Depends(get_db)
 ):
     """Get a single quotation by ID."""
-    get_company_or_404(company_id, current_user, db)
+    company = get_company_or_404(company_id, current_user, db)
     service = QuotationService(db)
     
     quotation = service.get_quotation(company_id, quotation_id)
@@ -230,36 +555,113 @@ async def get_quotation(
     return _quotation_to_response(quotation, db)
 
 
-@router.put("/companies/{company_id}/quotations/{quotation_id}", response_model=QuotationResponse)
-async def update_quotation(
+@router.get("/companies/{company_id}/quotations/{quotation_id}/excel-notes", response_model=ExcelNotesResponse)
+async def get_excel_notes(
     company_id: str,
     quotation_id: str,
-    data: QuotationUpdate,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Update a quotation (only DRAFT status)."""
-    get_company_or_404(company_id, current_user, db)
+    """Get Excel notes content for a quotation."""
+    company = get_company_or_404(company_id, current_user, db)
     service = QuotationService(db)
     
     quotation = service.get_quotation(company_id, quotation_id)
     if not quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
     
+    content = service.get_excel_notes_content(quotation)
+    
+    return {
+        "content": content,
+        "file_url": quotation.excel_notes_file_url
+    }
+
+
+@router.put("/companies/{company_id}/quotations/{quotation_id}", response_model=QuotationResponse)
+async def update_quotation(
+    company_id: str,
+    quotation_id: str,
+    data: str = Form(...),
+    excel_file: Optional[UploadFile] = File(None),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update a quotation (only DRAFT status)."""
     try:
-        items = [item.model_dump() for item in data.items] if data.items else None
+        # Parse the JSON data
+        update_data = json.loads(data)
+        
+        company = get_company_or_404(company_id, current_user, db)
+        service = QuotationService(db)
+        
+        quotation = service.get_quotation(company_id, quotation_id)
+        if not quotation:
+            raise HTTPException(status_code=404, detail="Quotation not found")
+        
+        # Parse dates
+        def parse_date(date_str):
+            if date_str:
+                try:
+                    if 'T' in date_str:
+                        return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                    else:
+                        return datetime.strptime(date_str, '%Y-%m-%d').date()
+                except Exception as e:
+                    print(f"Error parsing date {date_str}: {e}")
+                    return None
+            return None
+        
+        # Get Excel file content if uploaded
+        excel_file_content = None
+        excel_filename = None
+        if excel_file:
+            excel_file_content = await excel_file.read()
+            excel_filename = excel_file.filename or "excel_data.csv"
+        
+        # Convert items to dict if provided
+        items = None
+        if "items" in update_data:
+            items = []
+            for item in update_data.get("items", []):
+                items.append({
+                    "product_id": item.get("product_id"),
+                    "description": item.get("description", "Item"),
+                    "hsn_code": item.get("hsn_code", ""),
+                    "quantity": float(item.get("quantity", 0)),
+                    "unit": item.get("unit", "unit"),
+                    "unit_price": float(item.get("unit_price", 0)),
+                    "discount_percent": float(item.get("discount_percent", 0)),
+                    "gst_rate": float(item.get("gst_rate", 18))
+                })
         
         quotation = service.update_quotation(
             quotation=quotation,
             items=items,
-            validity_days=data.validity_days,
-            subject=data.subject,
-            notes=data.notes,
-            terms=data.terms,
+            validity_days=update_data.get("validity_days"),
+            subject=update_data.get("subject"),
+            notes=update_data.get("notes"),
+            terms=update_data.get("terms"),
+            contact_person=update_data.get("contact_person"),
+            remarks=update_data.get("remarks"),
+            sales_person_id=update_data.get("sales_person_id"),
+            reference=update_data.get("reference"),
+            reference_no=update_data.get("reference_no"),
+            reference_date=parse_date(update_data.get("reference_date")),
+            payment_terms=update_data.get("payment_terms"),
+            excel_notes=update_data.get("excel_notes"),
+            excel_file_content=excel_file_content,
+            excel_filename=excel_filename,
         )
         
         return _quotation_to_response(quotation, db)
+        
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON data: {str(e)}")
     except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -271,7 +673,7 @@ async def delete_quotation(
     db: Session = Depends(get_db)
 ):
     """Delete a quotation (only DRAFT status)."""
-    get_company_or_404(company_id, current_user, db)
+    company = get_company_or_404(company_id, current_user, db)
     service = QuotationService(db)
     
     quotation = service.get_quotation(company_id, quotation_id)
@@ -294,7 +696,7 @@ async def send_quotation(
     db: Session = Depends(get_db)
 ):
     """Mark quotation as sent to customer."""
-    get_company_or_404(company_id, current_user, db)
+    company = get_company_or_404(company_id, current_user, db)
     service = QuotationService(db)
     
     quotation = service.get_quotation(company_id, quotation_id)
@@ -317,7 +719,7 @@ async def approve_quotation(
     db: Session = Depends(get_db)
 ):
     """Mark quotation as approved by customer."""
-    get_company_or_404(company_id, current_user, db)
+    company = get_company_or_404(company_id, current_user, db)
     service = QuotationService(db)
     
     quotation = service.get_quotation(company_id, quotation_id)
@@ -340,7 +742,7 @@ async def reject_quotation(
     db: Session = Depends(get_db)
 ):
     """Mark quotation as rejected by customer."""
-    get_company_or_404(company_id, current_user, db)
+    company = get_company_or_404(company_id, current_user, db)
     service = QuotationService(db)
     
     quotation = service.get_quotation(company_id, quotation_id)
@@ -363,7 +765,7 @@ async def convert_to_invoice(
     db: Session = Depends(get_db)
 ):
     """Convert quotation to invoice."""
-    get_company_or_404(company_id, current_user, db)
+    company = get_company_or_404(company_id, current_user, db)
     service = QuotationService(db)
     
     quotation = service.get_quotation(company_id, quotation_id)
@@ -394,7 +796,7 @@ async def revise_quotation(
     db: Session = Depends(get_db)
 ):
     """Create a revised version of a quotation."""
-    get_company_or_404(company_id, current_user, db)
+    company = get_company_or_404(company_id, current_user, db)
     service = QuotationService(db)
     
     quotation = service.get_quotation(company_id, quotation_id)
@@ -412,7 +814,7 @@ async def check_expired_quotations(
     db: Session = Depends(get_db)
 ):
     """Check and mark expired quotations."""
-    get_company_or_404(company_id, current_user, db)
+    company = get_company_or_404(company_id, current_user, db)
     service = QuotationService(db)
     
     count = service.check_expired_quotations(company_id)
@@ -429,6 +831,16 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
         if customer:
             customer_name = customer.name
     
+    # Get sales person name
+    sales_person_name = quotation.sales_person_name
+    if not sales_person_name and quotation.sales_person_id:
+        try:
+            employee = db.query(Employee).filter(Employee.id == quotation.sales_person_id).first()
+            if employee:
+                sales_person_name = employee.full_name or f"{employee.first_name} {employee.last_name or ''}".strip()
+        except:
+            pass
+    
     response = {
         "id": quotation.id,
         "quotation_number": quotation.quotation_number,
@@ -436,6 +848,9 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
         "validity_date": quotation.validity_date,
         "customer_id": quotation.customer_id,
         "customer_name": customer_name,
+        "contact_person": quotation.contact_person,
+        "sales_person_id": quotation.sales_person_id,
+        "sales_person_name": sales_person_name,
         "status": quotation.status.value if quotation.status else "draft",
         "subject": quotation.subject,
         "place_of_supply": quotation.place_of_supply,
@@ -449,6 +864,12 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
         "total_amount": float(quotation.total_amount or 0),
         "notes": quotation.notes,
         "terms": quotation.terms,
+        "remarks": quotation.remarks,
+        "reference": quotation.reference,
+        "reference_no": quotation.reference_no,
+        "reference_date": quotation.reference_date,
+        "payment_terms": quotation.payment_terms,
+        "excel_notes_file_url": quotation.excel_notes_file_url,
         "email_sent_at": quotation.email_sent_at,
         "approved_at": quotation.approved_at,
         "converted_invoice_id": quotation.converted_invoice_id,
@@ -478,4 +899,3 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
         ]
     
     return response
-
