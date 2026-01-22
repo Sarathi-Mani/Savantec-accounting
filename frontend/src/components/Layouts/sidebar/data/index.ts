@@ -170,6 +170,45 @@ export const NAV_DATA = [
     ],
   },
 
+  {
+    label: "PURCHASES",
+    items: [
+      {
+        title: "Purchase",
+        icon: Icons.FileText,
+        items: [
+          {
+            title: "Add Purchase",
+            url: "/purchase/new",
+          },
+          {
+            title: "Purchase List",
+            url: "/purchase/purchase-list",
+          }
+        ],
+      },
+      {
+        title: "Purchase Orders",
+        icon: Icons.ShoppingCart,
+        items: [
+          {
+            title: "Purchase Order List",
+            url: "/purchase/purchase-orders",
+          },
+          {
+            title: "Add Purchase Order",
+            url: "/purchase/purchase-orders/new",
+          },
+        ],
+      },
+      {
+        title: "Purchase Return List",
+        url: "/purchase/purchase-returns",
+        icon: Icons.Receipt,
+        items: [],
+      },
+    ]
+  },
 
   {
     label: "SALES",

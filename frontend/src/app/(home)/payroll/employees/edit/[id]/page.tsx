@@ -116,6 +116,32 @@ export default function EditEmployeePage() {
     return annualCTC.toString();
   };
 
+  const uploadImage = async (file: File): Promise<string> => {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      // Use the correct endpoint
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Upload failed");
+      }
+
+      const data = await response.json();
+      return data.url; // This will be like "/uploads/abc-123.jpg"
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      // Fallback to local URL for preview
+      return URL.createObjectURL(file);
+    }
+  };
+
+
   const [formData, setFormData] = useState({
     first_name: "",
     last_name: "",
@@ -205,7 +231,7 @@ export default function EditEmployeePage() {
     try {
       setLoadingData(true);
       const employee = await payrollApi.getEmployee(companyId, employeeId);
-      
+
       // Map the employee data to formData
       setFormData({
         first_name: employee.first_name || "",
@@ -513,10 +539,10 @@ export default function EditEmployeePage() {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            // Here you would upload to your server and get URL
-                            // For now, create a local URL for preview
-                            const url = URL.createObjectURL(file);
-                            setFormData(prev => ({ ...prev, photo_url: url }));
+                            // Upload to server and get URL
+                            uploadImage(file).then(url => {
+                              setFormData(prev => ({ ...prev, photo_url: url }));
+                            });
                           }
                         }}
                         className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary file:text-white hover:file:bg-primary/90"
@@ -653,6 +679,7 @@ export default function EditEmployeePage() {
             {/* Family Details Tab */}
             {activeTab === "family" && (
               <div className="space-y-6">
+                {/* Father and Mother always visible */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -681,58 +708,67 @@ export default function EditEmployeePage() {
                   </div>
                 </div>
 
-                {/* Spouse Details section - Add condition here */}
+                {/* Show Spouse and Children details ONLY when marital status is "married" */}
                 {formData.marital_status === "married" && (
-                  <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-                    <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4">
-                      Spouse Details
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Spouse Name
-                        </label>
-                        <input
-                          type="text"
-                          name="spouse_name"
-                          value={formData.spouse_name}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
-                        />
-                      </div>
+                  <>
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                      <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4">
+                        Spouse Details
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Spouse Name
+                          </label>
+                          <input
+                            type="text"
+                            name="spouse_name"
+                            value={formData.spouse_name}
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
+                          />
+                        </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Spouse Occupation
-                        </label>
-                        <input
-                          type="text"
-                          name="spouse_occupation"
-                          value={formData.spouse_occupation}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
-                        />
+                        {/* <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Spouse Occupation
+                          </label>
+                          <input
+                            type="text"
+                            name="spouse_occupation"
+                            value={formData.spouse_occupation}
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
+                          />
+                        </div> */}
                       </div>
                     </div>
-                  </div>
+
+                    {/* Children details - only show when married */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                      <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4">
+                        Children Details
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Number of Children
+                          </label>
+                          <input
+                            type="number"
+                            name="children_count"
+                            value={formData.children_count}
+                            onChange={handleChange}
+                            min="0"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Number of Children
-                    </label>
-                    <input
-                      type="number"
-                      name="children_count"
-                      value={formData.children_count}
-                      onChange={handleChange}
-                      min="0"
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
-                    />
-                  </div>
-                </div>
-
+                {/* Emergency Contact - always visible */}
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
                   <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4">
                     Emergency Contact

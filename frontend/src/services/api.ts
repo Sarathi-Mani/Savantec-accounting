@@ -6,7 +6,7 @@ export * from "./salesApi";
  */
 export function getErrorMessage(error: any, fallback: string = "An error occurred"): string {
   const detail = error.response?.data?.detail;
-  
+
   if (Array.isArray(detail)) {
     // Pydantic validation errors come as array of objects
     const firstError = detail[0];
@@ -16,7 +16,7 @@ export function getErrorMessage(error: any, fallback: string = "An error occurre
   } else if (typeof detail === "object" && detail?.msg) {
     return detail.msg;
   }
-  
+
   return error.message || fallback;
 }
 
@@ -204,7 +204,7 @@ export interface Customer {
   created_at?: string;
   updated_at?: string;
   deleted_at?: string;
-  
+
   // For backward compatibility
   gstin?: string;
   pan?: string;
@@ -213,11 +213,11 @@ export interface Customer {
   billing_pincode?: string;
   shipping_pincode?: string;
   contact_person?: string;
-  
+
   // Relationships - ADD THESE
   opening_balance_items?: OpeningBalanceItem[];
   contact_persons?: ContactPerson[];
-  
+
 }
 
 // Update OpeningBalanceItem interface
@@ -450,6 +450,21 @@ export const authApi = {
   },
 };
 
+export const uploadApi = {
+  uploadFile: async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    
+    // Use the correct endpoint
+    const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+    return response.data;
+  },
+};
+
 // Companies API
 export const companiesApi = {
   list: async (): Promise<Company[]> => {
@@ -569,7 +584,7 @@ export const invoicesApi = {
   },
 
   cancel: async (companyId: string, invoiceId: string, reason?: string): Promise<Invoice> => {
-    const response = await api.post(`/companies/${companyId}/invoices/${invoiceId}/cancel`, 
+    const response = await api.post(`/companies/${companyId}/invoices/${invoiceId}/cancel`,
       reason ? { reason } : undefined
     );
     return response.data;
@@ -588,14 +603,14 @@ export const invoicesApi = {
   },
 
   void: async (companyId: string, invoiceId: string, reason?: string): Promise<Invoice> => {
-    const response = await api.post(`/companies/${companyId}/invoices/${invoiceId}/void`, 
+    const response = await api.post(`/companies/${companyId}/invoices/${invoiceId}/void`,
       reason ? { reason } : undefined
     );
     return response.data;
   },
 
   writeOff: async (companyId: string, invoiceId: string, reason?: string): Promise<Invoice> => {
-    const response = await api.post(`/companies/${companyId}/invoices/${invoiceId}/write-off`, 
+    const response = await api.post(`/companies/${companyId}/invoices/${invoiceId}/write-off`,
       reason ? { reason } : undefined
     );
     return response.data;
@@ -1252,8 +1267,8 @@ export const accountingApi = {
     formData.append("file", file);
     const response = await api.post(`/companies/${companyId}/bank-import`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
-      params: { 
-        bank_account_id: bankAccountId, 
+      params: {
+        bank_account_id: bankAccountId,
         bank_name: bankName,
         ...columnMapping
       },
@@ -2403,46 +2418,148 @@ export interface Employee {
   full_name?: string;
   date_of_birth?: string;
   gender?: string;
+  marital_status?: string;
+  blood_group?: string;
   email?: string;
   phone?: string;
   department_id?: string;
   designation_id?: string;
-  designation?: string;
+
+  department?: {
+    id?: string;
+    name: string;
+  };
+
+  designation?: {
+    id?: string;
+    name: string;
+  };
+
   employee_type: string;
   date_of_joining: string;
   work_state?: string;
   ctc?: number;
+
+  // Salary components
+  monthly_basic?: number;
+  monthly_hra?: number;
+  monthly_special_allowance?: number;
+  monthly_conveyance?: number;
+  monthly_medical?: number;
+  salary_calculation_method?: string;
+  basic_salary?: number;  // Annual
+  hra?: number;          // Annual
+  special_allowance?: number; // Annual
+  conveyance_allowance?: number; // Annual
+  medical_allowance?: number; // Annual
+
+  // Statutory
   pan?: string;
+  aadhaar?: string;
   uan?: string;
+  pf_number?: string;
+  esi_number?: string;
   pf_applicable: boolean;
   esi_applicable: boolean;
   pt_applicable: boolean;
   tax_regime: string;
   status: string;
-  created_at?: string; 
-  updated_at?: string; 
+
+  // Personal details
+  photo_url?: string;
+  father_name?: string;
+  mother_name?: string;
+  spouse_name?: string;
+  spouse_occupation?: string;
+  children_count?: number;
+  children_details?: string;
+
+  // Emergency contact
+  emergency_contact_name?: string;
+  emergency_contact_relation?: string;
+  emergency_contact_phone?: string;
+
+  // Contact details
+  personal_email?: string;
+  official_email?: string;
+  personal_phone?: string;
+  official_phone?: string;
+  alternate_phone?: string;
+
+  // Address
+  permanent_address?: string;
+  current_address?: string;
+  current_city?: string;
+  same_as_permanent?: boolean;
+
+  // Bank details
+  bank_name?: string;
+  bank_branch?: string;
+  bank_account_number?: string;
+  bank_ifsc?: string;
+  account_holder_name?: string;
+
+  // Timestamps
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface EmployeeCreate {
-  employee_code?: string;
+  // Personal details
   first_name: string;
   last_name?: string;
   date_of_birth?: string;
   gender?: string;
+  marital_status?: string;
+  blood_group?: string;
   email?: string;
   phone?: string;
+
+  // Family details
+  father_name?: string;
+  mother_name?: string;
+  spouse_name?: string;
+  spouse_occupation?: string;
+  children_count?: number;
+  children_details?: string;
+
+  // Emergency contact
+  emergency_contact_name?: string;
+  emergency_contact_relation?: string;
+  emergency_contact_phone?: string;
+
+  // Contact details
+  personal_email?: string;
+  official_email?: string;
+  personal_phone?: string;
+  official_phone?: string;
+  alternate_phone?: string;
+
+  // Address
+  permanent_address?: string;
   current_address?: string;
   current_city?: string;
-  current_state?: string;
-  current_pincode?: string;
-  pan?: string;
-  aadhaar?: string;
+  same_as_permanent?: boolean;
+
+  // Employment
   department_id?: string;
   designation_id?: string;
   employee_type?: string;
   date_of_joining: string;
   work_state?: string;
+
+  // Salary
   ctc?: number;
+  monthly_basic?: number;
+  monthly_hra?: number;
+  monthly_special_allowance?: number;
+  monthly_conveyance?: number;
+  monthly_medical?: number;
+  salary_calculation_method?: string;
+
+  // Statutory
+  pan?: string;
+  aadhaar?: string;
   uan?: string;
   pf_number?: string;
   esi_number?: string;
@@ -2450,9 +2567,16 @@ export interface EmployeeCreate {
   esi_applicable?: boolean;
   pt_applicable?: boolean;
   tax_regime?: string;
+
+  // Bank
   bank_name?: string;
+  bank_branch?: string;
   bank_account_number?: string;
   bank_ifsc?: string;
+  account_holder_name?: string;
+
+  // Photo
+  photo_url?: string;
 }
 
 export interface SalaryComponent {
@@ -2574,8 +2698,6 @@ export const employeesApi = {
     const response = await api.get(`/companies/${companyId}/employees`);
     return response.data;
   },
-  
-  // Add other methods as needed...
 };
 
 // ============== Payroll API ==============
@@ -2620,12 +2742,50 @@ export const payrollApi = {
 
   getEmployee: async (companyId: string, employeeId: string): Promise<Employee> => {
     const response = await api.get(`/companies/${companyId}/payroll/employees/${employeeId}`);
-    return response.data;
+    const employeeData = response.data;
+
+    // Map database field names to frontend field names
+    return {
+      ...employeeData,
+      // Map salary components from database to frontend
+      monthly_basic: employeeData.basic_salary,
+      monthly_hra: employeeData.hra,
+      monthly_special_allowance: employeeData.special_allowance,
+      monthly_conveyance: employeeData.conveyance_allowance,
+      monthly_medical: employeeData.medical_allowance,
+    };
   },
 
   createEmployee: async (companyId: string, data: EmployeeCreate): Promise<Employee> => {
-    const response = await api.post(`/companies/${companyId}/payroll/employees`, data);
-    return response.data;
+    // Map frontend field names to database field names
+    const mappedData = {
+      ...data,
+      // Map salary components from frontend to database
+      basic_salary: data.monthly_basic,
+      hra: data.monthly_hra,
+      special_allowance: data.monthly_special_allowance,
+      conveyance_allowance: data.monthly_conveyance,
+      medical_allowance: data.monthly_medical,
+      // Remove frontend-specific fields if they don't exist in database
+      monthly_basic: undefined,
+      monthly_hra: undefined,
+      monthly_special_allowance: undefined,
+      monthly_conveyance: undefined,
+      monthly_medical: undefined,
+    };
+
+    const response = await api.post(`/companies/${companyId}/payroll/employees`, mappedData);
+    const employeeData = response.data;
+
+    // Map back for the response
+    return {
+      ...employeeData,
+      monthly_basic: employeeData.basic_salary,
+      monthly_hra: employeeData.hra,
+      monthly_special_allowance: employeeData.special_allowance,
+      monthly_conveyance: employeeData.conveyance_allowance,
+      monthly_medical: employeeData.medical_allowance,
+    };
   },
 
   updateEmployee: async (
@@ -2633,8 +2793,35 @@ export const payrollApi = {
     employeeId: string,
     data: Partial<EmployeeCreate>
   ): Promise<Employee> => {
-    const response = await api.put(`/companies/${companyId}/payroll/employees/${employeeId}`, data);
-    return response.data;
+    // Map frontend field names to database field names
+    const mappedData = {
+      ...data,
+      // Map salary components from frontend to database
+      basic_salary: data.monthly_basic,
+      hra: data.monthly_hra,
+      special_allowance: data.monthly_special_allowance,
+      conveyance_allowance: data.monthly_conveyance,
+      medical_allowance: data.monthly_medical,
+      // Remove frontend-specific fields
+      monthly_basic: undefined,
+      monthly_hra: undefined,
+      monthly_special_allowance: undefined,
+      monthly_conveyance: undefined,
+      monthly_medical: undefined,
+    };
+
+    const response = await api.put(`/companies/${companyId}/payroll/employees/${employeeId}`, mappedData);
+    const employeeData = response.data;
+
+    // Map back for the response
+    return {
+      ...employeeData,
+      monthly_basic: employeeData.basic_salary,
+      monthly_hra: employeeData.hra,
+      monthly_special_allowance: employeeData.special_allowance,
+      monthly_conveyance: employeeData.conveyance_allowance,
+      monthly_medical: employeeData.medical_allowance,
+    };
   },
 
   deactivateEmployee: async (companyId: string, employeeId: string): Promise<void> => {

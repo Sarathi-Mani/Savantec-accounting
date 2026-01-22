@@ -2,9 +2,10 @@
 from datetime import datetime, date
 from decimal import Decimal
 from enum import Enum as PyEnum
+from typing import Optional, List, Dict
 from sqlalchemy import (
     Column, Integer, String, Text, DateTime, Date, Numeric, Boolean,
-    ForeignKey, Enum, JSON, Index
+    ForeignKey, Enum, JSON, Index, or_, and_
 )
 from sqlalchemy.orm import relationship
 from app.database.connection import Base
@@ -160,6 +161,7 @@ class Designation(Base):
 class Employee(Base):
     """Employee master model."""
     __tablename__ = "employees"
+    __allow_unmapped__ = True 
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
@@ -259,13 +261,32 @@ class Employee(Base):
     # Status
     status = Column(Enum(EmployeeStatus), default=EmployeeStatus.ACTIVE)
     
+    # Authentication
+    password_hash = Column(String(255))  # NEW: Hashed password for employee portal
+    
+    # Salary components (NEW: As actual database columns)
+    basic_salary = Column(Numeric(14, 2), nullable=True)  # Annual basic salary
+    hra = Column(Numeric(14, 2), nullable=True)  # Annual HRA
+    special_allowance = Column(Numeric(14, 2), nullable=True)  # Annual special allowance
+    conveyance_allowance = Column(Numeric(14, 2), nullable=True)  # Annual conveyance allowance
+    medical_allowance = Column(Numeric(14, 2), nullable=True)  # Annual medical allowance
+    salary_calculation_method = Column(String(50), default="ctc_breakup")  # ctc_breakup or direct
+    same_as_permanent = Column(Boolean, default=False)
+    
+    # Monthly salary components (NEW: As actual database columns)
+    monthly_basic = Column(Numeric(14, 2), nullable=True)  # Monthly basic salary
+    monthly_hra = Column(Numeric(14, 2), nullable=True)  # Monthly HRA
+    monthly_special_allowance = Column(Numeric(14, 2), nullable=True)  # Monthly special allowance
+    monthly_conveyance = Column(Numeric(14, 2), nullable=True)  # Monthly conveyance allowance
+    monthly_medical = Column(Numeric(14, 2), nullable=True)  # Monthly medical allowance
+    
     # Photo
     photo_url = Column(String(500))
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
+    # Relationships (unchanged)
     department = relationship("Department", back_populates="employees", foreign_keys=[department_id])
     designation = relationship("Designation", back_populates="employees")
     reporting_manager = relationship("Employee", remote_side=[id], backref="subordinates")
@@ -284,7 +305,7 @@ class Employee(Base):
     def __repr__(self):
         return f"<Employee {self.employee_code} - {self.full_name}>"
 
-
+        
 class SalaryComponent(Base):
     """Salary component master - Basic, HRA, DA, etc."""
     __tablename__ = "salary_components"

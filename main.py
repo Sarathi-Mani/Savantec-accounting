@@ -42,6 +42,7 @@ from app.api.banking import router as banking_router
 from app.api.reports_advanced import router as reports_advanced_router
 from app.api.additional_endpoints import router as additional_router
 from app.api.attendance_leave import router as attendance_leave_router
+from app.api.upload import router as upload_router  # ADD THIS IMPORT
 
 # Create FastAPI application
 app = FastAPI(
@@ -73,6 +74,8 @@ app.add_middleware(
         "http://127.0.0.1:6767",
         "http://localhost:6768",
         "http://127.0.0.1:6768",
+        "http://localhost:3000",  # ADD THIS for React dev server on port 3000
+        "http://127.0.0.1:3000",
         "https://accounts-demo.sellfiz.com",  # Production frontend
         "https://accounts-demo-api.sellfiz.com",  # Production API
     ],
@@ -84,9 +87,11 @@ app.add_middleware(
 # Create directories
 os.makedirs("static", exist_ok=True)
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+os.makedirs("uploads/employees", exist_ok=True)  # ADD THIS for employee uploads
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")  # ADD THIS
 
 # Include API routers
 app.include_router(auth_router, prefix="/api")
@@ -120,10 +125,22 @@ app.include_router(enquiries_router)
 app.include_router(sales_tickets_router)
 app.include_router(sales_dashboard_router)
 app.include_router(alternative_products_router, prefix="/api")
-
-# ADD THESE TWO LINES for brands and categories
 app.include_router(brands_router, prefix="/api")
 app.include_router(categories_router, prefix="/api")
+app.include_router(upload_router, prefix="/api")  # ADD THIS LINE
+
+# Also add a simple upload endpoint directly in payroll router
+# Update your app/api/payroll.py to include this at the end:
+
+# @router.post("/upload-image")
+# async def upload_employee_image(
+#     company_id: str,
+#     employee_id: Optional[str] = Form(None),
+#     image: UploadFile = File(...),
+#     current_user: User = Depends(get_current_active_user),
+#     db: Session = Depends(get_db)
+# ):
+#     # ... upload code ...
 
 
 @app.on_event("startup")
@@ -167,9 +184,10 @@ async def api_info():
             "transactions": "/api/companies/{company_id}/transactions",
             "bank_import": "/api/companies/{company_id}/bank-import",
             "reports": "/api/companies/{company_id}/reports",
-            # Add these endpoints
+            "upload": "/api/upload",  # ADD THIS
             "brands": "/api/companies/{company_id}/brands",
-            "categories": "/api/companies/{company_id}/categories"
+            "categories": "/api/companies/{company_id}/categories",
+            "payroll": "/api/companies/{company_id}/payroll",
         }
     }
 
@@ -182,4 +200,3 @@ if __name__ == "__main__":
         port=6768,
         reload=settings.DEBUG
     )
-    

@@ -18,7 +18,7 @@ export default function AlternativeProductsPage() {
   const [manufacturers, setManufacturers] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const pageSize = 20;
+  const pageSize = 10;
 
   const companyId =
     typeof window !== "undefined" ? localStorage.getItem("company_id") : null;

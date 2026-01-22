@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { brandsApi, getErrorMessage } from "@/services/api";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -59,13 +60,28 @@ export default function NewBrandPage() {
   }
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-dark dark:text-white">Add Brand</h1>
-        <p className="text-sm text-dark-6">Add a new product brand</p>
+    <div className="p-6 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center gap-4 mb-6">
+        <Link
+          href="/products/brands"
+          className="flex h-10 w-10 items-center justify-center rounded-full 
+             bg-primary text-white 
+             hover:bg-primary/90 
+             transition"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </Link>
+
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create New Brand</h1>
+          <p className="text-gray-500 dark:text-gray-400">Create a new product brand</p>
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="max-w-2xl">
+      <form onSubmit={handleSubmit} className="space-y-6">
         {error && (
           <div className="mb-6 rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">
             {error}
@@ -109,7 +125,7 @@ export default function NewBrandPage() {
             <button
               type="button"
               onClick={() => router.back()}
-              className="rounded-lg border border-stroke px-6 py-3 font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
+              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 dark:border-dark-3 dark:text-gray-300 dark:hover:bg-dark-3"
             >
               Cancel
             </button>

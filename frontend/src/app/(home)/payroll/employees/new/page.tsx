@@ -126,9 +126,34 @@ export default function NewEmployeePage() {
     return annualCTC.toString();
   };
 
+const uploadImage = async (file: File): Promise<string> => {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    // Use the correct endpoint
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || "Upload failed");
+    }
+
+    const data = await response.json();
+    return data.url; // This will be like "/uploads/abc-123.jpg"
+  } catch (error: any) {
+    console.error("Upload error:", error);
+    // Fallback to local URL for preview
+    return URL.createObjectURL(file);
+  }
+};
+
   const [formData, setFormData] = useState({
     // Personal (existing)
-    
+
     first_name: "",
     last_name: "",
     date_of_birth: "",
@@ -234,38 +259,36 @@ export default function NewEmployeePage() {
     }
   };
 
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!companyId) return;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!companyId) return;
 
-  try {
-    setLoading(true);
-    setError(null);
+    try {
+      setLoading(true);
+      setError(null);
 
-    // Create a new object WITHOUT employee_code
-    const { employee_code, ...dataToSend } = formData;
+      const data = {
+        ...formData,
+        ctc: formData.ctc ? parseFloat(formData.ctc) : undefined,
+        monthly_basic: formData.monthly_basic ? parseFloat(formData.monthly_basic) : undefined,
+        monthly_hra: formData.monthly_hra ? parseFloat(formData.monthly_hra) : undefined,
+        monthly_special_allowance: formData.monthly_special_allowance ? parseFloat(formData.monthly_special_allowance) : undefined,
+        monthly_conveyance: formData.monthly_conveyance ? parseFloat(formData.monthly_conveyance) : undefined,
+        monthly_medical: formData.monthly_medical ? parseFloat(formData.monthly_medical) : undefined,
+        children_count: Number(formData.children_count),
+        department_id: formData.department_id || undefined,
+        designation_id: formData.designation_id || undefined,
+      };
 
-    const data = {
-      ...dataToSend,
-      ctc: dataToSend.ctc ? parseFloat(dataToSend.ctc) : undefined,
-      monthly_basic: dataToSend.monthly_basic ? parseFloat(dataToSend.monthly_basic) : undefined,
-      monthly_hra: dataToSend.monthly_hra ? parseFloat(dataToSend.monthly_hra) : undefined,
-      monthly_special_allowance: dataToSend.monthly_special_allowance ? parseFloat(dataToSend.monthly_special_allowance) : undefined,
-      monthly_conveyance: dataToSend.monthly_conveyance ? parseFloat(dataToSend.monthly_conveyance) : undefined,
-      monthly_medical: dataToSend.monthly_medical ? parseFloat(dataToSend.monthly_medical) : undefined,
-      children_count: parseInt(dataToSend.children_count.toString()),
-      department_id: dataToSend.department_id || undefined,
-      designation_id: dataToSend.designation_id || undefined,
-    };
+      await payrollApi.createEmployee(companyId, data);
+      router.push("/payroll/employees");
+    } catch (err: any) {
+      setError(getErrorMessage(err, "Failed to create employee"));
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    await payrollApi.createEmployee(companyId, data);
-    router.push("/payroll/employees");
-  } catch (err: any) {
-    setError(getErrorMessage(err, "Failed to create employee"));
-  } finally {
-    setLoading(false);
-  }
-};
 
   const tabs = [
     { id: "personal", label: "Personal Details", icon: User },
@@ -458,46 +481,96 @@ const handleSubmit = async (e: React.FormEvent) => {
                   <div className="flex items-center gap-6">
                     {formData.photo_url ? (
                       <div className="relative">
-                        <img
-                          src={formData.photo_url}
-                          alt="Staff"
-                          className="w-32 h-32 object-cover rounded-lg border-2 border-gray-200"
-                        />
+                        <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-gray-200">
+                          <img
+                            src={formData.photo_url}
+                            alt="Staff"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              // If image fails to load, show initials
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              const parent = target.parentElement;
+                              if (parent) {
+                                const initialsDiv = document.createElement('div');
+                                initialsDiv.className = 'w-full h-full flex items-center justify-center bg-primary/10';
+                                initialsDiv.innerHTML = `<span class="text-2xl font-bold text-primary">${formData.first_name?.charAt(0) || 'U'}${formData.last_name?.charAt(0) || ''}</span>`;
+                                parent.appendChild(initialsDiv);
+                              }
+                            }}
+                          />
+                        </div>
                         <button
                           type="button"
                           onClick={() => setFormData(prev => ({ ...prev, photo_url: "" }))}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                          title="Remove photo"
                         >
                           <span className="text-xs">×</span>
                         </button>
                       </div>
                     ) : (
                       <div className="w-32 h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center">
-                        <Camera className="w-8 h-8 text-gray-400" />
+                        <div className="text-center">
+                          <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                          <span className="text-sm text-gray-500">Upload Photo</span>
+                          {formData.first_name && (
+                            <div className="mt-2">
+                              <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+                                <span className="text-xl font-bold text-primary">
+                                  {formData.first_name.charAt(0)}
+                                  {formData.last_name?.charAt(0) || ''}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">Preview</p>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
+
                     <div className="flex-1">
                       <input
                         type="file"
+                        id="photo-upload"
                         accept="image/*"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            // Here you would upload to your server and get URL
-                            // For now, create a local URL for preview
-                            const url = URL.createObjectURL(file);
-                            setFormData(prev => ({ ...prev, photo_url: url }));
+                            try {
+                              setLoading(true);
+                              const imageUrl = await uploadImage(file);
+                              setFormData(prev => ({ ...prev, photo_url: imageUrl }));
+                            } catch (error) {
+                              console.error("Error uploading image:", error);
+                              alert("Failed to upload image. Please try again.");
+                            } finally {
+                              setLoading(false);
+                              if (e.target) {
+                                (e.target as HTMLInputElement).value = ''; // Reset input
+                              }
+                            }
                           }
                         }}
-                        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary file:text-white hover:file:bg-primary/90"
+                        className="hidden"
+                        disabled={loading}
                       />
+                      <label
+                        htmlFor="photo-upload"
+                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition-colors ${loading
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-primary text-white hover:bg-primary/90'
+                          }`}
+                      >
+                        <Camera className="w-4 h-4" />
+                        {loading ? "Uploading..." : "Choose Photo"}
+                      </label>
                       <p className="text-xs text-gray-500 mt-2">
                         Upload passport size photo (Max 2MB, JPG/PNG)
                       </p>
                     </div>
                   </div>
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Email
@@ -626,6 +699,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             {/* Family Details Tab */}
             {activeTab === "family" && (
               <div className="space-y-6">
+                {/* Father and Mother always visible */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -654,57 +728,65 @@ const handleSubmit = async (e: React.FormEvent) => {
                   </div>
                 </div>
 
-                {/* Spouse Details section - Add condition here */}
+                {/* Show Spouse and Children details ONLY when marital status is "married" */}
                 {formData.marital_status === "married" && (
-                  <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-                    <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4">
-                      Spouse Details
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Spouse Name
-                        </label>
-                        <input
-                          type="text"
-                          name="spouse_name"
-                          value={formData.spouse_name}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
-                        />
-                      </div>
+                  <>
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                      <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4">
+                        Spouse Details
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Spouse Name
+                          </label>
+                          <input
+                            type="text"
+                            name="spouse_name"
+                            value={formData.spouse_name}
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
+                          />
+                        </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Spouse Occupation
-                        </label>
-                        <input
-                          type="text"
-                          name="spouse_occupation"
-                          value={formData.spouse_occupation}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
-                        />
+                        {/* <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Spouse Occupation
+                          </label>
+                          <input
+                            type="text"
+                            name="spouse_occupation"
+                            value={formData.spouse_occupation}
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
+                          />
+                        </div> */}
                       </div>
                     </div>
-                  </div>
-                )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Number of Children
-                    </label>
-                    <input
-                      type="number"
-                      name="children_count"
-                      value={formData.children_count}
-                      onChange={handleChange}
-                      min="0"
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
-                    />
-                  </div>
-                </div>
+                    {/* Children details - only show when married */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                      <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4">
+                        Children Details
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Number of Children
+                          </label>
+                          <input
+                            type="number"
+                            name="children_count"
+                            value={formData.children_count}
+                            onChange={handleChange}
+                            min="0"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
                   <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4">

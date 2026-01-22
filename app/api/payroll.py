@@ -1,10 +1,19 @@
 """Payroll API endpoints for employee and salary management."""
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Form, File, UploadFile
+from fastapi.responses import JSONResponse
+
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import date
 from decimal import Decimal
 from pydantic import BaseModel, Field
+
+import os  # Add this
+import uuid  # Add this
+import shutil  # Add this
+
+from sqlalchemy.orm import joinedload
+from sqlalchemy import or_
 
 from app.database.connection import get_db
 from app.database.models import User, Company
@@ -76,26 +85,59 @@ class DesignationResponse(BaseModel):
 
 
 class EmployeeCreate(BaseModel):
-    employee_code: Optional[str] = None
+    # Personal details
     first_name: str
     last_name: Optional[str] = None
     date_of_birth: Optional[date] = None
     gender: Optional[Gender] = None
     marital_status: Optional[MaritalStatus] = None
+    blood_group: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
+    
+    # Family details
+    father_name: Optional[str] = None
+    mother_name: Optional[str] = None
+    spouse_name: Optional[str] = None
+    spouse_occupation: Optional[str] = None
+    children_count: Optional[int] = 0
+    children_details: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_relation: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    
+    # Contact details
+    personal_email: Optional[str] = None
+    official_email: Optional[str] = None
+    personal_phone: Optional[str] = None
+    official_phone: Optional[str] = None
+    alternate_phone: Optional[str] = None
+    
+    # Address
+    permanent_address: Optional[str] = None
     current_address: Optional[str] = None
     current_city: Optional[str] = None
-    current_state: Optional[str] = None
-    current_pincode: Optional[str] = None
-    pan: Optional[str] = None
-    aadhaar: Optional[str] = None
+    same_as_permanent: bool = False
+    
+    # Employment
     department_id: Optional[str] = None
     designation_id: Optional[str] = None
     employee_type: EmployeeType = EmployeeType.PERMANENT
     date_of_joining: date
     work_state: Optional[str] = None
+    
+    # Salary components (from frontend)
     ctc: Optional[float] = 0
+    monthly_basic: Optional[float] = None
+    monthly_hra: Optional[float] = None
+    monthly_special_allowance: Optional[float] = None
+    monthly_conveyance: Optional[float] = None
+    monthly_medical: Optional[float] = None
+    salary_calculation_method: Optional[str] = "ctc_breakup"
+    
+    # Statutory
+    pan: Optional[str] = None
+    aadhaar: Optional[str] = None
     uan: Optional[str] = None
     pf_number: Optional[str] = None
     esi_number: Optional[str] = None
@@ -103,40 +145,89 @@ class EmployeeCreate(BaseModel):
     esi_applicable: bool = True
     pt_applicable: bool = True
     tax_regime: TaxRegime = TaxRegime.NEW
+    
+    # Bank details
     bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
     bank_account_number: Optional[str] = None
     bank_ifsc: Optional[str] = None
+    account_holder_name: Optional[str] = None
+    
+    # Photo
+    photo_url: Optional[str] = None
 
 
 class EmployeeUpdate(BaseModel):
-    first_name: Optional[str] = None
+    # Personal details
+    first_name: str
     last_name: Optional[str] = None
     date_of_birth: Optional[date] = None
     gender: Optional[Gender] = None
     marital_status: Optional[MaritalStatus] = None
+    blood_group: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
+    
+    # Family details
+    father_name: Optional[str] = None
+    mother_name: Optional[str] = None
+    spouse_name: Optional[str] = None
+    spouse_occupation: Optional[str] = None
+    children_count: Optional[int] = 0
+    children_details: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_relation: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    
+    # Contact details
+    personal_email: Optional[str] = None
+    official_email: Optional[str] = None
+    personal_phone: Optional[str] = None
+    official_phone: Optional[str] = None
+    alternate_phone: Optional[str] = None
+    
+    # Address
+    permanent_address: Optional[str] = None
     current_address: Optional[str] = None
     current_city: Optional[str] = None
-    current_state: Optional[str] = None
-    current_pincode: Optional[str] = None
-    pan: Optional[str] = None
-    aadhaar: Optional[str] = None
+    same_as_permanent: bool = False
+    
+    # Employment
     department_id: Optional[str] = None
     designation_id: Optional[str] = None
-    employee_type: Optional[EmployeeType] = None
+    employee_type: EmployeeType = EmployeeType.PERMANENT
+    date_of_joining: date
     work_state: Optional[str] = None
-    ctc: Optional[float] = None
+    
+    # Salary components (from frontend)
+    ctc: Optional[float] = 0
+    monthly_basic: Optional[float] = None
+    monthly_hra: Optional[float] = None
+    monthly_special_allowance: Optional[float] = None
+    monthly_conveyance: Optional[float] = None
+    monthly_medical: Optional[float] = None
+    salary_calculation_method: Optional[str] = "ctc_breakup"
+    
+    # Statutory
+    pan: Optional[str] = None
+    aadhaar: Optional[str] = None
     uan: Optional[str] = None
     pf_number: Optional[str] = None
     esi_number: Optional[str] = None
-    pf_applicable: Optional[bool] = None
-    esi_applicable: Optional[bool] = None
-    pt_applicable: Optional[bool] = None
-    tax_regime: Optional[TaxRegime] = None
+    pf_applicable: bool = True
+    esi_applicable: bool = True
+    pt_applicable: bool = True
+    tax_regime: TaxRegime = TaxRegime.NEW
+    
+    # Bank details
     bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
     bank_account_number: Optional[str] = None
     bank_ifsc: Optional[str] = None
+    account_holder_name: Optional[str] = None
+    
+    # Photo
+    photo_url: Optional[str] = None
     status: Optional[EmployeeStatus] = None
 
 
@@ -144,24 +235,86 @@ class EmployeeResponse(BaseModel):
     id: str
     employee_code: str
     first_name: str
+    department: Optional[DepartmentResponse]
+    designation: Optional[DesignationResponse]
+
     last_name: Optional[str]
     full_name: Optional[str]
     date_of_birth: Optional[date]
     gender: Optional[str]
+    marital_status: Optional[str]
+    blood_group: Optional[str]
     email: Optional[str]
     phone: Optional[str]
+    
+    # Family details
+    father_name: Optional[str]
+    mother_name: Optional[str]
+    spouse_name: Optional[str]
+    spouse_occupation: Optional[str]
+    children_count: Optional[int]
+    children_details: Optional[str]
+    emergency_contact_name: Optional[str]
+    emergency_contact_relation: Optional[str]
+    emergency_contact_phone: Optional[str]
+    
+    # Contact details
+    personal_email: Optional[str]
+    official_email: Optional[str]
+    personal_phone: Optional[str]
+    official_phone: Optional[str]
+    alternate_phone: Optional[str]
+    
+    # Address
+    permanent_address: Optional[str]
+    current_address: Optional[str]
+    current_city: Optional[str]
+    same_as_permanent: Optional[bool]
+    
+    # Employment
     department_id: Optional[str]
     designation_id: Optional[str]
     employee_type: str
     date_of_joining: date
     work_state: Optional[str]
+    
+    # Salary
     ctc: Optional[float]
+    basic_salary: Optional[float]
+    hra: Optional[float]
+    special_allowance: Optional[float]
+    conveyance_allowance: Optional[float]
+    medical_allowance: Optional[float]
+    salary_calculation_method: Optional[str]
+    
+    # Map frontend fields
+    monthly_basic: Optional[float] = None
+    monthly_hra: Optional[float] = None
+    monthly_special_allowance: Optional[float] = None
+    monthly_conveyance: Optional[float] = None
+    monthly_medical: Optional[float] = None
+    
+    # Statutory
     pan: Optional[str]
+    aadhaar: Optional[str]
     uan: Optional[str]
+    pf_number: Optional[str]
+    esi_number: Optional[str]
     pf_applicable: bool
     esi_applicable: bool
     pt_applicable: bool
     tax_regime: str
+    
+    # Bank details
+    bank_name: Optional[str]
+    bank_branch: Optional[str]
+    bank_account_number: Optional[str]
+    bank_ifsc: Optional[str]
+    account_holder_name: Optional[str]
+    
+    # Photo
+    photo_url: Optional[str]
+    
     status: str
     
     class Config:
@@ -350,6 +503,73 @@ async def list_designations(
 
 # ==================== EMPLOYEES ====================
 
+@router.post("/upload-image")
+async def upload_employee_image(
+    company_id: str,  # Remove Form(...) since this is a path parameter from the URL
+    employee_id: Optional[str] = Form(None),
+    image: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Upload employee photo."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    # Validate file type
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+    file_extension = os.path.splitext(image.filename)[1].lower() if image.filename else ""
+    
+    if not file_extension or file_extension not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file type. Allowed: JPG, JPEG, PNG, GIF, WEBP"
+        )
+    
+    # Validate file size (max 2MB)
+    contents = await image.read()
+    if len(contents) > 2 * 1024 * 1024:  # 2MB
+        raise HTTPException(
+            status_code=400,
+            detail="File size exceeds 2MB limit"
+        )
+    
+    # Create uploads directory
+    base_dir = os.getcwd()  # Current working directory
+    upload_dir = os.path.join(base_dir, "selfiz-accounting-project", "uploads", "employees")
+    
+    # Create directory if it doesn't exist
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    # Generate unique filename
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    file_path = os.path.join(upload_dir, unique_filename)
+    
+    # Reset file pointer and save
+    await image.seek(0)
+    with open(file_path, "wb") as f:
+        f.write(contents)
+    
+    # Build URL for frontend access
+    image_url = f"/uploads/employees/{unique_filename}"
+    
+    # If employee_id is provided, update employee record
+    if employee_id:
+        employee = db.query(Employee).filter(
+            Employee.id == employee_id,
+            Employee.company_id == company.id
+        ).first()
+        
+        if employee:
+            employee.photo_url = image_url
+            db.commit()
+    
+    return JSONResponse({
+        "success": True,
+        "url": image_url,
+        "filename": unique_filename,
+        "message": "Image uploaded successfully"
+    })
+
+    
 @router.post("/employees", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
 async def create_employee(
     company_id: str,
@@ -364,24 +584,133 @@ async def create_employee(
     payroll_service = PayrollService(db)
     employee_code = payroll_service._generate_employee_code(company.id)
     
-    # Check for duplicate employee code (just in case)
+    # Check for duplicate employee code
     existing = db.query(Employee).filter(
         Employee.company_id == company.id,
         Employee.employee_code == employee_code,
     ).first()
     
     if existing:
-        # Regenerate if duplicate
+        # Regenerate if duplicate found
         employee_code = payroll_service._generate_employee_code(company.id)
     
-    # Prepare employee data
-    employee_data = data.model_dump()
-    employee_data["full_name"] = f"{data.first_name} {data.last_name or ''}".strip()
-    employee_data["employee_code"] = employee_code  # Add generated code here
+    # Prepare employee data with field mapping
+    employee_data = data.model_dump(exclude_unset=True)
     
-    if data.ctc:
-        employee_data["ctc"] = Decimal(str(data.ctc))
+    # Map frontend field names to database field names for salary components
+    field_mapping = {
+        'monthly_basic': 'basic_salary',
+        'monthly_hra': 'hra',
+        'monthly_special_allowance': 'special_allowance',
+        'monthly_conveyance': 'conveyance_allowance',
+        'monthly_medical': 'medical_allowance',
+    }
     
+    # Apply field mapping for annual salary fields
+    for frontend_field, backend_field in field_mapping.items():
+        if frontend_field in employee_data:
+            employee_data[backend_field] = employee_data.pop(frontend_field)
+    
+    # Handle salary structure based on calculation method
+    salary_calculation_method = employee_data.get('salary_calculation_method', 'ctc_breakup')
+    
+    if salary_calculation_method == "monthly_components":
+        # If monthly components provided, calculate annual
+        if 'monthly_basic' in employee_data and employee_data['monthly_basic']:
+            monthly_basic = Decimal(str(employee_data['monthly_basic']))
+            employee_data['basic_salary'] = monthly_basic * Decimal('12')
+            employee_data['monthly_basic'] = monthly_basic
+        
+        if 'monthly_hra' in employee_data and employee_data['monthly_hra']:
+            monthly_hra = Decimal(str(employee_data['monthly_hra']))
+            employee_data['hra'] = monthly_hra * Decimal('12')
+            employee_data['monthly_hra'] = monthly_hra
+        
+        if 'monthly_special_allowance' in employee_data and employee_data['monthly_special_allowance']:
+            monthly_sa = Decimal(str(employee_data['monthly_special_allowance']))
+            employee_data['special_allowance'] = monthly_sa * Decimal('12')
+            employee_data['monthly_special_allowance'] = monthly_sa
+        
+        if 'monthly_conveyance' in employee_data and employee_data['monthly_conveyance']:
+            monthly_conveyance = Decimal(str(employee_data['monthly_conveyance']))
+            employee_data['conveyance_allowance'] = monthly_conveyance * Decimal('12')
+            employee_data['monthly_conveyance'] = monthly_conveyance
+        
+        if 'monthly_medical' in employee_data and employee_data['monthly_medical']:
+            monthly_medical = Decimal(str(employee_data['monthly_medical']))
+            employee_data['medical_allowance'] = monthly_medical * Decimal('12')
+            employee_data['monthly_medical'] = monthly_medical
+        
+        # Calculate CTC from monthly components
+        annual_ctc = (employee_data.get('basic_salary', 0) or 0) + \
+                     (employee_data.get('hra', 0) or 0) + \
+                     (employee_data.get('special_allowance', 0) or 0) + \
+                     (employee_data.get('conveyance_allowance', 0) or 0) + \
+                     (employee_data.get('medical_allowance', 0) or 0)
+        
+        employee_data['ctc'] = annual_ctc
+        
+    elif salary_calculation_method == "ctc_breakup" and 'ctc' in employee_data and employee_data['ctc']:
+        # Calculate from CTC
+        ctc = Decimal(str(employee_data['ctc']))
+        
+        # Standard CTC breakup: 40% basic, 20% HRA, 30% special allowance, 10% others
+        employee_data['basic_salary'] = ctc * Decimal("0.40")  # 40% of CTC
+        employee_data['hra'] = ctc * Decimal("0.20")  # 20% of CTC
+        employee_data['special_allowance'] = ctc * Decimal("0.30")  # 30% of CTC
+        
+        # Standard allowances (monthly values * 12)
+        employee_data['conveyance_allowance'] = Decimal("1600") * 12  # ₹1600/month
+        employee_data['medical_allowance'] = Decimal("1250") * 12  # ₹1250/month
+        
+        # Calculate monthly values for display
+        employee_data['monthly_basic'] = employee_data['basic_salary'] / 12
+        employee_data['monthly_hra'] = employee_data['hra'] / 12
+        employee_data['monthly_special_allowance'] = employee_data['special_allowance'] / 12
+        employee_data['monthly_conveyance'] = Decimal("1600")
+        employee_data['monthly_medical'] = Decimal("1250")
+    
+    # Handle numeric conversions for all numeric fields
+    numeric_fields = [
+        'ctc', 'basic_salary', 'hra', 'special_allowance', 
+        'conveyance_allowance', 'medical_allowance',
+        'monthly_basic', 'monthly_hra', 'monthly_special_allowance',
+        'monthly_conveyance', 'monthly_medical', 'children_count'
+    ]
+    
+    for field in numeric_fields:
+        if field in employee_data and employee_data[field] is not None:
+            try:
+                employee_data[field] = Decimal(str(employee_data[field]))
+            except (InvalidOperation, ValueError):
+                # If conversion fails, set to 0 or None based on field
+                if field == 'children_count':
+                    employee_data[field] = 0
+                else:
+                    employee_data[field] = Decimal('0')
+    
+    # Set full name
+    first_name = employee_data.get('first_name', '')
+    last_name = employee_data.get('last_name', '')
+    employee_data["full_name"] = f"{first_name} {last_name}".strip()
+    
+    # Set employee code
+    employee_data["employee_code"] = employee_code
+    
+    # Set default status if not provided
+    if 'status' not in employee_data:
+        employee_data['status'] = EmployeeStatus.ACTIVE
+    
+    # Set default tax regime if not provided
+    if 'tax_regime' not in employee_data:
+        employee_data['tax_regime'] = TaxRegime.NEW
+    
+    # Handle same_as_permanent for address
+    if employee_data.get('same_as_permanent', False) and 'permanent_address' in employee_data:
+        employee_data['current_address'] = employee_data['permanent_address']
+        employee_data['current_city'] = employee_data.get('permanent_city', '')
+    
+    # Create employee
     employee = Employee(
         company_id=company.id,
         **employee_data
@@ -390,7 +719,23 @@ async def create_employee(
     db.commit()
     db.refresh(employee)
     
+    # Eager load relationships for response
+    employee = db.query(Employee).options(
+        joinedload(Employee.department),
+        joinedload(Employee.designation)
+    ).filter(Employee.id == employee.id).first()
+    
     return employee
+
+def get_employees(db: Session = Depends(get_db)):
+    return (
+        db.query(Employee)
+        .options(
+            joinedload(Employee.department),
+            joinedload(Employee.designation)
+        )
+        .all()
+    )
     
 
 # payroll.py (endpoint update)
@@ -409,7 +754,14 @@ async def list_employees(
     """List all employees with pagination."""
     company = get_company_or_404(company_id, current_user, db)
     
-    query = db.query(Employee).filter(Employee.company_id == company.id)
+    query = (
+        db.query(Employee)
+        .options(
+            joinedload(Employee.department),
+            joinedload(Employee.designation),
+        )
+        .filter(Employee.company_id == company.id)
+    )
     
     if status_filter:
         query = query.filter(Employee.status == status_filter)
@@ -492,13 +844,35 @@ async def update_employee(
     
     update_data = data.model_dump(exclude_unset=True)
     
+    # Map frontend field names to database field names
+    field_mapping = {
+        'monthly_basic': 'basic_salary',
+        'monthly_hra': 'hra',
+        'monthly_special_allowance': 'special_allowance',
+        'monthly_conveyance': 'conveyance_allowance',
+        'monthly_medical': 'medical_allowance',
+    }
+    
+    # Apply field mapping
+    for frontend_field, backend_field in field_mapping.items():
+        if frontend_field in update_data:
+            update_data[backend_field] = update_data.pop(frontend_field)
+    
+    # Handle numeric conversions
+    numeric_fields = ['ctc', 'basic_salary', 'hra', 'special_allowance', 
+                     'conveyance_allowance', 'medical_allowance']
+    
+    for field in numeric_fields:
+        if field in update_data and update_data[field] is not None:
+            update_data[field] = Decimal(str(update_data[field]))
+    
+    # Update fields
     for key, value in update_data.items():
-        if key == "ctc" and value is not None:
-            value = Decimal(str(value))
         setattr(employee, key, value)
     
-    # Update full name
-    employee.full_name = f"{employee.first_name} {employee.last_name or ''}".strip()
+    # Update full name if first_name or last_name changed
+    if 'first_name' in update_data or 'last_name' in update_data:
+        employee.full_name = f"{employee.first_name} {employee.last_name or ''}".strip()
     
     db.commit()
     db.refresh(employee)
