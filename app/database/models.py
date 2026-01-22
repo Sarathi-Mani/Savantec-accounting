@@ -781,6 +781,7 @@ class Product(Base):
     # ADD this column if not present
     stock_group_id = Column(String(36), ForeignKey("stock_groups.id", ondelete="SET NULL"), index=True)
     is_active = Column(Boolean, default=True, index=True)
+    is_service = Column(Boolean, default=False, index=True)
 
     # Relationships - FIXED
     company = relationship("Company", back_populates="items")
@@ -895,7 +896,44 @@ class Invoice(Base):
     invoice_number = Column(String(50), nullable=False, index=True)
     invoice_date = Column(DateTime, nullable=False, default=datetime.utcnow)
     due_date = Column(DateTime)
+    round_off = Column(Numeric(15, 2), default=0.00)
+    sales_person_id = Column(String(36), ForeignKey("employees.id"), nullable=True, index=True)
+    shipping_address = Column(Text, nullable=True)
+    shipping_city = Column(String(100), nullable=True)
+    shipping_state = Column(String(100), nullable=True)
+    shipping_country = Column(String(100), default="India", nullable=True)
+    shipping_zip = Column(String(20), nullable=True)
+
+    reference_no = Column(String(100), nullable=True)
+    delivery_note = Column(Text, nullable=True)
+    payment_terms = Column(String(255), nullable=True)
+    supplier_ref = Column(String(100), nullable=True)
+    other_references = Column(Text, nullable=True)
+    buyer_order_no = Column(String(100), nullable=True)
+    buyer_order_date = Column(Date, nullable=True)
+    despatch_doc_no = Column(String(100), nullable=True)
+    delivery_note_date = Column(Date, nullable=True)
+    despatched_through = Column(String(100), nullable=True)
+    destination = Column(String(255), nullable=True)
+    terms_of_delivery = Column(Text, nullable=True)
+    freight_charges = Column(Numeric(15, 2), default=0.00)
+    packing_forwarding_charges = Column(Numeric(15, 2), default=0.00)
+    coupon_code = Column(String(50), nullable=True)
+    coupon_value = Column(Numeric(15, 2), default=0.00)
+    discount_on_all = Column(Numeric(15, 2), default=0.00)
+    discount_type = Column(String(20), default='percentage')
     
+    # Payment
+    payment_type = Column(String(20), nullable=True)
+    payment_account = Column(String(100), nullable=True)
+    payment_note = Column(Text, nullable=True)
+    adjust_advance_payment = Column(Boolean, default=False)
+
+    customer_name = Column(String(255), nullable=True)
+    customer_gstin = Column(String(15), nullable=True)
+    customer_phone = Column(String(15), nullable=True)
+    customer_state = Column(String(100), nullable=True)
+    customer_state_code = Column(String(2), nullable=True)
     # Invoice type for GST
     invoice_type = Column(Enum(InvoiceType, name='invoice_type_enum'), default=InvoiceType.B2C)
  
@@ -950,6 +988,7 @@ class Invoice(Base):
     company = relationship("Company", back_populates="invoices")
     customer = relationship("Customer", back_populates="invoices")
     sales_ticket = relationship("SalesTicket")
+    sales_person = relationship("Employee", foreign_keys=[sales_person_id])
     contact = relationship("Contact")
     items = relationship("InvoiceItem", back_populates="invoice", cascade="all, delete-orphan")
     payments = relationship("Payment", back_populates="invoice", cascade="all, delete-orphan")
@@ -3461,6 +3500,103 @@ class QuotationStatus(str, PyEnum):
     CONVERTED = "converted"
 
 
+
+class SubItem(Base):
+    __tablename__ = "sub_items"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    quotation_item_id = Column(String, ForeignKey("quotation_items.id", ondelete="CASCADE"), nullable=False)
+    description = Column(Text, nullable=False)
+    quantity = Column(Integer, nullable=False, default=1)
+    image_url = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationship
+    quotation_item = relationship("QuotationItem", back_populates="sub_items")
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "description": self.description,
+            "quantity": self.quantity,
+            "image_url": self.image_url,
+        }
+
+
+class QuotationItem(Base):
+    """Quotation line item model."""
+    __tablename__ = "quotation_items"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    quotation_id = Column(String(36), ForeignKey("quotations.id", ondelete="CASCADE"), nullable=False)
+    product_id = Column(String(36), ForeignKey("items.id", ondelete="SET NULL"))
+    item_code = Column(String(250), nullable=True)
+    is_project = Column(Boolean, default=False)
+    # Item details
+    description = Column(String(500), nullable=False)
+    hsn_code = Column(String(8))
+    
+    # Quantity and pricing
+    quantity = Column(Numeric(10, 3), nullable=False)
+    unit = Column(String(20), default="unit")
+    unit_price = Column(Numeric(12, 2), nullable=False)
+    
+    # Discount
+    discount_percent = Column(Numeric(5, 2), default=0)
+    discount_amount = Column(Numeric(12, 2), default=0)
+    
+    # Tax
+    gst_rate = Column(Numeric(5, 2), nullable=False)
+    cgst_rate = Column(Numeric(5, 2), default=0)
+    sgst_rate = Column(Numeric(5, 2), default=0)
+    igst_rate = Column(Numeric(5, 2), default=0)
+    
+    cgst_amount = Column(Numeric(12, 2), default=0)
+    sgst_amount = Column(Numeric(12, 2), default=0)
+    igst_amount = Column(Numeric(12, 2), default=0)
+    cess_amount = Column(Numeric(12, 2), default=0)
+    
+    # Totals
+    taxable_amount = Column(Numeric(14, 2), nullable=False)
+    total_amount = Column(Numeric(14, 2), nullable=False)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    quotation = relationship("Quotation", back_populates="items")
+    product = relationship("Product")
+    sub_items = relationship("SubItem", back_populates="quotation_item", cascade="all, delete-orphan")
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "product_id": self.product_id,
+            "item_code": self.item_code,
+            "description": self.description,
+            "hsn_code": self.hsn_code,
+            "quantity": float(self.quantity),
+            "unit": self.unit,
+            "unit_price": float(self.unit_price),
+            "discount_percent": float(self.discount_percent),
+            "discount_amount": float(self.discount_amount),
+            "gst_rate": float(self.gst_rate),
+            "cgst_amount": float(self.cgst_amount),
+            "sgst_amount": float(self.sgst_amount),
+            "igst_amount": float(self.igst_amount),
+            "taxable_amount": float(self.taxable_amount),
+            "total_amount": float(self.total_amount),
+            "is_project": self.is_project,
+            "sub_items": [sub_item.to_dict() for sub_item in self.sub_items] if self.sub_items else []
+        }
+    __table_args__ = (
+        Index("idx_quotation_item_quotation", "quotation_id"),
+    )
+
+    def __repr__(self):
+        return f"<QuotationItem {self.description[:30]}>"
+
+
+
 class Quotation(Base):
     """Quotation model - Pre-invoice document sent to customers for approval."""
     __tablename__ = "quotations"
@@ -3486,6 +3622,9 @@ class Quotation(Base):
     quotation_number = Column(String(50), nullable=False, index=True)
     quotation_date = Column(DateTime, nullable=False, default=datetime.utcnow)
     validity_date = Column(DateTime)  # Quote expires after this date
+    quotation_type = Column(String(20), default="item") 
+
+    is_project = Column(Boolean, default=False)
     
     # Reference to original document if revised
     revised_from_id = Column(String(36), ForeignKey("quotations.id", ondelete="SET NULL"))
@@ -3544,7 +3683,8 @@ class Quotation(Base):
     items = relationship("QuotationItem", back_populates="quotation", cascade="all, delete-orphan")
     converted_invoice = relationship("Invoice", foreign_keys=[converted_invoice_id])
     revised_from = relationship("Quotation", remote_side=[id])
-
+     
+  
     __table_args__ = (
         Index("idx_quotation_company", "company_id"),
         Index("idx_quotation_customer", "customer_id"),
@@ -3557,54 +3697,6 @@ class Quotation(Base):
         return f"<Quotation {self.quotation_number}>"
 
 
-class QuotationItem(Base):
-    """Quotation line item model."""
-    __tablename__ = "quotation_items"
-
-    id = Column(String(36), primary_key=True, default=generate_uuid)
-    quotation_id = Column(String(36), ForeignKey("quotations.id", ondelete="CASCADE"), nullable=False)
-    product_id = Column(String(36), ForeignKey("items.id", ondelete="SET NULL"))
-    
-    # Item details
-    description = Column(String(500), nullable=False)
-    hsn_code = Column(String(8))
-    
-    # Quantity and pricing
-    quantity = Column(Numeric(10, 3), nullable=False)
-    unit = Column(String(20), default="unit")
-    unit_price = Column(Numeric(12, 2), nullable=False)
-    
-    # Discount
-    discount_percent = Column(Numeric(5, 2), default=0)
-    discount_amount = Column(Numeric(12, 2), default=0)
-    
-    # Tax
-    gst_rate = Column(Numeric(5, 2), nullable=False)
-    cgst_rate = Column(Numeric(5, 2), default=0)
-    sgst_rate = Column(Numeric(5, 2), default=0)
-    igst_rate = Column(Numeric(5, 2), default=0)
-    
-    cgst_amount = Column(Numeric(12, 2), default=0)
-    sgst_amount = Column(Numeric(12, 2), default=0)
-    igst_amount = Column(Numeric(12, 2), default=0)
-    cess_amount = Column(Numeric(12, 2), default=0)
-    
-    # Totals
-    taxable_amount = Column(Numeric(14, 2), nullable=False)
-    total_amount = Column(Numeric(14, 2), nullable=False)
-    
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    # Relationships
-    quotation = relationship("Quotation", back_populates="items")
-    product = relationship("Product")
-
-    __table_args__ = (
-        Index("idx_quotation_item_quotation", "quotation_id"),
-    )
-
-    def __repr__(self):
-        return f"<QuotationItem {self.description[:30]}>"
 
 
 # ============== DELIVERY CHALLAN MODELS ==============

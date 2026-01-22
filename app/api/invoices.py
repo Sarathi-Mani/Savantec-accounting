@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import date
 from decimal import Decimal
+
 from app.database.connection import get_db
 from app.database.models import User, Company, InvoiceStatus
 from app.schemas.invoice import (
@@ -62,9 +63,9 @@ async def create_invoice(
     response = InvoiceResponse.model_validate(invoice)
     if customer:
         response.customer_name = customer.name
-        response.customer_gstin = customer.gstin
+        response.customer_gstin = customer.tax_number
         response.customer_email = customer.email
-        response.customer_phone = customer.phone
+        response.customer_phone = customer.contact or customer.mobile
     
     return response
 
@@ -637,4 +638,3 @@ async def mark_invoice_paid(
         "payment_id": payment.id,
         "amount": payment.amount
     }
-

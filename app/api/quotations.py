@@ -12,9 +12,10 @@ import os
 from pathlib import Path
 
 from app.database.connection import get_db
-from app.database.models import User, Company, Customer, QuotationStatus, ContactPerson
+from app.database.models import User, Company, Customer, QuotationStatus, ContactPerson,Quotation
 from app.auth.dependencies import get_current_active_user
 from app.services.quotation_service import QuotationService
+import traceback
 
 # Import payroll models
 try:
@@ -22,7 +23,7 @@ try:
 except ImportError:
     # Try alternate import path if needed
     try:
-        from app.database.models.payroll_models import Employee, Designation, Department
+        from app.database.payroll_models import Employee, Designation, Department
     except ImportError:
         # Fallback if payroll models are in a different location
         pass
@@ -43,6 +44,16 @@ def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
 
 # ==================== SCHEMAS ====================
 
+
+
+class SubItemCreate(BaseModel):  # Add this new schema
+    description: str
+    quantity: float = 1
+    image_url: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
 class QuotationItemCreate(BaseModel):
     product_id: Optional[str] = None
     description: str
@@ -52,6 +63,7 @@ class QuotationItemCreate(BaseModel):
     unit_price: float
     discount_percent: float = 0
     gst_rate: float = 18
+    sub_items: Optional[List[SubItemCreate]] = None 
 
 
 # ==================== CONTACT PERSON SCHEMAS ====================
@@ -103,6 +115,7 @@ class QuotationCreateRequest(BaseModel):
     items: List[QuotationItemCreate]
 
 
+
 class QuotationUpdateRequest(BaseModel):
     validity_days: Optional[int] = None
     subject: Optional[str] = None
@@ -118,6 +131,15 @@ class QuotationUpdateRequest(BaseModel):
     excel_notes: Optional[str] = None
     items: Optional[List[QuotationItemCreate]] = None
 
+class SubItemResponse(BaseModel):  # Add this schema
+    id: str
+    quotation_item_id: str
+    description: str
+    quantity: float
+    image_url: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
 class QuotationItemResponse(BaseModel):
     id: str
@@ -135,6 +157,8 @@ class QuotationItemResponse(BaseModel):
     igst_amount: float
     taxable_amount: float
     total_amount: float
+    is_project: bool = False  # Add this field
+    sub_items: Optional[List[SubItemResponse]] = None  # Add this field
 
     class Config:
         from_attributes = True
@@ -174,6 +198,19 @@ class QuotationResponse(BaseModel):
     converted_invoice_id: Optional[str]
     created_at: datetime
     items: Optional[List[QuotationItemResponse]] = None
+    quotation_code: Optional[str] = None  # This is actually quotation_number
+    validity_days: Optional[int] = None
+    quotation_type: Optional[str] = None  # Add this if you have quotation_type in your model
+    @classmethod
+    def from_orm(cls, obj):
+        # Custom from_orm to handle computed fields
+        data = super().from_orm(obj)
+        # Map quotation_number to quotation_code for frontend
+        data.quotation_code = data.quotation_number
+        # Calculate validity_days from dates
+        if data.quotation_date and data.validity_date:
+            data.validity_days = (data.validity_date - data.quotation_date).days
+        return data
 
     class Config:
         from_attributes = True
@@ -390,7 +427,6 @@ async def get_customer_contact_persons(
     
     return contact_persons
 
-
 @router.post("/companies/{company_id}/quotations", response_model=QuotationResponse)
 async def create_quotation(
     company_id: str,
@@ -436,11 +472,12 @@ async def create_quotation(
         # Create quotation using service
         service = QuotationService(db)
         
-        # Convert items to dict
+        # Convert items to dict - INCLUDING SUB-ITEMS
         items = []
         for item in quotation_data.get("items", []):
-            items.append({
+            item_dict = {
                 "product_id": item.get("product_id"),
+                "item_code":item.get('item_code'), 
                 "description": item.get("description", "Item"),
                 "hsn_code": item.get("hsn_code", ""),
                 "quantity": float(item.get("quantity", 0)),
@@ -448,7 +485,29 @@ async def create_quotation(
                 "unit_price": float(item.get("unit_price", 0)),
                 "discount_percent": float(item.get("discount_percent", 0)),
                 "gst_rate": float(item.get("gst_rate", 18))
-            })
+            }
+            
+            # Add sub-items if they exist
+            sub_items = item.get("sub_items")
+            if sub_items:
+                item_dict["sub_items"] = []
+                for sub_item in sub_items:
+                    sub_item_dict = {
+                        "description": sub_item.get("description", ""),
+                        "quantity": float(sub_item.get("quantity", 1))
+                    }
+                    
+                    # Handle image URL if present
+                    image_url = sub_item.get("image_url")
+                    if image_url:
+                        sub_item_dict["image_url"] = image_url
+                    
+                    item_dict["sub_items"].append(sub_item_dict)
+            
+            items.append(item_dict)
+        
+        # Get quotation_type from the data
+        quotation_type = quotation_data.get("quotation_type", "item")
         
         quotation = service.create_quotation(
             company=company,
@@ -470,6 +529,7 @@ async def create_quotation(
             excel_notes=quotation_data.get("excel_notes"),
             excel_file_content=excel_file_content,
             excel_filename=excel_filename,
+            quotation_type=quotation_type  # Pass quotation_type to service
         )
         
         return _quotation_to_response(quotation, db)
@@ -536,6 +596,78 @@ async def list_quotations(
         "total_pages": result["total_pages"],
     }
 
+@router.get("/companies/{company_id}/quotations/next-number")
+async def get_next_quotation_number(
+    company_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get the next quotation number for a company."""
+    print(f"=== DEBUG START: get_next_quotation_number for company {company_id} ===")
+    
+    try:
+        company = get_company_or_404(company_id, current_user, db)
+        print(f"Company found: {company.name}")
+        
+        # Get the last quotation for this company
+        last_quotation = db.query(Quotation).filter(
+            Quotation.company_id == company_id
+        ).order_by(Quotation.created_at.desc()).first()
+        
+        print(f"Last quotation query result: {last_quotation}")
+        
+        if last_quotation:
+            print(f"Last quotation ID: {last_quotation.id}")
+            print(f"Last quotation number: {last_quotation.quotation_number}")
+        
+        if last_quotation and last_quotation.quotation_number:
+            # Extract number from format - handle multiple formats
+            import re
+            
+            quotation_number = last_quotation.quotation_number
+            print(f"Processing quotation number: {quotation_number}")
+            
+            # Try different patterns
+            patterns = [
+                r'QT-(\d+)$',           # QT-001, QT-010, QT-100
+                r'QT-\d{4}-(\d+)$',     # QT-2026-0001
+                r'QT[_-]?(\d+)$',       # QT001, QT_001, QT-001
+            ]
+            
+            next_num = 1  # Default starting number
+            
+            for pattern in patterns:
+                match = re.search(pattern, quotation_number)
+                if match:
+                    try:
+                        next_num = int(match.group(1)) + 1
+                        print(f"Pattern matched: {pattern}, next_num: {next_num}")
+                        break
+                    except (ValueError, IndexError) as e:
+                        print(f"Error with pattern {pattern}: {e}")
+                        continue
+            
+            # Format the next number (use 4 digits for consistency)
+            next_quotation_number = f"QT-{next_num:04d}"
+            print(f"Generated next number: {next_quotation_number}")
+            
+        else:
+            # No quotations yet, start from 0001
+            next_quotation_number = "QT-0001"
+            print(f"No quotations found, using default: {next_quotation_number}")
+        
+        # Create response
+        response_data = {"quotation_number": next_quotation_number}
+        print(f"Returning response: {response_data}")
+        
+        return response_data
+        
+    except Exception as e:
+        print(f"=== ERROR in get_next_quotation_number: {e} ===")
+        print(f"Traceback: {traceback.format_exc()}")
+        # Return a proper error response
+        return {"quotation_number": "QT-0001", "error": str(e)}
+        
 
 @router.get("/companies/{company_id}/quotations/{quotation_id}", response_model=QuotationResponse)
 async def get_quotation(
@@ -576,7 +708,6 @@ async def get_excel_notes(
         "content": content,
         "file_url": quotation.excel_notes_file_url
     }
-
 
 @router.put("/companies/{company_id}/quotations/{quotation_id}", response_model=QuotationResponse)
 async def update_quotation(
@@ -619,12 +750,12 @@ async def update_quotation(
             excel_file_content = await excel_file.read()
             excel_filename = excel_file.filename or "excel_data.csv"
         
-        # Convert items to dict if provided
+        # Convert items to dict if provided - INCLUDING SUB-ITEMS
         items = None
         if "items" in update_data:
             items = []
             for item in update_data.get("items", []):
-                items.append({
+                item_dict = {
                     "product_id": item.get("product_id"),
                     "description": item.get("description", "Item"),
                     "hsn_code": item.get("hsn_code", ""),
@@ -633,7 +764,26 @@ async def update_quotation(
                     "unit_price": float(item.get("unit_price", 0)),
                     "discount_percent": float(item.get("discount_percent", 0)),
                     "gst_rate": float(item.get("gst_rate", 18))
-                })
+                }
+                
+                # Add sub-items if they exist
+                sub_items = item.get("sub_items")
+                if sub_items:
+                    item_dict["sub_items"] = []
+                    for sub_item in sub_items:
+                        sub_item_dict = {
+                            "description": sub_item.get("description", ""),
+                            "quantity": float(sub_item.get("quantity", 1))
+                        }
+                        
+                        # Handle image URL if present
+                        image_url = sub_item.get("image_url")
+                        if image_url:
+                            sub_item_dict["image_url"] = image_url
+                        
+                        item_dict["sub_items"].append(sub_item_dict)
+                
+                items.append(item_dict)
         
         quotation = service.update_quotation(
             quotation=quotation,
@@ -874,11 +1024,13 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
         "approved_at": quotation.approved_at,
         "converted_invoice_id": quotation.converted_invoice_id,
         "created_at": quotation.created_at,
+        "quotation_type": quotation.quotation_type or "item",  # Add this field
     }
     
     if include_items:
-        response["items"] = [
-            {
+        items_response = []
+        for item in quotation.items:
+            item_data = {
                 "id": item.id,
                 "product_id": item.product_id,
                 "description": item.description,
@@ -894,8 +1046,25 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
                 "igst_amount": float(item.igst_amount or 0),
                 "taxable_amount": float(item.taxable_amount),
                 "total_amount": float(item.total_amount),
+                "is_project": item.is_project or False,
             }
-            for item in quotation.items
-        ]
+            
+            # Add sub-items if they exist
+            if hasattr(item, 'sub_items') and item.sub_items:
+                item_data["sub_items"] = [
+                    {
+                        "id": sub_item.id,
+                        "quotation_item_id": sub_item.quotation_item_id,
+                        "description": sub_item.description,
+                        "quantity": float(sub_item.quantity),
+                        "image_url": sub_item.image_url
+                    }
+                    for sub_item in item.sub_items
+                ]
+            
+            items_response.append(item_data)
+        
+        response["items"] = items_response
     
     return response
+

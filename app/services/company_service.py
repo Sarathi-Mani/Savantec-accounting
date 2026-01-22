@@ -2,7 +2,7 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from decimal import Decimal
-from app.database.models import Company, BankAccount, User, Account, AccountType
+from app.database.models import Company, BankAccount, User, Account, AccountType,Invoice
 from app.schemas.company import CompanyCreate, CompanyUpdate, BankAccountCreate, BankAccountUpdate
 
 
@@ -11,6 +11,28 @@ class CompanyService:
     
     def __init__(self, db: Session):
         self.db = db
+    def get_next_invoice_number(self, company: Company) -> str:
+        """Get the next invoice number for a company."""
+        # Get the last invoice for this company
+        last_invoice = self.db.query(Invoice).filter(
+           Invoice.company_id == company.id,
+           Invoice.invoice_number.isnot(None),
+           Invoice.is_deleted == False,  # Add this line
+           Invoice.status.in_(["pending", "paid", "partially_paid", "draft"])  
+        ).order_by( Invoice.invoice_date.desc(),Invoice.created_at.desc()).first()
+        
+        if last_invoice and last_invoice.invoice_number:
+            # Parse the last number and increment
+            import re
+            matches = re.search(r'\d+$', last_invoice.invoice_number)
+            if matches:
+                last_num = int(matches.group())
+                prefix = last_invoice.invoice_number[:matches.start()]
+                return f"{prefix}{last_num + 1:05d}"
+        
+        # No invoices yet, start with company's prefix
+        prefix = company.invoice_prefix or "INV-"
+        return f"{prefix}00001"    
     
     def create_company(self, user: User, data: CompanyCreate) -> Company:
         """Create a new company for a user."""

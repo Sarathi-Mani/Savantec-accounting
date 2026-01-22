@@ -104,33 +104,170 @@ class InvoiceItemResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 class InvoiceCreate(BaseModel):
     """Schema for creating an invoice."""
+    # 1. Core Invoice Fields
     customer_id: Optional[str] = None
     invoice_date: Optional[date] = None
     due_date: Optional[date] = None
-    
-    invoice_type: InvoiceType = InvoiceType.B2C
+    invoice_type: InvoiceType = InvoiceType.B2B
     place_of_supply: Optional[str] = None  # State code
-    is_reverse_charge: bool = False
     
+    # 2. GST/Tax Information
+    is_reverse_charge: bool = False
+    place_of_supply_name: Optional[str] = None  # Missing from your schema
+    
+    # 3. Items
     items: List[InvoiceItemCreate] = []
     
+    # 4. Notes & Terms
     notes: Optional[str] = None
     terms: Optional[str] = None
     
-    # Warehouse allocation settings
+    # 5. Warehouse & Stock Allocation
     manual_warehouse_override: bool = False
-    warehouse_allocations: Optional[dict] = None  # {"item_0": [{"godown_id": "xxx", "quantity": 10}], ...}
+    warehouse_allocations: Optional[dict] = None
     
-    # For quick invoices without full customer data
+    # 6. Customer Information (denormalized for quick invoices)
     customer_name: Optional[str] = None
     customer_gstin: Optional[str] = None
     customer_address: Optional[str] = None
     customer_state: Optional[str] = None
     customer_state_code: Optional[str] = None
-
+    
+    # 🚨 MISSING FROM YOUR SCHEMA - ADD THESE:
+    customer_phone: Optional[str] = None
+    customer_email: Optional[str] = None
+    
+    # 7. Shipping Information (from your frontend)
+    shipping_address: Optional[str] = None
+    shipping_city: Optional[str] = None
+    shipping_state: Optional[str] = None
+    shipping_country: Optional[str] = "India"
+    shipping_zip: Optional[str] = None
+    
+    # 8. Additional Charges & Discounts (from your frontend)
+    freight_charges: Optional[Decimal] = Decimal('0.00')
+    packing_forwarding_charges: Optional[Decimal] = Decimal('0.00')
+    coupon_code: Optional[str] = None
+    coupon_value: Optional[Decimal] = Decimal('0.00')
+    round_off: Optional[Decimal] = Decimal('0.00')
+    
+    # 🚨 MISSING FROM YOUR SCHEMA - ADD THESE:
+    discount_on_all: Optional[Decimal] = Decimal('0.00')
+    discount_type: Optional[str] = 'percentage'  # 'percentage' or 'fixed'
+    
+    # 9. Document References (from your frontend)
+    reference_no: Optional[str] = None
+    delivery_note: Optional[str] = None
+    payment_terms: Optional[str] = None
+    
+    # 🚨 MISSING FROM YOUR SCHEMA - ADD THESE:
+    supplier_ref: Optional[str] = None
+    other_references: Optional[str] = None
+    buyer_order_no: Optional[str] = None
+    buyer_order_date: Optional[date] = None
+    despatch_doc_no: Optional[str] = None
+    delivery_note_date: Optional[date] = None
+    despatched_through: Optional[str] = None
+    destination: Optional[str] = None
+    terms_of_delivery: Optional[str] = None
+    
+    # 10. Sales & Contact Information
+    sales_person_id: Optional[str] = None
+    # 🚨 MISSING - Add for better tracking
+    contact_id: Optional[str] = None
+    
+    # 11. Payment Information (from your frontend)
+    payment_amount: Optional[Decimal] = Decimal('0.00')
+    payment_type: Optional[str] = None
+    payment_account: Optional[str] = None
+    payment_note: Optional[str] = None
+    adjust_advance_payment: Optional[bool] = False
+    
+    # 🚨 MISSING FROM YOUR SCHEMA - ADD THESE:
+    advance_amount: Optional[Decimal] = Decimal('0.00')
+    payment_mode: Optional[PaymentMode] = None
+    payment_reference: Optional[str] = None
+    
+    # 12. Financial Fields (calculated - but frontend might send)
+    # 🚨 These should be Optional as backend will recalculate
+    subtotal: Optional[Decimal] = None
+    discount_amount: Optional[Decimal] = None
+    cgst_amount: Optional[Decimal] = None
+    sgst_amount: Optional[Decimal] = None
+    igst_amount: Optional[Decimal] = None
+    total_tax: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
+    amount_paid: Optional[Decimal] = Decimal('0.00')
+    balance_due: Optional[Decimal] = None
+    
+    # 13. Additional Optional Fields for Future Use
+    shipping_method: Optional[str] = None  # 'courier', 'self', 'pickup', 'delivery'
+    tracking_number: Optional[str] = None
+    expected_delivery_date: Optional[date] = None
+    billing_address: Optional[str] = None
+    billing_city: Optional[str] = None
+    billing_state: Optional[str] = None
+    billing_country: Optional[str] = "India"
+    billing_zip: Optional[str] = None
+    
+    # 14. System/Integration fields
+    external_reference: Optional[str] = None  # For ERP/CRM integration
+    source: Optional[str] = 'web'  # 'web', 'mobile', 'pos', 'api'
+    created_by: Optional[str] = None  # User ID who created
+    
+    # Validators
+    @field_validator('place_of_supply')
+    @classmethod
+    def validate_state_code(cls, v):
+        if v:
+            if not v.isdigit() or len(v) != 2:
+                raise ValueError('State code must be 2 digits')
+        return v
+    
+    @field_validator('customer_gstin')
+    @classmethod
+    def validate_gstin(cls, v):
+        if v and v != "":
+            if len(v) != 15:
+                raise ValueError('GSTIN must be 15 characters')
+            if not v[:2].isdigit():
+                raise ValueError('First 2 characters must be state code')
+        return v
+    
+    @field_validator('round_off', 'freight_charges', 'packing_forwarding_charges', 
+                     'coupon_value', 'discount_on_all', mode='before')
+    @classmethod
+    def validate_decimal(cls, v):
+        """Ensure decimal values are properly handled."""
+        if v is None:
+            return Decimal('0.00')
+        if isinstance(v, (int, float, str)):
+            try:
+                return Decimal(str(v))
+            except:
+                return Decimal('0.00')
+        return v
+    
+    @field_validator('invoice_date', 'due_date', mode='before')
+    @classmethod
+    def validate_dates(cls, v):
+        """Handle date string formats."""
+        if isinstance(v, str):
+            try:
+                return date.fromisoformat(v.split('T')[0])
+            except:
+                pass
+        return v
+    
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            Decimal: lambda v: str(v),
+            date: lambda v: v.isoformat() if v else None,
+        }
+        
 
 class InvoiceUpdate(BaseModel):
     """Schema for updating an invoice."""

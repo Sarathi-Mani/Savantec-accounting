@@ -9,12 +9,23 @@ import Select from "react-select";
 interface QuotationItem {
   product_id?: string;
   description: string;
+  item_code?: string;
   hsn: string;
   quantity: number;
   unit: string;
   unit_price: number;
   discount_percent: number;
   gst_rate: number;
+  isProject?: boolean;
+  subItems?: SubItem[]; 
+}
+
+interface SubItem {
+  id: string;
+  description: string;
+  quantity: number;
+  image: File | null;
+  imageUrl: string;
 }
 
 interface OtherCharge {
@@ -41,6 +52,7 @@ interface FormData {
   validity_days: number;
   customer_id?: string;
   notes: string;
+  quotation_search_type?: string;
   terms: string;
   subject?: string;
   tax_regime?: "cgst_sgst" | "igst";
@@ -50,9 +62,9 @@ interface FormData {
   reference_no?: string;
   reference_date?: string;
   payment_terms?: string;
-  place_of_supply?: string;
-  remarks?: string; // Added remarks field
-  contact_person?: string; // Added contact person field
+  remarks?: string;
+  contact_person?: string; 
+  quotation_type?: "item" | "project"; 
 }
 
 // Simple toast notification component
@@ -119,230 +131,82 @@ export default function NewQuotationPage() {
   const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: "success" | "error" | "info" | "warning" }>>([]);
   const [activeCell, setActiveCell] = useState<{row: number, col: number} | null>(null);
   const [showCopyModal, setShowCopyModal] = useState(false);
-const [copyQuotationNumber, setCopyQuotationNumber] = useState("");
-const [isFetchingQuotation, setIsFetchingQuotation] = useState(false);
-const [copyError, setCopyError] = useState("");
+  const [copyQuotationNumber, setCopyQuotationNumber] = useState("");
+  const [isFetchingQuotation, setIsFetchingQuotation] = useState(false);
+  const [copyError, setCopyError] = useState("");
   
   // Generate quotation code function
   const generateQuotationCode = useCallback(() => {
     return `QT-0001`;
   }, []);
 
-
-  const fetchQuotationByNumber = async (quotationNumber: string) => {
-  if (!company?.id || !quotationNumber.trim()) return null;
+const fetchNextQuotationNumber = async () => {
+  if (!company?.id) return "QT-0001";
   
   try {
-    setIsFetchingQuotation(true);
-    setCopyError("");
-    
     const token = localStorage.getItem("access_token");
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations?search=${encodeURIComponent(quotationNumber)}&page_size=100`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
+    const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/next-number`;
+    console.log("Fetching next number from:", apiUrl);
+    
+    const response = await fetch(apiUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    
+    console.log("Response status:", response.status);
     
     if (response.ok) {
-      const data = await response.json();
-      if (data.items && data.items.length > 0) {
-        // Find exact match for quotation number
-        const exactMatch = data.items.find(
-          (q: any) => q.quotation_number === quotationNumber.trim()
-        );
+      const text = await response.text();
+      console.log("Raw response text:", text);
+      
+      if (!text || text.trim() === '') {
+        console.warn("Empty response from API");
+        return "QT-0001";
+      }
+      
+      try {
+        const data = JSON.parse(text);
+        console.log("Parsed response data:", data);
         
-        if (exactMatch) {
-          // Fetch full quotation details including items
-          const detailResponse = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${exactMatch.id}`,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            }
-          );
-          
-          if (detailResponse.ok) {
-            const quotationDetails = await detailResponse.json();
-            return quotationDetails;
-          }
+        // Check if data is null or undefined
+        if (!data) {
+          console.warn("API returned null data");
+          return "QT-0001";
         }
-      }
-    }
-    return null;
-  } catch (error) {
-    console.error("Failed to fetch quotation:", error);
-    setCopyError("Failed to fetch quotation. Please check the quotation number.");
-    return null;
-  } finally {
-    setIsFetchingQuotation(false);
-  }
-};
-
-// Add this function to prefill form with quotation data
-// Add this function to fetch customer details by ID
-const fetchCustomerById = async (customerId: string) => {
-  if (!company?.id || !customerId) return null;
-  
-  try {
-    const token = localStorage.getItem("access_token");
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/customers/${customerId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-    
-    if (response.ok) {
-      return await response.json();
-    }
-    return null;
-  } catch (error) {
-    console.error("Failed to fetch customer:", error);
-    return null;
-  }
-};
-
-// Update the prefillFormWithQuotation function
-const prefillFormWithQuotation = async (quotationNumber: string) => {
-  const quotation = await fetchQuotationByNumber(quotationNumber);
-  
-  if (!quotation) {
-    setCopyError("Quotation not found. Please check the quotation number.");
-    return;
-  }
-  
-  // FIRST: Update form data with quotation details
-  setFormData(prev => ({
-    ...prev,
-    quotation_code: generateQuotationCode(),
-    quotation_date: new Date().toISOString().split("T")[0],
-    validity_days: quotation.validity_days || 30,
-    customer_id: quotation.customer_id || "",
-    notes: quotation.notes || "",
-    terms: quotation.terms || "",
-    subject: `Quotation ${generateQuotationCode()} - Copy of ${quotation.quotation_number}`,
-    place_of_supply: quotation.place_of_supply || "",
-    status: "open",
-    salesman_id: quotation.sales_person_id || "",
-    reference: quotation.reference || "",
-    reference_no: quotation.reference_no || "",
-    reference_date: quotation.reference_date ? 
-      new Date(quotation.reference_date).toISOString().split("T")[0] : "",
-    payment_terms: quotation.payment_terms || standardTermsTemplate,
-    remarks: quotation.remarks || "",
-    contact_person: quotation.contact_person || ""
-  }));
-  
-  // Update customer selection if customer exists
-  if (quotation.customer_id) {
-    // First check if customer exists in local customers list
-    let customer = customers.find(c => c.id === quotation.customer_id);
-    
-    // If not found locally, fetch from API
-    if (!customer) {
-      const customerDetails = await fetchCustomerById(quotation.customer_id);
-      if (customerDetails) {
-        // Add to local customers list
-        setCustomers(prev => [...prev, customerDetails]);
-        customer = customerDetails;
-      }
-    }
-    
-    if (customer) {
-      // Create the customer option object for React Select
-      const name = customer.name || "Unnamed Customer";
-      const phone = customer.phone || customer.mobile || "";
-      const email = customer.email || "";
-      const label = `${name}${phone ? ` (${phone})` : ''}${email ? ` - ${email}` : ''}`;
-      
-      const customerOption = {
-        value: customer.id,
-        label: label,
-        data: customer
-      };
-      
-      // Set selected customer and trigger customer change handler
-      setSelectedCustomer(customer);
-      
-      // IMPORTANT: Update the form state with customer_id
-      setFormData(prev => ({
-        ...prev,
-        customer_id: customer.id,
-        contact_person: quotation.contact_person || ""
-      }));
-      
-      // Fetch contact persons for this customer
-      await fetchContactPersons(customer.id);
-      
-      // If the API response includes customer_name, use it
-      if (quotation.customer_name) {
-        console.log("Quotation includes customer name:", quotation.customer_name);
-      }
-      
-      // Determine tax regime if customer has billing_state
-      if (customer.billing_state && company?.state) {
-        const isSameState = customer.billing_state === company.state;
-        setFormData(prev => ({
-          ...prev,
-          tax_regime: isSameState ? "cgst_sgst" : "igst"
-        }));
+        
+        // Check if quotation_number exists
+        if (data.quotation_number !== undefined && data.quotation_number !== null) {
+          return data.quotation_number;
+        } else {
+          console.warn("quotation_number field missing in response:", data);
+          return "QT-0001";
+        }
+      } catch (parseError) {
+        console.error("Failed to parse JSON:", parseError, "Raw text:", text);
+        return "QT-0001";
       }
     } else {
-      showToast("Customer not found. Please check if customer still exists.", "warning");
+      console.error("API error status:", response.status);
+      const errorText = await response.text();
+      console.error("Error response:", errorText);
+      return "QT-0001";
     }
+  } catch (error) {
+    console.error("Network error:", error);
+    return "QT-0001";
   }
-  
-  // Update items from quotation
-  if (quotation.items && quotation.items.length > 0) {
-    const newItems = quotation.items.map((item: any) => ({
-      product_id: item.product_id || "",
-      description: item.description || "",
-      hsn: item.hsn || "",
-      quantity: item.quantity || 1,
-      unit: item.unit || "unit",
-      unit_price: item.unit_price || 0,
-      discount_percent: item.discount_percent || 0,
-      gst_rate: item.gst_rate || 18
-    }));
-    setItems(newItems);
-  }
-  
-  // Update salesman selection if exists
-  if (quotation.sales_person_id && salesmen.length > 0) {
-    // This will be handled by the form data update
-    // The salesman will be selected when the Select component renders with formData.salesman_id
-  }
-  
-  // Reset other charges
-  setOtherCharges([{ id: Date.now().toString(), name: "", amount: 0, type: "fixed", tax: 18 }]);
-  
-  // Clear Excel grid
-  const newGrid = [...excelGrid.map(row => [...row])];
-  for (let r = 0; r < newGrid.length; r++) {
-    for (let c = 0; c < newGrid[r].length; c++) {
-      newGrid[r][c] = {
-        ...newGrid[r][c],
-        value: '',
-        isFormula: false,
-        formula: undefined,
-        computedValue: ''
-      };
-    }
-  }
-  setExcelGrid(newGrid);
-  
-  // Fetch Excel notes if available
-  if (quotation.excel_notes_file_url && company?.id) {
+};
+  const fetchQuotationByNumber = async (quotationNumber: string) => {
+    if (!company?.id || !quotationNumber.trim()) return null;
+    
     try {
+      setIsFetchingQuotation(true);
+      setCopyError("");
+      
       const token = localStorage.getItem("access_token");
-      const excelResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${quotation.id}/excel-notes`,
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations?search=${encodeURIComponent(quotationNumber)}&page_size=100`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -350,21 +214,224 @@ const prefillFormWithQuotation = async (quotationNumber: string) => {
         }
       );
       
-      if (excelResponse.ok) {
-        const excelData = await excelResponse.json();
-        if (excelData.content) {
-          showToast("Loaded Excel notes from quotation", "info");
+      if (response.ok) {
+        const data = await response.json();
+        if (data.items && data.items.length > 0) {
+          // Find exact match for quotation number
+          const exactMatch = data.items.find(
+            (q: any) => q.quotation_number === quotationNumber.trim()
+          );
+          
+          if (exactMatch) {
+            // Fetch full quotation details including items
+            const detailResponse = await fetch(
+              `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${exactMatch.id}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
+            
+            if (detailResponse.ok) {
+              const quotationDetails = await detailResponse.json();
+              return quotationDetails;
+            }
+          }
         }
       }
+      return null;
     } catch (error) {
-      console.error("Failed to fetch Excel notes:", error);
+      console.error("Failed to fetch quotation:", error);
+      setCopyError("Failed to fetch quotation. Please check the quotation number.");
+      return null;
+    } finally {
+      setIsFetchingQuotation(false);
     }
-  }
-  
-  showToast(`Quotation "${quotation.quotation_number}" loaded successfully!`, "success");
-  setShowCopyModal(false);
-  setCopyQuotationNumber("");
-};
+  };
+
+  // Add this function to fetch customer details by ID
+  const fetchCustomerById = async (customerId: string) => {
+    if (!company?.id || !customerId) return null;
+    
+    try {
+      const token = localStorage.getItem("access_token");
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/customers/${customerId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      
+      if (response.ok) {
+        return await response.json();
+      }
+      return null;
+    } catch (error) {
+      console.error("Failed to fetch customer:", error);
+      return null;
+    }
+  };
+
+  // Update the prefillFormWithQuotation function
+  const prefillFormWithQuotation = async (quotationNumber: string) => {
+    const quotation = await fetchQuotationByNumber(quotationNumber);
+    
+    if (!quotation) {
+      setCopyError("Quotation not found. Please check the quotation number.");
+      return;
+    }
+    
+    // FIRST: Update form data with quotation details
+    setFormData(prev => ({
+      ...prev,
+      quotation_code: generateQuotationCode(),
+      quotation_date: new Date().toISOString().split("T")[0],
+      validity_days: quotation.validity_days || 30,
+      customer_id: quotation.customer_id || "",
+      notes: quotation.notes || "",
+      terms: quotation.terms || "",
+      subject: `Quotation ${generateQuotationCode()} - Copy of ${quotation.quotation_number}`,
+      status: "open",
+      salesman_id: quotation.sales_person_id || "",
+      reference: quotation.reference || "",
+      reference_no: quotation.reference_no || "",
+      reference_date: quotation.reference_date ? 
+        new Date(quotation.reference_date).toISOString().split("T")[0] : "",
+      payment_terms: quotation.payment_terms || standardTermsTemplate,
+      remarks: quotation.remarks || "",
+      contact_person: quotation.contact_person || ""
+    }));
+    
+    // Update customer selection if customer exists
+    if (quotation.customer_id) {
+      // First check if customer exists in local customers list
+      let customer = customers.find(c => c.id === quotation.customer_id);
+      
+      // If not found locally, fetch from API
+      if (!customer) {
+        const customerDetails = await fetchCustomerById(quotation.customer_id);
+        if (customerDetails) {
+          // Add to local customers list
+          setCustomers(prev => [...prev, customerDetails]);
+          customer = customerDetails;
+        }
+      }
+      
+      if (customer) {
+        // Create the customer option object for React Select
+        const name = customer.name || "Unnamed Customer";
+        const phone = customer.phone || customer.mobile || "";
+        const email = customer.email || "";
+        const label = `${name}${phone ? ` (${phone})` : ''}${email ? ` - ${email}` : ''}`;
+        
+        const customerOption = {
+          value: customer.id,
+          label: label,
+          data: customer
+        };
+        
+        // Set selected customer and trigger customer change handler
+        setSelectedCustomer(customer);
+        
+        // IMPORTANT: Update the form state with customer_id
+        setFormData(prev => ({
+          ...prev,
+          customer_id: customer.id,
+          contact_person: quotation.contact_person || ""
+        }));
+        
+        // Fetch contact persons for this customer
+        await fetchContactPersons(customer.id);
+        
+        // If the API response includes customer_name, use it
+        if (quotation.customer_name) {
+          console.log("Quotation includes customer name:", quotation.customer_name);
+        }
+        
+        // Determine tax regime if customer has billing_state
+        if (customer.billing_state && company?.state) {
+          const isSameState = customer.billing_state === company.state;
+          setFormData(prev => ({
+            ...prev,
+            tax_regime: isSameState ? "cgst_sgst" : "igst"
+          }));
+        }
+      } else {
+        showToast("Customer not found. Please check if customer still exists.", "warning");
+      }
+    }
+    
+    // Update items from quotation
+    if (quotation.items && quotation.items.length > 0) {
+      const newItems = quotation.items.map((item: any) => ({
+        product_id: item.product_id || "",
+        description: item.description || "",
+        hsn: item.hsn || "",
+        quantity: item.quantity || 1,
+        unit: item.unit || "unit",
+        unit_price: item.unit_price || 0,
+        discount_percent: item.discount_percent || 0,
+        gst_rate: item.gst_rate || 18
+      }));
+      setItems(newItems);
+    }
+    
+    // Update salesman selection if exists
+    if (quotation.sales_person_id && salesmen.length > 0) {
+      // This will be handled by the form data update
+      // The salesman will be selected when the Select component renders with formData.salesman_id
+    }
+    
+    // Reset other charges
+    setOtherCharges([{ id: Date.now().toString(), name: "", amount: 0, type: "fixed", tax: 18 }]);
+    
+    // Clear Excel grid
+    const newGrid = [...excelGrid.map(row => [...row])];
+    for (let r = 0; r < newGrid.length; r++) {
+      for (let c = 0; c < newGrid[r].length; c++) {
+        newGrid[r][c] = {
+          ...newGrid[r][c],
+          value: '',
+          isFormula: false,
+          formula: undefined,
+          computedValue: ''
+        };
+      }
+    }
+    setExcelGrid(newGrid);
+    
+    // Fetch Excel notes if available
+    if (quotation.excel_notes_file_url && company?.id) {
+      try {
+        const token = localStorage.getItem("access_token");
+        const excelResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${quotation.id}/excel-notes`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        
+        if (excelResponse.ok) {
+          const excelData = await excelResponse.json();
+          if (excelData.content) {
+            showToast("Loaded Excel notes from quotation", "info");
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch Excel notes:", error);
+      }
+    }
+    
+    showToast(`Quotation "${quotation.quotation_number}" loaded successfully!`, "success");
+    setShowCopyModal(false);
+    setCopyQuotationNumber("");
+  };
+
   // Excel Grid State - Create dynamic grid system
   const [excelGrid, setExcelGrid] = useState<ExcelCell[][]>(() => {
     const initialRows = 10;
@@ -399,30 +466,32 @@ const prefillFormWithQuotation = async (quotationNumber: string) => {
   // Standard Terms Template
   const standardTermsTemplate = `1. Packing/Forwarding: Nil\n2. Freight: Actual\n3. Payment: 30 Days\n4. Delivery: 4 Weeks\n5. Validity: 30 days\n6. Taxes: All taxes as applicable\n7. Installation: At actual\n8. Warranty: As per product warranty`;
 
-const [formData, setFormData] = useState<FormData>({
-  quotation_code: generateQuotationCode(),
-  quotation_date: new Date().toISOString().split("T")[0],
-  validity_days: 30,
-  customer_id: "",
-  notes: "",
-  terms: "", // This is for additional terms
-  subject: `Quotation ${generateQuotationCode()}`,
-  place_of_supply: "",
-  tax_regime: undefined,
-  status: "open",
-  salesman_id: "",
-  reference: "",
-  reference_no: "",
-  reference_date: "",
-  payment_terms: standardTermsTemplate,
-  remarks: "", // Will be stored in remarks column
-  contact_person: "" 
-});
+  const [formData, setFormData] = useState<FormData>({
+     quotation_code: "",
+    quotation_date: new Date().toISOString().split("T")[0],
+    validity_days: 30,
+    customer_id: "",
+    quotation_search_type: "item",
+    notes: "",
+    terms: "", 
+    subject: `Quotation ${generateQuotationCode()}`,
+    tax_regime: undefined,
+    status: "open",
+    salesman_id: "",
+    reference: "",
+    reference_no: "",
+    reference_date: "",
+    payment_terms: standardTermsTemplate,
+    remarks: "", 
+    contact_person: "",
+    quotation_type: "item" 
+  });
 
   const [items, setItems] = useState<QuotationItem[]>([
     { 
       product_id: "", 
       hsn: "", 
+       item_code: "",
       description: "", 
       quantity: 1, 
       unit: "unit", 
@@ -485,134 +554,125 @@ const [formData, setFormData] = useState<FormData>({
     return grid[row][col];
   };
 
- // Evaluate formula - FIXED VERSION
-const evaluateFormula = (expr: string, grid: ExcelCell[][]): number | string => {
-  try {
-    // Remove the = sign if present
-    expr = expr.trim();
-    if (expr.startsWith('=')) {
-      expr = expr.substring(1).trim();
-    }
-
-    // If expression is empty, return empty string
-    if (expr === '') {
-      return '';
-    }
-
-    // Handle single cell reference
-    const singleCellPattern = /^([A-Z]+)(\d+)$/;
-    const singleCellMatch = expr.match(singleCellPattern);
-    if (singleCellMatch) {
-      const col = singleCellMatch[1];
-      const rowStr = singleCellMatch[2];
-      const row = parseInt(rowStr) - 1;
-      
-      if (isNaN(row) || row < 0) {
-        return '#ERROR';
+  const evaluateFormula = (expr: string, grid: ExcelCell[][]): number | string => {
+    try {
+      // Remove the = sign if present
+      expr = expr.trim();
+      if (expr.startsWith('=')) {
+        expr = expr.substring(1).trim();
       }
-      
-      const colIndex = getColumnIndex(col);
-      
-      if (row >= 0 && row < grid.length && colIndex >= 0 && colIndex < (grid[row]?.length || 0)) {
-        const cell = grid[row][colIndex];
-        if (cell) {
-          const val = cell.computedValue;
-          // If value is undefined or empty, treat as 0 for calculations
-          if (val === undefined || val === '' || val === null) {
-            return 0;
-          }
-          // Convert to number if it's a string representation of a number
-          if (typeof val === 'string') {
-            const num = parseFloat(val);
-            return isNaN(num) ? 0 : num;
-          }
-          return val;
+
+      // If expression is empty, return empty string
+      if (expr === '') {
+        return '';
+      }
+
+      // Handle single cell reference
+      const singleCellPattern = /^([A-Z]+)(\d+)$/;
+      const singleCellMatch = expr.match(singleCellPattern);
+      if (singleCellMatch) {
+        const col = singleCellMatch[1];
+        const rowStr = singleCellMatch[2];
+        const row = parseInt(rowStr, 10) - 1; // Fixed: added radix parameter
+        
+        if (isNaN(row) || row < 0) {
+          return '#ERROR';
         }
-      }
-      return '#REF!';
-    }
-
-    // Handle cell references in expressions
-    const cellReferencePattern = /([A-Z]+)(\d+)/g;
-    let processedExpr = expr;
-    let hasCellReference = false;
-    let match;
-
-    while ((match = cellReferencePattern.exec(expr)) !== null) {
-      hasCellReference = true;
-      const colLetter = match[1];
-      const rowStr = match[2];
-      const rowNum = parseInt(rowStr) - 1;
-      
-      if (isNaN(rowNum) || rowNum < 0) {
-        continue;
-      }
-      
-      const colIndex = getColumnIndex(colLetter);
-      
-      if (rowNum >= 0 && rowNum < grid.length && colIndex >= 0 && colIndex < (grid[rowNum]?.length || 0)) {
-        const cell = grid[rowNum][colIndex];
-        if (cell) {
-          let cellValue = cell.computedValue;
-          // Convert cell value to number
-          if (cellValue === undefined || cellValue === '' || cellValue === null) {
-            cellValue = 0;
-          } else if (typeof cellValue === 'string') {
-            // Try to parse string as number
-            const num = parseFloat(cellValue);
-            cellValue = isNaN(num) ? 0 : num;
+        
+        const colIndex = getColumnIndex(col);
+        
+        if (row >= 0 && row < grid.length && colIndex >= 0 && colIndex < (grid[row]?.length || 0)) {
+          const cell = grid[row][colIndex];
+          if (cell) {
+            const val = cell.computedValue;
+            if (val === undefined || val === '' || val === null) {
+              return 0;
+            }
+            if (typeof val === 'string') {
+              const num = parseFloat(val);
+              return isNaN(num) ? 0 : num;
+            }
+            return val;
           }
-          processedExpr = processedExpr.replace(match[0], cellValue.toString());
+        }
+        return '#REF!';
+      }
+
+      // Handle cell references in expressions
+      const cellReferencePattern = /([A-Z]+)(\d+)/g;
+      let processedExpr = expr;
+      let hasCellReference = false;
+      let match: RegExpExecArray | null;
+
+      while ((match = cellReferencePattern.exec(expr)) !== null) {
+        hasCellReference = true;
+        const colLetter = match[1];
+        const rowStr = match[2];
+        const rowNum = parseInt(rowStr, 10) - 1; // Fixed: added radix parameter
+        
+        if (isNaN(rowNum) || rowNum < 0) {
+          continue;
+        }
+        
+        const colIndex = getColumnIndex(colLetter);
+        
+        if (rowNum >= 0 && rowNum < grid.length && colIndex >= 0 && colIndex < (grid[rowNum]?.length || 0)) {
+          const cell = grid[rowNum][colIndex];
+          if (cell) {
+            let cellValue = cell.computedValue;
+            if (cellValue === undefined || cellValue === '' || cellValue === null) {
+              cellValue = 0;
+            } else if (typeof cellValue === 'string') {
+              const num = parseFloat(cellValue);
+              cellValue = isNaN(num) ? 0 : num;
+            }
+            processedExpr = processedExpr.replace(match[0], cellValue.toString());
+          } else {
+            processedExpr = processedExpr.replace(match[0], '0');
+          }
         } else {
           processedExpr = processedExpr.replace(match[0], '0');
         }
-      } else {
-        processedExpr = processedExpr.replace(match[0], '0');
       }
-    }
 
-    // Handle percentages
-    processedExpr = processedExpr.replace(/(\d+(\.\d+)?)%/g, (match, p1) => {
-      const percentageValue = parseFloat(p1);
-      return isNaN(percentageValue) ? match : (percentageValue / 100).toString();
-    });
+      // Handle percentages
+      processedExpr = processedExpr.replace(/(\d+(\.\d+)?)%/g, (match, p1) => {
+        const percentageValue = parseFloat(p1);
+        return isNaN(percentageValue) ? match : (percentageValue / 100).toString();
+      });
 
-    // If no cell references and it's just a number, return it
-    if (!hasCellReference) {
-      const num = parseFloat(processedExpr);
-      if (!isNaN(num)) {
-        return num;
+      // If no cell references and it's just a number, return it
+      if (!hasCellReference) {
+        const num = parseFloat(processedExpr);
+        if (!isNaN(num)) {
+          return num;
+        }
+        return processedExpr;
       }
-      // If it's not a number but has no cell references, it might be a string
-      return processedExpr;
-    }
 
-    // Try to evaluate the mathematical expression
-    try {
-      // Validate expression contains only safe characters
-      const safeExpr = processedExpr.replace(/[^0-9+\-*/().%\s]/g, '');
-      
-      if (safeExpr.trim() === '') {
+      // Try to evaluate the mathematical expression
+      try {
+        const safeExpr = processedExpr.replace(/[^0-9+\-*/().%\s]/g, '');
+        
+        if (safeExpr.trim() === '') {
+          return '#ERROR';
+        }
+
+        const result = Function(`'use strict'; try { return (${safeExpr}) } catch(e) { return '#ERROR' }`)();
+        
+        if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
+          return result;
+        }
+        return '#ERROR';
+      } catch (error) {
+        console.error('Formula evaluation error:', error);
         return '#ERROR';
       }
-
-      // Use Function constructor for safe evaluation
-      const result = Function(`'use strict'; try { return (${safeExpr}) } catch(e) { return '#ERROR' }`)();
-      
-      // Validate result
-      if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
-        return result;
-      }
-      return '#ERROR';
     } catch (error) {
       console.error('Formula evaluation error:', error);
       return '#ERROR';
     }
-  } catch (error) {
-    console.error('Formula evaluation error:', error);
-    return '#ERROR';
-  }
-};
+  };
 
   // Update dependent cells recursively with dynamic grid
   const updateDependentCells = (grid: ExcelCell[][]) => {
@@ -638,60 +698,59 @@ const evaluateFormula = (expr: string, grid: ExcelCell[][]): number | string => 
     } while (updated);
   };
 
-  
-// Update cell value with dynamic grid expansion
-const updateCell = (row: number, col: number, value: string) => {
-  const newGrid = [...excelGrid.map(rowArr => [...rowArr])];
-  
-  // Expand grid if needed
-  const cell = getOrCreateCell(newGrid, row, col);
-  
-  // Update total rows/columns if needed
-  if (row >= totalRows) {
-    setTotalRows(row + 1);
-  }
-  if (col >= totalCols) {
-    setTotalCols(col + 1);
-  }
-  
-  if (value.trim().startsWith('=')) {
-    cell.isFormula = true;
-    cell.formula = value.trim();
-    cell.value = value.trim();
+  // Update cell value with dynamic grid expansion
+  const updateCell = (row: number, col: number, value: string) => {
+    const newGrid = [...excelGrid.map(rowArr => [...rowArr])];
     
-    try {
-      const result = evaluateFormula(value, newGrid);
-      // Ensure result is properly typed
-      if (typeof result === 'number') {
-        cell.computedValue = result;
-      } else if (typeof result === 'string') {
-        cell.computedValue = result;
-      } else {
+    // Expand grid if needed
+    const cell = getOrCreateCell(newGrid, row, col);
+    
+    // Update total rows/columns if needed
+    if (row >= totalRows) {
+      setTotalRows(row + 1);
+    }
+    if (col >= totalCols) {
+      setTotalCols(col + 1);
+    }
+    
+    if (value.trim().startsWith('=')) {
+      cell.isFormula = true;
+      cell.formula = value.trim();
+      cell.value = value.trim();
+      
+      try {
+        const result = evaluateFormula(value, newGrid);
+        // Ensure result is properly typed
+        if (typeof result === 'number') {
+          cell.computedValue = result;
+        } else if (typeof result === 'string') {
+          cell.computedValue = result;
+        } else {
+          cell.computedValue = '#ERROR';
+        }
+      } catch (error) {
+        console.error('Formula error:', error);
         cell.computedValue = '#ERROR';
       }
-    } catch (error) {
-      console.error('Formula error:', error);
-      cell.computedValue = '#ERROR';
-    }
-  } else {
-    cell.isFormula = false;
-    cell.formula = undefined;
-    cell.value = value;
-    
-    const numValue = parseFloat(value);
-    // Ensure we only store numbers or strings, not mixed types
-    if (!isNaN(numValue) && value.trim() !== '') {
-      cell.computedValue = numValue;
     } else {
-      cell.computedValue = value;
+      cell.isFormula = false;
+      cell.formula = undefined;
+      cell.value = value;
+      
+      const numValue = parseFloat(value);
+      // Ensure we only store numbers or strings, not mixed types
+      if (!isNaN(numValue) && value.trim() !== '') {
+        cell.computedValue = numValue;
+      } else {
+        cell.computedValue = value;
+      }
     }
-  }
-  
-  // Update dependent cells
-  updateDependentCells(newGrid);
-  
-  setExcelGrid(newGrid);
-};
+    
+    // Update dependent cells
+    updateDependentCells(newGrid);
+    
+    setExcelGrid(newGrid);
+  };
 
   // Add rows to the grid
   const addRows = (count: number = 5) => {
@@ -759,26 +818,25 @@ const updateCell = (row: number, col: number, value: string) => {
     showToast(`Removed ${count} columns`, 'info');
   };
 
- // Update the handlePasteEnhanced function to properly parse pasted data
-const handlePasteEnhanced = (e: React.ClipboardEvent, startRow: number, startCol: number) => {
-  e.preventDefault();
-  
-  const pastedData = e.clipboardData.getData('text');
-  const rows = pastedData.trim().split('\n');
-  
-  // Calculate required dimensions
-  const neededRows = startRow + rows.length;
-  const neededCols = startCol + Math.max(...rows.map(row => {
-    // Split by tab (Excel/Google Sheets) or by comma (CSV)
-    if (row.includes('\t')) {
-      return row.split('\t').length;
-    } else if (row.includes(',')) {
-      return row.split(',').length;
-    }
-    return 1; // Single cell
-  }));
-  
- 
+  // Update the handlePasteEnhanced function to properly parse pasted data - FIXED VERSION
+  const handlePasteEnhanced = (e: React.ClipboardEvent, startRow: number, startCol: number) => {
+    e.preventDefault();
+    
+    const pastedData = e.clipboardData.getData('text');
+    const rows = pastedData.trim().split('\n');
+    
+    // Calculate required dimensions
+    const neededRows = startRow + rows.length;
+    const neededCols = startCol + Math.max(...rows.map(row => {
+      // Split by tab (Excel/Google Sheets) or by comma (CSV)
+      if (row.includes('\t')) {
+        return row.split('\t').length;
+      } else if (row.includes(',')) {
+        return row.split(',').length;
+      }
+      return 1; // Single cell
+    }));
+    
     // Create a new grid copy
     const newGrid = [...excelGrid.map(row => [...row])];
     
@@ -907,82 +965,83 @@ const handlePasteEnhanced = (e: React.ClipboardEvent, startRow: number, startCol
     showToast(`CSV exported with ${totalRows} rows × ${totalCols} columns!`, 'success');
   };
 
-  
- // Get Excel data as text for submission - FIXED VERSION
-const getExcelDataAsText = () => {
-  // Create CSV content instead of custom text format
-  let csv = '';
-  
-  // Export all rows
-  for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
-    const row = excelGrid[rowIndex] || [];
-    const rowData = [];
+  // Get Excel data as text for submission - FIXED VERSION
+  const getExcelDataAsText = () => {
+    // Create CSV content instead of custom text format
+    let csv = '';
     
-    // Add all columns
-    for (let colIndex = 0; colIndex < totalCols; colIndex++) {
-      const cell = row[colIndex];
-      let cellValue = '';
+    // Export all rows
+    for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
+      const row = excelGrid[rowIndex] || [];
+      const rowData = [];
       
-      if (cell) {
-        if (cell.isFormula && cell.formula) {
-          cellValue = String(cell.formula);
-        } else {
-          cellValue = String(cell.computedValue || cell.value || '');
+      // Add all columns
+      for (let colIndex = 0; colIndex < totalCols; colIndex++) {
+        const cell = row[colIndex];
+        let cellValue = '';
+        
+        if (cell) {
+          if (cell.isFormula && cell.formula) {
+            cellValue = String(cell.formula);
+          } else {
+            cellValue = String(cell.computedValue || cell.value || '');
+          }
         }
+        
+        // Escape CSV special characters
+        if (cellValue.includes(',') || cellValue.includes('"') || cellValue.includes('\n') || cellValue.includes('\r')) {
+          cellValue = '"' + cellValue.replace(/"/g, '""') + '"';
+        }
+        
+        rowData.push(cellValue);
       }
       
-      // Escape CSV special characters
-      if (cellValue.includes(',') || cellValue.includes('"') || cellValue.includes('\n') || cellValue.includes('\r')) {
-        cellValue = '"' + cellValue.replace(/"/g, '""') + '"';
+      // Only add row if it has data
+      if (rowData.some(cell => cell !== '' && cell !== '""')) {
+        csv += rowData.join(',') + '\n';
       }
-      
-      rowData.push(cellValue);
     }
     
-    // Only add row if it has data
-    if (rowData.some(cell => cell !== '' && cell !== '""')) {
-      csv += rowData.join(',') + '\n';
-    }
-  }
-  
-  return csv.trim();
-};
+    return csv.trim();
+  };
 
   // Prepare options
- const productOptions = useMemo(() => 
-  products
-    .filter(product => product.name && product.name.trim()) // Filter out products without names
-    .map((product) => {
-      // Create a descriptive label with item code and name
-      const name = product.name || "Unnamed Product";
-      const itemCode = product.item_code || product.code || "";
-      const description = product.description || "";
+  const productOptions = useMemo(() => 
+    products
+      .filter(product => product.name && product.name.trim()) // Filter out products without names
+      .map((product) => {
+        // Create a descriptive label with item code and name
+        const name = product.name || "Unnamed Product";
+        const itemCode = product.item_code || product.code || "";
+        const description = product.description || "";
+        const hsn = product.hsn || product.hsn_code || "";
       
-      // Format label to show both item code and name
-      const label = itemCode 
-        ? `${itemCode} - ${name}`
-        : name;
-      
-      // Add description as tooltip or secondary info
-      const subLabel = description ? `${description}` : '';
-      
-      return {
-        value: product.id,
-        label: label,
-        subLabel: subLabel, // For tooltip or secondary display
-        item_code: itemCode,
-        hsn: product.hsn|| product.hsn || "",
-        description: description || name,
-        unit_price: product.unit_price || product.sales_price || 0,
-        discount_percent: product.discount || 0,
-        gst_rate: product.tax_rate || product.gst_rate || 18,
-        unit: product.unit || "unit",
-        sku: product.sku || "",
-        stock_quantity: product.stock_quantity || 0,
-        // Store complete product data for reference
-        product
-      };
-    }), [products]);
+        
+        // Format label to show both item code and name
+        const label = itemCode 
+          ? `${itemCode} - ${name}`
+          : name;
+        
+        // Add description as tooltip or secondary info
+        const subLabel = description ? `${description}` : '';
+        
+        return {
+          value: product.id,
+          label: label,
+          subLabel: subLabel, // For tooltip or secondary display
+          item_code: itemCode,
+hsn: hsn,
+          description: description || name,
+          unit_price: product.unit_price || product.sales_price || 0,
+          discount_percent: product.discount || 0,
+          gst_rate: product.tax_rate || product.gst_rate || 18,
+          unit: product.unit || "unit",
+          sku: product.sku || "",
+          stock_quantity: product.stock_quantity || 0,
+          // Store complete product data for reference
+          product
+        };
+      }), [products]);
 
   const customerOptions = useMemo(() => {
     if (!customers || customers.length === 0) {
@@ -1098,7 +1157,7 @@ const getExcelDataAsText = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeCell, gridRows, gridCols]);
 
-  // Fetch contact persons
+    // Fetch contact persons
   const fetchContactPersons = async (customerId: string) => {
     if (!company?.id) return;
     try {
@@ -1140,6 +1199,9 @@ const getExcelDataAsText = () => {
     }
   };
 
+  const quotationTypeOptions = useMemo(() => [
+  { value: "item", label: "Item Quotation" },
+  { value: "project", label: "Project Quotation" }], []);
   // Fetch initial data
   useEffect(() => {
     const fetchData = async () => {
@@ -1147,7 +1209,13 @@ const getExcelDataAsText = () => {
       
       try {
         setLoading(true);
-        
+        const nextQuotationNumber = await fetchNextQuotationNumber();
+         setFormData(prev => ({
+        ...prev,
+        quotation_code: nextQuotationNumber,
+        subject: `Quotation ${nextQuotationNumber}`
+      }));
+      console.log("Next quotation number fetched:", nextQuotationNumber);
         // Fetch customers
         try {
           const customersData = await customersApi.list(company.id, { page_size: 100 });
@@ -1167,51 +1235,51 @@ const getExcelDataAsText = () => {
           showToast("Failed to load customers", "error");
         }
         
-     // In the fetchData useEffect, update the product fetching section:
-try {
-  const productsData: any = await productsApi.list(company.id, { page_size: 100 });
-  let productsArray: any[] = [];
-  
-  console.log("Products API response:", productsData);
-  
-  if (Array.isArray(productsData)) {
-    productsArray = productsData;
-  } else if (productsData && typeof productsData === 'object') {
-    if (productsData.products && Array.isArray(productsData.products)) {
-      productsArray = productsData.products;
-    } else if (productsData.data && Array.isArray(productsData.data)) {
-      productsArray = productsData.data;
-    } else if (productsData.items && Array.isArray(productsData.items)) {
-      productsArray = productsData.items;
-    }
-  }
-  
-  // Filter and validate products
-  const validProducts = productsArray.filter(product => {
-    // Ensure required fields exist
-    if (!product || !product.id) return false;
-    
-    // Handle null/undefined values
-    product.name = product.name || "Unnamed Product";
-    product.item_code = product.item_code || "";
-    product.description = product.description || "";
-    product.hsn = product.hsn || "";
-    product.unit_price = parseFloat(product.unit_price) || 0;
-    product.sales_price = parseFloat(product.sales_price) || product.unit_price || 0;
-    product.tax_rate = parseFloat(product.tax_rate) || 18;
-    product.discount = parseFloat(product.discount) || 0;
-    product.stock_quantity = parseFloat(product.stock_quantity) || 0;
-    product.unit = product.unit || "unit";
-    
-    return true;
-  });
-  
-  setProducts(validProducts);
-  console.log(`Loaded ${validProducts.length} valid products`);
-} catch (productError: any) {
-  console.error("Product fetch error:", productError);
-  showToast("Failed to load products. Some products may have invalid data.", "warning");
-}
+        // In the fetchData useEffect, update the product fetching section:
+        try {
+          const productsData: any = await productsApi.list(company.id, { page_size: 100 });
+          let productsArray: any[] = [];
+          
+          console.log("Products API response:", productsData);
+          
+          if (Array.isArray(productsData)) {
+            productsArray = productsData;
+          } else if (productsData && typeof productsData === 'object') {
+            if (productsData.products && Array.isArray(productsData.products)) {
+              productsArray = productsData.products;
+            } else if (productsData.data && Array.isArray(productsData.data)) {
+              productsArray = productsData.data;
+            } else if (productsData.items && Array.isArray(productsData.items)) {
+              productsArray = productsData.items;
+            }
+          }
+          
+          // Filter and validate products
+          const validProducts = productsArray.filter(product => {
+            // Ensure required fields exist
+            if (!product || !product.id) return false;
+            
+            // Handle null/undefined values
+            product.name = product.name || "Unnamed Product";
+          
+            product.description = product.description || "";
+            product.hsn = product.hsn || "";
+            product.unit_price = parseFloat(product.unit_price) || 0;
+            product.sales_price = parseFloat(product.sales_price) || product.unit_price || 0;
+            product.tax_rate = parseFloat(product.tax_rate) || 18;
+            product.discount = parseFloat(product.discount) || 0;
+            product.stock_quantity = parseFloat(product.stock_quantity) || 0;
+            product.unit = product.unit || "unit";
+            
+            return true;
+          });
+          
+          setProducts(validProducts);
+          console.log(`Loaded ${validProducts.length} valid products`);
+        } catch (productError: any) {
+          console.error("Product fetch error:", productError);
+          showToast("Failed to load products. Some products may have invalid data.", "warning");
+        }
         
         // Fetch sales engineers (employees with sales designation)
         await fetchSalesEngineers();
@@ -1227,14 +1295,13 @@ try {
     fetchData();
   }, [company?.id]);
 
-
   useEffect(() => {
-  console.log("Products loaded:", products);
-  if (products.length > 0) {
-    console.log("Sample product:", products[0]);
-    console.log("Available fields:", Object.keys(products[0]));
-  }
-}, [products]);
+    console.log("Products loaded:", products);
+    if (products.length > 0) {
+      console.log("Sample product:", products[0]);
+      console.log("Available fields:", Object.keys(products[0]));
+    }
+  }, [products]);
 
   const fetchSalesEngineers = async () => {
     if (!company?.id) return;
@@ -1263,6 +1330,7 @@ try {
 
       const data = await response.json();
       console.log("Sales engineers API response:", data);
+      console.log("Next number API response:", data); 
 
       // Process the data correctly
       if (data && Array.isArray(data) && data.length > 0) {
@@ -1381,12 +1449,69 @@ try {
     };
   }, [items, otherCharges, formData.tax_regime, calculateItemTotal]);
 
+  const addSubItem = (itemIndex: number) => {
+    const newItems = [...items];
+    if (!newItems[itemIndex].subItems) {
+      newItems[itemIndex].subItems = [];
+    }
+    newItems[itemIndex].subItems!.push({
+      id: Date.now().toString() + Math.random(),
+      description: "",
+      quantity: 1,
+      image: null,
+      imageUrl: ""
+    });
+    setItems(newItems);
+    showToast("Component added", "info");
+  };
+
+  const removeSubItem = (itemIndex: number, subItemId: string) => {
+    const newItems = [...items];
+    if (newItems[itemIndex].subItems) {
+      newItems[itemIndex].subItems = newItems[itemIndex].subItems!.filter(
+        subItem => subItem.id !== subItemId
+      );
+    }
+    setItems(newItems);
+    showToast("Sub-item removed", "info");
+  };
+
+  const updateSubItem = (
+    itemIndex: number, 
+    subItemId: string, 
+    field: keyof SubItem, 
+    value: any
+  ) => {
+    const newItems = [...items];
+    const subItemIndex = newItems[itemIndex].subItems!.findIndex(
+      subItem => subItem.id === subItemId
+    );
+    
+    if (subItemIndex !== -1) {
+      if (field === "image" && value instanceof File) {
+        const imageUrl = URL.createObjectURL(value);
+        newItems[itemIndex].subItems![subItemIndex] = {
+          ...newItems[itemIndex].subItems![subItemIndex],
+          image: value,
+          imageUrl: imageUrl
+        };
+      } else {
+        newItems[itemIndex].subItems![subItemIndex] = {
+          ...newItems[itemIndex].subItems![subItemIndex],
+          [field]: value
+        };
+      }
+    }
+    
+    setItems(newItems);
+  };
+
   // Item management functions
   const addItem = () => {
     setItems([...items, { 
       product_id: "", 
       hsn: "", 
-      description: "", 
+    description: "", 
       quantity: 1, 
       unit: "unit", 
       unit_price: 0, 
@@ -1414,10 +1539,12 @@ try {
         newItems[index] = {
           ...newItems[index],
           product_id: value,
-          hsn: product.hsn ||"",
+         hsn: product.hsn || product.hsn_code || "",
+         item_code: product.item_code || product.code || "",
           description: product.description || product.name || "Product",
           unit_price: product.unit_price || product.sales_price || 0,
           discount_percent: product.discount || 0,
+           quantity: 1,
           gst_rate: Number(product.tax_rate || product.gst_rate || 18)
         };
       }
@@ -1544,156 +1671,189 @@ try {
   };
 
   // Form validation
-  // Form validation
-const validateForm = () => {
-  const errors: string[] = [];
+  const validateForm = () => {
+    const errors: string[] = [];
 
-  if (!formData.customer_id) {
-    errors.push("Please select a customer");
-  }
+    if (!formData.customer_id) {
+      errors.push("Please select a customer");
+    }
 
-  if (!formData.contact_person) {
-    errors.push("Please select a contact person");
-  }
+    if (!formData.contact_person) {
+      errors.push("Please select a contact person");
+    }
 
-  if (!formData.salesman_id) {
-    errors.push("Please select a sales engineer");
-  }
+    if (!formData.salesman_id) {
+      errors.push("Please select a sales engineer");
+    }
 
-  // Check for valid items
-  const validItems = items.filter(item => 
-    item.quantity > 0 && item.unit_price > 0 && item.description.trim()
-  );
+    // Check for valid items
+    const validItems = items.filter(item => 
+      item.quantity > 0 && item.unit_price > 0 && item.description.trim()
+    );
 
-  if (validItems.length === 0) {
-    errors.push("Please add at least one valid item with quantity > 0, price > 0, and description");
-  }
+    if (validItems.length === 0) {
+      errors.push("Please add at least one valid item with quantity > 0, price > 0, and description");
+    }
 
-  return errors;
-};
+    return errors;
+  };
 
-  // Handle form submission
   // Handle form submission - UPDATED for FormData
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  
-  const validationErrors = validateForm();
-  if (validationErrors.length > 0) {
-    validationErrors.forEach(error => showToast(error, "error"));
-    return;
-  }
-
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-  if (!company?.id || !token) {
-    showToast("Authentication required", "error");
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    // Get Excel data as text
-    const excelDataText = exportToCSVForSubmission();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     
-    // Prepare items for backend - filter out empty items
-    const itemsForBackend = items
-      .filter(item => item.quantity > 0 && item.unit_price >= 0)
-      .map(item => ({
-        product_id: item.product_id || undefined,
-        description: item.description || "Item",
-        hsn: item.hsn || "",
-        quantity: item.quantity,
-        unit: item.unit || "unit",
-        unit_price: item.unit_price,
-        discount_percent: item.discount_percent,
-        gst_rate: item.gst_rate
-      }));
-
-    // Validate we have at least one valid item
-    if (itemsForBackend.length === 0) {
-      showToast("Please add at least one valid item", "error");
-      setLoading(false);
+    const validationErrors = validateForm();
+    if (validationErrors.length > 0) {
+      validationErrors.forEach(error => showToast(error, "error"));
       return;
     }
 
-    // Prepare the JSON payload
-    const payload = {
-      customer_id: formData.customer_id || undefined,
-      quotation_date: new Date(formData.quotation_date).toISOString(),
-      validity_days: formData.validity_days,
-      place_of_supply: selectedCustomer?.billing_state || undefined,
-      subject: formData.subject || `Quotation`,
-      notes: formData.notes || undefined,
-      terms: formData.terms || undefined, // Additional terms
-      remarks: formData.remarks || undefined,
-      contact_person: formData.contact_person || undefined,
-      sales_person_id: formData.salesman_id || undefined,
-      reference: formData.reference || undefined,
-      reference_no: formData.reference_no || undefined,
-      reference_date: formData.reference_date || undefined,
-      payment_terms: formData.payment_terms || undefined,
-      excel_notes: excelDataText || undefined,
-      items: itemsForBackend
+    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    if (!company?.id || !token) {
+      showToast("Authentication required", "error");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Get Excel data as text
+      const excelDataText = exportToCSVForSubmission();
+      
+      // Prepare items for backend - filter out empty items
+     // Prepare items for backend - filter out empty items
+const itemsForBackend = items
+  .filter(item => item.quantity > 0 && item.unit_price >= 0)
+  .map(item => {
+    const baseItem = {
+      product_id: item.product_id || undefined,
+      description: item.description || "Item",
+      hsn_code: item.hsn || "",
+      item_code: item.item_code || undefined, 
+      quantity: item.quantity,
+      unit: item.unit || "unit",
+      unit_price: item.unit_price,
+      discount_percent: item.discount_percent,
+      gst_rate: item.gst_rate,
+      item_type: formData.quotation_type === "project" ? "project" : "item"
+     
     };
 
-    // Create FormData
-    const formDataToSend = new FormData();
-    formDataToSend.append('data', JSON.stringify(payload));
-    
-    // Optionally add CSV file
-    if (excelDataText) {
-      const csvBlob = new Blob([excelDataText], { type: 'text/csv' });
-      formDataToSend.append('excel_file', csvBlob, 'excel_notes.csv');
-    }
-
-    console.log("Sending FormData payload:", payload);
-
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations`,
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          // Do NOT set Content-Type header for FormData - browser will set it automatically
-        },
-        body: formDataToSend, // Use FormData instead of JSON
-      }
-    );
-
-    if (response.ok) {
-      const data = await response.json();
-      showToast("Quotation created successfully!", "success");
-      router.push(`/quotations`);
-    } else {
-      const errorText = await response.text();
-      console.error("Backend error response:", errorText);
-      
-      let errorMessage = "Failed to create quotation";
-      try {
-        const errorData = JSON.parse(errorText);
-        if (errorData.detail) {
-          if (Array.isArray(errorData.detail)) {
-            errorMessage = errorData.detail.map((err: any) => err.msg || err.message).join(", ");
-          } else if (typeof errorData.detail === 'string') {
-            errorMessage = errorData.detail;
-          } else if (errorData.detail?.msg) {
-            errorMessage = errorData.detail.msg;
-          }
+    // Add sub-items if project type
+    if (formData.quotation_type === "project" && item.subItems && item.subItems.length > 0) {
+      // Prepare sub-items data
+      const subItemsData = item.subItems.map(subItem => {
+        const subItemData: any = {
+          description: subItem.description,
+          quantity: subItem.quantity
+        };
+        
+        // Handle image upload separately if needed
+        // For now, we'll just include the image URL if available
+        if (subItem.imageUrl) {
+          subItemData.image_url = subItem.imageUrl;
         }
-      } catch (parseError) {
-        errorMessage = errorText || "Unknown error occurred";
-      }
+        
+        return subItemData;
+      });
       
-      showToast(errorMessage, "error");
+      return {
+        ...baseItem,
+        sub_items: subItemsData
+      };
     }
-  } catch (err: any) { 
-    console.error("Submission error:", err);
-    const errorMessage = err instanceof Error ? err.message : "Network error";
-    showToast("Failed to create quotation: " + errorMessage, "error");
-  } finally {
-    setLoading(false);
-  }
-};
+
+    return baseItem;
+  });
+        
+      // Validate we have at least one valid item
+      if (itemsForBackend.length === 0) {
+        showToast("Please add at least one valid item", "error");
+        setLoading(false);
+        return;
+      }
+
+      // Prepare the JSON payload
+      const payload = {
+        quotation_number: formData.quotation_code, 
+        customer_id: formData.customer_id || undefined,
+        quotation_date: new Date(formData.quotation_date).toISOString(),
+        validity_days: formData.validity_days,
+        subject: formData.subject || `Quotation ${formData.quotation_code}`,
+        notes: formData.notes || undefined,
+        terms: formData.terms || undefined, // Additional terms
+        remarks: formData.remarks || undefined,
+        contact_person: formData.contact_person || undefined,
+        sales_person_id: formData.salesman_id || undefined,
+        reference: formData.reference || undefined,
+        reference_no: formData.reference_no || undefined,
+        reference_date: formData.reference_date || undefined,
+        quotation_type: formData.quotation_type || "item", 
+        payment_terms: formData.payment_terms || undefined,
+        excel_notes: excelDataText || undefined,
+       
+        items: itemsForBackend
+      };
+
+      // Create FormData
+      const formDataToSend = new FormData();
+      formDataToSend.append('data', JSON.stringify(payload));
+      
+      // Optionally add CSV file
+      if (excelDataText) {
+        const csvBlob = new Blob([excelDataText], { type: 'text/csv' });
+        formDataToSend.append('excel_file', csvBlob, 'excel_notes.csv');
+      }
+
+      console.log("Sending FormData payload:", payload);
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            // Do NOT set Content-Type header for FormData - browser will set it automatically
+          },
+          body: formDataToSend, // Use FormData instead of JSON
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        showToast("Quotation created successfully!", "success");
+        router.push(`/quotations`);
+      } else {
+        const errorText = await response.text();
+        console.error("Backend error response:", errorText);
+        
+        let errorMessage = "Failed to create quotation";
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.detail) {
+            if (Array.isArray(errorData.detail)) {
+              errorMessage = errorData.detail.map((err: any) => err.msg || err.message).join(", ");
+            } else if (typeof errorData.detail === 'string') {
+              errorMessage = errorData.detail;
+            } else if (errorData.detail?.msg) {
+              errorMessage = errorData.detail.msg;
+            }
+          }
+        } catch (parseError) {
+          errorMessage = errorText || "Unknown error occurred";
+        }
+        
+        showToast(errorMessage, "error");
+      }
+    } catch (err: any) { 
+      console.error("Submission error:", err);
+      const errorMessage = err instanceof Error ? err.message : "Network error";
+      showToast("Failed to create quotation: " + errorMessage, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Handle cancel
   const handleCancel = () => {
     if (items.some(item => item.product_id) || formData.customer_id) {
@@ -1705,49 +1865,48 @@ const handleSubmit = async (e: React.FormEvent) => {
     }
   };
 
-
- const exportToCSVForSubmission = () => {
-  let csv = '';
-  
-  // Export all rows
-  for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
-    const row = excelGrid[rowIndex] || [];
-    const rowData = [];
+  const exportToCSVForSubmission = () => {
+    let csv = '';
     
-    // Add all columns
-    for (let colIndex = 0; colIndex < totalCols; colIndex++) {
-      const cell = row[colIndex];
-      let cellValue = '';
+    // Export all rows
+    for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
+      const row = excelGrid[rowIndex] || [];
+      const rowData = [];
       
-      if (cell) {
-        // For submission, use the computed value or actual value
-        if (cell.computedValue !== '' && cell.computedValue !== undefined && cell.computedValue !== null) {
-          // Ensure it's a string
-          cellValue = String(cell.computedValue);
-        } else {
-          cellValue = String(cell.value || '');
+      // Add all columns
+      for (let colIndex = 0; colIndex < totalCols; colIndex++) {
+        const cell = row[colIndex];
+        let cellValue = '';
+        
+        if (cell) {
+          // For submission, use the computed value or actual value
+          if (cell.computedValue !== '' && cell.computedValue !== undefined && cell.computedValue !== null) {
+            // Ensure it's a string
+            cellValue = String(cell.computedValue);
+          } else {
+            cellValue = String(cell.value || '');
+          }
         }
+        
+        // Escape CSV special characters
+        if (typeof cellValue === 'string') {
+          // If contains commas, quotes, or newlines, wrap in quotes
+          if (cellValue.includes(',') || cellValue.includes('"') || cellValue.includes('\n') || cellValue.includes('\r')) {
+            cellValue = '"' + cellValue.replace(/"/g, '""') + '"';
+          }
+        }
+        
+        rowData.push(cellValue);
       }
       
-      // Escape CSV special characters
-      if (typeof cellValue === 'string') {
-        // If contains commas, quotes, or newlines, wrap in quotes
-        if (cellValue.includes(',') || cellValue.includes('"') || cellValue.includes('\n') || cellValue.includes('\r')) {
-          cellValue = '"' + cellValue.replace(/"/g, '""') + '"';
-        }
+      // Only add row if it has data
+      if (rowData.some(cell => cell !== '' && cell !== '""')) {
+        csv += rowData.join(',') + '\n';
       }
-      
-      rowData.push(cellValue);
     }
     
-    // Only add row if it has data
-    if (rowData.some(cell => cell !== '' && cell !== '""')) {
-      csv += rowData.join(',') + '\n';
-    }
-  }
-  
-  return csv.trim();
-};
+    return csv.trim();
+  };
 
   // Remove toast
   const removeToast = (id: number) => {
@@ -1769,118 +1928,119 @@ const handleSubmit = async (e: React.FormEvent) => {
           ))}
         </div>
         {showCopyModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Copy Existing Quotation
-        </h3>
-        <button
-          type="button"
-          onClick={() => {
-            setShowCopyModal(false);
-            setCopyQuotationNumber("");
-            setCopyError("");
-          }}
-          className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
-        >
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-      
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Enter Quotation Number *
-          </label>
-          <input
-            type="text"
-            value={copyQuotationNumber}
-            onChange={(e) => setCopyQuotationNumber(e.target.value)}
-            placeholder="e.g., QT-2024-001"
-            className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-            disabled={isFetchingQuotation}
-          />
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Enter the exact quotation number you want to copy
-          </p>
-        </div>
-        
-        {copyError && (
-          <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-            <p className="text-sm text-red-600 dark:text-red-400">{copyError}</p>
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Copy Existing Quotation
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCopyModal(false);
+                    setCopyQuotationNumber("");
+                    setCopyError("");
+                  }}
+                  className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Enter Quotation Number *
+                  </label>
+                  <input
+                    type="text"
+                    value={copyQuotationNumber}
+                    onChange={(e) => setCopyQuotationNumber(e.target.value)}
+                    placeholder="e.g., QT-2024-001"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                    disabled={isFetchingQuotation}
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Enter the exact quotation number you want to copy
+                  </p>
+                </div>
+                
+                {copyError && (
+                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <p className="text-sm text-red-600 dark:text-red-400">{copyError}</p>
+                  </div>
+                )}
+                
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCopyModal(false);
+                      setCopyQuotationNumber("");
+                      setCopyError("");
+                    }}
+                    className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    disabled={isFetchingQuotation}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => prefillFormWithQuotation(copyQuotationNumber)}
+                    disabled={!copyQuotationNumber.trim() || isFetchingQuotation}
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isFetchingQuotation ? (
+                      <>
+                        <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Searching...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Load Quotation
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
-        
-        <div className="flex gap-3 pt-2">
-          <button
-            type="button"
-            onClick={() => {
-              setShowCopyModal(false);
-              setCopyQuotationNumber("");
-              setCopyError("");
-            }}
-            className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-            disabled={isFetchingQuotation}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => prefillFormWithQuotation(copyQuotationNumber)}
-            disabled={!copyQuotationNumber.trim() || isFetchingQuotation}
-            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isFetchingQuotation ? (
-              <>
-                <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Searching...
-              </>
-            ) : (
-              <>
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Load Quotation
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
 
         {/* Header */}
-    <div className="mb-6 md:mb-8">
-  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-    <div>
-      <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
-        Create New Quotation
-      </h1>
-      <p className="text-gray-600 dark:text-gray-400 mt-1">
-        Create a detailed quotation for your customer
-      </p>
-    </div>
-    <div className="flex gap-2">
-      <button
-        type="button"
-        onClick={() => setShowCopyModal(true)}
-        className="inline-flex items-center gap-2 rounded-lg border border-blue-600 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
-      >
-        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-        </svg>
-        Copy Existing Quotation
-      </button>
-    </div>
-  </div>
-</div>
+        <div className="mb-6 md:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
+                Create New Quotation
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400 mt-1">
+                Create a detailed quotation for your customer
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowCopyModal(true)}
+                className="inline-flex items-center gap-2 rounded-lg border border-blue-600 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Copy Existing Quotation
+              </button>
+            </div>
+          </div>
+        </div>
+        
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Main Form Sections */}
@@ -1893,18 +2053,42 @@ const handleSubmit = async (e: React.FormEvent) => {
                   Quotation Details
                 </h2>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Quotation No *
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.quotation_code}
-                      onChange={(e) => setFormData({ ...formData, quotation_code: e.target.value })}
-                      className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-                      required
-                    />
-                  </div>
+              <div>
+  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+    Quotation No *
+  </label>
+  <div className="flex items-center gap-2">
+    <input
+      type="text"
+      value={formData.quotation_code || "Loading..."}
+      readOnly
+      onChange={(e) => setFormData({ ...formData, quotation_code: e.target.value })}
+      className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+      required 
+      disabled={!formData.quotation_code}
+    />
+    {/* <button
+      type="button"
+      onClick={async () => {
+        const nextNumber = await fetchNextQuotationNumber();
+        setFormData(prev => ({
+          ...prev,
+          quotation_code: nextNumber,
+          subject: `Quotation ${nextNumber}`
+        }));
+        showToast(`Refreshed: ${nextNumber}`, "info");
+      }}
+      className="rounded-lg border border-blue-600 px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
+    >
+      Refresh
+    </button> */}
+  </div>
+  {/* {!formData.quotation_code && (
+    <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
+      Click "Refresh" to get next quotation number
+    </p>
+  )} */}
+</div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -1919,6 +2103,88 @@ const handleSubmit = async (e: React.FormEvent) => {
                     />
                   </div>
 
+           <div>
+  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+    Quotation Type *
+  </label>
+  <Select
+    options={quotationTypeOptions}
+    value={quotationTypeOptions.find(opt => opt.value === formData.quotation_type)}
+    onChange={(option) => {
+      if (option) {
+        const newType = option.value as "item" | "project";
+        setFormData({ 
+          ...formData, 
+          quotation_type: newType,
+          quotation_search_type: newType 
+        });
+        
+        // Reset items based on type
+        if (newType === "project") {
+          // Initialize with one project item with all fields
+          setItems([{
+            product_id: "",
+         
+            hsn: "",
+            description: "",
+            quantity: 1,
+            unit: "project",
+            unit_price: 0,
+            discount_percent: 0,
+            gst_rate: 18,
+            isProject: true,
+            subItems: []
+          }]);
+        } else {
+          // Reset to regular item
+          setItems([
+            { 
+              product_id: "", 
+             
+              hsn: "", 
+              description: "", 
+              quantity: 1, 
+              unit: "unit", 
+              unit_price: 0, 
+              discount_percent: 0, 
+              gst_rate: 18 
+            }
+          ]);
+        }
+        
+        showToast(`Quotation type changed to: ${option.label}`, "info");
+      }
+    }}
+    placeholder="Search or select quotation type..."
+    className="react-select-container"
+    classNamePrefix="react-select"
+    isSearchable
+    isClearable={false}
+    formatOptionLabel={(option) => (
+      <div className="flex flex-col">
+        <div className="font-medium">{option.label}</div>
+        <div className="text-xs text-gray-500 mt-0.5">{option.description}</div>
+      </div>
+    )}
+    noOptionsMessage={() => "No quotation types found"}
+    styles={{
+      control: (base) => ({
+        ...base,
+        borderColor: '#d1d5db',
+        '&:hover': {
+          borderColor: '#9ca3af',
+        },
+        minHeight: '42px',
+        borderRadius: '0.5rem',
+      }),
+      menu: (base) => ({
+        ...base,
+        zIndex: 9999,
+      })
+    }}
+  />
+  
+</div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Validity Days
@@ -1985,77 +2251,75 @@ const handleSubmit = async (e: React.FormEvent) => {
                       )}
                     </div>
                     
-                   <Select
-  options={customerOptions}
-  value={customerOptions.find(opt => opt.value === formData.customer_id)}
-  onChange={handleCustomerChange}
-  placeholder={loading ? "Loading customers..." : "Click here to select customer"}
-  className="react-select-container"
-  classNamePrefix="react-select"
-  isLoading={loading}
-  isClearable
-  isSearchable
-  noOptionsMessage={() => "No customers found. Add customers first."}
-  styles={{
-    control: (base, state) => ({
-      ...base,
-      borderColor: customerOptions.length > 0 ? '#10b981' : '#d1d5db',
-      '&:hover': {
-        borderColor: customerOptions.length > 0 ? '#059669' : '#9ca3af',
-      },
-      backgroundColor: state.isFocused ? '#f3f4f6' : base.backgroundColor,
-    }),
-    menu: (base) => ({
-      ...base,
-      zIndex: 9999,
-    })
-  }}
-/>
+                    <Select
+                      options={customerOptions}
+                      value={customerOptions.find(opt => opt.value === formData.customer_id)}
+                      onChange={handleCustomerChange}
+                      placeholder={loading ? "Loading customers..." : "Click here to select customer"}
+                      className="react-select-container"
+                      classNamePrefix="react-select"
+                      isLoading={loading}
+                      isClearable
+                      isSearchable
+                      noOptionsMessage={() => "No customers found. Add customers first."}
+                      styles={{
+                        control: (base, state) => ({
+                          ...base,
+                          borderColor: customerOptions.length > 0 ? '#10b981' : '#d1d5db',
+                          '&:hover': {
+                            borderColor: customerOptions.length > 0 ? '#059669' : '#9ca3af',
+                          },
+                          backgroundColor: state.isFocused ? '#f3f4f6' : base.backgroundColor,
+                        }),
+                        menu: (base) => ({
+                          ...base,
+                          zIndex: 9999,
+                        })
+                      }}
+                    />
                   </div>
                   
-
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Contact Person *
                     </label>
-                    <Select
-  options={salesmanOptions}
-  value={salesmanOptions.find(opt => opt.value === formData.salesman_id)}
-  onChange={(option) => {
-    setFormData({ ...formData, salesman_id: option?.value || "" });
-    if (option?.salesman) {
-      console.log("Selected sales engineer:", option.salesman);
-    }
-  }}
-  placeholder={salesmen.length > 0 ? "Select Sales Engineer..." : "No sales engineers available"}
-  className="react-select-container"
-  classNamePrefix="react-select"
-  isLoading={loading && salesmen.length === 0}
-  isClearable
-  isSearchable
-  noOptionsMessage={() => salesmen.length === 0 ? "No sales engineers available" : "No options found"}
-/>
                     
-                    {selectedCustomer && contactPersonOptions.length === 0 && (
+  <Select
+      options={contactPersonOptions}
+      value={contactPersonOptions.find(opt => opt.value === selectedContactPerson?.id)}
+      onChange={handleContactPersonChange}
+      placeholder={
+        selectedCustomer 
+          ? (contactPersonOptions.length > 0 
+              ? "Select Contact Person..." 
+              : "No contact persons found for this customer")
+          : "Please select a customer first"
+      }
+      className="react-select-container"
+      classNamePrefix="react-select"
+      isClearable
+      isSearchable
+      isDisabled={!selectedCustomer}
+      noOptionsMessage={() => 
+        selectedCustomer 
+          ? "No contact persons found for this customer" 
+          : "Please select a customer first"
+      }
+      formatOptionLabel={(option) => (
+        <div className="flex flex-col">
+          <div className="font-medium">{option.person?.name || "Unnamed Contact"}</div>
+          <div className="text-xs text-gray-500">
+            {option.person?.email ? `Email: ${option.person.email}` : ''}
+            {option.person?.phone ? `${option.person.email ? ' • ' : ''}Phone: ${option.person.phone}` : ''}
+          </div>
+        </div>
+      )}
+    />            {selectedCustomer && contactPersonOptions.length === 0 && (
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         No contact persons found for this customer. Please add contact persons in the customer management section.
                       </p>
                     )}
                   </div>
-
-
-<div>
-  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-    Place of Supply
-  </label>
-  <input
-    type="text"
-    value={formData.place_of_supply}
-    onChange={(e) => setFormData({ ...formData, place_of_supply: e.target.value })}
-    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm"
-    placeholder="State name or code"
-  />
-</div>
                 </div>
               </div>
             </div>
@@ -2072,23 +2336,23 @@ const handleSubmit = async (e: React.FormEvent) => {
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Sales Engineer *
                     </label>
-                    <Select
-                      options={salesmanOptions}
-                      value={salesmanOptions.find(opt => opt.value === formData.salesman_id)}
-                      onChange={(option) => {
-                        setFormData({ ...formData, salesman_id: option?.value || "" });
-                        if (option?.salesman) {
-                          console.log("Selected sales engineer:", option.salesman);
-                        }
-                      }}
-                      placeholder={salesmen.length > 0 ? "Select Sales Engineer..." : "No sales engineers available"}
-                      className="react-select-container"
-                      classNamePrefix="react-select"
-                      isLoading={loading && salesmen.length === 0}
-                      isClearable
-                      isSearchable
-                      noOptionsMessage={() => salesmen.length === 0 ? "No sales engineers available" : "No options found"}
-                    />
+                     <Select
+        options={salesmanOptions}
+        value={salesmanOptions.find(opt => opt.value === formData.salesman_id)}
+        onChange={(option) => {
+          setFormData({ ...formData, salesman_id: option?.value || "" });
+          if (option?.salesman) {
+            console.log("Selected sales engineer:", option.salesman);
+          }
+        }}
+        placeholder={salesmen.length > 0 ? "Select Sales Engineer..." : "No sales engineers available"}
+        className="react-select-container"
+        classNamePrefix="react-select"
+        isLoading={loading && salesmen.length === 0}
+        isClearable
+        isSearchable
+        noOptionsMessage={() => salesmen.length === 0 ? "No sales engineers available" : "No options found"}
+      />
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
@@ -2183,12 +2447,18 @@ const handleSubmit = async (e: React.FormEvent) => {
             </div>
           </div>
 
-          {/* Items Section */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Items
-              </h2>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {formData.quotation_type === "project" ? "Project Items" : "Items"}
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  {formData.quotation_type === "project" 
+                    ? "Add project items with detailed components" 
+                    : "Add items to your quotation"}
+                </p>
+              </div>
               <div className="flex gap-2 mt-2 sm:mt-0">
                 <button
                   type="button"
@@ -2198,7 +2468,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
-                  Add New Item
+                  Add New Product
                 </button>
                 <button
                   type="button"
@@ -2208,182 +2478,737 @@ const handleSubmit = async (e: React.FormEvent) => {
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
-                  Add Item
+                  {formData.quotation_type === "project" ? "Add Project Item" : "Add Item"}
                 </button>
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1000px]">
-                <thead>
-                  <tr className="border-b border-gray-200 dark:border-gray-700">
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                      Item
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                      HSN Code
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                      Description
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                      Qty *
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                      Unit Price *
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                      Discount %
-                    </th>
-                  
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                      Total
-                    </th>
-                   
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {items.map((item, index) => (
-                    <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <td className="px-4 py-3">
-     <Select
-  options={productOptions}
-  value={productOptions.find(opt => opt.value === item.product_id)}
-  onChange={(option) => {
-    if (option) {
-      // Get the full product object from the option
-      const selectedProduct = option.product || products.find(p => p.id === option.value);
+            {/* REGULAR ITEMS VIEW */}
+            {formData.quotation_type === "item" ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1000px]">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-700">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                        Item
+                      </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+      Item Code
+    </th>
+                      
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                        HSN Code
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                        Description
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                        Qty *
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                        Unit Price *
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                        Discount %
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                        GST %
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                        Total
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {items.map((item, index) => (
+                      <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        {/* Item Selection */}
+                        <td className="px-4 py-3">
+                          <Select
+                            options={productOptions}
+                            value={productOptions.find(opt => opt.value === item.product_id)}
+                            onChange={(option) => {
+                              if (option) {
+                                const selectedProduct = option.product || products.find(p => p.id === option.value);
+                                if (selectedProduct) {
+                                  const updatedItem = {
+                                    product_id: selectedProduct.id,
+                                    hsn: selectedProduct.hsn ||"",
+                                    description: selectedProduct.description || selectedProduct.name || "Product",
+                                    unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
+                                    discount_percent: selectedProduct.discount || selectedProduct.discount_percent || 0,
+                                    gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
+                                    quantity: item.quantity,
+                                    unit: item.unit || "unit"
+                                  };
+                                  setItems(prev => prev.map((it, idx) => 
+                                    idx === index ? { ...it, ...updatedItem } : it
+                                  ));
+                                  const stockInfo = selectedProduct.stock_quantity > 0 
+                                    ? ` (Stock: ${selectedProduct.stock_quantity})`
+                                    : " (Out of stock)";
+                                  showToast(`Selected: ${selectedProduct.name || selectedProduct.item_code}${stockInfo}`, "info");
+                                }
+                              } else {
+                                setItems(prev => prev.map((it, idx) => 
+                                  idx === index ? { 
+                                    ...it,
+                                    product_id: "",
+                                    hsn: "",
+                                    description: "",
+                                    unit_price: 0,
+                                    discount_percent: 0,
+                                    gst_rate: 18
+                                  } : it
+                                ));
+                              }
+                            }}
+                            placeholder="Search by item code or name..."
+                            className="react-select-container"
+                            classNamePrefix="react-select"
+                            isClearable
+                            isSearchable
+                            formatOptionLabel={(option, { context }) => (
+                              <div className="flex flex-col">
+                                <div className="font-medium">{option.label}</div>
+                                {option.subLabel && (
+                                  <div className="text-xs text-gray-500 truncate">{option.subLabel}</div>
+                                )}
+                                <div className="flex gap-2 text-xs text-gray-600 mt-1">
+                                  <span>Price: ₹{option.unit_price?.toFixed(2) || '0.00'}</span>
+                                  <span>•</span>
+                                  <span>Stock: {option.stock_quantity || 0}</span>
+                                  <span>•</span>
+                                  <span>HSN: {option.hsn || 'N/A'}</span>
+                                  <span>•</span>
+                                  <span>GST: {option.gst_rate || 18}%</span>
+                                </div>
+                              </div>
+                            )}
+                            noOptionsMessage={() => "No products found. Add products first."}
+                          />
+                        </td>
+                        
+
+                         <td className="px-4 py-3">
+        <input
+          type="text"
+          value={item.item_code || ""}
+          onChange={(e) => {
+            const value = e.target.value;
+            // Update item code in state
+            const newItems = [...items];
+            newItems[index] = { ...newItems[index], item_code: value };
+            setItems(newItems);
+            
+            // Optional: Auto-search when typing item code
+            if (value.trim().length >= 2 && formData.quotation_search_type === "code") {
+              // You can add auto-search logic here
+              const matchingProduct = products.find(p => 
+                p.item_code && p.item_code.toLowerCase().includes(value.toLowerCase())
+              );
+              if (matchingProduct) {
+                showToast(`Found: ${matchingProduct.name}`, "info");
+              }
+            }
+          }}
+          className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+          placeholder="Enter item code"
+          title="Enter item code. You can type and it will search automatically."
+        />
+        {item.item_code && (
+          <button
+            type="button"
+            onClick={() => {
+              // Clear item code
+              const newItems = [...items];
+              newItems[index] = { ...newItems[index], item_code: "" };
+              setItems(newItems);
+            }}
+            className="mt-1 text-xs text-red-600 hover:text-red-800 dark:text-red-400"
+          >
+            Clear
+          </button>
+        )}
+      </td>
+
+                        {/* HSN Code */}
+                        <td className="px-4 py-3">
+                          <input
+                            type="text"
+                            value={item.hsn}
+                            onChange={(e) => updateItem(index, "hsn", e.target.value)}
+                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                            placeholder="HSN Code"
+                          />
+                        </td>
+                        
+                        {/* Description */}
+                        <td className="px-4 py-3">
+                          <textarea
+                            value={item.description}
+                            onChange={(e) => updateItem(index, "description", e.target.value)}
+                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                            rows={1}
+                            placeholder="Description"
+                          />
+                        </td>
+                        
+                        {/* Quantity */}
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => updateItem(index, "quantity", parseFloat(e.target.value) || 0)}
+                            min={0.01}
+                            step={0.01}
+                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                            required
+                          />
+                        </td>
+                        
+                        {/* Unit Price */}
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            value={item.unit_price}
+                            onChange={(e) => updateItem(index, "unit_price", parseFloat(e.target.value) || 0)}
+                            min={0}
+                            step={0.01}
+                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                            required
+                          />
+                        </td>
+                        
+                        {/* Discount */}
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            value={item.discount_percent}
+                            onChange={(e) => updateItem(index, "discount_percent", parseFloat(e.target.value) || 0)}
+                            min={0}
+                            max={100}
+                            step={0.01}
+                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                          />
+                        </td>
+                        
+                        {/* GST Rate */}
+                        <td className="px-4 py-3">
+                          <select
+                            value={item.gst_rate}
+                            onChange={(e) => updateItem(index, "gst_rate", Number(e.target.value) || 18)}
+                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                          >
+                            <option value={0}>0%</option>
+                            <option value={5}>5%</option>
+                            <option value={12}>12%</option>
+                            <option value={18}>18%</option>
+                            <option value={28}>28%</option>
+                          </select>
+                        </td>
+                        
+                        {/* Total */}
+                        <td className="px-4 py-3">
+                          <input
+                            type="text"
+                            value={formatCurrency(calculateItemTotal(item).total)}
+                            readOnly
+                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-1.5 text-sm font-medium"
+                          />
+                        </td>
+                        
+                        {/* Action */}
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => removeItem(index)}
+                            className="rounded-lg p-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                            disabled={items.length <= 1}
+                          >
+                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              /* PROJECT ITEMS VIEW WITH EXACT SAME LAYOUT AS REGULAR ITEMS */
+              <div className="space-y-8">
+                {items.map((item, itemIndex) => (
+                  <div key={itemIndex} className="border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+                    {/* Project Item Header */}
+                    <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                          Project Item #{itemIndex + 1}
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                          Main project item with detailed components
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => removeItem(itemIndex)}
+                          className="rounded-lg p-2 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                          disabled={items.length <= 1}
+                        >
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Main Project Item Details - EXACT SAME LAYOUT AS REGULAR ITEMS */}
+                    <div className="mb-8">
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[1000px]">
+                          <thead>
+                            <tr className="border-b border-gray-200 dark:border-gray-700">
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                                Item
+                              </th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+      Item Code
+    </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                                HSN Code
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                                Description
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                                Qty *
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                                Unit Price *
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                                Discount %
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                                GST %
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                                Total
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                              {/* Item Selection */}
+                              <td className="px-4 py-3">
+                                <Select
+                                  options={productOptions}
+                                  value={productOptions.find(opt => opt.value === item.product_id)}
+                                  onChange={(option) => {
+                                    if (option) {
+                                      const selectedProduct = option.product || products.find(p => p.id === option.value);
+                                      if (selectedProduct) {
+                                        const updatedItem = {
+                                          product_id: selectedProduct.id,
+                                          hsn: selectedProduct.hsn || "",
+                                          description: item.description || selectedProduct.description || selectedProduct.name || "Project Item",
+                                          unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
+                                          discount_percent: selectedProduct.discount || selectedProduct.discount_percent || 0,
+                                          gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
+                                          quantity: item.quantity,
+                                          unit: item.unit || "unit"
+                                        };
+                                        setItems(prev => prev.map((it, idx) => 
+                                          idx === itemIndex ? { ...it, ...updatedItem } : it
+                                        ));
+                                        const stockInfo = selectedProduct.stock_quantity > 0 
+                                          ? ` (Stock: ${selectedProduct.stock_quantity})`
+                                          : " (Out of stock)";
+                                        showToast(`Selected: ${selectedProduct.name || selectedProduct.item_code}${stockInfo}`, "info");
+                                      }
+                                    } else {
+                                      setItems(prev => prev.map((it, idx) => 
+                                        idx === itemIndex ? { 
+                                          ...it,
+                                          product_id: "",
+                                          hsn: "",
+                                          unit_price: 0,
+                                          discount_percent: 0,
+                                          gst_rate: 18
+                                        } : it
+                                      ));
+                                    }
+                                  }}
+                                  placeholder="Select project item or product..."
+                                  className="react-select-container"
+                                  classNamePrefix="react-select"
+                                  isClearable
+                                  isSearchable
+                                  formatOptionLabel={(option, { context }) => (
+                                    <div className="flex flex-col">
+                                      <div className="font-medium">{option.label}</div>
+                                      {option.subLabel && (
+                                        <div className="text-xs text-gray-500 truncate">{option.subLabel}</div>
+                                      )}
+                                      <div className="flex gap-2 text-xs text-gray-600 mt-1">
+                                        <span>Price: ₹{option.unit_price?.toFixed(2) || '0.00'}</span>
+                                        <span>•</span>
+                                        <span>Stock: {option.stock_quantity || 0}</span>
+                                        <span>•</span>
+                                        <span>HSN: {option.hsn || 'N/A'}</span>
+                                        <span>•</span>
+                                        <span>GST: {option.gst_rate || 18}%</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                  noOptionsMessage={() => "No products found. Add products first."}
+                                />
+                              </td>
+                               <td className="px-4 py-3">
+  <input
+    type="text"
+    value={item.item_code || ""}
+    onChange={(e) => {
+      const value = e.target.value;
+      // Update item code in state
+      const newItems = [...items];
+      newItems[itemIndex] = { ...newItems[itemIndex], item_code: value };
+      setItems(newItems);
       
-      if (selectedProduct) {
-        // Update all fields at once in a single updateItem call
-        const updatedItem = {
-          product_id: selectedProduct.id,
-          hsn: selectedProduct.hsn||"",
-          description: selectedProduct.description || selectedProduct.name || "Product",
-          unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
-          discount_percent: selectedProduct.discount || selectedProduct.discount_percent || 0,
-          gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
-          // Keep existing values for other fields
-          quantity: item.quantity,
-          unit: item.unit || "unit"
-        };
-        
-        // Update the item with all new values
-        setItems(prev => prev.map((it, idx) => 
-          idx === index ? { ...it, ...updatedItem } : it
-        ));
-        
-        // Show toast with item details
-        const stockInfo = selectedProduct.stock_quantity > 0 
-          ? ` (Stock: ${selectedProduct.stock_quantity})`
-          : " (Out of stock)";
-        showToast(`Selected: ${selectedProduct.name || selectedProduct.item_code}${stockInfo}`, "info");
+      // Optional: Auto-search when typing item code
+      if (value.trim().length >= 2 && formData.quotation_search_type === "code") {
+        // You can add auto-search logic here
+        const matchingProduct = products.find(p => 
+          p.item_code && p.item_code.toLowerCase().includes(value.toLowerCase())
+        );
+        if (matchingProduct) {
+          showToast(`Found: ${matchingProduct.name}`, "info");
+        }
       }
-    } else {
-      // Clear all fields if product is deselected
-      setItems(prev => prev.map((it, idx) => 
-        idx === index ? { 
-          ...it,
-          product_id: "",
-          hsn: "",
-          description: "",
-          unit_price: 0,
-          discount_percent: 0,
-          gst_rate: 18
-        } : it
-      ));
-    }
-  }}
-  placeholder="Search by item code or name..."
-  className="react-select-container"
-  classNamePrefix="react-select"
-  isClearable
-  isSearchable
-  formatOptionLabel={(option, { context }) => (
-    <div className="flex flex-col">
-      <div className="font-medium">{option.label}</div>
-      {option.subLabel && (
-        <div className="text-xs text-gray-500 truncate">{option.subLabel}</div>
-      )}
-      <div className="flex gap-2 text-xs text-gray-600 mt-1">
-        <span>Price: ₹{option.unit_price?.toFixed(2) || '0.00'}</span>
-        <span>•</span>
-        <span>Stock: {option.stock_quantity || 0}</span>
-        <span>•</span>
-        <span>HSN: {option.hsn || 'N/A'}</span>
-        <span>•</span>
-        <span>GST: {option.gst_rate || 18}%</span>
+    }}
+    className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+    placeholder="Enter item code"
+    title="Enter item code. You can type and it will search automatically."
+  />
+  {item.item_code && (
+    <button
+      type="button"
+      onClick={() => {
+        // Clear item code
+        const newItems = [...items];
+        newItems[itemIndex] = { ...newItems[itemIndex], item_code: "" };
+        setItems(newItems);
+      }}
+      className="mt-1 text-xs text-red-600 hover:text-red-800 dark:text-red-400"
+    >
+      Clear
+    </button>
+  )}
+</td>
+                              
+                              {/* HSN Code */}
+                              <td className="px-4 py-3">
+                                <input
+                                  type="text"
+                                  value={item.hsn}
+                                  onChange={(e) => updateItem(itemIndex, "hsn", e.target.value)}
+                                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                                  placeholder="HSN Code"
+                                />
+                              </td>
+                              
+                              {/* Description */}
+                              <td className="px-4 py-3">
+                                <textarea
+                                  value={item.description}
+                                  onChange={(e) => updateItem(itemIndex, "description", e.target.value)}
+                                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                                  rows={1}
+                                  placeholder="Project description"
+                                />
+                              </td>
+                              
+                              {/* Quantity */}
+                              <td className="px-4 py-3">
+                                <input
+                                  type="number"
+                                  value={item.quantity}
+                                  onChange={(e) => updateItem(itemIndex, "quantity", parseFloat(e.target.value) || 1)}
+                                  min={0.01}
+                                  step={0.01}
+                                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                                  required
+                                />
+                              </td>
+                              
+                              {/* Unit Price */}
+                              <td className="px-4 py-3">
+                                <input
+                                  type="number"
+                                  value={item.unit_price}
+                                  onChange={(e) => updateItem(itemIndex, "unit_price", parseFloat(e.target.value) || 0)}
+                                  min={0}
+                                  step={0.01}
+                                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                                  required
+                                />
+                              </td>
+                              
+                              {/* Discount */}
+                              <td className="px-4 py-3">
+                                <input
+                                  type="number"
+                                  value={item.discount_percent}
+                                  onChange={(e) => updateItem(itemIndex, "discount_percent", parseFloat(e.target.value) || 0)}
+                                  min={0}
+                                  max={100}
+                                  step={0.01}
+                                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                                />
+                              </td>
+                              
+                              {/* GST Rate */}
+                              <td className="px-4 py-3">
+                                <select
+                                  value={item.gst_rate}
+                                  onChange={(e) => updateItem(itemIndex, "gst_rate", Number(e.target.value) || 18)}
+                                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                                >
+                                  <option value={0}>0%</option>
+                                  <option value={5}>5%</option>
+                                  <option value={12}>12%</option>
+                                  <option value={18}>18%</option>
+                                  <option value={28}>28%</option>
+                                </select>
+                              </td>
+                              
+                              {/* Total */}
+                              <td className="px-4 py-3">
+                                <input
+                                  type="text"
+                                  value={formatCurrency(calculateItemTotal(item).total)}
+                                  readOnly
+                                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-1.5 text-sm font-medium"
+                                />
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Project Components / Sub-items Section */}
+                    <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
+                        <div>
+                          <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            Project Components
+                          </h4>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                            Add detailed components that make up this project
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => addSubItem(itemIndex)}
+                          className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 mt-2 sm:mt-0"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Add Component
+                        </button>
+                      </div>
+
+             {item.subItems && item.subItems.length > 0 ? (
+  <div className="overflow-x-auto">
+    <div className="inline-block min-w-full align-middle">
+      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+        <thead>
+          <tr className="border-b border-gray-200 dark:border-gray-700">
+            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-12">
+              #
+            </th>
+            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider min-w-[200px] max-w-[300px]">
+              Description *
+            </th>
+            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-24">
+              Qty *
+            </th>
+            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-32">
+              Image
+            </th>
+            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-20">
+              Action
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+          {item.subItems.map((subItem, subIndex) => (
+            <tr key={subItem.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+              {/* Serial Number */}
+              <td className="px-3 py-3 whitespace-nowrap w-12">
+                <span className="text-sm font-medium text-gray-900 dark:text-white">
+                  {subIndex + 1}
+                </span>
+              </td>
+              
+              {/* Description - Responsive */}
+              <td className="px-3 py-3 min-w-[200px] max-w-[300px]">
+                <textarea
+                  value={subItem.description}
+                  onChange={(e) => updateSubItem(itemIndex, subItem.id, "description", e.target.value)}
+                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm resize-y"
+                  rows={1}
+                  placeholder="Component description..."
+                  required
+                  style={{ minHeight: '2.5rem', maxHeight: '6rem' }}
+                />
+              </td>
+              
+              {/* Quantity */}
+              <td className="px-3 py-3 whitespace-nowrap w-24">
+                <input
+                  type="number"
+                  value={subItem.quantity}
+                  onChange={(e) => updateSubItem(itemIndex, subItem.id, "quantity", parseFloat(e.target.value) || 1)}
+                  min={1}
+                  step={1}
+                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                  required
+                />
+              </td>
+              
+              {/* Image */}
+              <td className="px-3 py-3 whitespace-nowrap w-32">
+                <div className="flex items-center gap-2">
+                  {subItem.imageUrl ? (
+                    <div className="relative flex-shrink-0">
+                      <img
+                        src={subItem.imageUrl}
+                        alt="Component preview"
+                        className="h-10 w-10 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateSubItem(itemIndex, subItem.id, "image", null);
+                          updateSubItem(itemIndex, subItem.id, "imageUrl", "");
+                        }}
+                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600"
+                      >
+                        <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="h-10 w-10 flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex-shrink-0">
+                      <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                  )}
+                  <label className="cursor-pointer flex-shrink-0">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          updateSubItem(itemIndex, subItem.id, "image", file);
+                        }
+                      }}
+                      className="hidden"
+                    />
+                    <span className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-500 whitespace-nowrap">
+                      {subItem.imageUrl ? 'Change' : 'Upload'}
+                    </span>
+                  </label>
+                </div>
+              </td>
+              
+              {/* Action */}
+              <td className="px-3 py-3 whitespace-nowrap w-20">
+                <button
+                  type="button"
+                  onClick={() => removeSubItem(itemIndex, subItem.id)}
+                  className="rounded-lg p-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    
+    {/* Components Summary */}
+    <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+        <h5 className="font-medium text-gray-900 dark:text-white mb-4 sm:mb-0">
+          Components Summary
+        </h5>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="text-center">
+            <div className="text-sm text-gray-600 dark:text-gray-400">Total Components</div>
+            <div className="text-lg font-semibold text-gray-900 dark:text-white">
+              {item.subItems.length}
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-sm text-gray-600 dark:text-gray-400">Total Qty</div>
+            <div className="text-lg font-semibold text-gray-900 dark:text-white">
+              {item.subItems.reduce((sum, sub) => sum + sub.quantity, 0)}
+            </div>
+          </div>
+          <div className="text-center">
+            <div className="text-sm text-gray-600 dark:text-gray-400">Project Total</div>
+            <div className="text-lg font-bold text-blue-600 dark:text-blue-500">
+              {formatCurrency(calculateItemTotal(item).total)}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  )}
-  noOptionsMessage={() => "No products found. Add products first."}
-/>                </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="text"
-                          value={item.hsn}
-                          onChange={(e) => updateItem(index, "hsn", e.target.value)}
-                          className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                          placeholder="HSN Code"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <textarea
-                          value={item.description}
-                          onChange={(e) => updateItem(index, "description", e.target.value)}
-                          className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                          rows={1}
-                          placeholder="Description"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => updateItem(index, "quantity", parseFloat(e.target.value) || 0)}
-                          min={0.01}
-                          step={0.01}
-                          className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                          required
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          value={item.unit_price}
-                          onChange={(e) => updateItem(index, "unit_price", parseFloat(e.target.value) || 0)}
-                          min={0}
-                          step={0.01}
-                          className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                          required
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          value={item.discount_percent}
-                          onChange={(e) => updateItem(index, "discount_percent", parseFloat(e.target.value) || 0)}
-                          min={0}
-                          max={100}
-                          step={0.01}
-                          className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                        />
-                      </td>
-                     
-                      <td className="px-4 py-3">
-                        <input
-                          type="text"
-                          value={formatCurrency(calculateItemTotal(item).total)}
-                          readOnly
-                          className="w-full rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-1.5 text-sm font-medium"
-                        />
-                      </td>
-                     
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+  </div>
+) : (
+                        <div className="text-center py-12 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                          <svg className="mx-auto h-16 w-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                          </svg>
+                          <p className="mt-4 text-lg font-medium text-gray-900 dark:text-white">
+                            No components added yet
+                          </p>
+                          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                            Add components to break down this project into detailed parts
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => addSubItem(itemIndex)}
+                            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-sm font-medium text-white hover:bg-blue-700"
+                          >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                            Add First Component
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Summary and Terms Section */}
@@ -2395,12 +3220,8 @@ const handleSubmit = async (e: React.FormEvent) => {
                   Additional Notes (Excel Grid)
                 </h2>
                 <div className="flex flex-wrap gap-2 mt-2 sm:mt-0">
-                  <div className="flex items-center gap-2">
-                   
-                  </div>
-                  <div className="flex items-center gap-2">
-                    
-                  </div>
+                  <div className="flex items-center gap-2"></div>
+                  <div className="flex items-center gap-2"></div>
                 </div>
               </div>
 

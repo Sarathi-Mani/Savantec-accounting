@@ -329,3 +329,24 @@ async def dev_reset_company_data(
             detail=f"Failed to reset data: {str(e)}"
         )
 
+@router.get("/{company_id}/next-invoice-number")
+async def get_next_invoice_number(
+    company_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get next available invoice number for a company."""
+    # Convert string to string (keep it as string)
+    company = db.query(Company).filter(Company.id == company_id).first()
+    
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    
+    # Check if user has access to this company
+    if str(company.id) not in [str(c.id) for c in current_user.companies]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    company_service = CompanyService(db)
+    next_number = company_service.get_next_invoice_number(company)
+    
+    return {"invoice_number": next_number}

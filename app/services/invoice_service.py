@@ -103,27 +103,59 @@ class InvoiceService:
         customer: Optional[Customer] = None
     ) -> Invoice:
         """Create a new invoice with GST calculations."""
+        # 🟢 DEBUG: Print incoming data
+        print("\n" + "="*50)
+        print("DEBUG: INVOICE CREATION STARTED")
+        print("="*50)
+        
         # Get next invoice number
         company_service = CompanyService(self.db)
         invoice_number = company_service.get_next_invoice_number(company)
+        print(f"Invoice number: {invoice_number}")
         
         # Determine place of supply
         place_of_supply = data.place_of_supply
         if not place_of_supply and customer:
             place_of_supply = customer.billing_state_code
-        if not place_of_supply and data.customer_state_code:
+        if not place_of_supply and hasattr(data, 'customer_state_code'):
             place_of_supply = data.customer_state_code
         if not place_of_supply:
             place_of_supply = company.state_code or "27"  # Default to Maharashtra
         
         place_of_supply_name = INDIAN_STATE_CODES.get(place_of_supply, "")
+        print(f"Place of supply: {place_of_supply} ({place_of_supply_name})")
         
         # Determine invoice type
         invoice_type = data.invoice_type
-        if customer and customer.gstin:
+        if customer and customer.tax_number:
             invoice_type = InvoiceType.B2B
+        print(f"Invoice type: {invoice_type}")
         
-        # Create invoice
+        # 🟢 DEBUG: Check if all fields are present in data
+        print("\nDEBUG: Checking fields in data:")
+        check_fields = [
+            'round_off', 'sales_person_id', 'shipping_address', 'shipping_city',
+            'shipping_state', 'shipping_zip', 'customer_name', 'customer_gstin',
+            'customer_phone', 'customer_state', 'customer_state_code',
+            'reference_no', 'delivery_note', 'payment_terms', 'supplier_ref',
+            'other_references', 'buyer_order_no', 'buyer_order_date',
+            'despatch_doc_no', 'delivery_note_date', 'despatched_through',
+            'destination', 'terms_of_delivery', 'freight_charges',
+            'packing_forwarding_charges', 'coupon_code', 'coupon_value',
+            'discount_on_all', 'discount_type', 'payment_type', 'payment_account',
+            'payment_note', 'adjust_advance_payment'
+        ]
+        
+        for field in check_fields:
+            if hasattr(data, field):
+                value = getattr(data, field)
+                print(f"  ✓ {field}: {value}")
+            else:
+                print(f"  ✗ {field}: NOT FOUND")
+        
+        print("\nDEBUG: Creating invoice object...")
+        
+        # Create invoice with ALL fields
         invoice = Invoice(
             company_id=company.id,
             customer_id=customer.id if customer else None,
@@ -137,10 +169,60 @@ class InvoiceService:
             notes=data.notes or company.invoice_notes,
             terms=data.terms or company.invoice_terms,
             status=InvoiceStatus.DRAFT,
+            
+            # 🟢 ADD ALL THESE FIELDS
+            round_off=getattr(data, 'round_off', Decimal('0.00')),
+            sales_person_id=getattr(data, 'sales_person_id', None),
+            
+            # Shipping address
+            shipping_address=getattr(data, 'shipping_address', None),
+            shipping_city=getattr(data, 'shipping_city', None),
+            shipping_state=getattr(data, 'shipping_state', None),
+            shipping_country=getattr(data, 'shipping_country', 'India'),
+            shipping_zip=getattr(data, 'shipping_zip', None),
+            
+            # Denormalized customer info
+            customer_name=customer.name if customer else getattr(data, 'customer_name', None),
+            customer_gstin=customer.tax_number if customer else getattr(data, 'customer_gstin', None),
+            customer_phone=customer.contact if customer else getattr(data, 'customer_phone', None),
+            customer_state=getattr(data, 'customer_state', None),
+            customer_state_code=getattr(data, 'customer_state_code', None),
+            
+            # Other fields
+            reference_no=getattr(data, 'reference_no', None),
+            delivery_note=getattr(data, 'delivery_note', None),
+            payment_terms=getattr(data, 'payment_terms', None),
+            supplier_ref=getattr(data, 'supplier_ref', None),
+            other_references=getattr(data, 'other_references', None),
+            buyer_order_no=getattr(data, 'buyer_order_no', None),
+            buyer_order_date=getattr(data, 'buyer_order_date', None),
+            despatch_doc_no=getattr(data, 'despatch_doc_no', None),
+            delivery_note_date=getattr(data, 'delivery_note_date', None),
+            despatched_through=getattr(data, 'despatched_through', None),
+            destination=getattr(data, 'destination', None),
+            terms_of_delivery=getattr(data, 'terms_of_delivery', None),
+            
+            # Charges
+            freight_charges=getattr(data, 'freight_charges', Decimal('0.00')),
+            packing_forwarding_charges=getattr(data, 'packing_forwarding_charges', Decimal('0.00')),
+            coupon_code=getattr(data, 'coupon_code', None),
+            coupon_value=getattr(data, 'coupon_value', Decimal('0.00')),
+            discount_on_all=getattr(data, 'discount_on_all', Decimal('0.00')),
+            discount_type=getattr(data, 'discount_type', 'percentage'),
+            
+            # Payment
+            payment_type=getattr(data, 'payment_type', None),
+            payment_account=getattr(data, 'payment_account', None),
+            payment_note=getattr(data, 'payment_note', None),
+            adjust_advance_payment=getattr(data, 'adjust_advance_payment', False),
         )
+        
+        print(f"DEBUG: Invoice object created with ID: {invoice.id if hasattr(invoice, 'id') else 'Not yet'}")
         
         self.db.add(invoice)
         self.db.flush()  # Get invoice ID
+        
+        print(f"DEBUG: Invoice flushed, ID: {invoice.id}")
         
         # Calculate totals
         subtotal = Decimal("0")
@@ -150,8 +232,12 @@ class InvoiceService:
         total_cess = Decimal("0")
         total_discount = Decimal("0")
         
+        print(f"\nDEBUG: Processing {len(data.items)} items...")
+        
         # Add invoice items
-        for item_data in data.items:
+        for idx, item_data in enumerate(data.items):
+            print(f"  Item {idx+1}: {item_data.description}")
+            
             amounts = self._calculate_item_amounts(
                 item_data,
                 company.state_code or "27",
@@ -180,6 +266,11 @@ class InvoiceService:
                 total_amount=amounts["total_amount"],
             )
             
+            # 🟢 DEBUG: Print item calculations
+            print(f"    Quantity: {item.quantity}, Unit Price: {item.unit_price}")
+            print(f"    Taxable: {amounts['taxable_amount']}, Tax: {amounts['cgst_amount'] + amounts['sgst_amount'] + amounts['igst_amount']}")
+            print(f"    Total: {amounts['total_amount']}")
+            
             self.db.add(item)
             
             # Accumulate totals
@@ -191,17 +282,53 @@ class InvoiceService:
         
         # Update invoice totals
         total_tax = total_cgst + total_sgst + total_igst + total_cess
-        total_amount = subtotal + total_tax
         
+        # 🟢 IMPORTANT: Include additional charges in total calculation
+        freight = getattr(data, 'freight_charges', Decimal('0.00'))
+        packing = getattr(data, 'packing_forwarding_charges', Decimal('0.00'))
+        coupon = getattr(data, 'coupon_value', Decimal('0.00'))
+        discount_all = getattr(data, 'discount_on_all', Decimal('0.00'))
+        round_off = getattr(data, 'round_off', Decimal('0.00'))
+        
+        # Calculate discount on all
+        discount_all_amount = discount_all
+        if getattr(data, 'discount_type', 'percentage') == 'percentage':
+            discount_all_amount = subtotal * (discount_all / Decimal('100'))
+        
+        # Calculate final total
+        base_total = subtotal + total_tax
+        total_with_charges = base_total + freight + packing
+        total_with_coupon = total_with_charges - coupon
+        total_with_discount = total_with_coupon - discount_all_amount
+        final_total = total_with_discount + round_off
+        
+        print(f"\nDEBUG: Invoice totals calculation:")
+        print(f"  Subtotal: {subtotal}")
+        print(f"  Tax (CGST: {total_cgst}, SGST: {total_sgst}, IGST: {total_igst}): {total_tax}")
+        print(f"  Base total (subtotal + tax): {base_total}")
+        print(f"  + Freight: {freight}, + Packing: {packing}")
+        print(f"  - Coupon: {coupon}")
+        print(f"  - Discount on all: {discount_all_amount}")
+        print(f"  + Round off: {round_off}")
+        print(f"  = FINAL TOTAL: {final_total}")
+        
+        # Update invoice with correct totals
         invoice.subtotal = subtotal
-        invoice.discount_amount = total_discount
+        invoice.discount_amount = total_discount + discount_all_amount  # Include discount on all
         invoice.cgst_amount = total_cgst
         invoice.sgst_amount = total_sgst
         invoice.igst_amount = total_igst
         invoice.cess_amount = total_cess
         invoice.total_tax = total_tax
-        invoice.total_amount = total_amount
-        invoice.balance_due = total_amount
+        invoice.total_amount = final_total
+        invoice.balance_due = final_total
+        
+        # Set amount_paid if payment was made
+        payment_amount = getattr(data, 'payment_amount', Decimal('0.00'))
+        if payment_amount > 0:
+            invoice.amount_paid = payment_amount
+            invoice.balance_due = final_total - payment_amount
+            print(f"  Payment made: {payment_amount}, Balance due: {invoice.balance_due}")
         
         # Generate UPI QR
         if company.bank_accounts:
@@ -213,18 +340,24 @@ class InvoiceService:
                 invoice.upi_qr_data = self._generate_upi_string(
                     default_bank.upi_id,
                     company.name,
-                    total_amount,
+                    final_total,
                     invoice_number
                 )
                 invoice.payment_link = self._generate_upi_link(
                     default_bank.upi_id,
                     company.name,
-                    total_amount,
+                    final_total,
                     invoice_number
                 )
         
+        print(f"\nDEBUG: Committing to database...")
         self.db.commit()
         self.db.refresh(invoice)
+        
+        print(f"DEBUG: Invoice created successfully!")
+        print(f"  Invoice ID: {invoice.id}")
+        print(f"  Customer: {invoice.customer_name}")
+        print(f"  Total Amount: {invoice.total_amount}")
         
         # Auto-allocate stock if enabled and not manual override
         if company.auto_reduce_stock and not getattr(data, 'manual_warehouse_override', False):
@@ -235,8 +368,11 @@ class InvoiceService:
             manual_allocation = getattr(data, 'warehouse_allocations', None)
             stock_service.allocate_stock_for_invoice(invoice, manual_allocation)
         
+        print("="*50)
+        print("DEBUG: INVOICE CREATION COMPLETED")
+        print("="*50 + "\n")
+        
         return invoice
-    
     def _generate_upi_string(
         self,
         upi_id: str,
