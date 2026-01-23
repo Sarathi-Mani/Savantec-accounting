@@ -81,7 +81,7 @@ export const NAV_DATA = [
       },
 
       {
-        title: "Sales",
+        title: "Sales Invoice",
         icon: Icons.FileText,
         items: [
           {
@@ -174,7 +174,16 @@ export const NAV_DATA = [
     label: "PURCHASES",
     items: [
       {
-        title: "Purchase",
+        title: "Vendors",
+        url: "/vendors",
+        icon: Icons.Building,
+        items: [
+          { title: "All Vendors", url: "/vendors" },
+          { title: "Add Vendor", url: "/vendors/new" }
+        ],
+      },
+      {
+        title: "Purchase Invoices",
         icon: Icons.FileText,
         items: [
           {
@@ -268,6 +277,7 @@ export const NAV_DATA = [
   {
     label: "PURCHASE",
     items: [
+      
       {
         title: "Purchase Invoices",
         icon: Icons.ReceiptText,
@@ -277,12 +287,7 @@ export const NAV_DATA = [
           { title: "Debit Notes", url: "/purchase/debit-notes" },
         ],
       },
-      {
-        title: "Vendors",
-        url: "/vendors",
-        icon: Icons.Building,
-        items: [],
-      },
+      
       {
         title: "Purchase Orders",
         url: "/orders/purchase",
