@@ -1,13 +1,13 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { vendorsApi, Customer, CustomerListResponse } from "@/services/api";
+import { vendorsApi, Vendor, VendorListResponse } from "@/services/api"; // Import Vendor types
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 export default function VendorsPage() {
   const { company } = useAuth();
-  const [data, setData] = useState<CustomerListResponse | null>(null);
+  const [data, setData] = useState<VendorListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -21,6 +21,7 @@ export default function VendorsPage() {
 
       setLoading(true);
       try {
+        // Use vendorsApi instead of customersApi
         const result = await vendorsApi.list(company.id, {
           page,
           page_size: 10,
@@ -45,7 +46,7 @@ export default function VendorsPage() {
         prev
           ? {
               ...prev,
-              customers: prev.customers.filter((c) => c.id !== vendorId),
+              vendors: prev.vendors.filter((v) => v.id !== vendorId), // Updated to vendors
               total: prev.total - 1,
             }
           : null
@@ -80,7 +81,7 @@ export default function VendorsPage() {
         <div className="flex-1">
           <input
             type="text"
-            placeholder="Search vendors by name, GSTIN..."
+            placeholder="Search vendors by name, GSTIN, vendor code..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
@@ -96,7 +97,7 @@ export default function VendorsPage() {
           </div>
         ) : !company ? (
           <div className="py-20 text-center text-dark-6">No company selected</div>
-        ) : data?.customers.length === 0 ? (
+        ) : data?.vendors?.length === 0 ? ( // Updated to data?.vendors
           <div className="py-20 text-center">
             <svg className="mx-auto mb-4 h-16 w-16 text-dark-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -111,43 +112,83 @@ export default function VendorsPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-stroke dark:border-dark-3">
+                  <th className="px-6 py-4 text-left text-sm font-medium text-dark-6">Vendor Code</th>
                   <th className="px-6 py-4 text-left text-sm font-medium text-dark-6">Vendor Name</th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-dark-6">GSTIN</th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-dark-6">GST Number</th>
                   <th className="px-6 py-4 text-left text-sm font-medium text-dark-6">PAN</th>
                   <th className="px-6 py-4 text-left text-sm font-medium text-dark-6">Contact</th>
-                  <th className="px-6 py-4 text-left text-sm font-medium text-dark-6">City</th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-dark-6">Opening Balance</th>
+                  <th className="px-6 py-4 text-left text-sm font-medium text-dark-6">Status</th>
                   <th className="px-6 py-4 text-right text-sm font-medium text-dark-6">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {data?.customers.map((vendor) => (
+                {data?.vendors.map((vendor) => ( // Updated to data?.vendors
                   <tr key={vendor.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
+                    <td className="px-6 py-4">
+                      <div className="font-mono font-medium text-dark dark:text-white">
+                        {vendor.vendor_code || "N/A"}
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <div>
                         <p className="font-medium text-dark dark:text-white">{vendor.name}</p>
-                        {vendor.trade_name && (
-                          <p className="text-sm text-dark-6">{vendor.trade_name}</p>
-                        )}
+                        <p className="text-sm text-dark-6">
+                          {vendor.billing_city && vendor.billing_state 
+                            ? `${vendor.billing_city}, ${vendor.billing_state}`
+                            : "Location not set"}
+                        </p>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-dark-6">
-                      {vendor.gstin || "-"}
+                    <td className="px-6 py-4">
+                      <div className="font-mono text-sm text-dark-6">
+                        {vendor.tax_number || "-"}
+                      </div>
                     </td>
-                    <td className="px-6 py-4 text-dark-6">
-                      {vendor.pan || "-"}
+                    <td className="px-6 py-4">
+                      <div className="font-mono text-sm text-dark-6">
+                        {vendor.pan_number || "-"}
+                      </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm">
-                        {vendor.email && <p className="text-dark dark:text-white">{vendor.email}</p>}
-                        {vendor.phone && <p className="text-dark-6">{vendor.phone}</p>}
-                        {!vendor.email && !vendor.phone && <span className="text-dark-6">-</span>}
+                        <p className="text-dark dark:text-white">{vendor.contact}</p>
+                        {vendor.email && (
+                          <p className="text-dark-6">{vendor.email}</p>
+                        )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-dark-6">
-                      {vendor.billing_city || "-"}
+                    <td className="px-6 py-4">
+                      <div className="text-sm">
+                        <p className={`font-medium ${vendor.opening_balance_type === 'outstanding' ? 'text-red-600' : 'text-green-600'}`}>
+                          ₹{vendor.opening_balance?.toLocaleString() || "0.00"}
+                        </p>
+                        <p className="text-xs text-dark-6">
+                          {vendor.opening_balance_type === 'outstanding' ? 'You owe' : 'You paid'}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        vendor.is_active 
+                          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+                          : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                      }`}>
+                        {vendor.is_active ? 'Active' : 'Inactive'}
+                      </span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
+                        <Link
+                          href={`/vendors/${vendor.id}`}
+                          className="rounded p-1.5 hover:bg-gray-100 dark:hover:bg-dark-3"
+                          title="View"
+                        >
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                        </Link>
                         <Link
                           href={`/vendors/${vendor.id}/edit`}
                           className="rounded p-1.5 hover:bg-gray-100 dark:hover:bg-dark-3"
@@ -179,7 +220,7 @@ export default function VendorsPage() {
         {data && totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-stroke px-6 py-4 dark:border-dark-3">
             <p className="text-sm text-dark-6">
-              Showing {(page - 1) * 10 + 1} to {Math.min(page * 10, data.total)} of {data.total}
+              Showing {(page - 1) * 10 + 1} to {Math.min(page * 10, data.total)} of {data.total} vendors
             </p>
             <div className="flex gap-2">
               <button

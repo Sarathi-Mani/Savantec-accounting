@@ -182,20 +182,16 @@ export const NAV_DATA = [
           { title: "Add Vendor", url: "/vendors/new" }
         ],
       },
-      {
-        title: "Purchase Invoices",
-        icon: Icons.FileText,
+        {
+        title: "Purchase Request",
+        url: "/purchase-req",
+        icon: Icons.Building,
         items: [
-          {
-            title: "Add Purchase",
-            url: "/purchase/new",
-          },
-          {
-            title: "Purchase List",
-            url: "/purchase/purchase-list",
-          }
+          { title: "All Requests", url: "/purchase-req" },
+          { title: "Add Requests", url: "/purchase-req/new" }
         ],
       },
+     
       {
         title: "Purchase Orders",
         icon: Icons.ShoppingCart,
@@ -208,6 +204,20 @@ export const NAV_DATA = [
             title: "Add Purchase Order",
             url: "/purchase/purchase-orders/new",
           },
+        ],
+      },
+       {
+        title: "Purchase Invoices",
+        icon: Icons.FileText,
+        items: [
+          {
+            title: "Add Purchase",
+            url: "/purchase/new",
+          },
+          {
+            title: "Purchase List",
+            url: "/purchase/purchase-list",
+          }
         ],
       },
       {
@@ -608,7 +618,7 @@ export const NAV_DATA = [
         title: "Multi-Currency",
         icon: Icons.Currency,
         items: [
-          { title: "Currencies", url: "/settings/currencies" },
+          { title: "Currencies", url: "" },
           { title: "Exchange Rates", url: "/settings/exchange-rates" },
         ],
       },

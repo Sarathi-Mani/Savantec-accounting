@@ -108,7 +108,7 @@ export interface BankAccount {
 export interface Company {
   id: string;
   name: string;
-  trade_name?: string;
+ 
   gstin?: string;
   pan?: string;
   cin?: string;
@@ -209,7 +209,7 @@ export interface Customer {
   gstin?: string;
   pan?: string;
   phone?: string;
-  trade_name?: string;
+
   billing_pincode?: string;
   shipping_pincode?: string;
   contact_person?: string;
@@ -751,6 +751,7 @@ export const customersApi = {
 };
 
 // Vendors API (vendors use the Customer model)
+// Vendors API
 export const vendorsApi = {
   list: async (
     companyId: string,
@@ -758,30 +759,31 @@ export const vendorsApi = {
       page?: number;
       page_size?: number;
       search?: string;
+      is_active?: boolean;
     }
-  ): Promise<CustomerListResponse> => {
+  ): Promise<VendorListResponse> => {
     const response = await api.get(`/companies/${companyId}/vendors`, { params });
     return response.data;
   },
 
-  search: async (companyId: string, q: string, limit = 10): Promise<Customer[]> => {
+  search: async (companyId: string, q: string, limit = 10): Promise<Vendor[]> => {
     const response = await api.get(`/companies/${companyId}/vendors/search`, {
       params: { q, limit },
     });
     return response.data;
   },
 
-  get: async (companyId: string, vendorId: string): Promise<Customer> => {
+  get: async (companyId: string, vendorId: string): Promise<Vendor> => {
     const response = await api.get(`/companies/${companyId}/vendors/${vendorId}`);
     return response.data;
   },
 
-  create: async (companyId: string, data: Partial<Customer>): Promise<Customer> => {
+  create: async (companyId: string, data: VendorCreateRequest): Promise<Vendor> => {
     const response = await api.post(`/companies/${companyId}/vendors`, data);
     return response.data;
   },
 
-  update: async (companyId: string, vendorId: string, data: Partial<Customer>): Promise<Customer> => {
+  update: async (companyId: string, vendorId: string, data: VendorUpdateRequest): Promise<Vendor> => {
     const response = await api.put(`/companies/${companyId}/vendors/${vendorId}`, data);
     return response.data;
   },
@@ -789,7 +791,83 @@ export const vendorsApi = {
   delete: async (companyId: string, vendorId: string): Promise<void> => {
     await api.delete(`/companies/${companyId}/vendors/${vendorId}`);
   },
+
+  toggleStatus: async (companyId: string, vendorId: string): Promise<{ is_active: boolean }> => {
+    const response = await api.post(`/companies/${companyId}/vendors/${vendorId}/toggle-status`);
+    return response.data;
+  },
+
+  // Bank Details
+  addBankDetail: async (companyId: string, vendorId: string, data: Partial<VendorBankDetail>): Promise<VendorBankDetail> => {
+    const response = await api.post(`/companies/${companyId}/vendors/${vendorId}/bank-details`, data);
+    return response.data;
+  },
+
+  updateBankDetail: async (companyId: string, vendorId: string, bankDetailId: string, data: Partial<VendorBankDetail>): Promise<VendorBankDetail> => {
+    const response = await api.put(`/companies/${companyId}/vendors/${vendorId}/bank-details/${bankDetailId}`, data);
+    return response.data;
+  },
+
+  deleteBankDetail: async (companyId: string, vendorId: string, bankDetailId: string): Promise<void> => {
+    await api.delete(`/companies/${companyId}/vendors/${vendorId}/bank-details/${bankDetailId}`);
+  },
+
+  // Contact Persons
+  addContactPerson: async (companyId: string, vendorId: string, data: Partial<VendorContactPerson>): Promise<VendorContactPerson> => {
+    const response = await api.post(`/companies/${companyId}/vendors/${vendorId}/contact-persons`, data);
+    return response.data;
+  },
+
+  updateContactPerson: async (companyId: string, vendorId: string, contactPersonId: string, data: Partial<VendorContactPerson>): Promise<VendorContactPerson> => {
+    const response = await api.put(`/companies/${companyId}/vendors/${vendorId}/contact-persons/${contactPersonId}`, data);
+    return response.data;
+  },
+
+  deleteContactPerson: async (companyId: string, vendorId: string, contactPersonId: string): Promise<void> => {
+    await api.delete(`/companies/${companyId}/vendors/${vendorId}/contact-persons/${contactPersonId}`);
+  },
+
+  // Opening Balance Items
+  addOpeningBalanceItem: async (companyId: string, vendorId: string, data: Partial<VendorOpeningBalanceItem>): Promise<VendorOpeningBalanceItem> => {
+    const response = await api.post(`/companies/${companyId}/vendors/${vendorId}/opening-balance-items`, data);
+    return response.data;
+  },
+
+  updateOpeningBalanceItem: async (companyId: string, vendorId: string, itemId: string, data: Partial<VendorOpeningBalanceItem>): Promise<VendorOpeningBalanceItem> => {
+    const response = await api.put(`/companies/${companyId}/vendors/${vendorId}/opening-balance-items/${itemId}`, data);
+    return response.data;
+  },
+
+  deleteOpeningBalanceItem: async (companyId: string, vendorId: string, itemId: string): Promise<void> => {
+    await api.delete(`/companies/${companyId}/vendors/${vendorId}/opening-balance-items/${itemId}`);
+  },
+
+  // Reports
+  getOutstandingSummary: async (companyId: string): Promise<{
+    total_outstanding: number;
+    total_advance: number;
+    net_balance: number;
+    count: number;
+  }> => {
+    const response = await api.get(`/companies/${companyId}/vendors/reports/outstanding`);
+    return response.data;
+  },
+
+  getAgingReport: async (companyId: string): Promise<{
+    vendor_id: string;
+    vendor_name: string;
+    total_due: number;
+    current: number;
+    overdue_1_30: number;
+    overdue_31_60: number;
+    overdue_61_90: number;
+    overdue_90_plus: number;
+  }[]> => {
+    const response = await api.get(`/companies/${companyId}/vendors/reports/aging`);
+    return response.data;
+  },
 };
+
 
 // Products API
 export const productsApi = {
@@ -1731,6 +1809,103 @@ export const ordersApi = {
 };
 
 
+// Purchase Requests API
+export const purchaseRequestsApi = {
+  create: async (companyId: string, data: {
+    customer_id: string;
+    customer_name: string;
+    items: Array<{
+      item: string;
+      quantity: number;
+      make?: string;
+    }>;
+    notes?: string;
+  }): Promise<any> => {
+    const response = await api.post(`/companies/${companyId}/purchase-requests`, data);
+    return response.data;
+  },
+
+  list: async (
+    companyId: string,
+    params?: {
+      page?: number;
+      page_size?: number;
+      status?: 'pending' | 'approved' | 'hold' | 'rejected';
+      customer_id?: string;
+      search?: string;
+      start_date?: string;
+      end_date?: string;
+    }
+  ): Promise<{
+    purchase_requests: any[];
+    total: number;
+    page: number;
+    page_size: number;
+  }> => {
+    const response = await api.get(`/companies/${companyId}/purchase-requests`, { params });
+    return response.data;
+  },
+
+  get: async (companyId: string, requestId: string): Promise<any> => {
+    const response = await api.get(`/companies/${companyId}/purchase-requests/${requestId}`);
+    return response.data;
+  },
+
+  updateStatus: async (
+    companyId: string, 
+    requestId: string, 
+    data: {
+      status: 'pending' | 'approved' | 'hold' | 'rejected';
+      approval_notes?: string;
+    }
+  ): Promise<any> => {
+    const response = await api.put(`/companies/${companyId}/purchase-requests/${requestId}/status`, data);
+    return response.data;
+  },
+
+  delete: async (companyId: string, requestId: string): Promise<void> => {
+    await api.delete(`/companies/${companyId}/purchase-requests/${requestId}`);
+  },
+
+  getStats: async (companyId: string): Promise<{
+    total: number;
+    pending: number;
+    approved: number;
+    hold: number;
+    rejected: number;
+  }> => {
+    const response = await api.get(`/companies/${companyId}/purchase-requests/stats/summary`);
+    return response.data;
+  },
+
+  getByMake: async (companyId: string, make: string): Promise<{
+    make: string;
+    total: number;
+    purchase_requests: any[];
+  }> => {
+    const response = await api.get(`/companies/${companyId}/purchase-requests/by-make/${make}`);
+    return response.data;
+  },
+
+  getByCustomer: async (
+    companyId: string,
+    customerId: string,
+    params?: {
+      page?: number;
+      page_size?: number;
+    }
+  ): Promise<{
+    customer_id: string;
+    purchase_requests: any[];
+    total: number;
+    page: number;
+    page_size: number;
+  }> => {
+    const response = await api.get(`/companies/${companyId}/purchase-requests/customer/${customerId}`, { params });
+    return response.data;
+  },
+};
+
 // Add this API section near the customersApi/vendorsApi section
 export const salesmenApi = {
   list: async (
@@ -1944,9 +2119,7 @@ export interface PurchaseInvoice {
   igst_amount: number;
   total_tax: number;
   total_amount: number;
-  tds_applicable: boolean;
-  tds_rate: number;
-  tds_amount: number;
+ 
   net_payable: number;
   amount_paid: number;
   balance_due: number;
@@ -2016,7 +2189,7 @@ export const purchasesApi = {
     due_date?: string;
     place_of_supply?: string;
     is_reverse_charge?: boolean;
-    tds_section_id?: string;
+  
     purchase_order_id?: string;
     receipt_note_id?: string;
     notes?: string;
@@ -2388,6 +2561,182 @@ export const businessDashboardApi = {
     return response.data;
   },
 };
+
+// vendor
+
+// ============== Vendor Types ==============
+
+export interface Vendor {
+  id: string;
+  company_id: string;
+  name: string;
+ 
+  contact: string;
+  email?: string;
+  mobile?: string;
+  tax_number?: string;  // GST number
+  gst_registration_type?: string;
+  pan_number?: string;
+  vendor_code?: string;
+  
+  // Opening Balance
+  opening_balance?: number;
+  opening_balance_type?: "outstanding" | "advance";
+  opening_balance_mode?: "single" | "split";
+  
+  // Financial Info
+  credit_limit?: number;
+  credit_days?: number;
+  payment_terms?: string;
+  tds_applicable?: boolean;
+  tds_rate?: number;
+  
+  // Bank Details
+  bank_details?: VendorBankDetail[];
+  
+  // Contact Persons
+  contact_persons?: VendorContactPerson[];
+  
+  // Opening Balance Items (for split mode)
+  opening_balance_items?: VendorOpeningBalanceItem[];
+  
+  // Address
+  billing_address?: string;
+  billing_city?: string;
+  billing_state?: string;
+  billing_country?: string;
+  billing_zip?: string;
+  
+  shipping_address?: string;
+  shipping_city?: string;
+  shipping_state?: string;
+  shipping_country?: string;
+  shipping_zip?: string;
+  
+  // Status
+  is_active: boolean;
+  
+  // Timestamps
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VendorBankDetail {
+  id: string;
+  vendor_id: string;
+  bank_name: string;
+  branch?: string;
+  account_number: string;
+  account_holder_name: string;
+  ifsc_code: string;
+  account_type: string; // 'savings', 'current', 'cc', 'od'
+  is_primary: boolean;
+  upi_id?: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface VendorContactPerson {
+  id: string;
+  vendor_id: string;
+  name: string;
+  designation?: string;
+  email?: string;
+  phone?: string;
+  is_primary: boolean;
+  created_at: string;
+}
+
+export interface VendorOpeningBalanceItem {
+  id: string;
+  vendor_id: string;
+  date: string;
+  voucher_name: string;
+  days?: number;
+  amount: number;
+  created_at: string;
+}
+
+export interface VendorListResponse {
+  vendors: Vendor[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+// ============== Vendor Create/Update Types ==============
+
+export interface VendorCreateRequest {
+  // Basic Info
+  name: string;
+ 
+  contact: string;
+  email?: string;
+  mobile?: string;
+  tax_number?: string;
+  gst_registration_type?: string;
+  pan_number?: string;
+  vendor_code?: string;
+  
+  // Opening Balance
+  opening_balance?: number;
+  opening_balance_type?: "outstanding" | "advance";
+  opening_balance_mode?: "single" | "split";
+  
+  // Financial Info
+  credit_limit?: number;
+  credit_days?: number;
+  payment_terms?: string;
+  tds_applicable?: boolean;
+  tds_rate?: number;
+  
+  // Bank Details
+  bank_details?: Array<{
+    bank_name: string;
+    branch?: string;
+    account_number: string;
+    account_holder_name: string;
+    ifsc_code: string;
+    account_type?: string;
+    is_primary?: boolean;
+    upi_id?: string;
+  }>;
+  
+  // Contact Persons
+  contact_persons?: Array<{
+    name: string;
+    designation?: string;
+    email?: string;
+    phone?: string;
+    is_primary?: boolean;
+  }>;
+  
+  // Opening Balance Items (for split mode)
+  opening_balance_items?: Array<{
+    date: string;
+    voucher_name: string;
+    days?: number;
+    amount: number;
+  }>;
+  
+  // Address
+  billing_address?: string;
+  billing_city?: string;
+  billing_state?: string;
+  billing_country?: string;
+  billing_zip?: string;
+  
+  shipping_address?: string;
+  shipping_city?: string;
+  shipping_state?: string;
+  shipping_country?: string;
+  shipping_zip?: string;
+}
+
+export interface VendorUpdateRequest extends Partial<VendorCreateRequest> {}
+
+
 
 // ============== Payroll Types ==============
 

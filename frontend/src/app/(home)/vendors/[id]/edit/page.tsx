@@ -1,262 +1,403 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { vendorsApi, Customer, getErrorMessage } from "@/services/api";
-import { useParams, useRouter } from "next/navigation";
+import { vendorsApi, Vendor } from "@/services/api";
+import Link from "next/link";
+import { useRouter, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
-export default function EditVendorPage() {
+// Define form data type
+interface VendorFormData {
+  name: string;
+  contact: string;
+  email: string;
+  mobile: string;
+  tax_number: string;
+  gst_registration_type: string;
+  pan_number: string;
+  vendor_code: string;
+  opening_balance: string;
+  opening_balance_type: "outstanding" | "advance";
+  opening_balance_mode: "single" | "split";
+  credit_limit: string;
+  credit_days: string;
+  payment_terms: string;
+  tds_applicable: boolean;
+  tds_rate: string;
+  billing_address: string;
+  billing_city: string;
+  billing_state: string;
+  billing_country: string;
+  billing_zip: string;
+  shipping_address: string;
+  shipping_city: string;
+  shipping_state: string;
+  shipping_country: string;
+  shipping_zip: string;
+  is_active: boolean;
+}
+
+// GST Registration Types
+const GST_REGISTRATION_TYPES = [
+  "Unknown",
+  "Composition",
+  "Regular",
+  "Unregistered/Consumer",
+  "Government entity/TDS",
+  
+] as const;
+
+export default function VendorEditPage() {
   const { company } = useAuth();
   const router = useRouter();
   const params = useParams();
   const vendorId = params.id as string;
-
+  
+  const [vendor, setVendor] = useState<Vendor | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [sameAsBilling, setSameAsBilling] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<VendorFormData>({
     name: "",
-    trade_name: "",
-    gstin: "",
-    pan: "",
+    contact: "",
     email: "",
-    phone: "",
-    contact_person: "",
-    customer_type: "b2b",
-    billing_address_line1: "",
-    billing_address_line2: "",
+    mobile: "",
+    tax_number: "",
+    gst_registration_type: "",
+    pan_number: "",
+    vendor_code: "",
+    opening_balance: "",
+    opening_balance_type: "outstanding",
+    opening_balance_mode: "single",
+    credit_limit: "",
+    credit_days: "",
+    payment_terms: "",
+    tds_applicable: false,
+    tds_rate: "",
+    billing_address: "",
     billing_city: "",
     billing_state: "",
-    billing_state_code: "",
-    billing_pincode: "",
     billing_country: "India",
-    shipping_address_line1: "",
-    shipping_address_line2: "",
+    billing_zip: "",
+    shipping_address: "",
     shipping_city: "",
     shipping_state: "",
-    shipping_state_code: "",
-    shipping_pincode: "",
     shipping_country: "India",
+    shipping_zip: "",
+    is_active: true,
   });
-
-  const [sameAsBilling, setSameAsBilling] = useState(true);
-
-  // State codes mapping for auto-fill
-  const stateCodeToName: Record<string, string> = {
-    "01": "Jammu & Kashmir", "02": "Himachal Pradesh", "03": "Punjab", "04": "Chandigarh",
-    "05": "Uttarakhand", "06": "Haryana", "07": "Delhi", "08": "Rajasthan", "09": "Uttar Pradesh",
-    "10": "Bihar", "11": "Sikkim", "12": "Arunachal Pradesh", "13": "Nagaland", "14": "Manipur",
-    "15": "Mizoram", "16": "Tripura", "17": "Meghalaya", "18": "Assam", "19": "West Bengal",
-    "20": "Jharkhand", "21": "Odisha", "22": "Chhattisgarh", "23": "Madhya Pradesh", "24": "Gujarat",
-    "26": "Dadra & Nagar Haveli and Daman & Diu", "27": "Maharashtra", "29": "Karnataka", "30": "Goa",
-    "31": "Lakshadweep", "32": "Kerala", "33": "Tamil Nadu", "34": "Puducherry",
-    "35": "Andaman & Nicobar Islands", "36": "Telangana", "37": "Andhra Pradesh", "38": "Ladakh",
-  };
 
   useEffect(() => {
     const fetchVendor = async () => {
-      if (!company?.id || !vendorId) return;
+      if (!company?.id || !vendorId) {
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
       try {
-        const vendor = await vendorsApi.get(company.id, vendorId);
-        setFormData({
-          name: vendor.name || "",
-          trade_name: vendor.trade_name || "",
-          gstin: vendor.gstin || "",
-          pan: vendor.pan || "",
-          email: vendor.email || "",
-          phone: vendor.phone || "",
-          contact_person: vendor.contact_person || "",
-          customer_type: vendor.customer_type || "b2b",
-          billing_address_line1: vendor.billing_address_line1 || "",
-          billing_address_line2: vendor.billing_address_line2 || "",
-          billing_city: vendor.billing_city || "",
-          billing_state: vendor.billing_state || "",
-          billing_state_code: vendor.billing_state_code || "",
-          billing_pincode: vendor.billing_pincode || "",
-          billing_country: vendor.billing_country || "India",
-          shipping_address_line1: vendor.shipping_address_line1 || "",
-          shipping_address_line2: vendor.shipping_address_line2 || "",
-          shipping_city: vendor.shipping_city || "",
-          shipping_state: vendor.shipping_state || "",
-          shipping_state_code: vendor.shipping_state_code || "",
-          shipping_pincode: vendor.shipping_pincode || "",
-          shipping_country: vendor.shipping_country || "India",
-        });
+        const data = await vendorsApi.get(company.id, vendorId);
+        setVendor(data);
         
-        // Check if shipping is same as billing
-        const isSame = 
-          vendor.billing_address_line1 === vendor.shipping_address_line1 &&
-          vendor.billing_city === vendor.shipping_city &&
-          vendor.billing_state_code === vendor.shipping_state_code;
-        setSameAsBilling(isSame);
-      } catch (error) {
+        // Populate form with vendor data
+        setFormData({
+          name: data.name || "",
+          contact: data.contact || "",
+          email: data.email || "",
+          mobile: data.mobile || "",
+          tax_number: data.tax_number || "",
+          gst_registration_type: data.gst_registration_type || "",
+          pan_number: data.pan_number || "",
+          vendor_code: data.vendor_code || "",
+          opening_balance: data.opening_balance?.toString() || "",
+          opening_balance_type: data.opening_balance_type || "outstanding",
+          opening_balance_mode: data.opening_balance_mode || "single",
+          credit_limit: data.credit_limit?.toString() || "",
+          credit_days: data.credit_days?.toString() || "",
+          payment_terms: data.payment_terms || "",
+          tds_applicable: data.tds_applicable || false,
+          tds_rate: data.tds_rate?.toString() || "",
+          billing_address: data.billing_address || "",
+          billing_city: data.billing_city || "",
+          billing_state: data.billing_state || "",
+          billing_country: data.billing_country || "India",
+          billing_zip: data.billing_zip || "",
+          shipping_address: data.shipping_address || "",
+          shipping_city: data.shipping_city || "",
+          shipping_state: data.shipping_state || "",
+          shipping_country: data.shipping_country || "India",
+          shipping_zip: data.shipping_zip || "",
+          is_active: data.is_active || true,
+        });
+
+        // Check if shipping address is same as billing
+        if (
+          data.shipping_address === data.billing_address &&
+          data.shipping_city === data.billing_city &&
+          data.shipping_state === data.billing_state &&
+          data.shipping_country === data.billing_country &&
+          data.shipping_zip === data.billing_zip
+        ) {
+          setSameAsBilling(true);
+        }
+      } catch (error: any) {
         console.error("Failed to fetch vendor:", error);
-        setError("Failed to load vendor");
+        setError(error.message || "Failed to load vendor");
       } finally {
         setLoading(false);
       }
     };
+
     fetchVendor();
   }, [company?.id, vendorId]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    setError(null);
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    
+    if (type === 'checkbox') {
+      const checked = (e.target as HTMLInputElement).checked;
+      setFormData(prev => ({ ...prev, [name]: checked }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
+    
+    setFormError(null);
+  };
+
+  const handleCopyBillingToShipping = () => {
+    setFormData(prev => ({
+      ...prev,
+      shipping_address: prev.billing_address,
+      shipping_city: prev.billing_city,
+      shipping_state: prev.billing_state,
+      shipping_country: prev.billing_country,
+      shipping_zip: prev.billing_zip,
+    }));
+    setSameAsBilling(true);
+  };
+
+  const validateForm = (): boolean => {
+    if (!formData.name.trim()) {
+      setFormError("Vendor name is required");
+      return false;
+    }
+
+    if (!formData.contact.trim()) {
+      setFormError("Primary contact number is required");
+      return false;
+    }
+
+    // Validate contact number
+    const contactRegex = /^[0-9]{10}$/;
+    if (formData.contact && !contactRegex.test(formData.contact.replace(/\D/g, ''))) {
+      setFormError("Please enter a valid 10-digit contact number");
+      return false;
+    }
+
+    // Validate email if provided
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      setFormError("Please enter a valid email address");
+      return false;
+    }
+
+    // Validate PAN if provided
+    if (formData.pan_number && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(formData.pan_number.toUpperCase())) {
+      setFormError("Please enter a valid PAN number (e.g., ABCDE1234F)");
+      return false;
+    }
+
+    // Validate GST if provided
+    if (formData.tax_number && formData.tax_number.trim() !== "") {
+      if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(formData.tax_number.toUpperCase())) {
+        setFormError("Please enter a valid 15-digit GST number");
+        return false;
+      }
+    }
+
+    // Validate opening balance
+    if (formData.opening_balance && isNaN(parseFloat(formData.opening_balance))) {
+      setFormError("Please enter a valid opening balance amount");
+      return false;
+    }
+
+    return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!company?.id || !vendorId) return;
+    
+    if (!company?.id || !vendorId) {
+      setFormError("Company or vendor ID not found");
+      return;
+    }
 
-    if (!formData.name.trim()) {
-      setError("Vendor name is required");
+    if (!validateForm()) {
       return;
     }
 
     setSaving(true);
-    setError(null);
+    setFormError(null);
 
     try {
-      const data = {
-        ...formData,
-        gstin: formData.gstin || undefined,
-        pan: formData.pan || undefined,
-        email: formData.email || undefined,
-        phone: formData.phone || undefined,
+      // Prepare update data
+      const updateData = {
+        name: formData.name,
+        contact: formData.contact,
+        email: formData.email || null,
+        mobile: formData.mobile || null,
+        tax_number: formData.tax_number || null,
+        gst_registration_type: formData.gst_registration_type || null,
+        pan_number: formData.pan_number || null,
+        vendor_code: formData.vendor_code || null,
+        opening_balance: formData.opening_balance ? parseFloat(formData.opening_balance) : 0,
+        opening_balance_type: formData.opening_balance_type,
+        opening_balance_mode: formData.opening_balance_mode,
+        credit_limit: formData.credit_limit ? parseFloat(formData.credit_limit) : 0,
+        credit_days: formData.credit_days ? parseInt(formData.credit_days) : 0,
+        payment_terms: formData.payment_terms || null,
+        tds_applicable: formData.tds_applicable,
+        tds_rate: formData.tds_rate ? parseFloat(formData.tds_rate) : 0,
+        billing_address: formData.billing_address || null,
+        billing_city: formData.billing_city || null,
+        billing_state: formData.billing_state || null,
+        billing_country: formData.billing_country || "India",
+        billing_zip: formData.billing_zip || null,
+        shipping_address: sameAsBilling ? formData.billing_address : (formData.shipping_address || null),
+        shipping_city: sameAsBilling ? formData.billing_city : (formData.shipping_city || null),
+        shipping_state: sameAsBilling ? formData.billing_state : (formData.shipping_state || null),
+        shipping_country: sameAsBilling ? formData.billing_country : (formData.shipping_country || "India"),
+        shipping_zip: sameAsBilling ? formData.billing_zip : (formData.shipping_zip || null),
+        is_active: formData.is_active,
       };
 
-      if (sameAsBilling) {
-        data.shipping_address_line1 = data.billing_address_line1;
-        data.shipping_address_line2 = data.billing_address_line2;
-        data.shipping_city = data.billing_city;
-        data.shipping_state = data.billing_state;
-        data.shipping_state_code = data.billing_state_code;
-        data.shipping_pincode = data.billing_pincode;
-        data.shipping_country = data.billing_country;
-      }
-
-      await vendorsApi.update(company.id, vendorId, data);
-      router.push("/vendors");
+      await vendorsApi.update(company.id, vendorId, updateData);
+      router.push(`/vendors/${vendorId}`);
     } catch (error: any) {
-      setError(getErrorMessage(error, "Failed to update vendor"));
+      console.error("Failed to update vendor:", error);
+      setFormError(error.message || "Failed to update vendor");
     } finally {
       setSaving(false);
     }
   };
 
-  if (!company) {
+  if (loading) {
     return (
-      <div className="rounded-lg bg-white p-8 text-center shadow-1 dark:bg-gray-dark">
-        <p className="text-dark-6">Please select a company first</p>
+      <div className="flex min-h-[400px] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
       </div>
     );
   }
 
-  if (loading) {
+  if (error) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+      <div className="rounded-lg bg-red-50 p-6 text-center dark:bg-red-900/20">
+        <p className="text-red-600 dark:text-red-400">{error}</p>
+        <Link href="/vendors" className="mt-4 inline-block text-primary hover:underline">
+          ← Back to Vendors
+        </Link>
+      </div>
+    );
+  }
+
+  if (!vendor) {
+    return (
+      <div className="text-center py-12">
+        <svg className="mx-auto mb-4 h-16 w-16 text-dark-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p className="text-dark-6">Vendor not found</p>
+        <Link href="/vendors" className="mt-4 inline-flex items-center gap-2 text-primary hover:underline">
+          ← Back to Vendors
+        </Link>
       </div>
     );
   }
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-dark dark:text-white">Edit Vendor</h1>
-        <p className="text-sm text-dark-6">Update vendor details</p>
+      {/* Header */}
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-3">
+            <Link href={`/vendors/${vendorId}`} className="text-dark-6 hover:text-dark dark:text-gray-400 dark:hover:text-white">
+              ← Back to Vendor
+            </Link>
+            <h1 className="text-2xl font-bold text-dark dark:text-white">Edit Vendor</h1>
+          </div>
+          <p className="mt-1 text-sm text-dark-6">Update vendor information</p>
+        </div>
+        
+        <Link
+          href={`/vendors/${vendorId}`}
+          className="inline-flex items-center gap-2 rounded-lg border border-stroke px-4 py-2 text-sm font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
+        >
+          Cancel
+        </Link>
       </div>
 
-      <form onSubmit={handleSubmit}>
-        {error && (
-          <div className="mb-6 rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">
-            {error}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Error Message */}
+        {formError && (
+          <div className="rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">
+            {formError}
           </div>
         )}
 
-        <div className="space-y-6">
-          {/* Basic Info */}
-          <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-            <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Basic Information</h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
+        {/* Basic Information */}
+        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+          <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Basic Information</h2>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                Vendor Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                placeholder="Enter vendor name"
+                required
+                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Vendor Name <span className="text-red-500">*</span>
+                  Vendor Code
                 </label>
                 <input
                   type="text"
-                  name="name"
-                  value={formData.name}
+                  name="vendor_code"
+                  value={formData.vendor_code}
                   onChange={handleChange}
-                  placeholder="Enter vendor name"
+                  placeholder="Enter vendor code"
                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                 />
               </div>
+
               <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Trade Name
+                  Primary Contact <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="text"
-                  name="trade_name"
-                  value={formData.trade_name}
+                  type="tel"
+                  name="contact"
+                  value={formData.contact}
                   onChange={handleChange}
-                  placeholder="Trade / Business name"
+                  placeholder="Enter contact number"
+                  required
                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Vendor Type
-                </label>
-                <select
-                  name="customer_type"
-                  value={formData.customer_type}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                >
-                  <option value="b2b">Business (B2B)</option>
-                  <option value="b2c">Individual (B2C)</option>
-                  <option value="export">Import</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  GSTIN
-                </label>
-                <input
-                  type="text"
-                  name="gstin"
-                  value={formData.gstin}
-                  onChange={handleChange}
-                  placeholder="22AAAAA0000A1Z5"
-                  maxLength={15}
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 uppercase outline-none focus:border-primary dark:border-dark-3"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  PAN <span className="text-xs text-dark-6">(Required for TDS)</span>
-                </label>
-                <input
-                  type="text"
-                  name="pan"
-                  value={formData.pan}
-                  onChange={handleChange}
-                  placeholder="AAAAA0000A"
-                  maxLength={10}
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 uppercase outline-none focus:border-primary dark:border-dark-3"
                 />
               </div>
             </div>
-          </div>
 
-          {/* Contact Info */}
-          <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-            <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Contact Information</h2>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                   Email
@@ -266,69 +407,228 @@ export default function EditVendorPage() {
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
-                  placeholder="vendor@example.com"
+                  placeholder="Enter email address"
                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                 />
               </div>
+
               <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Phone
+                  Mobile
                 </label>
                 <input
                   type="tel"
-                  name="phone"
-                  value={formData.phone}
+                  name="mobile"
+                  value={formData.mobile}
                   onChange={handleChange}
-                  placeholder="+91 9876543210"
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Contact Person
-                </label>
-                <input
-                  type="text"
-                  name="contact_person"
-                  value={formData.contact_person}
-                  onChange={handleChange}
-                  placeholder="Primary contact name"
+                  placeholder="Enter mobile number"
                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                 />
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Address */}
-          <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-            <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Address</h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="sm:col-span-2">
+        {/* Tax Information */}
+        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+          <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Tax Information</h2>
+          
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Address Line 1
+                  PAN Number
                 </label>
                 <input
                   type="text"
-                  name="billing_address_line1"
-                  value={formData.billing_address_line1}
+                  name="pan_number"
+                  value={formData.pan_number}
                   onChange={handleChange}
-                  placeholder="Street address"
+                  placeholder="Enter PAN number (e.g., ABCDE1234F)"
                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  maxLength={10}
+                  style={{ textTransform: 'uppercase' }}
                 />
               </div>
-              <div className="sm:col-span-2">
+
+              <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Address Line 2
+                  GST Number
                 </label>
                 <input
                   type="text"
-                  name="billing_address_line2"
-                  value={formData.billing_address_line2}
+                  name="tax_number"
+                  value={formData.tax_number}
                   onChange={handleChange}
-                  placeholder="Building, floor, etc."
+                  placeholder="Enter 15-digit GST number"
+                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  maxLength={15}
+                  style={{ textTransform: 'uppercase' }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                GST Registration Type
+              </label>
+              <select
+                name="gst_registration_type"
+                value={formData.gst_registration_type}
+                onChange={handleChange}
+                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+              >
+                <option value="">Select registration type</option>
+                {GST_REGISTRATION_TYPES.map(type => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="tds_applicable"
+                  name="tds_applicable"
+                  checked={formData.tds_applicable}
+                  onChange={handleChange}
+                  className="h-4 w-4 rounded border-stroke text-primary focus:ring-primary dark:border-dark-3"
+                />
+                <label htmlFor="tds_applicable" className="ml-2 text-sm text-dark dark:text-white">
+                  TDS Applicable
+                </label>
+              </div>
+
+              {formData.tds_applicable && (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    TDS Rate (%)
+                  </label>
+                  <input
+                    type="number"
+                    name="tds_rate"
+                    value={formData.tds_rate}
+                    onChange={handleChange}
+                    placeholder="Enter TDS rate"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Financial Information */}
+        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+          <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Financial Information</h2>
+          
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                  Opening Balance
+                </label>
+                <input
+                  type="number"
+                  name="opening_balance"
+                  value={formData.opening_balance}
+                  onChange={handleChange}
+                  placeholder="0.00"
+                  step="0.01"
+                  min="0"
                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                 />
               </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                  Opening Balance Type
+                </label>
+                <select
+                  name="opening_balance_type"
+                  value={formData.opening_balance_type}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                >
+                  <option value="outstanding">Outstanding (You Owe Vendor)</option>
+                  <option value="advance">Advance (Vendor Owes You)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                  Credit Limit
+                </label>
+                <input
+                  type="number"
+                  name="credit_limit"
+                  value={formData.credit_limit}
+                  onChange={handleChange}
+                  placeholder="Enter credit limit"
+                  step="0.01"
+                  min="0"
+                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                  Credit Days
+                </label>
+                <input
+                  type="number"
+                  name="credit_days"
+                  value={formData.credit_days}
+                  onChange={handleChange}
+                  placeholder="Enter credit days"
+                  min="0"
+                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                Payment Terms
+              </label>
+              <textarea
+                name="payment_terms"
+                value={formData.payment_terms}
+                onChange={handleChange}
+                placeholder="Enter payment terms (e.g., Net 30, 2% 10 Net 30)"
+                rows={2}
+                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Billing Address */}
+        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+          <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Billing Address</h2>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                Address
+              </label>
+              <textarea
+                name="billing_address"
+                value={formData.billing_address}
+                onChange={handleChange}
+                placeholder="Enter billing address"
+                rows={2}
+                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                   City
@@ -338,100 +638,167 @@ export default function EditVendorPage() {
                   name="billing_city"
                   value={formData.billing_city}
                   onChange={handleChange}
-                  placeholder="City"
+                  placeholder="Enter city"
                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                 />
               </div>
+
               <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                   State
                 </label>
-                <select
-                  name="billing_state_code"
-                  value={formData.billing_state_code}
-                  onChange={(e) => {
-                    const code = e.target.value;
-                    setFormData((prev) => ({
-                      ...prev,
-                      billing_state_code: code,
-                      billing_state: stateCodeToName[code] || "",
-                    }));
-                  }}
+                <input
+                  type="text"
+                  name="billing_state"
+                  value={formData.billing_state}
+                  onChange={handleChange}
+                  placeholder="Enter state"
                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                >
-                  <option value="">Select State</option>
-                  <option value="01">01 - Jammu & Kashmir</option>
-                  <option value="02">02 - Himachal Pradesh</option>
-                  <option value="03">03 - Punjab</option>
-                  <option value="04">04 - Chandigarh</option>
-                  <option value="05">05 - Uttarakhand</option>
-                  <option value="06">06 - Haryana</option>
-                  <option value="07">07 - Delhi</option>
-                  <option value="08">08 - Rajasthan</option>
-                  <option value="09">09 - Uttar Pradesh</option>
-                  <option value="10">10 - Bihar</option>
-                  <option value="11">11 - Sikkim</option>
-                  <option value="12">12 - Arunachal Pradesh</option>
-                  <option value="13">13 - Nagaland</option>
-                  <option value="14">14 - Manipur</option>
-                  <option value="15">15 - Mizoram</option>
-                  <option value="16">16 - Tripura</option>
-                  <option value="17">17 - Meghalaya</option>
-                  <option value="18">18 - Assam</option>
-                  <option value="19">19 - West Bengal</option>
-                  <option value="20">20 - Jharkhand</option>
-                  <option value="21">21 - Odisha</option>
-                  <option value="22">22 - Chhattisgarh</option>
-                  <option value="23">23 - Madhya Pradesh</option>
-                  <option value="24">24 - Gujarat</option>
-                  <option value="26">26 - Dadra & Nagar Haveli and Daman & Diu</option>
-                  <option value="27">27 - Maharashtra</option>
-                  <option value="29">29 - Karnataka</option>
-                  <option value="30">30 - Goa</option>
-                  <option value="31">31 - Lakshadweep</option>
-                  <option value="32">32 - Kerala</option>
-                  <option value="33">33 - Tamil Nadu</option>
-                  <option value="34">34 - Puducherry</option>
-                  <option value="35">35 - Andaman & Nicobar Islands</option>
-                  <option value="36">36 - Telangana</option>
-                  <option value="37">37 - Andhra Pradesh</option>
-                  <option value="38">38 - Ladakh</option>
-                </select>
+                />
               </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                  Country
+                </label>
+                <input
+                  type="text"
+                  name="billing_country"
+                  value={formData.billing_country}
+                  onChange={handleChange}
+                  placeholder="Enter country"
+                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                />
+              </div>
+
               <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                   Pincode
                 </label>
                 <input
                   type="text"
-                  name="billing_pincode"
-                  value={formData.billing_pincode}
+                  name="billing_zip"
+                  value={formData.billing_zip}
                   onChange={handleChange}
-                  placeholder="Pincode"
-                  maxLength={6}
+                  placeholder="Enter pincode"
                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                 />
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Submit */}
-          <div className="flex justify-end gap-4">
+        {/* Shipping Address */}
+        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-dark dark:text-white">Shipping Address</h2>
             <button
               type="button"
-              onClick={() => router.back()}
-              className="rounded-lg border border-stroke px-6 py-3 font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
+              onClick={handleCopyBillingToShipping}
+              className="inline-flex items-center gap-2 rounded-lg border border-stroke px-4 py-2 text-sm font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-primary px-6 py-3 font-medium text-white transition hover:bg-opacity-90 disabled:opacity-50"
-            >
-              {saving ? "Saving..." : "Update Vendor"}
+              Copy from Billing
             </button>
           </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                Address
+              </label>
+              <textarea
+                name="shipping_address"
+                value={formData.shipping_address}
+                onChange={handleChange}
+                placeholder="Enter shipping address"
+                rows={2}
+                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                  City
+                </label>
+                <input
+                  type="text"
+                  name="shipping_city"
+                  value={formData.shipping_city}
+                  onChange={handleChange}
+                  placeholder="Enter city"
+                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                  State
+                </label>
+                <input
+                  type="text"
+                  name="shipping_state"
+                  value={formData.shipping_state}
+                  onChange={handleChange}
+                  placeholder="Enter state"
+                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                  Country
+                </label>
+                <input
+                  type="text"
+                  name="shipping_country"
+                  value={formData.shipping_country}
+                  onChange={handleChange}
+                  placeholder="Enter country"
+                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                  Pincode
+                </label>
+                <input
+                  type="text"
+                  name="shipping_zip"
+                  value={formData.shipping_zip}
+                  onChange={handleChange}
+                  placeholder="Enter pincode"
+                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+         
+        {/* Submit Buttons */}
+        <div className="flex justify-end gap-4">
+          <Link
+            href={`/vendors/${vendorId}`}
+            className="rounded-lg border border-stroke px-6 py-3 font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
+          >
+            Cancel
+          </Link>
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-lg bg-primary px-6 py-3 font-medium text-white transition hover:bg-opacity-90 disabled:opacity-50"
+          >
+            {saving ? (
+              <span className="flex items-center gap-2">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                Saving...
+              </span>
+            ) : (
+              "Update Vendor"
+            )}
+          </button>
         </div>
       </form>
     </div>

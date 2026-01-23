@@ -30,6 +30,8 @@ from app.api.accounting import router as accounting_router
 from app.api.quick_entry import router as quick_entry_router
 from app.api.inventory import router as inventory_router
 from app.api.orders import router as orders_router
+from app.api.vendors import router as vendors_router
+from app.api.purchase_requests import router as purchase_requests_router
 from app.api.gst_integration import router as gst_integration_router
 from app.api.purchases import router as purchases_router
 from app.api.tds import router as tds_router
@@ -114,6 +116,7 @@ app.include_router(vendors_router, prefix="/api")
 app.include_router(business_dashboard_router, prefix="/api")
 app.include_router(payroll_router, prefix="/api")
 app.include_router(currencies_router, prefix="/api")
+app.include_router(vendors_router, prefix="/api")
 app.include_router(cost_centers_router, prefix="/api")
 app.include_router(gst_reconciliation_router, prefix="/api")
 app.include_router(banking_router, prefix="/api")
@@ -123,6 +126,7 @@ app.include_router(attendance_leave_router, prefix="/api")
 app.include_router(quotations_router, prefix="/api")
 app.include_router(delivery_challans_router, prefix="/api")
 app.include_router(contacts_router)
+app.include_router(purchase_requests_router, prefix="/api")
 app.include_router(enquiries_router)
 app.include_router(sales_tickets_router)
 app.include_router(sales_dashboard_router)

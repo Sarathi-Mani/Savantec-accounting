@@ -22,6 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from app.database.connection import Base
 import uuid
+from sqlalchemy.sql import func
 
 
 discount_type_enum = Enum('percentage', 'fixed', name='discount_type_enum', create_type=False)
@@ -465,7 +466,7 @@ class User(Base):
     brands = relationship("Brand", back_populates="creator")
     categories = relationship("Category", back_populates="creator")
     companies = relationship("Company", back_populates="owner", cascade="all, delete-orphan")
-
+    approved_purchase_requests = relationship("PurchaseRequest", foreign_keys="[PurchaseRequest.approved_by]", back_populates="approver")
     def __repr__(self):
         return f"<User {self.email}>"
 
@@ -606,10 +607,12 @@ class Company(Base):
     items = relationship("Product", back_populates="company", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="company", cascade="all, delete-orphan")
     bank_accounts = relationship("BankAccount", back_populates="company", cascade="all, delete-orphan")
+    vendors = relationship("Vendor", back_populates="company", cascade="all, delete-orphan")
     accounts = relationship("Account", back_populates="company", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="company", cascade="all, delete-orphan")
     bank_imports = relationship("BankImport", back_populates="company", cascade="all, delete-orphan")
     proforma_invoices = relationship("ProformaInvoice", back_populates="company", cascade="all, delete-orphan")
+    purchase_requests = relationship("PurchaseRequest", back_populates="company", cascade="all, delete-orphan")
     __table_args__ = (
         Index("idx_company_user", "user_id"),
         Index("idx_company_gstin", "gstin"),
@@ -617,6 +620,51 @@ class Company(Base):
 
     def __repr__(self):
         return f"<Company {self.name}>"
+
+
+class PurchaseRequest(Base):
+    """Simplified Purchase Request model - Only essential columns."""
+    __tablename__ = "purchase_requests"
+    
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    customer_id = Column(String(36), ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
+    customer_name = Column(String(255), nullable=False)
+    
+    # Simple request number
+    request_number = Column(String(50), unique=True, nullable=False, index=True)
+    request_date = Column(DateTime, default=func.now(), nullable=False)
+    
+    # Items: [{"item": "Product Name", "quantity": 5, "make": "Brand Name"}]
+    items = Column(JSON, nullable=False)
+    
+    # Simple status
+    status = Column(
+        Enum('pending', 'approved', 'hold', 'rejected', name='purchase_request_status'),
+        default='pending',
+        nullable=False
+    )
+    
+    # Approval details
+    approved_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    approval_notes = Column(Text, nullable=True)
+    
+    # Request notes
+    notes = Column(Text, nullable=True)
+    
+    # Basic timestamps
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    
+    # Relationships
+    company = relationship("Company")
+    customer = relationship("Customer")
+    approver = relationship("User", foreign_keys=[approved_by])
+    
+    def __repr__(self):
+        return f"<PurchaseRequest {self.request_number} - {self.customer_name}>"
 
 
 class OpeningBalanceTypeEnum(str, enum.Enum):
@@ -741,7 +789,7 @@ class Customer(Base):
     opening_balance_items = relationship("OpeningBalanceItem", back_populates="customer", cascade="all, delete-orphan")
     contact_persons = relationship("ContactPerson", back_populates="customer", cascade="all, delete-orphan")
     contacts = relationship("Contact", back_populates="customer", cascade="all, delete-orphan")
-    
+    purchase_requests = relationship("PurchaseRequest", back_populates="customer", cascade="all, delete-orphan")
     def __repr__(self):
         return f"<Customer(id={self.id}, name='{self.name}', company_id={self.company_id})>"
 
@@ -1937,7 +1985,258 @@ class ReceiptNoteItem(Base):
     def __repr__(self):
         return f"<ReceiptNoteItem {self.description[:30]}>"
 
+# vendor 
+# ============== VENDOR MODELS ==============
 
+class Vendor(Base):
+    """Vendor/Supplier model"""
+    __tablename__ = "vendors"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Basic Information
+    name = Column(String(255), nullable=False, index=True)
+    contact = Column(String(15), nullable=False)  # Primary contact number
+    email = Column(String(255))
+    mobile = Column(String(15))
+    
+    # Tax Information
+    tax_number = Column(String(15), index=True)  # GST number
+    gst_registration_type = Column(String(50))
+    pan_number = Column(String(10), index=True)
+    vendor_code = Column(String(50), index=True)
+    
+    # Opening Balance Fields
+    opening_balance = Column(Numeric(15, 2), default=0.00)
+    opening_balance_type = Column(String(20))  # 'outstanding' or 'advance'
+    opening_balance_mode = Column(String(10))  # 'single' or 'split'
+    
+    # Financial Information
+    credit_limit = Column(Numeric(15, 2), default=0.00)
+    credit_days = Column(Integer, default=0)
+    payment_terms = Column(Text)
+    
+    # TDS Information
+    tds_applicable = Column(Boolean, default=False)
+    tds_rate = Column(Numeric(5, 2), default=0.00)
+    
+    # Financial Balances
+    total_transactions = Column(Numeric(15, 2), default=0.00)
+    outstanding_amount = Column(Numeric(15, 2), default=0.00)
+    
+    # Last payment tracking
+    last_payment_date = Column(DateTime)
+    last_payment_amount = Column(Numeric(15, 2), default=0.00)
+    
+    # Billing Address
+    billing_address = Column(Text)
+    billing_city = Column(String(100))
+    billing_state = Column(String(100))
+    billing_country = Column(String(100), default="India")
+    billing_zip = Column(String(20))
+    
+    # Shipping Address
+    shipping_address = Column(Text)
+    shipping_city = Column(String(100))
+    shipping_state = Column(String(100))
+    shipping_country = Column(String(100), default="India")
+    shipping_zip = Column(String(20))
+    
+    # Status
+    is_active = Column(Boolean, default=True, index=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime)
+    
+    # Relationships
+    company = relationship("Company")
+    opening_balance_items = relationship("VendorOpeningBalanceItem", back_populates="vendor", cascade="all, delete-orphan")
+    contact_persons = relationship("VendorContactPerson", back_populates="vendor", cascade="all, delete-orphan")
+    bank_details = relationship("VendorBankDetail", back_populates="vendor", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index("idx_vendor_company_name", "company_id", "name"),
+        Index("idx_vendor_company_code", "company_id", "vendor_code", unique=True),
+        Index("idx_vendor_company_tax", "company_id", "tax_number"),
+    )
+    
+    def __repr__(self):
+        return f"<Vendor(id={self.id}, name='{self.name}', company_id={self.company_id})>"
+    
+    def to_dict(self):
+        """Convert to dictionary for API response"""
+        return {
+            "id": self.id,
+            "company_id": self.company_id,
+            "name": self.name,
+            "contact": self.contact,
+            "email": self.email,
+            "mobile": self.mobile,
+            "tax_number": self.tax_number,
+            "gst_registration_type": self.gst_registration_type,
+            "pan_number": self.pan_number,
+            "vendor_code": self.vendor_code,
+            "opening_balance": float(self.opening_balance) if self.opening_balance else 0.00,
+            "opening_balance_type": self.opening_balance_type,
+            "opening_balance_mode": self.opening_balance_mode,
+            "credit_limit": float(self.credit_limit) if self.credit_limit else 0.00,
+            "credit_days": self.credit_days,
+            "payment_terms": self.payment_terms,
+            "tds_applicable": self.tds_applicable,
+            "tds_rate": float(self.tds_rate) if self.tds_rate else 0.00,
+            "billing_address": self.billing_address,
+            "billing_city": self.billing_city,
+            "billing_state": self.billing_state,
+            "billing_country": self.billing_country,
+            "billing_zip": self.billing_zip,
+            "shipping_address": self.shipping_address,
+            "shipping_city": self.shipping_city,
+            "shipping_state": self.shipping_state,
+            "shipping_country": self.shipping_country,
+            "shipping_zip": self.shipping_zip,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "contact_persons": [cp.to_dict() for cp in self.contact_persons] if self.contact_persons else [],
+            "bank_details": [bd.to_dict() for bd in self.bank_details] if self.bank_details else [],
+            "opening_balance_items": [item.to_dict() for item in self.opening_balance_items] if self.opening_balance_mode == "split" else []
+        }
+
+
+class VendorOpeningBalanceItem(Base):
+    """Opening balance items for vendors (for split mode)"""
+    __tablename__ = "vendor_opening_balance_items"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    vendor_id = Column(String(36), ForeignKey("vendors.id", ondelete="CASCADE"), nullable=False)
+    
+    date = Column(DateTime, nullable=False)
+    voucher_name = Column(String(255), nullable=False)
+    days = Column(Integer)
+    amount = Column(Numeric(15, 2), nullable=False)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationship
+    vendor = relationship("Vendor", back_populates="opening_balance_items")
+    
+    def to_dict(self):
+        """Convert to dictionary for API response"""
+        return {
+            "id": self.id,
+            "vendor_id": self.vendor_id,
+            "date": self.date.isoformat() if self.date else None,
+            "voucher_name": self.voucher_name,
+            "days": self.days,
+            "amount": float(self.amount) if self.amount else 0.00,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+    
+    def __repr__(self):
+        return f"<VendorOpeningBalanceItem(id={self.id}, voucher_name='{self.voucher_name}', vendor_id={self.vendor_id})>"
+
+
+class VendorContactPerson(Base):
+    """Contact persons for vendors"""
+    __tablename__ = "vendor_contact_persons"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    vendor_id = Column(String(36), ForeignKey("vendors.id", ondelete="CASCADE"), nullable=False)
+    
+    name = Column(String(255), nullable=False)
+    designation = Column(String(100))
+    email = Column(String(255))
+    phone = Column(String(20))
+    is_primary = Column(Boolean, default=False)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationship
+    vendor = relationship("Vendor", back_populates="contact_persons")
+    
+    def to_dict(self):
+        """Convert to dictionary for API response"""
+        return {
+            "id": self.id,
+            "vendor_id": self.vendor_id,
+            "name": self.name,
+            "designation": self.designation,
+            "email": self.email,
+            "phone": self.phone,
+            "is_primary": self.is_primary,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+    
+    def __repr__(self):
+        return f"<VendorContactPerson(id={self.id}, name='{self.name}', vendor_id={self.vendor_id})>"
+
+
+class VendorBankDetail(Base):
+    """Bank details for vendors"""
+    __tablename__ = "vendor_bank_details"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    vendor_id = Column(String(36), ForeignKey("vendors.id", ondelete="CASCADE"), nullable=False)
+    
+    bank_name = Column(String(255), nullable=False)
+    branch = Column(String(255))
+    account_number = Column(String(50), nullable=False)
+    account_holder_name = Column(String(255), nullable=False)
+    ifsc_code = Column(String(11))
+    account_type = Column(String(50), default="Savings")  # Savings, Current, etc.
+    is_primary = Column(Boolean, default=False)
+    upi_id = Column(String(255))
+    
+    # Verification status
+    is_verified = Column(Boolean, default=False)
+    verified_at = Column(DateTime)
+    verified_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"))
+    
+    is_active = Column(Boolean, default=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    vendor = relationship("Vendor", back_populates="bank_details")
+    verifier = relationship("User", foreign_keys=[verified_by])
+    
+    __table_args__ = (
+        Index("idx_vendor_bank_vendor", "vendor_id"),
+        Index("idx_vendor_bank_account", "account_number"),
+        UniqueConstraint("vendor_id", "account_number", name="uq_vendor_account_number"),
+    )
+    
+    def to_dict(self):
+        """Convert to dictionary for API response"""
+        return {
+            "id": self.id,
+            "vendor_id": self.vendor_id,
+            "bank_name": self.bank_name,
+            "branch": self.branch,
+            "account_number": self.account_number,
+            "account_holder_name": self.account_holder_name,
+            "ifsc_code": self.ifsc_code,
+            "account_type": self.account_type,
+            "is_primary": self.is_primary,
+            "upi_id": self.upi_id,
+            "is_verified": self.is_verified,
+            "verified_at": self.verified_at.isoformat() if self.verified_at else None,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+    
+    def __repr__(self):
+        return f"<VendorBankDetail(id={self.id}, bank_name='{self.bank_name}', vendor_id={self.vendor_id})>"
+    
 # ============== QUICK ENTRY MODEL ==============
 
 class QuickEntry(Base):
