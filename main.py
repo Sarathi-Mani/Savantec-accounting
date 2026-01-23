@@ -13,6 +13,7 @@ from app.api import (
     products_router,
     invoices_router,
     gst_router,
+    proforma_invoices,
     dashboard_router,
     quotations_router,
     delivery_challans_router,
@@ -104,6 +105,7 @@ app.include_router(dashboard_router, prefix="/api")
 app.include_router(accounting_router, prefix="/api")
 app.include_router(quick_entry_router, prefix="/api")
 app.include_router(inventory_router, prefix="/api")
+app.include_router(proforma_invoices.router,prefix="/api")
 app.include_router(orders_router, prefix="/api")
 app.include_router(gst_integration_router, prefix="/api")
 app.include_router(purchases_router, prefix="/api")

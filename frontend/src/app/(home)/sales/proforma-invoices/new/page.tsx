@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect,useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
@@ -163,7 +163,7 @@ export default function AddProformaInvoicePage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showTerms, setShowTerms] = useState(true);
     const [showOtherFields, setShowOtherFields] = useState(false);
-
+const [contactPersons, setContactPersons] = useState<any[]>([]);
     const [productSearch, setProductSearch] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
 
@@ -177,6 +177,13 @@ export default function AddProformaInvoicePage() {
         products: false,
         salesmen: false,
         bankAccounts: false,
+         contactPersons: false,
+    });
+
+    // Round off state
+    const [roundOff, setRoundOff] = useState({
+        type: "none" as "plus" | "minus" | "none",
+        amount: 0
     });
 
     // Form state
@@ -191,17 +198,13 @@ export default function AddProformaInvoicePage() {
         reference_date: "",
         
         // Contact & sales details
-        contact_person: "",
+        contact_id: "",
         sales_person_id: "",
         bank_account_id: "",
         
         // Charges & discounts
         freight_charges: 0,
-        freight_type: "fixed",
         pf_charges: 0,
-        pf_type: "fixed",
-        discount_on_all: 0,
-        discount_type: "percentage",
         
         // Additional fields
         notes: "",
@@ -213,13 +216,25 @@ export default function AddProformaInvoicePage() {
         subtotal: 0,
         total_tax: 0,
         total_amount: 0,
+        delivery_note: "",
+    supplier_ref: "",
+    other_references: "",
+    buyer_order_no: "",
+    buyer_order_date: "",
+    despatch_doc_no: "",
+    delivery_note_date: "",
+    despatched_through: "",
+    destination: "",
+    terms_of_delivery: "",
+    payment_terms: "",
     });
 
-    // Proforma items state
+    // Proforma items state - Added item_code field
     const [items, setItems] = useState([
         {
             id: 1,
             product_id: "",
+            item_code: "",
             description: "",
             quantity: 1,
             unit: "unit",
@@ -244,6 +259,79 @@ export default function AddProformaInvoicePage() {
             loadBankAccounts();
         }
     }, [company?.id]);
+
+
+    // Add this function to fetch contact persons
+const fetchContactPersons = async (customerId: string) => {
+    if (!company?.id || !customerId) return;
+    
+    try {
+        setLoading(prev => ({ ...prev, contactPersons: true }));
+        
+        // Try to fetch contact persons from API
+        // First check if customer has contact_persons field
+        const customer = customers.find(c => c.id === customerId);
+        if (customer && customer.contact_persons && Array.isArray(customer.contact_persons)) {
+            setContactPersons(customer.contact_persons);
+        } else {
+            // If not, try to fetch from API endpoint
+            try {
+                const token = localStorage.getItem("access_token");
+                const response = await fetch(
+                    `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/customers/${customerId}/contact-persons`,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                        },
+                    }
+                );
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    let persons: any[] = [];
+                    
+                    if (Array.isArray(data)) {
+                        persons = data;
+                    } else if (data && typeof data === 'object') {
+                        persons = data.contact_persons || data.contacts || data.data || data.items || [];
+                    }
+                    
+                    setContactPersons(persons);
+                }
+            } catch (apiError) {
+                console.warn("Failed to fetch contact persons from API:", apiError);
+                // If API fails, try to extract from customer data
+                if (customer) {
+                    const persons = [];
+                    // Check if customer has contact person fields
+                    if (customer.contact_person_name || customer.contact_person) {
+                        persons.push({
+                            id: 'primary',
+                            name: customer.contact_person_name || customer.contact_person || "Primary Contact",
+                            email: customer.contact_email || customer.email || "",
+                            phone: customer.contact_phone || customer.phone || customer.mobile || "",
+                            designation: customer.contact_designation || ""
+                        });
+                    }
+                    // Add customer itself as a contact option
+                    persons.push({
+                        id: 'customer',
+                        name: customer.name || "Customer",
+                        email: customer.email || "",
+                        phone: customer.phone || customer.mobile || "",
+                        designation: "Customer"
+                    });
+                    setContactPersons(persons);
+                }
+            }
+        }
+    } catch (error) {
+        console.error("Error fetching contact persons:", error);
+    } finally {
+        setLoading(prev => ({ ...prev, contactPersons: false }));
+    }
+};
+
 
     const loadCustomers = async () => {
         try {
@@ -276,20 +364,86 @@ export default function AddProformaInvoicePage() {
     };
 
     const loadSalesmen = async () => {
+    try {
+        setLoading(prev => ({ ...prev, salesmen: true }));
+        
+        // Get authentication token
+        const token = localStorage.getItem("access_token");
+        if (!token) {
+            console.error("No authentication token found");
+            setSalesmen([]);
+            return;
+        }
+
+        // Use the sales-engineers API endpoint
+        const salesEngineersUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company!.id}/sales-engineers`;
+        
+        console.log("Fetching sales engineers from:", salesEngineersUrl);
+        
+        const response = await fetch(salesEngineersUrl, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log("Sales engineers API response:", data);
+
+        // Process the data correctly
+        let salesEngineers = [];
+        
+        if (Array.isArray(data)) {
+            salesEngineers = data;
+        } else if (data && typeof data === 'object') {
+            // Handle different response structures
+            salesEngineers = data.sales_engineers || data.data || data.items || [];
+        }
+
+        // Format the data to match your frontend structure
+        const formattedSalesmen = salesEngineers.map(engineer => ({
+            id: engineer.id,
+            name: engineer.full_name || engineer.name || 'Unnamed Engineer',
+            email: engineer.email || '',
+            phone: engineer.phone || engineer.mobile || '',
+            designation: engineer.designation_name || engineer.designation || 'Sales Engineer',
+            employee_code: engineer.employee_code || engineer.code || ''
+        }));
+
+        console.log("Formatted salesmen:", formattedSalesmen);
+        setSalesmen(formattedSalesmen);
+        
+    } catch (error) {
+        console.error("Failed to load sales engineers:", error);
+        
+        // Fallback to employees API if sales-engineers endpoint fails
         try {
-            setLoading(prev => ({ ...prev, salesmen: true }));
             const employees = await employeesApi.list(company!.id);
             const salesEmployees = employees.filter(emp =>
                 emp.designation?.toLowerCase().includes('sales') ||
                 emp.employee_type?.toLowerCase().includes('sales')
             );
+            console.log("Fallback sales employees:", salesEmployees);
             setSalesmen(salesEmployees);
-        } catch (error) {
-            console.error("Failed to load salesmen:", error);
-        } finally {
-            setLoading(prev => ({ ...prev, salesmen: false }));
+        } catch (fallbackError) {
+            console.error("Failed to load employees as fallback:", fallbackError);
+            setSalesmen([]);
         }
-    };
+    } finally {
+        setLoading(prev => ({ ...prev, salesmen: false }));
+    }
+};
+// Prepare salesman options for dropdown
+const salesmanOptions = useMemo(() => {
+    return salesmen.map(salesman => ({
+        value: salesman.id,
+        label: `${salesman.name} ${salesman.employee_code ? `(${salesman.employee_code})` : ''} ${salesman.designation ? `- ${salesman.designation}` : ''}`
+    }));
+}, [salesmen]);
 
     const loadBankAccounts = async () => {
         try {
@@ -325,98 +479,109 @@ export default function AddProformaInvoicePage() {
             totalTax += tax;
         });
 
-        // Calculate additional charges and discounts
+        // Calculate additional charges
         const freightCharges = formData.freight_charges || 0;
         const pfCharges = formData.pf_charges || 0;
-        const discountOnAll = formData.discount_on_all || 0;
+        
+        // Calculate round off based on type
+        let roundOffAmount = 0;
+        if (roundOff.type === "plus") {
+            roundOffAmount = roundOff.amount;
+        } else if (roundOff.type === "minus") {
+            roundOffAmount = -roundOff.amount;
+        }
 
-        // Calculate freight based on type
-        const freightAmount = formData.freight_type === 'percentage'
-            ? subtotal * (freightCharges / 100)
-            : freightCharges;
-
-        // Calculate PF charges based on type
-        const pfAmount = formData.pf_type === 'percentage'
-            ? subtotal * (pfCharges / 100)
-            : pfCharges;
-
-        // Calculate discount on all based on type
-        const discountAllAmount = formData.discount_type === 'percentage'
-            ? subtotal * (discountOnAll / 100)
-            : discountOnAll;
-
-        const roundOff = 0;
-        const total = subtotal + totalTax + freightAmount + pfAmount - discountAllAmount;
-        const grandTotal = total + roundOff;
+        const totalBeforeRoundOff = subtotal + totalTax + freightCharges + pfCharges;
+        const total = totalBeforeRoundOff + roundOffAmount;
 
         return {
             subtotal: Number(subtotal.toFixed(2)),
             totalTax: Number(totalTax.toFixed(2)),
-            freightAmount: Number(freightAmount.toFixed(2)),
-            pfAmount: Number(pfAmount.toFixed(2)),
-            discountAllAmount: Number(discountAllAmount.toFixed(2)),
-            roundOff: Number(roundOff.toFixed(2)),
+            freightAmount: Number(freightCharges.toFixed(2)),
+            pfAmount: Number(pfCharges.toFixed(2)),
+            roundOffAmount: Number(roundOffAmount.toFixed(2)),
+            totalBeforeRoundOff: Number(totalBeforeRoundOff.toFixed(2)),
             total: Number(total.toFixed(2)),
-            grandTotal: Number(grandTotal.toFixed(2)),
         };
     };
 
     const totals = calculateTotals();
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!company?.id) return;
+const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!company?.id) return;
 
-        setIsSubmitting(true);
-        try {
-            // Prepare proforma invoice data
-            const proformaData = {
-                customer_id: formData.customer_id,
-                proforma_date: formData.proforma_date + "T00:00:00Z",
-                due_date: formData.due_date ? formData.due_date + "T00:00:00Z" : undefined,
-                reference_no: formData.reference_no,
-                reference_date: formData.reference_date ? formData.reference_date + "T00:00:00Z" : undefined,
-                sales_person_id: formData.sales_person_id || undefined,
-                contact_person: formData.contact_person,
-                bank_account_id: formData.bank_account_id || undefined,
-                notes: formData.notes,
-                terms: formData.terms,
-                freight_charges: totals.freightAmount,
-                pf_charges: totals.pfAmount,
-                discount_on_all: totals.discountAllAmount,
-                subtotal: totals.subtotal,
-                total_tax: totals.totalTax,
-                total_amount: totals.grandTotal,
-                items: items.map(item => ({
-                    product_id: item.product_id || undefined,
-                    description: item.description,
-                    quantity: item.quantity,
-                    unit: item.unit,
-                    unit_price: item.unit_price,
-                    discount_percent: item.discount_percent,
-                    discount_amount: item.discount_amount,
-                    gst_rate: item.gst_rate,
-                    cgst_rate: item.cgst_rate,
-                    sgst_rate: item.sgst_rate,
-                    igst_rate: item.igst_rate,
-                    taxable_amount: item.taxable_amount,
-                    total_amount: item.total_amount,
-                })),
-            };
+    setIsSubmitting(true);
+    try {
+        // Prepare proforma invoice data
+        const proformaData = {
+            customer_id: formData.customer_id,
+            proforma_date: formData.proforma_date + "T00:00:00Z",
+            due_date: formData.due_date ? formData.due_date + "T00:00:00Z" : undefined,
+            reference_no: formData.reference_no,
+            reference_date: formData.reference_date ? formData.reference_date + "T00:00:00Z" : undefined,
+            sales_person_id: formData.sales_person_id || undefined,
+            contact_id: formData.contact_id, // Still using contact_person - change to contact_id?
+            bank_account_id: formData.bank_account_id || undefined,
+            notes: formData.notes,
+            terms: formData.terms,
+            freight_charges: formData.freight_charges,
+            pf_charges: formData.pf_charges,
+            round_off: totals.roundOffAmount,
+            subtotal: totals.subtotal,
+            total_tax: totals.totalTax,
+            total_amount: totals.total,
+            // Add the new fields
+            delivery_note: formData.delivery_note,
+            supplier_ref: formData.supplier_ref,
+            other_references: formData.other_references,
+            buyer_order_no: formData.buyer_order_no,
+            buyer_order_date: formData.buyer_order_date ? formData.buyer_order_date + "T00:00:00Z" : undefined,
+            despatch_doc_no: formData.despatch_doc_no,
+            delivery_note_date: formData.delivery_note_date ? formData.delivery_note_date + "T00:00:00Z" : undefined,
+            despatched_through: formData.despatched_through,
+            destination: formData.destination,
+            terms_of_delivery: formData.terms_of_delivery,
+            items: items.map(item => ({
+                product_id: item.product_id || undefined,
+                item_code: item.item_code,
+                description: item.description,
+                quantity: item.quantity,
+                unit: item.unit,
+                unit_price: item.unit_price,
+                discount_percent: item.discount_percent,
+                discount_amount: item.discount_amount,
+                gst_rate: item.gst_rate,
+                cgst_rate: item.cgst_rate,
+                sgst_rate: item.sgst_rate,
+                igst_rate: item.igst_rate,
+                taxable_amount: item.taxable_amount,
+                total_amount: item.total_amount,
+            })),
+        };
 
-            // Call the API
-            const response = await proformaInvoicesApi.create(company.id, proformaData);
+        console.log('Submitting proforma invoice data:', proformaData);
 
-            console.log('Proforma invoice created successfully:', response);
-            router.push(`/sales/proforma-invoices`);
+        // Call the API
+        const response = await proformaInvoicesApi.create(company.id, proformaData);
 
-        } catch (error) {
-            console.error('Failed to create proforma invoice:', error);
+        console.log('Proforma invoice created successfully:', response);
+        router.push(`/sales/proforma-invoices`);
+
+    } catch (error: any) {
+        console.error('Failed to create proforma invoice:', error);
+        console.error('Error details:', error.response?.data || error.message);
+        
+        // Show more detailed error
+        if (error.response?.data?.detail) {
+            alert(`Error: ${JSON.stringify(error.response.data.detail, null, 2)}`);
+        } else {
             alert('Failed to create proforma invoice. Please check your data and try again.');
-        } finally {
-            setIsSubmitting(false);
         }
-    };
+    } finally {
+        setIsSubmitting(false);
+    }
+};
 
     // Update item calculation
     const updateItem = (id: number, field: string, value: any) => {
@@ -451,25 +616,35 @@ export default function AddProformaInvoicePage() {
         }));
     };
 
-    // Update form data handler
-    const handleFormChange = (field: string, value: any) => {
-        setFormData(prev => ({
-            ...prev,
-            [field]: value,
-        }));
+  // Update form data handler
+const handleFormChange = (field: string, value: any) => {
+    setFormData(prev => ({
+        ...prev,
+        [field]: value,
+    }));
 
-        // When customer is selected, auto-fill contact person
-        if (field === 'customer_id' && value) {
-            const selectedCustomer = customers.find(c => c.id === value);
-            if (selectedCustomer) {
-                setFormData(prev => ({
-                    ...prev,
-                    contact_person: selectedCustomer.contact_person || selectedCustomer.primary_contact || "",
-                }));
-            }
+    // When customer is selected, fetch contact persons
+    if (field === 'customer_id' && value) {
+        const selectedCustomer = customers.find(c => c.id === value);
+        if (selectedCustomer) {
+            // Clear contact person when customer changes
+            setFormData(prev => ({
+                ...prev,
+                contact_person: "",
+            }));
+            // Fetch contact persons for this customer
+            fetchContactPersons(value);
         }
-    };
-
+    }
+};
+// Prepare customer options for dropdown with more details
+const customerOptions = useMemo(() => {
+    return customers.map(customer => ({
+        value: customer.id,
+        label: `${customer.name} ${customer.email ? `(${customer.email})` : ''} ${customer.mobile ? `- ${customer.mobile}` : ''}`,
+        data: customer
+    }));
+}, [customers]);
     const handleProductSearch = (value: string) => {
         setProductSearch(value);
 
@@ -506,6 +681,7 @@ export default function AddProformaInvoicePage() {
             {
                 id: Date.now(),
                 product_id: "",
+                item_code: "",
                 description: "",
                 quantity: 1,
                 unit: "unit",
@@ -521,6 +697,13 @@ export default function AddProformaInvoicePage() {
                 ...prefill,
             },
         ]);
+    };
+
+    const handleRoundOffChange = (type: "plus" | "minus" | "none", amount: number) => {
+        setRoundOff({
+            type: type,
+            amount: Number(amount.toFixed(2))
+        });
     };
 
     const removeItem = (id: number) => {
@@ -623,19 +806,15 @@ export default function AddProformaInvoicePage() {
                                     />
                                 </div>
                                 <div>
-                                    <SelectField
-                                        label="Customer Name"
-                                        name="customer_id"
-                                        value={formData.customer_id}
-                                        onChange={handleFormChange}
-                                        options={customers.map(customer => ({
-                                            value: customer.id,
-                                            label: `${customer.name} ${customer.gstin ? `(${customer.gstin})` : ''}`
-                                        }))}
-                                        required={true}
-                                        placeholder="Select Customer"
-                                    />
-                                    {/* <p className="mt-1 text-sm text-red-600">Previous Due: ₹2,500</p> */}
+                                  <SelectField
+    label="Customer Name"
+    name="customer_id"
+    value={formData.customer_id}
+    onChange={handleFormChange}
+    options={customerOptions}
+    required={true}
+    placeholder={loading.customers ? "Loading customers..." : "Select Customer"}
+/>
                                 </div>
                                 <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
@@ -687,17 +866,30 @@ export default function AddProformaInvoicePage() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Contact Person
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.contact_person}
-                                        onChange={(e) => handleFormChange('contact_person', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
-                                </div>
-                                <div className="md:col-span-2">
+                                    
+                                 <div>
+    <SelectField
+        label="Contact Person"
+        name="contact_id"
+        value={formData.contact_id}
+        onChange={handleFormChange}
+        options={[
+          
+            ...contactPersons.map(person => ({
+                value: person.id || person.name,
+                label: `${person.name} ${person.designation ? `(${person.designation})` : ''} ${person.email ? `- ${person.email}` : ''} ${person.phone ? `- ${person.phone}` : ''}`
+            }))
+        ]}
+        placeholder={!formData.customer_id ? "Select customer first" : loading.contactPersons ? "Loading contact persons..." : "Select Contact Person"}
+        required={false}
+    />
+    {!formData.customer_id && (
+        <p className="mt-1 text-xs text-gray-500">
+            Please select a customer first to load contact persons
+        </p>
+    )}
+</div>                        
+</div> <div className="md:col-span-2">
                                     <SelectField
                                         label="Salesman"
                                         name="sales_person_id"
@@ -705,8 +897,7 @@ export default function AddProformaInvoicePage() {
                                         onChange={handleFormChange}
                                         options={salesmen.map(salesman => ({
                                             value: salesman.id,
-                                            label: `${salesman.name} ${salesman.employee_code ? `(${salesman.employee_code})` : ''}`
-                                        }))}
+                                          label: `${salesman.name} ${salesman.employee_code ? `(${salesman.employee_code})` : ''} ${salesman.email ? `(${salesman.email})` : ''}`   }))}
                                         placeholder="Select Salesman"
                                     />
                                 </div>
@@ -767,11 +958,12 @@ export default function AddProformaInvoicePage() {
                                 </button>
                             </div>
 
-                            {/* Items Table */}
+                            {/* Items Table - Updated with Item Code */}
                             <div className="overflow-x-auto">
                                 <table className="w-full">
                                     <thead>
                                         <tr className="border-b border-stroke dark:border-dark-3">
+                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Code</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Name</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
@@ -786,6 +978,15 @@ export default function AddProformaInvoicePage() {
                                     <tbody>
                                         {items.map((item) => (
                                             <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
+                                                <td className="px-4 py-3">
+                                                    <input
+                                                        type="text"
+                                                        value={item.item_code}
+                                                        onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}
+                                                        className="w-28 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        placeholder="Item Code"
+                                                    />
+                                                </td>
                                                 <td className="px-4 py-3 min-w-[200px]">
                                                     <ProductSelectField
                                                         value={item.product_id}
@@ -906,80 +1107,34 @@ export default function AddProformaInvoicePage() {
                             </div>
                         </div>
 
-                        {/* SECTION 3: Charges & Discounts */}
+                        {/* SECTION 3: Charges & Discounts - Simplified */}
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                             {/* Left side - Charges & Discounts */}
                             <div className="lg:col-span-2">
                                 <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                                    <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Charges, Discounts & Remarks</h2>
+                                    <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Charges & Remarks</h2>
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                        <div className="flex items-center gap-4">
-                                            <div className="text-dark-6">
-                                                Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
-                                            </div>
-                                            <div className="text-dark-6">
-                                                Items: {items.length}
-                                            </div>
-                                        </div>
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={formData.freight_charges}
-                                                    onChange={(e) => setFormData({ ...formData, freight_charges: parseFloat(e.target.value) })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                />
-                                                <select
-                                                    value={formData.freight_type}
-                                                    onChange={(e) => setFormData({ ...formData, freight_type: e.target.value })}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="fixed">Fixed</option>
-                                                    <option value="percentage">%</option>
-                                                </select>
-                                            </div>
+                                            <input
+                                                type="number"
+                                                value={formData.freight_charges}
+                                                onChange={(e) => setFormData({ ...formData, freight_charges: parseFloat(e.target.value) || 0 })}
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                min="0"
+                                                step="0.01"
+                                            />
                                         </div>
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={formData.pf_charges}
-                                                    onChange={(e) => setFormData({ ...formData, pf_charges: parseFloat(e.target.value) })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                />
-                                                <select
-                                                    value={formData.pf_type}
-                                                    onChange={(e) => setFormData({ ...formData, pf_type: e.target.value })}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="fixed">Fixed</option>
-                                                    <option value="percentage">%</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount on All</label>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={formData.discount_on_all}
-                                                    onChange={(e) => setFormData({ ...formData, discount_on_all: parseFloat(e.target.value) })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                />
-                                                <select
-                                                    value={formData.discount_type}
-                                                    onChange={(e) => setFormData({ ...formData, discount_type: e.target.value })}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="percentage">%</option>
-                                                    <option value="fixed">Fixed</option>
-                                                </select>
-                                            </div>
+                                            <input
+                                                type="number"
+                                                value={formData.pf_charges}
+                                                onChange={(e) => setFormData({ ...formData, pf_charges: parseFloat(e.target.value) || 0 })}
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                min="0"
+                                                step="0.01"
+                                            />
                                         </div>
                                         <div className="md:col-span-2">
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Remarks</label>
@@ -1005,6 +1160,10 @@ export default function AddProformaInvoicePage() {
                                             <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
                                         </div>
                                         <div className="flex justify-between">
+                                            <span className="text-dark-6">Tax</span>
+                                            <span className="font-medium text-dark dark:text-white">₹{totals.totalTax.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between">
                                             <span className="text-dark-6">Freight Charges</span>
                                             <span className="font-medium text-dark dark:text-white">₹{totals.freightAmount.toLocaleString('en-IN')}</span>
                                         </div>
@@ -1012,27 +1171,82 @@ export default function AddProformaInvoicePage() {
                                             <span className="text-dark-6">P & F Charges</span>
                                             <span className="font-medium text-dark dark:text-white">₹{totals.pfAmount.toLocaleString('en-IN')}</span>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">Discount on All</span>
-                                            <span className="font-medium text-red-600">-₹{totals.discountAllAmount.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <div className="flex items-center gap-1">
+                                        
+                                        {/* Round Off Controls */}
+                                        <div className="flex justify-between items-center">
+                                            <div className="flex items-center gap-2">
                                                 <span className="text-dark-6">Round Off</span>
-                                                <button type="button" className="text-dark-6 hover:text-dark dark:text-gray-400">
-                                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                    </svg>
-                                                </button>
+                                                <div className="flex gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const newAmount = roundOff.amount + 1;
+                                                            handleRoundOffChange("plus", newAmount);
+                                                        }}
+                                                        className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "plus" ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'}`}
+                                                    >
+                                                        +
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const newAmount = roundOff.amount > 0 ? roundOff.amount - 1 : 0;
+                                                            handleRoundOffChange("minus", newAmount);
+                                                        }}
+                                                        className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "minus" ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'}`}
+                                                    >
+                                                        -
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRoundOffChange("none", 0)}
+                                                        className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "none" ? 'bg-gray-200 text-gray-700' : 'bg-gray-100 text-gray-600'}`}
+                                                    >
+                                                        0
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <span className={`font-medium ${totals.roundOff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                ₹{Math.abs(totals.roundOff).toLocaleString('en-IN')}
-                                            </span>
+                                            
+                                            <div className="flex items-center gap-2">
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                                                        {roundOff.type === "plus" ? "+" : roundOff.type === "minus" ? "-" : ""}₹
+                                                    </span>
+                                                    <input
+                                                        type="number"
+                                                        value={roundOff.amount}
+                                                        onChange={(e) => {
+                                                            const amount = parseFloat(e.target.value) || 0;
+                                                            setRoundOff(prev => ({
+                                                                ...prev,
+                                                                amount: amount
+                                                            }));
+                                                        }}
+                                                        className={`w-28 rounded border pl-8 pr-2 py-1.5 outline-none focus:border-primary dark:border-dark-3 ${
+                                                            roundOff.type === "plus" ? 'border-green-300 bg-green-50' :
+                                                            roundOff.type === "minus" ? 'border-red-300 bg-red-50' :
+                                                            'border-stroke bg-transparent'
+                                                        }`}
+                                                        min="0"
+                                                        step="0.01"
+                                                        disabled={roundOff.type === "none"}
+                                                    />
+                                                </div>
+                                                <span className={`font-medium ${
+                                                    roundOff.type === "plus" ? 'text-green-600' : 
+                                                    roundOff.type === "minus" ? 'text-red-600' : 
+                                                    'text-gray-600'
+                                                }`}>
+                                                    {roundOff.type === "plus" ? "+₹" : roundOff.type === "minus" ? "-₹" : "₹"}
+                                                    {roundOff.amount.toFixed(2)}
+                                                </span>
+                                            </div>
                                         </div>
+
                                         <div className="border-t border-stroke pt-3 dark:border-dark-3">
                                             <div className="flex justify-between">
                                                 <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
-                                                <span className="text-lg font-bold text-primary">₹{totals.grandTotal.toLocaleString('en-IN')}</span>
+                                                <span className="text-lg font-bold text-primary">₹{totals.total.toLocaleString('en-IN')}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -1065,9 +1279,204 @@ export default function AddProformaInvoicePage() {
                                 </div>
                             )}
                         </div>
+                      {/* SECTION 8: Other Fields (Accordion) */}
+<div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
+    <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
+        <h2 className="text-lg font-semibold text-dark dark:text-white">
+            Other Fields
+        </h2>
+        <button
+            type="button"
+            onClick={() => setShowOtherFields(!showOtherFields)}
+            className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
+        >
+            <svg
+                className={`h-5 w-5 transition-transform ${showOtherFields ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+            >
+                <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                />
+            </svg>
+        </button>
+    </div>
 
-                       
+    {showOtherFields && (
+        <div className="p-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {/* Delivery Note */}
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Delivery Note
+                    </label>
+                    <input
+                        type="text"
+                        value={formData.delivery_note || ""}
+                        onChange={(e) =>
+                            setFormData({ ...formData, delivery_note: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                </div>
 
+                {/* Mode / Terms of Payment */}
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Mode / Terms of Payment
+                    </label>
+                    <input
+                        type="text"
+                        value={formData.payment_terms || ""}
+                        onChange={(e) =>
+                            setFormData({ ...formData, payment_terms: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                </div>
+
+                {/* Supplier's Ref */}
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Supplier's Ref.
+                    </label>
+                    <input
+                        type="text"
+                        value={formData.supplier_ref || ""}
+                        onChange={(e) =>
+                            setFormData({ ...formData, supplier_ref: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                </div>
+
+                {/* Other Reference(s) */}
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Other Reference(s)
+                    </label>
+                    <input
+                        type="text"
+                        value={formData.other_references || ""}
+                        onChange={(e) =>
+                            setFormData({ ...formData, other_references: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                </div>
+
+                {/* Buyer's Order No. */}
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Buyer's Order No.
+                    </label>
+                    <input
+                        type="text"
+                        value={formData.buyer_order_no || ""}
+                        onChange={(e) =>
+                            setFormData({ ...formData, buyer_order_no: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                </div>
+
+                {/* Buyer's Order Date */}
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Buyer's Order Date
+                    </label>
+                    <input
+                        type="date"
+                        value={formData.buyer_order_date || ""}
+                        onChange={(e) =>
+                            setFormData({ ...formData, buyer_order_date: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                </div>
+
+                {/* Despatch Document No. */}
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Despatch Document No.
+                    </label>
+                    <input
+                        type="text"
+                        value={formData.despatch_doc_no || ""}
+                        onChange={(e) =>
+                            setFormData({ ...formData, despatch_doc_no: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                </div>
+
+                {/* Delivery Note Date */}
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Delivery Note Date
+                    </label>
+                    <input
+                        type="date"
+                        value={formData.delivery_note_date || ""}
+                        onChange={(e) =>
+                            setFormData({ ...formData, delivery_note_date: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                </div>
+
+                {/* Despatched Through */}
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Despatched Through
+                    </label>
+                    <input
+                        type="text"
+                        value={formData.despatched_through || ""}
+                        onChange={(e) =>
+                            setFormData({ ...formData, despatched_through: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                </div>
+
+                {/* Destination */}
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Destination
+                    </label>
+                    <input
+                        type="text"
+                        value={formData.destination || ""}
+                        onChange={(e) =>
+                            setFormData({ ...formData, destination: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                </div>
+
+                {/* Terms of Delivery */}
+                <div className="md:col-span-2">
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Terms of Delivery
+                    </label>
+                    <textarea
+                        value={formData.terms_of_delivery || ""}
+                        onChange={(e) =>
+                            setFormData({ ...formData, terms_of_delivery: e.target.value })
+                        }
+                        rows={3}
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                </div>
+            </div>
+        </div>
+    )}
+</div>
                         {/* Action Buttons */}
                         <div className="rounded-lg p-6 dark:bg-gray-dark">
                             <div className="flex flex-wrap justify-center gap-4">

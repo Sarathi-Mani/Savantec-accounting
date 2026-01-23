@@ -259,7 +259,8 @@ const [loadingInvoiceNumber, setLoadingInvoiceNumber] = useState(false);
         invoice_date: new Date().toISOString().split('T')[0],
         due_date: "",
          roundOff: 0,
-        invoice_type: "b2b", // Default to B2B as per your InvoiceType enum
+        invoice_type: "b2b",
+         voucher_type: "sales", // Default to B2B as per your InvoiceType enum
 
         // GST details
         place_of_supply: "",
@@ -610,6 +611,7 @@ const handleSubmit = async (e: React.FormEvent) => {
         const invoiceData = {
             // Required fields
             customer_id: formData.customer_id,
+            voucher_type: formData.voucher_type || "sales",
             invoice_date: new Date(formData.invoice_date).toISOString(),
             invoice_type: formData.invoice_type || "b2b",
             invoice_number: nextInvoiceNumber,
@@ -921,6 +923,7 @@ const updateItem = (id: number, field: string, value: any) => {
                                         placeholder="Select Company"
                                     />
                                 </div>
+                                
                               <div>
     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
         Sales Code <span className="text-red-500">*</span>
@@ -938,7 +941,22 @@ const updateItem = (id: number, field: string, value: any) => {
         <p className="mt-1 text-sm text-gray-500">Loading next invoice number...</p>
     )}
 </div>
-                                <div>
+                    {/* Add this field after the Sales Date field */}
+<div>
+    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+        Voucher Type <span className="text-red-500">*</span>
+    </label>
+    <select
+        value={formData.voucher_type}
+        onChange={(e) => handleFormChange('voucher_type', e.target.value)}
+        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+        required
+    >
+        <option value="sales">Sales</option>
+        <option value="service">Service</option>
+    </select>
+</div>
+            <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                                         Sales Date <span className="text-red-500">*</span>
                                     </label>
@@ -958,8 +976,8 @@ const updateItem = (id: number, field: string, value: any) => {
                                         onChange={handleFormChange}
                                         options={customers.map(customer => ({
                                             value: customer.id,
-                                            label: `${customer.name} ${customer.gstin ? `(${customer.gstin})` : ''}`
-                                        }))}
+                                              label: `${customer.name} ${customer.email ? `(${customer.email})` : ''} ${customer.mobile ? `(${customer.mobile})` : ''}`
+         }))}
                                         required={true}
                                         placeholder="Select Customer"
                                     />
@@ -1009,8 +1027,9 @@ const updateItem = (id: number, field: string, value: any) => {
       .filter(salesman => salesman.name && salesman.name.trim())
       .map((salesman) => {
         const label = salesman.designation 
-          ? `${salesman.name} (${salesman.designation})`
-          : salesman.name;
+        ? `${salesman.name} (${salesman.email}) ${salesman.phone ? - salesman.phone : ''}`.trim()
+        : salesman.name;
+    
         
         return {
           value: salesman.id,

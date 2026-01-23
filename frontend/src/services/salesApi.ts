@@ -67,11 +67,11 @@ export interface SalesOrderCreate {
   company_id: string;
   customer_id: string;
   sales_order_date: string;
-  expire_date?: string;
+  expire_date?: string |null;
   status: 'pending' | 'approved' | 'cancelled' | 'completed';
-  reference_no?: string;
-  reference_date?: string;
-  payment_terms?: string;
+  reference_no?: string |null;
+  reference_date?: string |null;
+  payment_terms?: string |null;
   sales_person_id?: string;
   contact_person?: string;
   notes?: string;
@@ -89,6 +89,7 @@ export interface SalesOrderItemCreate {
   product_id?: string;
   description: string;
   quantity: number;
+  
   unit: string;
   unit_price: number;
   discount_percent?: number;
@@ -385,7 +386,7 @@ export const salesOrdersApi = {
   },
 
   create: async (companyId: string, data: SalesOrderCreate) => {
-    const response = await api.post(`/companies/${companyId}/sales-orders`, data);
+    const response = await api.post(`/companies/${companyId}/orders/sales`, data);
     return response.data;
   },
 

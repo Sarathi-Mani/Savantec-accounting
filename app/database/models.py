@@ -119,6 +119,9 @@ class ReferenceType(str, PyEnum):
     PURCHASE_INVOICE = "purchase_invoice"
     CHEQUE = "cheque"
 
+class InvoiceVoucher(str, enum.Enum):
+    SALES = "sales"
+    SERVICE = "service"
 
 class VoucherType(str, PyEnum):
     """Tally-style voucher types for easy entry."""
@@ -606,7 +609,7 @@ class Company(Base):
     accounts = relationship("Account", back_populates="company", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="company", cascade="all, delete-orphan")
     bank_imports = relationship("BankImport", back_populates="company", cascade="all, delete-orphan")
-    
+    proforma_invoices = relationship("ProformaInvoice", back_populates="company", cascade="all, delete-orphan")
     __table_args__ = (
         Index("idx_company_user", "user_id"),
         Index("idx_company_gstin", "gstin"),
@@ -891,6 +894,7 @@ class Invoice(Base):
     # Sales pipeline tracking
     sales_ticket_id = Column(String(36), ForeignKey("sales_tickets.id", ondelete="SET NULL"))
     contact_id = Column(String(36), ForeignKey("contacts.id", ondelete="SET NULL"))
+    voucher_type = Column(Enum(InvoiceVoucher), nullable=False, default=InvoiceVoucher.SALES)
     
     # Invoice identification
     invoice_number = Column(String(50), nullable=False, index=True)
@@ -1591,7 +1595,25 @@ class SalesOrder(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     customer_id = Column(String(36), ForeignKey("customers.id", ondelete="SET NULL"))
-    
+    expire_date = Column(DateTime)  # Or use expected_delivery_date
+    reference_no = Column(String(100))
+    reference_date = Column(DateTime)
+    payment_terms = Column(Text)
+    contact_person = Column(String(200))  # Or keep using contact_id
+    freight_charges = Column(Numeric(14, 2), default=0)
+    p_and_f_charges = Column(Numeric(14, 2), default=0)
+    round_off = Column(Numeric(14, 2), default=0)
+    send_message = Column(Boolean, default=False)
+    delivery_note = Column(Text)
+    supplier_ref = Column(String(100))
+    other_references = Column(Text)
+    buyer_order_no = Column(String(100))
+    buyer_order_date = Column(DateTime)
+    despatch_doc_no = Column(String(100))
+    delivery_note_date = Column(DateTime)
+    despatched_through = Column(String(200))
+    destination = Column(String(200))
+    terms_of_delivery = Column(Text)
     # Sales pipeline tracking
     sales_ticket_id = Column(String(36), ForeignKey("sales_tickets.id", ondelete="SET NULL"))
     contact_id = Column(String(36), ForeignKey("contacts.id", ondelete="SET NULL"))
@@ -1610,6 +1632,8 @@ class SalesOrder(Base):
     tax_amount = Column(Numeric(14, 2), default=0)
     total_amount = Column(Numeric(14, 2), default=0)
     
+    # Add to your SalesOrder model
+    total_tax = Column(Numeric(14, 2), default=0)  # Add this line
     # Fulfillment tracking
     quantity_ordered = Column(Numeric(14, 3), default=0)
     quantity_delivered = Column(Numeric(14, 3), default=0)
@@ -1650,16 +1674,22 @@ class SalesOrderItem(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     order_id = Column(String(36), ForeignKey("sales_orders.id", ondelete="CASCADE"), nullable=False)
     product_id = Column(String(36), ForeignKey("items.id", ondelete="SET NULL"))
-    
+    item_code = Column(String(100), nullable=True) 
+
     description = Column(String(500), nullable=False)
     quantity = Column(Numeric(14, 3), nullable=False)
     unit = Column(String(20))
     rate = Column(Numeric(14, 2), nullable=False)
-    
+    unit_price = Column(Numeric(14, 2), nullable=False)
+    gst_rate = Column(Numeric(5, 2), nullable=False, server_default="0.00")
+    cgst_rate = Column(Numeric(5, 2), nullable=False, server_default="0.00")  # ADD THIS
+    sgst_rate = Column(Numeric(5, 2), nullable=False, server_default="0.00")  # ADD THIS
+    igst_rate = Column(Numeric(5, 2), nullable=False, server_default="0.00")  # ADD THIS
     # Fulfillment
     quantity_delivered = Column(Numeric(14, 3), default=0)
     quantity_pending = Column(Numeric(14, 3), default=0)
-    
+    discount_percent = Column(Numeric(5, 2), nullable=False, server_default="0.00")
+    discount_amount = Column(Numeric(15, 2), nullable=False, server_default="0.00")
     # Tax
     gst_rate = Column(Numeric(5, 2), default=18)
     tax_amount = Column(Numeric(14, 2), default=0)
@@ -2022,6 +2052,96 @@ class TDSSection(Base):
     def __repr__(self):
         return f"<TDSSection {self.section_code}>"
 
+
+
+class ProformaInvoice(Base):
+    __tablename__ = "proforma_invoices"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    customer_id = Column(String(36), ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
+    invoice_number = Column(String(50), nullable=False, unique=True)
+    proforma_date = Column(DateTime, nullable=False, default=datetime.utcnow)
+    due_date = Column(DateTime)
+    
+    # Reference details
+    reference_no = Column(String(100))
+    reference_date = Column(DateTime)
+    
+    # Contact & sales details
+    sales_person_id = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"))
+    contact_id = Column(String(36), ForeignKey("contact_persons.id", ondelete="SET NULL"))  # This is correct
+    bank_account_id = Column(String(36), ForeignKey("bank_accounts.id", ondelete="SET NULL"))
+    
+    # Additional fields
+    notes = Column(Text)
+    terms = Column(Text)
+    
+    # Charges
+    freight_charges = Column(Numeric(15, 2), default=0)
+    pf_charges = Column(Numeric(15, 2), default=0)
+    round_off = Column(Numeric(15, 2), default=0)
+    
+    # Totals
+    subtotal = Column(Numeric(15, 2), default=0)
+    total_tax = Column(Numeric(15, 2), default=0)
+    total_amount = Column(Numeric(15, 2), default=0)
+    
+    # New fields
+    delivery_note = Column(String(500))
+    supplier_ref = Column(String(100))
+    other_references = Column(Text)
+    buyer_order_no = Column(String(100))
+    buyer_order_date = Column(DateTime)
+    despatch_doc_no = Column(String(100))
+    delivery_note_date = Column(DateTime)
+    despatched_through = Column(String(100))
+    destination = Column(String(100))
+    terms_of_delivery = Column(Text)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    company = relationship("Company")
+    customer = relationship("Customer")
+    sales_person = relationship("Employee", foreign_keys=[sales_person_id])
+    contact = relationship("ContactPerson", foreign_keys=[contact_id])  # This relationship
+    bank_account = relationship("BankAccount")
+    items = relationship("ProformaInvoiceItem", back_populates="proforma_invoice", cascade="all, delete-orphan")
+    
+    def __repr__(self):
+        return f"<ProformaInvoice {self.invoice_number}>"
+
+
+class ProformaInvoiceItem(Base):
+    __tablename__ = "proforma_invoice_items"
+    
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    invoice_id = Column(String(36), ForeignKey("proforma_invoices.id"), nullable=False)
+    product_id = Column(String(36), ForeignKey("items.id"))
+    item_code = Column(String)
+    description = Column(String, nullable=False)
+    quantity = Column(Numeric(15, 3), nullable=False, default=1)
+    unit = Column(String, default="unit")
+    unit_price = Column(Numeric(15, 2), nullable=False, default=0)
+    
+    # Discount
+    discount_percent = Column(Numeric(5, 2), default=0)
+    discount_amount = Column(Numeric(15, 2), default=0)
+    
+    # GST
+    gst_rate = Column(Numeric(5, 2), default=18)
+    cgst_rate = Column(Numeric(5, 2), default=9)
+    sgst_rate = Column(Numeric(5, 2), default=9)
+    igst_rate = Column(Numeric(5, 2), default=0)
+    
+    # Totals
+    taxable_amount = Column(Numeric(15, 2), default=0)
+    total_amount = Column(Numeric(15, 2), default=0)
+    
+    # Relationships
+    proforma_invoice = relationship("ProformaInvoice", back_populates="items")
+    product = relationship("Product")
 
 class PurchaseInvoice(Base):
     """Purchase Invoice model - Bills received from vendors with GST Input Credit."""

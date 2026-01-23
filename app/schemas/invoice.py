@@ -104,9 +104,14 @@ class InvoiceItemResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class VoucherType(str, Enum):
+    SALES = "sales"
+    SERVICE = "service"
+
 class InvoiceCreate(BaseModel):
     """Schema for creating an invoice."""
     # 1. Core Invoice Fields
+    voucher_type: VoucherType = VoucherType.SALES
     customer_id: Optional[str] = None
     invoice_date: Optional[date] = None
     due_date: Optional[date] = None
@@ -267,7 +272,7 @@ class InvoiceCreate(BaseModel):
             Decimal: lambda v: str(v),
             date: lambda v: v.isoformat() if v else None,
         }
-        
+
 
 class InvoiceUpdate(BaseModel):
     """Schema for updating an invoice."""

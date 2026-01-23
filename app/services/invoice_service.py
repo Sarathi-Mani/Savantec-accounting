@@ -6,9 +6,9 @@ from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP
 from app.database.models import (
     Invoice, InvoiceItem, Company, Customer, Product,
-    InvoiceStatus, InvoiceType, INDIAN_STATE_CODES
+    InvoiceStatus, InvoiceType, INDIAN_STATE_CODES,InvoiceVoucher
 )
-from app.schemas.invoice import InvoiceCreate, InvoiceUpdate, InvoiceItemCreate
+from app.schemas.invoice import InvoiceCreate,VoucherType, InvoiceUpdate, InvoiceItemCreate
 from app.services.company_service import CompanyService
 import qrcode
 import base64
@@ -112,7 +112,8 @@ class InvoiceService:
         company_service = CompanyService(self.db)
         invoice_number = company_service.get_next_invoice_number(company)
         print(f"Invoice number: {invoice_number}")
-        
+        voucher_type = getattr(data, 'voucher_type', VoucherType.SALES)
+        print(f"Voucher type: {voucher_type}")
         # Determine place of supply
         place_of_supply = data.place_of_supply
         if not place_of_supply and customer:
@@ -134,7 +135,7 @@ class InvoiceService:
         # 🟢 DEBUG: Check if all fields are present in data
         print("\nDEBUG: Checking fields in data:")
         check_fields = [
-            'round_off', 'sales_person_id', 'shipping_address', 'shipping_city',
+            'voucher_type','round_off', 'sales_person_id', 'shipping_address', 'shipping_city',
             'shipping_state', 'shipping_zip', 'customer_name', 'customer_gstin',
             'customer_phone', 'customer_state', 'customer_state_code',
             'reference_no', 'delivery_note', 'payment_terms', 'supplier_ref',
@@ -160,6 +161,7 @@ class InvoiceService:
             company_id=company.id,
             customer_id=customer.id if customer else None,
             invoice_number=invoice_number,
+            voucher_type=voucher_type,
             invoice_date=data.invoice_date or datetime.utcnow(),
             due_date=data.due_date,
             invoice_type=invoice_type,
@@ -425,6 +427,7 @@ class InvoiceService:
         company: Company,
         page: int = 1,
         page_size: int = 20,
+        voucher_type: Optional[str] = None, 
         status: Optional[str] = None,
         customer_id: Optional[str] = None,
         from_date: Optional[date] = None,
@@ -447,7 +450,13 @@ class InvoiceService:
             query = query.filter(Invoice.invoice_date >= from_date)
         if to_date:
             query = query.filter(Invoice.invoice_date <= to_date)
-        
+        if voucher_type:
+          try:
+            voucher_enum = VoucherType(voucher_type.lower())
+            query = query.filter(Invoice.voucher_type == voucher_enum)
+          except ValueError:
+            # Invalid voucher type - ignore filter
+            pass
         # Search filter
         if search:
             search_filter = f"%{search}%"
@@ -478,9 +487,13 @@ class InvoiceService:
     def update_invoice(self, invoice: Invoice, data: InvoiceUpdate) -> Invoice:
         """Update an invoice."""
         update_data = data.model_dump(exclude_unset=True)
-        
         for field, value in update_data.items():
+          if field == 'voucher_type' and isinstance(value, str):
+            # Convert string to VoucherType enum
+            setattr(invoice, field, VoucherType(value.lower()))
+          else:
             setattr(invoice, field, value)
+      
         
         self.db.commit()
         self.db.refresh(invoice)

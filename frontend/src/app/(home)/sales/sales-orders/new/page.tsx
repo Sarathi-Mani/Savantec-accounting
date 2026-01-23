@@ -187,7 +187,7 @@ export default function AddSalesOrderPage() {
         customer_id: "",
         sales_order_date: new Date().toISOString().split('T')[0],
         expire_date: "",
-        status: "pending",
+        status: "pending" as "pending" | "approved" | "cancelled" | "completed",
         
         // Reference details
         reference_no: "",
@@ -204,38 +204,56 @@ export default function AddSalesOrderPage() {
 2. All disputes subject to Chennai Jurisdiction.
 3. Goods once sold will not be taken back.`,
         
-        // Charges & discounts
-        other_charges: 0,
-        charges_type: "fixed",
-        discount_on_all: 0,
-        discount_type: "percentage",
+        // New charges fields
+        freight_charges: 0,
+        p_and_f_charges: 0,
         send_message: false,
         
         // Calculated fields
         subtotal: 0,
         total_tax: 0,
         total_amount: 0,
+
+            deliveryNote: "",
+    supplierRef: "",
+    otherReferences: "",
+    buyerOrderNo: "",
+    buyerOrderDate: "",
+    despatchDocNo: "",
+    deliveryNoteDate: "",
+    despatchedThrough: "",
+    destination: "",
+    termsOfDelivery: "",
     });
 
     // Sales items state
-    const [items, setItems] = useState([
-        {
-            id: 1,
-            product_id: "",
-            description: "",
-            quantity: 1,
-            unit: "unit",
-            unit_price: 0,
-            discount_percent: 0,
-            discount_amount: 0,
-            gst_rate: 18,
-            cgst_rate: 9,
-            sgst_rate: 9,
-            igst_rate: 0,
-            taxable_amount: 0,
-            total_amount: 0,
-        },
-    ]);
+const [items, setItems] = useState([
+    {
+        id: 1,
+        product_id: "",
+        description: "",
+        quantity: 1,
+        unit: "unit",
+        unit_price: 0,  // Make sure this is included
+        rate: 0,        // Keep for compatibility if needed
+        item_code: "",
+        discount_percent: 0,
+        discount_amount: 0,
+        gst_rate: 18,
+        cgst_rate: 9,
+        sgst_rate: 9,
+        igst_rate: 0,
+        taxable_amount: 0,
+        tax_amount: 0,
+        total_amount: 0,
+    },
+]);
+
+    // Round off state
+    const [roundOff, setRoundOff] = useState({
+        amount: 0,
+        type: "none", // "none", "plus", "minus"
+    });
 
     // Load data on component mount
     useEffect(() => {
@@ -320,14 +338,15 @@ export default function AddSalesOrderPage() {
         setSalesmen(formattedSalesmen);
         
     } catch (error) {
+        
         console.error("Failed to load sales engineers:", error);
         // Fallback to employees API if sales-engineers endpoint fails
         try {
             const employees = await employeesApi.list(company!.id);
             const salesEmployees = employees.filter(emp =>
                 emp.designation?.toLowerCase().includes('sales') ||
-                emp.employee_type?.toLowerCase().includes('sales') ||
-                emp.department?.toLowerCase().includes('sales')
+                emp.employee_type?.toLowerCase().includes('sales') 
+             
             );
             setSalesmen(salesEmployees);
         } catch (fallbackError) {
@@ -451,127 +470,299 @@ export default function AddSalesOrderPage() {
             totalTax += tax;
         });
 
-        // Calculate additional charges and discounts
-        const otherCharges = formData.other_charges || 0;
-        const discountOnAll = formData.discount_on_all || 0;
+        // Calculate freight and P&F charges
+        const freightCharges = formData.freight_charges || 0;
+        const pAndFCharges = formData.p_and_f_charges || 0;
 
-        // Calculate charges based on type
-        const chargesAmount = formData.charges_type === 'percentage'
-            ? subtotal * (otherCharges / 100)
-            : otherCharges;
-
-        // Calculate discount on all based on type
-        const discountAllAmount = formData.discount_type === 'percentage'
-            ? subtotal * (discountOnAll / 100)
-            : discountOnAll;
-
-        const roundOff = 0;
-        const total = subtotal + totalTax + chargesAmount - discountAllAmount;
-        const grandTotal = total + roundOff;
+        // Calculate total before round off
+        const totalBeforeRoundOff = subtotal + totalTax + freightCharges + pAndFCharges;
+        
+        // Apply round off based on type
+        let finalRoundOff = 0;
+        if (roundOff.type === "plus") {
+            finalRoundOff = roundOff.amount;
+        } else if (roundOff.type === "minus") {
+            finalRoundOff = -roundOff.amount;
+        }
+        
+        const grandTotal = totalBeforeRoundOff + finalRoundOff;
 
         return {
             subtotal: Number(subtotal.toFixed(2)),
             totalTax: Number(totalTax.toFixed(2)),
-            chargesAmount: Number(chargesAmount.toFixed(2)),
-            discountAllAmount: Number(discountAllAmount.toFixed(2)),
-            roundOff: Number(roundOff.toFixed(2)),
-            total: Number(total.toFixed(2)),
+            freightCharges: Number(freightCharges.toFixed(2)),
+            pAndFCharges: Number(pAndFCharges.toFixed(2)),
+            totalBeforeRoundOff: Number(totalBeforeRoundOff.toFixed(2)),
+            roundOff: Number(finalRoundOff.toFixed(2)),
             grandTotal: Number(grandTotal.toFixed(2)),
         };
     };
 
     const totals = calculateTotals();
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!company?.id) return;
+    // Handle round off amount change
+    const handleRoundOffChange = (type: "plus" | "minus" | "none", amount: number) => {
+        setRoundOff({
+            type: type,
+            amount: Number(amount.toFixed(2))
+        });
+    };
 
-        setIsSubmitting(true);
-        try {
-            // Prepare sales order data
-            const salesOrderData = {
+const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!company?.id) return;
+
+    setIsSubmitting(true);
+    try {
+        // Validate all items have required fields
+        const hasInvalidItems = items.some(item => {
+            const unit_price = Number( item.unit_price || 0);
+            return unit_price <= 0 || !item.product_id;
+        });
+        
+        if (hasInvalidItems) {
+            alert("Please ensure all items have valid product and rate");
+            setIsSubmitting(false);
+            return;
+        }
+const processedItems = items.map(item => {
+    // Use unit_price from UI
+    const unitPrice = Number(item.unit_price || 0);
+    const quantity = Number(item.quantity) || 1;
+    const discountPercent = Number(item.discount_percent) || 0;
+    const gstRate = Number(item.gst_rate) || 18;
+    
+    const itemTotal = quantity * unitPrice;
+    const discountAmount = itemTotal * (discountPercent / 100);
+    const taxableAmount = itemTotal - discountAmount;
+    const taxAmount = taxableAmount * (gstRate / 100);
+    const totalAmount = taxableAmount + taxAmount;
+    
+    // Return object with unit_price
+    return {
+        product_id: item.product_id,
+        description: item.description || '',
+        quantity: quantity,
+        unit: item.unit || 'unit',
+        unit_price: unitPrice,  // This is what backend expects
+        discount_percent: discountPercent,
+        gst_rate: gstRate,
+        discount_amount: discountAmount,
+        taxable_amount: taxableAmount,
+        tax_amount: taxAmount,
+        total_amount: totalAmount,
+        cgst_rate: gstRate / 2,
+        sgst_rate: gstRate / 2,
+        igst_rate: 0,
+        item_code: item.item_code || '',
+    };
+});   // Prepare sales order data
+        const salesOrderData = {
+            company_id: company.id,
+            customer_id: formData.customer_id,
+            sales_order_date: formData.sales_order_date + "T00:00:00Z",
+            expire_date: formData.expire_date ? formData.expire_date + "T00:00:00Z" : null,
+            status: formData.status,
+            reference_no: formData.reference_no || null,
+            reference_date: formData.reference_date ? formData.reference_date + "T00:00:00Z" : null,
+            payment_terms: formData.payment_terms || null,
+            sales_person_id: formData.sales_person_id || undefined,
+            contact_person: formData.contact_person || null,
+            notes: formData.notes || null,
+            terms: formData.terms,
+            other_charges: 0,
+            discount_on_all: 0,
+            freight_charges: Number(totals.freightCharges) || 0,
+            p_and_f_charges: Number(totals.pAndFCharges) || 0,
+            round_off: Number(totals.roundOff) || 0,
+            subtotal: Number(totals.subtotal) || 0,
+            total_tax: Number(totals.totalTax) || 0,
+            total_amount: Number(totals.grandTotal) || 0,
+            send_message: formData.send_message,
+            
+            // New fields
+            delivery_note: formData.deliveryNote || null,
+            supplier_ref: formData.supplierRef || null,
+            other_references: formData.otherReferences || null,
+            buyer_order_no: formData.buyerOrderNo || null,
+            buyer_order_date: formData.buyerOrderDate ? formData.buyerOrderDate + "T00:00:00Z" : null,
+            despatch_doc_no: formData.despatchDocNo || null,
+            delivery_note_date: formData.deliveryNoteDate ? formData.deliveryNoteDate + "T00:00:00Z" : null,
+            despatched_through: formData.despatchedThrough || null,
+            destination: formData.destination || null,
+            terms_of_delivery: formData.termsOfDelivery || null,
+            
+            items: processedItems,
+        };
+
+        console.log('Submitting sales order:', JSON.stringify(salesOrderData, null, 2));
+
+        // Test if the API accepts this structure
+        const response = await salesOrdersApi.create(company.id, salesOrderData as any);
+        
+        console.log('Sales order created successfully:', response);
+        router.push(`/sales/sales-orders`);
+
+    } catch (error: any) {
+        console.error('Error creating sales order:', error);
+        
+        if (error.response?.data) {
+            console.error('Backend error details:', error.response.data);
+            if (error.response.data.detail) {
+                if (Array.isArray(error.response.data.detail)) {
+                    const errorMessages = error.response.data.detail.map((err: any) => 
+                        `Field: ${err.loc?.join('.')}\nError: ${err.msg}`
+                    ).join('\n\n');
+                    alert(`Validation Errors:\n\n${errorMessages}`);
+                } else {
+                    alert(`Error: ${error.response.data.detail}`);
+                }
+            } else {
+                alert(`Backend Error: ${JSON.stringify(error.response.data, null, 2)}`);
+            }
+        } else {
+            alert('Failed to create sales order. Please try again.');
+        }
+    } finally {
+        setIsSubmitting(false);
+    }
+};
+
+const updateItem = (id: number, field: string, value: any) => {
+    setItems(items.map(item => {
+        if (item.id === id) {
+            const updated = { ...item, [field]: value };
+
+            // Auto-fill product details when product is selected
+            if (field === 'product_id' && value) {
+                const selectedProduct = products.find(p => p.id === value);
+                if (selectedProduct) {
+                    updated.description = selectedProduct.name;
+                    const unitPrice = Number(selectedProduct.selling_price || selectedProduct.unit_price || 0);
+                    updated.unit_price = unitPrice;  // Set unit_price
+                    updated.rate = unitPrice;        // Keep rate for compatibility
+                    updated.gst_rate = Number(selectedProduct.gst_rate) || 18;
+                    // REMOVE THIS LINE: updated.item_code = selectedProduct.sku || selectedProduct.code || "";
+                    // Keep item_code as is (don't auto-fill)
+                }
+            }
+
+            // Handle both unit_price and rate changes
+            if (field === 'unit_price') {
+                updated.unit_price = Number(value) || 0;
+                updated.rate = Number(value) || 0;  // Sync both fields
+            }
+            
+            if (field === 'rate') {
+                updated.rate = Number(value) || 0;
+                updated.unit_price = Number(value) || 0;  // Sync both fields
+            }
+
+            // Use unit_price for calculations
+            const unitPrice = Number(updated.unit_price || 0);
+            
+            // Recalculate item totals
+            const itemTotal = Number(updated.quantity) * unitPrice;
+            const discount = updated.discount_percent > 0 ?
+                itemTotal * (Number(updated.discount_percent) / 100) : 0;
+            const taxable = itemTotal - discount;
+            const tax = taxable * (Number(updated.gst_rate) / 100);
+
+            updated.discount_amount = discount;
+            updated.taxable_amount = taxable;
+            updated.tax_amount = tax;
+            updated.total_amount = taxable + tax;
+
+            return updated;
+        }
+        return item;
+    }));
+};
+
+ // Add this test function to your component
+const testBackendSchema = async () => {
+    console.log('=== TESTING BACKEND SCHEMA ===');
+    
+    const testPayloads = [
+        {
+            name: 'Test 1: Only rate',
+            data: {
+                company_id: company?.id,
                 customer_id: formData.customer_id,
                 sales_order_date: formData.sales_order_date + "T00:00:00Z",
-                expire_date: formData.expire_date ? formData.expire_date + "T00:00:00Z" : undefined,
-                status: formData.status,
-                reference_no: formData.reference_no,
-                reference_date: formData.reference_date ? formData.reference_date + "T00:00:00Z" : undefined,
-                payment_terms: formData.payment_terms,
-                sales_person_id: formData.sales_person_id || undefined,
-                contact_person: formData.contact_person,
-                notes: formData.notes,
-                terms: formData.terms,
-                other_charges: totals.chargesAmount,
-                discount_on_all: totals.discountAllAmount,
-                subtotal: totals.subtotal,
-                total_tax: totals.totalTax,
-                total_amount: totals.grandTotal,
-                send_message: formData.send_message,
-                items: items.map(item => ({
-                    product_id: item.product_id || undefined,
-                    description: item.description,
-                    quantity: item.quantity,
-                    unit: item.unit,
-                    unit_price: item.unit_price,
-                    discount_percent: item.discount_percent,
-                    discount_amount: item.discount_amount,
-                    gst_rate: item.gst_rate,
-                    cgst_rate: item.cgst_rate,
-                    sgst_rate: item.sgst_rate,
-                    igst_rate: item.igst_rate,
-                    taxable_amount: item.taxable_amount,
-                    total_amount: item.total_amount,
-                })),
-            };
-
-            // Call the API
-            const response = await salesOrdersApi.create(company.id, salesOrderData);
-
-            console.log('Sales order created successfully:', response);
-            router.push(`/sales/sales-orders`);
-
-        } catch (error) {
-            console.error('Failed to create sales order:', error);
-            alert('Failed to create sales order. Please check your data and try again.');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    // Update item calculation
-    const updateItem = (id: number, field: string, value: any) => {
-        setItems(items.map(item => {
-            if (item.id === id) {
-                const updated = { ...item, [field]: value };
-
-                // Auto-fill product details when product is selected
-                if (field === 'product_id' && value) {
-                    const selectedProduct = products.find(p => p.id === value);
-                    if (selectedProduct) {
-                        updated.description = selectedProduct.name;
-                        updated.unit_price = selectedProduct.unit_price || 0;
-                        updated.gst_rate = parseFloat(selectedProduct.gst_rate) || 18;
-                    }
-                }
-
-                // Recalculate item totals
-                const itemTotal = updated.quantity * updated.unit_price;
-                const discount = updated.discount_percent > 0 ?
-                    itemTotal * (updated.discount_percent / 100) : 0;
-                const taxable = itemTotal - discount;
-                const tax = taxable * (updated.gst_rate / 100);
-
-                updated.discount_amount = discount;
-                updated.taxable_amount = taxable;
-                updated.total_amount = taxable + tax;
-
-                return updated;
+                status: "pending",
+                items: [{
+                    product_id: items[0]?.product_id,
+                    description: "Test item",
+                    quantity: 1,
+                    unit: "unit",
+                    rate: 100,
+                    gst_rate: 18,
+                    tax_amount: 18,
+                    total_amount: 118
+                }]
             }
-            return item;
-        }));
-    };
+        },
+        {
+            name: 'Test 2: Only unit_price',
+            data: {
+                company_id: company?.id,
+                customer_id: formData.customer_id,
+                sales_order_date: formData.sales_order_date + "T00:00:00Z",
+                status: "pending",
+                items: [{
+                    product_id: items[0]?.product_id,
+                    description: "Test item",
+                    quantity: 1,
+                    unit: "unit",
+                    unit_price: 100,
+                    gst_rate: 18,
+                    tax_amount: 18,
+                    total_amount: 118
+                }]
+            }
+        },
+        {
+            name: 'Test 3: Both fields',
+            data: {
+                company_id: company?.id,
+                customer_id: formData.customer_id,
+                sales_order_date: formData.sales_order_date + "T00:00:00Z",
+                status: "pending",
+                items: [{
+                    product_id: items[0]?.product_id,
+                    description: "Test item",
+                    quantity: 1,
+                    unit: "unit",
+                    unit_price: 100,
+                    rate: 100,
+                    gst_rate: 18,
+                    tax_amount: 18,
+                    total_amount: 118
+                }]
+            }
+        }
+    ];
+    
+    for (const test of testPayloads) {
+        console.log(`\nTrying: ${test.name}`);
+        console.log('Payload:', JSON.stringify(test.data, null, 2));
+        
+        try {
+            const response = await salesOrdersApi.create(company!.id, test.data as any);
+            console.log('✅ SUCCESS with this payload!');
+            return test.data; // Return the successful payload structure
+        } catch (error: any) {
+            console.log('❌ Failed:', error.response?.data?.detail || error.message);
+        }
+    }
+    
+    console.log('No payload worked. Backend schema is unclear.');
+    return null;
+};
 
-    // Handle customer change - load contact persons
+// Call this function in your component or in handleSubmit
+//    // Handle customer change - load contact persons
     const handleCustomerChange = async (customerId: string) => {
         setFormData(prev => ({
             ...prev,
@@ -670,14 +861,17 @@ export default function AddSalesOrderPage() {
                 product_id: "",
                 description: "",
                 quantity: 1,
+                 item_code: "",
                 unit: "unit",
                 unit_price: 0,
+                rate: 0,
                 discount_percent: 0,
                 discount_amount: 0,
                 gst_rate: 18,
                 cgst_rate: 9,
                 sgst_rate: 9,
                 igst_rate: 0,
+                 tax_amount: 0, 
                 taxable_amount: 0,
                 total_amount: 0,
                 ...prefill,
@@ -930,6 +1124,7 @@ export default function AddSalesOrderPage() {
                                             }),
                                         }}
                                         classNamePrefix="react-select"
+                                         required={true}
                                     />
                                     {!formData.customer_id && (
                                         <p className="mt-1 text-xs text-gray-500">
@@ -948,17 +1143,18 @@ export default function AddSalesOrderPage() {
                                         className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                     />
                                 </div>
-                                <div className="md:col-span-2">
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Payment Terms
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.payment_terms}
-                                        onChange={(e) => handleFormChange('payment_terms', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
-                                </div>
+                            <div>
+    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+        Mode / Terms of Payment
+    </label>
+    <input
+        type="text"
+        value={formData.payment_terms} 
+        onChange={(e) => handleFormChange('payment_terms', e.target.value)}
+        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+    />
+</div>
+
                             </div>
                         </div>
 
@@ -1022,6 +1218,8 @@ export default function AddSalesOrderPage() {
                                     <thead>
                                         <tr className="border-b border-stroke dark:border-dark-3">
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Name</th>
+                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Code</th>
+                                          
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit Price</th>
@@ -1075,6 +1273,16 @@ export default function AddSalesOrderPage() {
                                                         }}
                                                     />
                                                 </td>
+                                               
+<td className="px-4 py-3">
+    <input
+        type="text"
+        value={item.item_code || ''}  // Make sure to bind to item.item_code
+        onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}  // Add onChange handler
+        className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+        placeholder="Enter item code"
+    />
+</td>
                                                 <td className="px-4 py-3">
                                                     <input
                                                         type="text"
@@ -1093,17 +1301,20 @@ export default function AddSalesOrderPage() {
                                                         min="1"
                                                     />
                                                 </td>
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="number"
-                                                        value={item.unit_price}
-                                                        onChange={(e) => updateItem(item.id, 'unit_price', parseFloat(e.target.value))}
-                                                        className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        min="0"
-                                                        step="0.01"
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3">
+<td className="px-4 py-3">
+    <input
+        type="number"
+        value={item.unit_price || 0}  // Show unit_price
+        onChange={(e) => {
+            const value = parseFloat(e.target.value) || 0;
+            updateItem(item.id, 'unit_price', value);  // Update unit_price field
+        }}
+        className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+        min="0"
+        step="0.01"
+        required
+    />
+</td>                                                <td className="px-4 py-3">
                                                     <div className="flex gap-1">
                                                         <input
                                                             type="number"
@@ -1171,43 +1382,35 @@ export default function AddSalesOrderPage() {
                                             </div>
                                         </div>
                                         <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Other Charges</label>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
                                             <div className="flex gap-2">
                                                 <input
                                                     type="number"
-                                                    value={formData.other_charges}
-                                                    onChange={(e) => handleFormChange('other_charges', parseFloat(e.target.value))}
+                                                    value={formData.freight_charges}
+                                                    onChange={(e) => handleFormChange('freight_charges', parseFloat(e.target.value))}
                                                     className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
+                                                    step="0.01"
                                                 />
-                                                <select
-                                                    value={formData.charges_type}
-                                                    onChange={(e) => handleFormChange('charges_type', e.target.value)}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="fixed">Fixed</option>
-                                                    <option value="percentage">%</option>
-                                                </select>
+                                                <div className="w-24 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 dark:border-dark-3 dark:bg-dark-2">
+                                                    Fixed
+                                                </div>
                                             </div>
                                         </div>
                                         <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount on All</label>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
                                             <div className="flex gap-2">
                                                 <input
                                                     type="number"
-                                                    value={formData.discount_on_all}
-                                                    onChange={(e) => handleFormChange('discount_on_all', parseFloat(e.target.value))}
+                                                    value={formData.p_and_f_charges}
+                                                    onChange={(e) => handleFormChange('p_and_f_charges', parseFloat(e.target.value))}
                                                     className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
+                                                    step="0.01"
                                                 />
-                                                <select
-                                                    value={formData.discount_type}
-                                                    onChange={(e) => handleFormChange('discount_type', e.target.value)}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="percentage">%</option>
-                                                    <option value="fixed">Fixed</option>
-                                                </select>
+                                                <div className="w-24 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 dark:border-dark-3 dark:bg-dark-2">
+                                                    Fixed
+                                                </div>
                                             </div>
                                         </div>
                                         <div className="md:col-span-2">
@@ -1248,26 +1451,110 @@ export default function AddSalesOrderPage() {
                                             <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span className="text-dark-6">Other Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.chargesAmount.toLocaleString('en-IN')}</span>
+                                            <span className="text-dark-6">Freight Charges</span>
+                                            <span className="font-medium text-dark dark:text-white">₹{totals.freightCharges.toLocaleString('en-IN')}</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span className="text-dark-6">Discount on All</span>
-                                            <span className="font-medium text-red-600">-₹{totals.discountAllAmount.toLocaleString('en-IN')}</span>
+                                            <span className="text-dark-6">P & F Charges</span>
+                                            <span className="font-medium text-dark dark:text-white">₹{totals.pAndFCharges.toLocaleString('en-IN')}</span>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <div className="flex items-center gap-1">
-                                                <span className="text-dark-6">Round Off</span>
-                                                <button type="button" className="text-dark-6 hover:text-dark dark:text-gray-400">
-                                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                            <span className={`font-medium ${totals.roundOff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                ₹{Math.abs(totals.roundOff).toLocaleString('en-IN')}
-                                            </span>
-                                        </div>
+                                    
+<div className="border-t border-stroke pt-3 dark:border-dark-3">
+    <div className="flex justify-between mb-3">
+        <span className="font-semibold text-dark dark:text-white">Total before Round Off</span>
+        <span className="font-bold text-dark dark:text-white">₹{totals.totalBeforeRoundOff.toLocaleString('en-IN')}</span>
+    </div>
+    
+    {/* Round Off Controls */}
+    <div className="flex justify-between items-center mb-2">
+        <div className="flex items-center gap-2">
+            <span className="text-dark-6">Round Off</span>
+            <div className="flex gap-1">
+                <button
+                    type="button"
+                    onClick={() => {
+                        const newAmount = roundOff.amount + 1;
+                        handleRoundOffChange("plus", newAmount);
+                    }}
+                    className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "plus" ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'}`}
+                >
+                    +
+                </button>
+                <button
+                    type="button"
+                    onClick={() => {
+                        const newAmount = roundOff.amount > 0 ? roundOff.amount - 1 : 0;
+                        handleRoundOffChange("minus", newAmount);
+                    }}
+                    className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "minus" ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'}`}
+                >
+                    -
+                </button>
+                <button
+                    type="button"
+                    onClick={() => handleRoundOffChange("none", 0)}
+                    className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "none" ? 'bg-gray-200 text-gray-700' : 'bg-gray-100 text-gray-600'}`}
+                >
+                    0
+                </button>
+            </div>
+        </div>
+        
+        <div className="flex items-center gap-2">
+            <div className="relative">
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                    {roundOff.type === "plus" ? "+" : roundOff.type === "minus" ? "-" : ""}₹
+                </span>
+                <input
+                    type="number"
+                    value={roundOff.amount}
+                    onChange={(e) => {
+                        const amount = parseFloat(e.target.value) || 0;
+                        // Keep the current type, just update the amount
+                        setRoundOff(prev => ({
+                            ...prev,
+                            amount: amount
+                        }));
+                    }}
+                    className={`w-28 rounded border pl-8 pr-2 py-1.5 outline-none focus:border-primary dark:border-dark-3 ${
+                        roundOff.type === "plus" ? 'border-green-300 bg-green-50' :
+                        roundOff.type === "minus" ? 'border-red-300 bg-red-50' :
+                        'border-stroke bg-transparent'
+                    }`}
+                    min="0"
+                    step="0.01"
+                    disabled={roundOff.type === "none"}
+                />
+            </div>
+            <span className={`font-medium ${
+                roundOff.type === "plus" ? 'text-green-600' : 
+                roundOff.type === "minus" ? 'text-red-600' : 
+                'text-gray-600'
+            }`}>
+                {roundOff.type === "plus" ? "+₹" : roundOff.type === "minus" ? "-₹" : "₹"}
+                {roundOff.amount.toFixed(2)}
+            </span>
+        </div>
+    </div>
+    
+   
+    
+    
+    {/* Round Off Amount Display */}
+    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex justify-between items-center">
+            <span className="text-dark-6">Applied Round Off:</span>
+            <span className={`font-medium ${
+                roundOff.type === "plus" ? 'text-green-600' : 
+                roundOff.type === "minus" ? 'text-red-600' : 
+                'text-gray-600'
+            }`}>
+                {roundOff.type === "plus" ? '+₹' : roundOff.type === "minus" ? '-₹' : '₹'}
+                {totals.roundOff.toFixed(2)}
+            </span>
+        </div>
+    </div>
+</div>
                                         <div className="border-t border-stroke pt-3 dark:border-dark-3">
                                             <div className="flex justify-between">
                                                 <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
@@ -1304,6 +1591,198 @@ export default function AddSalesOrderPage() {
                                 </div>
                             )}
                         </div>
+    {/* SECTION 8: Other Fields (Accordion) */}
+                        <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
+                            <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
+                                <h2 className="text-lg font-semibold text-dark dark:text-white">
+                                    Other Fields
+                                </h2>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowOtherFields(!showOtherFields)}
+                                    className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
+                                >
+                                    <svg
+                                        className={`h-5 w-5 transition-transform ${showOtherFields ? "rotate-180" : ""
+                                            }`}
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M19 9l-7 7-7-7"
+                                        />
+                                    </svg>
+                                </button>
+                            </div>
+
+                            {showOtherFields && (
+                                <div className="p-6">
+                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Delivery Note
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={formData.deliveryNote}
+                                                onChange={(e) =>
+                                                    setFormData({ ...formData, deliveryNote: e.target.value })
+                                                }
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Mode / Terms of Payment
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={formData.payment_terms}
+                                                onChange={(e) =>
+                                                    setFormData({ ...formData, payment_terms: e.target.value })
+                                                }
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Supplier's Ref.
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={formData.supplierRef}
+                                                onChange={(e) =>
+                                                    setFormData({ ...formData, supplierRef: e.target.value })
+                                                }
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Other Reference(s)
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={formData.otherReferences}
+                                                onChange={(e) =>
+                                                    setFormData({ ...formData, otherReferences: e.target.value })
+                                                }
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Buyer's Order No.
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={formData.buyerOrderNo}
+                                                onChange={(e) =>
+                                                    setFormData({ ...formData, buyerOrderNo: e.target.value })
+                                                }
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Buyer's Order Date
+                                            </label>
+                                            <input
+                                                type="date"
+                                                value={formData.buyerOrderDate}
+                                                onChange={(e) =>
+                                                    setFormData({ ...formData, buyerOrderDate: e.target.value })
+                                                }
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Despatch Document No.
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={formData.despatchDocNo}
+                                                onChange={(e) =>
+                                                    setFormData({ ...formData, despatchDocNo: e.target.value })
+                                                }
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Delivery Note Date
+                                            </label>
+                                            <input
+                                                type="date"
+                                                value={formData.deliveryNoteDate}
+                                                onChange={(e) =>
+                                                    setFormData({ ...formData, deliveryNoteDate: e.target.value })
+                                                }
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Despatched Through
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={formData.despatchedThrough}
+                                                onChange={(e) =>
+                                                    setFormData({ ...formData, despatchedThrough: e.target.value })
+                                                }
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Destination
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={formData.destination}
+                                                onChange={(e) =>
+                                                    setFormData({ ...formData, destination: e.target.value })
+                                                }
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            />
+                                        </div>
+
+                                        <div className="md:col-span-2">
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Terms of Delivery
+                                            </label>
+                                            <textarea
+                                                value={formData.termsOfDelivery}
+                                                onChange={(e) =>
+                                                    setFormData({ ...formData, termsOfDelivery: e.target.value })
+                                                }
+                                                rows={3}
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            />
+                                        </div>
+
+                                    </div>
+                                </div>
+                            )}
+
+                        </div>
+
 
                         {/* Action Buttons */}
                         <div className="rounded-lg p-6 dark:bg-gray-dark">
