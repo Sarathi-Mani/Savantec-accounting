@@ -1765,13 +1765,19 @@ class PurchaseOrder(Base):
     company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     
     # Vendor (stored in Customer table with customer_type='vendor')
-    vendor_id = Column(String(36), ForeignKey("customers.id", ondelete="SET NULL"))
+    vendor_id = Column(String(36), ForeignKey("vendors.id", ondelete="SET NULL"))
     
     # Order identification
     order_number = Column(String(50), nullable=False)
     order_date = Column(DateTime, nullable=False, default=datetime.utcnow)
     expected_date = Column(DateTime)
-    
+    reference_number = Column(String(100), nullable=True)
+    currency = Column(String(10), default="INR")
+    exchange_rate = Column(Numeric(20, 6), default=Decimal("1.0"))
+    freight_charges = Column(Numeric(20, 6), default=Decimal("0"))
+    other_charges = Column(Numeric(20, 6), default=Decimal("0"))
+    discount_on_all = Column(Numeric(20, 6), default=Decimal("0"))
+    round_off = Column(Numeric(20, 6), default=Decimal("0"))
     # Status
     status = Column(Enum(OrderStatus), default=OrderStatus.DRAFT)
     
@@ -1791,7 +1797,7 @@ class PurchaseOrder(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    vendor = relationship("Customer")
+    vendor = relationship("Vendor")
     items = relationship("PurchaseOrderItem", back_populates="order", cascade="all, delete-orphan")
     receipt_notes = relationship("ReceiptNote", back_populates="purchase_order")
 
@@ -1812,12 +1818,13 @@ class PurchaseOrderItem(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     order_id = Column(String(36), ForeignKey("purchase_orders.id", ondelete="CASCADE"), nullable=False)
     product_id = Column(String(36), ForeignKey("items.id", ondelete="SET NULL"))
-    
+    item_code = Column(String,nullable=True)
     description = Column(String(500), nullable=False)
     quantity = Column(Numeric(14, 3), nullable=False)
     unit = Column(String(20))
     rate = Column(Numeric(14, 2), nullable=False)
-    
+    discount_percent = Column(Numeric(10, 4), default=Decimal("0"))
+    discount_amount = Column(Numeric(20, 6), default=Decimal("0"))
     # Receipt tracking
     quantity_received = Column(Numeric(14, 3), default=0)
     quantity_pending = Column(Numeric(14, 3), default=0)
@@ -1920,7 +1927,7 @@ class ReceiptNote(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     purchase_order_id = Column(String(36), ForeignKey("purchase_orders.id", ondelete="SET NULL"))
-    vendor_id = Column(String(36), ForeignKey("customers.id", ondelete="SET NULL"))
+    vendor_id = Column(String(36), ForeignKey("vendors.id", ondelete="SET NULL"))
     
     # Receipt identification
     receipt_number = Column(String(50), nullable=False)
@@ -1939,7 +1946,7 @@ class ReceiptNote(Base):
 
     # Relationships
     purchase_order = relationship("PurchaseOrder", back_populates="receipt_notes")
-    vendor = relationship("Customer")
+    vendor = relationship("Vendor")
     godown = relationship("Godown")
     items = relationship("ReceiptNoteItem", back_populates="receipt_note", cascade="all, delete-orphan")
 
@@ -2448,7 +2455,7 @@ class PurchaseInvoice(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
-    vendor_id = Column(String(36), ForeignKey("customers.id", ondelete="SET NULL"))
+    vendor_id = Column(String(36), ForeignKey("vendors.id", ondelete="SET NULL"))
     
     # Invoice identification
     invoice_number = Column(String(50), nullable=False, index=True)
@@ -2510,7 +2517,7 @@ class PurchaseInvoice(Base):
 
     # Relationships
     company = relationship("Company")
-    vendor = relationship("Customer")
+    vendor = relationship("Vendor")
     purchase_order = relationship("PurchaseOrder")
     receipt_note = relationship("ReceiptNote")
     tds_section = relationship("TDSSection")
@@ -2635,7 +2642,7 @@ class TDSEntry(Base):
     purchase_invoice_id = Column(String(36), ForeignKey("purchase_invoices.id", ondelete="CASCADE"))
     
     # Deductee (Vendor) details
-    vendor_id = Column(String(36), ForeignKey("customers.id", ondelete="SET NULL"))
+    vendor_id = Column(String(36), ForeignKey("vendors.id", ondelete="SET NULL"))
     vendor_name = Column(String(255))
     vendor_pan = Column(String(10))
     
@@ -2672,7 +2679,7 @@ class TDSEntry(Base):
     # Relationships
     company = relationship("Company")
     purchase_invoice = relationship("PurchaseInvoice", back_populates="tds_entries")
-    vendor = relationship("Customer")
+    vendor = relationship("Vendor")
     tds_section = relationship("TDSSection")
 
     __table_args__ = (
