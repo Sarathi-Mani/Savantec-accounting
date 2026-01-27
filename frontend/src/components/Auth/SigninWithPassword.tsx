@@ -107,6 +107,12 @@ export default function SigninWithPassword() {
           )}
         </button>
       </div>
+
+      {/* Note for employees */}
+      <div className="mt-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+        <p className="font-medium">Employee Login:</p>
+        <p>Use your official email or personal email to login</p>
+      </div>
     </form>
   );
 }

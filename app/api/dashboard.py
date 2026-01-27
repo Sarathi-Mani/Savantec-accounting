@@ -10,18 +10,58 @@ from app.auth.dependencies import get_current_active_user
 router = APIRouter(prefix="/companies/{company_id}/dashboard", tags=["Dashboard"])
 
 
-def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
-    """Helper to get company or raise 404."""
-    service = CompanyService(db)
-    company = service.get_company(company_id, user)
-    if not company:
+# app/api/dashboard.py
+def get_company_or_404(company_id: str, current_user, db: Session) -> Company:
+    """Get company or raise 404 - handles both users and employees."""
+    
+    # Handle employee (dict) case
+    if isinstance(current_user, dict) and current_user.get("is_employee"):
+        # For employees, they can only access their own company
+        employee_company_id = current_user.get("company_id")
+        if str(employee_company_id) != company_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this company"
+            )
+        
+        # Get the company for employee
+        company = db.query(Company).filter(Company.id == company_id).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        
+        return company
+    
+    # Handle regular user (User object) case
+    elif hasattr(current_user, 'id'):
+        company = db.query(Company).filter(
+            Company.id == company_id,
+            Company.user_id == current_user.id
+        ).first()
+        
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        
+        return company
+    
+    # Handle user in dict format
+    elif isinstance(current_user, dict) and current_user.get("id"):
+        company = db.query(Company).filter(
+            Company.id == company_id,
+            Company.user_id == current_user.get("id")
+        ).first()
+        
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        
+        return company
+    
+    else:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Company not found"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication data"
         )
-    return company
-
-
+    
+    
 @router.get("/summary")
 async def get_dashboard_summary(
     company_id: str,

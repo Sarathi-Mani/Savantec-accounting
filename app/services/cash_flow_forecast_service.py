@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.database.models import (
-    Invoice, PurchaseInvoice, RecurringTransaction, PostDatedCheque,
+    Invoice, Purchase, RecurringTransaction, PostDatedCheque,
     Account, AccountType, Transaction, TransactionEntry, TransactionStatus
 )
 
@@ -97,12 +97,12 @@ class CashFlowForecastService:
         today = datetime.utcnow()
         end_date = today + timedelta(days=days)
         
-        invoices = self.db.query(PurchaseInvoice).filter(
-            PurchaseInvoice.company_id == company_id,
-            PurchaseInvoice.outstanding_amount > 0,
-            PurchaseInvoice.due_date.isnot(None),
-            PurchaseInvoice.due_date <= end_date,
-        ).order_by(PurchaseInvoice.due_date.asc()).all()
+        invoices = self.db.query(Purchase).filter(
+            Purchase.company_id == company_id,
+            Purchase.outstanding_amount > 0,
+            Purchase.due_date.isnot(None),
+            Purchase.due_date <= end_date,
+        ).order_by(Purchase.due_date.asc()).all()
         
         return [
             {

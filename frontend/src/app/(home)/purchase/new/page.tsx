@@ -17,6 +17,7 @@ function SelectField({
     options,
     required = false,
     placeholder = "Select option",
+    formatOptionLabel,
 }: {
     label: string;
     name: string;
@@ -25,6 +26,7 @@ function SelectField({
     options: { value: string; label: string }[];
     required?: boolean;
     placeholder?: string;
+    formatOptionLabel?: (option: any) => React.ReactNode;
 }) {
     return (
         <div>
@@ -38,6 +40,7 @@ function SelectField({
                 options={options}
                 placeholder={placeholder}
                 isClearable
+                formatOptionLabel={formatOptionLabel}
                 styles={{
                     control: (base: any, state: any) => ({
                         ...base,
@@ -168,6 +171,33 @@ export default function AddPurchasePage() {
     const [productSearch, setProductSearch] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
 
+    // Add new state for purchase type
+    const [purchaseType, setPurchaseType] = useState("purchase"); // purchase, purchase-import, purchase-expenses
+    
+    // State for import items
+    const [importItems, setImportItems] = useState([
+        {
+            id: 1,
+            name: "",
+            quantity: 1,
+            rate: 0,
+            per: "unit",
+            discount_percent: 0,
+            amount: 0,
+        },
+    ]);
+    
+    // State for expense items
+    const [expenseItems, setExpenseItems] = useState([
+        {
+            id: 1,
+            particulars: "",
+            rate: 0,
+            per: "unit",
+            amount: 0,
+        },
+    ]);
+
     // Payment state
     const [paymentData, setPaymentData] = useState({
         amount: 0,
@@ -261,7 +291,6 @@ export default function AddPurchasePage() {
 
         try {
             setLoadingPurchaseNumber(true);
-            // Generate purchase number (you can modify this logic)
             const today = new Date();
             const year = today.getFullYear();
             const month = String(today.getMonth() + 1).padStart(2, '0');
@@ -281,9 +310,30 @@ export default function AddPurchasePage() {
                 page_size: 100,
                 search: "",
             });
-            setSuppliers(response.customers || []);
+            
+            console.log("Full vendors API response:", response);
+            
+            // Check different possible structures
+            let vendorsArray = [];
+            
+            if (Array.isArray(response)) {
+                vendorsArray = response;
+            } else if (response && Array.isArray(response.data)) {
+                vendorsArray = response.data;
+            } else if (response && response.data && Array.isArray(response.data.vendors)) {
+                vendorsArray = response.data.vendors;
+            } else if (response && response.vendors) {
+                vendorsArray = response.vendors;
+            } else if (response && response.customers) {
+                vendorsArray = response.customers;
+            }
+            
+            console.log("Vendors array:", vendorsArray);
+            setSuppliers(vendorsArray);
+            
         } catch (error) {
             console.error("Failed to load suppliers:", error);
+            setSuppliers([]);
         } finally {
             setLoading(prev => ({ ...prev, suppliers: false }));
         }
@@ -304,12 +354,13 @@ export default function AddPurchasePage() {
         }
     };
 
-    // Calculate totals
+    // Calculate totals based on purchase type
     const calculateTotals = () => {
         let subtotal = 0;
         let totalTax = 0;
         let totalItemDiscount = 0;
 
+        // Calculate from regular items (always included)
         items.forEach(item => {
             const itemTotal = item.quantity * item.purchase_price;
             const discount = item.discount_percent > 0 ?
@@ -321,6 +372,21 @@ export default function AddPurchasePage() {
             totalTax += tax;
             totalItemDiscount += discount;
         });
+
+        // Add totals from purchase type specific items
+ if (purchaseType === "purchase" || purchaseType === "purchase-import") {
+            importItems.forEach(item => {
+                const itemTotal = item.quantity * item.rate;
+                const discount = item.discount_percent > 0 ?
+                    itemTotal * (item.discount_percent / 100) : 0;
+                subtotal += itemTotal - discount;
+                totalItemDiscount += discount;
+            });
+        } else if (purchaseType === "purchase-expenses") {
+            expenseItems.forEach(item => {
+                subtotal += item.amount;
+            });
+        }
 
         // Calculate additional charges and discounts
         const freightCharges = formData.freight_charges || 0;
@@ -355,88 +421,324 @@ export default function AddPurchasePage() {
 
     const totals = calculateTotals();
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!company?.id) return;
-
-        setIsSubmitting(true);
-        try {
-            // Prepare items
-            const preparedItems = items.map(item => ({
-                product_id: item.product_id || undefined,
-                description: item.description || "",
-                hsn_code: item.hsn_code || "",
-                quantity: Number(item.quantity),
-                unit: item.unit || "unit",
-                unit_price: Number(item.purchase_price),
-                item_code: item.item_code || "",
-                discount_percent: Number(item.discount_percent || 0),
-                discount_amount: Number(item.discount_amount || 0),
-                gst_rate: Number(item.gst_rate || 0),
-                tax_amount: Number(item.tax_amount || 0),
-                unit_cost: Number(item.unit_cost || item.purchase_price),
-                total_amount: Number(item.total_amount || ((item.quantity * item.purchase_price - item.discount_amount) * (1 + (item.gst_rate || 0) / 100))),
-            }));
-
-            // Prepare purchase data
-            const purchaseData = {
-                vendor_id: formData.supplier_id,
-                vendor_invoice_number: formData.vendor_invoice_number || "",
-                vendor_invoice_date: formData.vendor_invoice_date || undefined,
-                invoice_date: formData.purchase_date,
-                due_date: formData.due_date || undefined,
-                payment_type: formData.payment_type || "",
-                notes: formData.notes || "",
-                terms: formData.terms || "",
-
-                // Financial data
-                round_off: Number(formData.round_off || 0),
-                subtotal: Number(totals.subtotal || 0),
-                discount_amount: Number(totals.discountAll || 0),
-                total_tax: Number(totals.totalTax || 0),
-                total_amount: Number(totals.grandTotal || 0),
-
-                // Charges
-                freight_charges: Number(formData.freight_charges || 0),
-                packing_forwarding_charges: Number(formData.pf_charges || 0),
-                discount_on_all: Number(formData.discount_on_all || 0),
-                discount_type: formData.discount_type || "percentage",
-
-                // Contact info
-                contact_person: formData.contact_person || "",
-                contact_phone: formData.contact_phone || "",
-                contact_email: formData.contact_email || "",
-                shipping_address: formData.shipping_address || "",
-                billing_address: formData.billing_address || "",
-
-                // Items
-                items: preparedItems,
-
-                // Payment data if provided
-                ...(paymentData.amount > 0 ? {
-                    payment_amount: Number(paymentData.amount),
-                    payment_type: paymentData.paymentType,
-                    payment_account: paymentData.account,
-                    payment_note: paymentData.paymentNote,
-                } : {}),
-            };
-
-            console.log("Purchase data being sent:", JSON.stringify(purchaseData, null, 2));
-
-            // Call the API
-            const response = await purchasesApi.create(company.id, purchaseData);
-            
-            console.log('Purchase created successfully:', response);
-            alert("Purchase saved successfully!");
-            router.push(`/purchase/purchase-list`);
-
-        } catch (error: any) {
-            console.error("Error creating purchase:", error);
-            alert(`Failed to create purchase: ${error.message || "Unknown error"}`);
-        } finally {
-            setIsSubmitting(false);
-        }
+    // Functions for import items
+    const updateImportItem = (id: number, field: string, value: any) => {
+        setImportItems(prevItems => {
+            return prevItems.map(item => {
+                if (item.id === id) {
+                    const updated = { ...item, [field]: value };
+                    
+                    // Calculate amount when rate, quantity, or discount changes
+                    if (field === 'rate' || field === 'quantity' || field === 'discount_percent') {
+                        const total = updated.quantity * updated.rate;
+                        const discount = total * (updated.discount_percent / 100);
+                        updated.amount = total - discount;
+                    }
+                    
+                    return updated;
+                }
+                return item;
+            });
+        });
     };
+
+    const addImportItem = () => {
+        setImportItems(prev => [
+            ...prev,
+            {
+                id: Date.now(),
+                name: "",
+                quantity: 1,
+                rate: 0,
+                per: "unit",
+                discount_percent: 0,
+                amount: 0,
+            },
+        ]);
+    };
+
+    const removeImportItem = (id: number) => {
+        setImportItems(importItems.filter(item => item.id !== id));
+    };
+
+    // Functions for expense items
+    const updateExpenseItem = (id: number, field: string, value: any) => {
+        setExpenseItems(prevItems => {
+            return prevItems.map(item => {
+                if (item.id === id) {
+                    const updated = { ...item, [field]: value };
+                    
+                    // Calculate amount when rate changes
+                    if (field === 'rate') {
+                        updated.amount = updated.rate; // Assuming rate = amount for expenses
+                    }
+                    
+                    return updated;
+                }
+                return item;
+            });
+        });
+    };
+
+    const addExpenseItem = () => {
+        setExpenseItems(prev => [
+            ...prev,
+            {
+                id: Date.now(),
+                particulars: "",
+                rate: 0,
+                per: "unit",
+                amount: 0,
+            },
+        ]);
+    };
+
+    const removeExpenseItem = (id: number) => {
+        setExpenseItems(expenseItems.filter(item => item.id !== id));
+    };
+
+const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!company?.id) return;
+
+    setIsSubmitting(true);
+    
+    try {
+        console.log("🚀 ========== STARTING PURCHASE SUBMISSION ==========");
+        console.log("📋 Purchase Type Selected:", purchaseType);
+        console.log("🏢 Company ID:", company.id);
+        console.log("👥 Supplier ID:", formData.supplier_id);
+        
+        // Validate supplier
+        if (!formData.supplier_id) {
+            alert("Please select a supplier");
+            setIsSubmitting(false);
+            return;
+        }
+
+        // Validate items based on purchase type
+        if (purchaseType === "purchase-expenses") {
+            // For expense purchases, only expense items are allowed
+            if (expenseItems.length === 0) {
+                alert("Please add at least one expense item");
+                setIsSubmitting(false);
+                return;
+            }
+            // Don't validate regular items for expense purchases
+        } else if (purchaseType === "purchase" || purchaseType === "purchase-import") {
+            // For regular and import purchases, validate regular items
+            if (items.length === 0) {
+                alert("Please add at least one item");
+                setIsSubmitting(false);
+                return;
+            }
+        }
+
+        // DO NOT NORMALIZE HERE - Send as is to backend
+        // The backend will handle the normalization
+        console.log("🔄 Purchase type (as is):", purchaseType);
+
+        // Prepare data based on purchase type
+        let purchaseData: any = {
+            vendor_id: formData.supplier_id,
+            vendor_invoice_number: formData.vendor_invoice_number || "",
+            vendor_invoice_date: formData.vendor_invoice_date || undefined,
+            purchase_date: formData.purchase_date,
+            due_date: formData.due_date || undefined,
+            payment_type: formData.payment_type || "",
+            notes: formData.notes || "",
+            terms: formData.terms || "",
+            purchase_type: purchaseType, // Send as is (with hyphen)
+            
+            // Financial data
+            round_off: Number(formData.round_off || 0),
+            subtotal: Number(totals.subtotal || 0),
+            discount_amount: Number(totals.discountAll || 0),
+            total_tax: Number(totals.totalTax || 0),
+            total_amount: Number(totals.grandTotal || 0),
+
+            // Charges
+            freight_charges: Number(formData.freight_charges || 0),
+            freight_type: formData.freight_type || "fixed",
+            packing_forwarding_charges: Number(formData.pf_charges || 0),
+            pf_type: formData.pf_type || "fixed",
+            discount_on_all: Number(formData.discount_on_all || 0),
+            discount_type: formData.discount_type || "percentage",
+
+            // Contact info
+            contact_person: formData.contact_person || "",
+            contact_phone: formData.contact_phone || "",
+            contact_email: formData.contact_email || "",
+            shipping_address: formData.shipping_address || "",
+            billing_address: formData.billing_address || "",
+
+            // Payment as nested object
+            ...(paymentData.amount > 0 ? {
+                payment: {
+                    amount: Number(paymentData.amount),
+                    payment_type: paymentData.paymentType,
+                    account: paymentData.account,
+                    payment_note: paymentData.paymentNote,
+                }
+            } : {}),
+        };
+
+        // Include regular items ONLY for purchase and purchase-import types
+        if (purchaseType === "purchase" || purchaseType === "purchase-import") {
+            const preparedItems = items.map((item, index) => {
+                const itemData = {
+                    product_id: item.product_id || undefined,
+                    description: item.description || `Item ${index + 1}`,
+                    hsn_code: item.hsn_code || "",
+                    quantity: Number(item.quantity) || 1,
+                    unit: item.unit || "unit",
+                    purchase_price: Number(item.purchase_price) || 0.01,
+                    item_code: item.item_code || "",
+                    discount_percent: Number(item.discount_percent || 0),
+                    discount_amount: Number(item.discount_amount || 0),
+                    gst_rate: Number(item.gst_rate || 0),
+                    tax_amount: Number(item.tax_amount || 0),
+                    unit_cost: Number(item.unit_cost || item.purchase_price || 0.01),
+                    total_amount: Number(item.total_amount || 0),
+                };
+
+                console.log(`📦 Regular Item ${index + 1}:`, {
+                    product_id: itemData.product_id,
+                    description: itemData.description.substring(0, 50),
+                    quantity: itemData.quantity,
+                    price: itemData.purchase_price,
+                    total: itemData.total_amount
+                });
+
+                return itemData;
+            });
+            
+            purchaseData.items = preparedItems;
+            console.log(`📊 Total regular items: ${preparedItems.length}`);
+        } else if (purchaseType === "purchase-expenses") {
+            // For expense purchases, don't include regular items at all
+            console.log("💰 Expense purchase - NOT including regular items");
+            // DO NOT include items array at all
+        }
+
+        // Add import items for purchase and purchase-import types
+        if ((purchaseType === "purchase" || purchaseType === "purchase-import") && importItems.length > 0) {
+            const preparedImportItems = importItems.map((item, index) => {
+                const importItemData = {
+                    name: item.name || `Import Item ${index + 1}`,
+                    quantity: Number(item.quantity) || 1,
+                    rate: Number(item.rate) || 0,
+                    per: item.per || "unit",
+                    discount_percent: Number(item.discount_percent || 0),
+                    amount: Number(item.amount) || 0,
+                };
+
+                console.log(`📦 Import Item ${index + 1}:`, {
+                    name: importItemData.name,
+                    quantity: importItemData.quantity,
+                    rate: importItemData.rate,
+                    amount: importItemData.amount
+                });
+
+                return importItemData;
+            });
+            
+            purchaseData.import_items = preparedImportItems;
+            console.log(`📊 Total import items: ${preparedImportItems.length}`);
+        }
+        
+        // Add expense items ONLY for expense purchases
+        if (purchaseType === "purchase-expenses" && expenseItems.length > 0) {
+            const preparedExpenseItems = expenseItems.map((item, index) => {
+                const expenseItemData = {
+                    particulars: item.particulars || `Expense ${index + 1}`,
+                    rate: Number(item.rate) || 0,
+                    per: item.per || "unit",
+                    amount: Number(item.amount) || 0,
+                };
+
+                console.log(`💰 Expense Item ${index + 1}:`, {
+                    particulars: expenseItemData.particulars,
+                    rate: expenseItemData.rate,
+                    amount: expenseItemData.amount
+                });
+
+                return expenseItemData;
+            });
+            
+            purchaseData.expense_items = preparedExpenseItems;
+            console.log(`📊 Total expense items: ${preparedExpenseItems.length}`);
+        }
+
+        // Remove empty arrays to avoid validation errors
+        if (!purchaseData.items || purchaseData.items.length === 0) {
+            delete purchaseData.items;
+        }
+        if (!purchaseData.import_items || purchaseData.import_items.length === 0) {
+            delete purchaseData.import_items;
+        }
+        if (!purchaseData.expense_items || purchaseData.expense_items.length === 0) {
+            delete purchaseData.expense_items;
+        }
+
+        // Log final payload
+        console.log("📤 FINAL PAYLOAD TO BE SENT:");
+        console.log("Purchase Type:", purchaseData.purchase_type);
+        console.log("Vendor ID:", purchaseData.vendor_id);
+        console.log("Items:", purchaseData.items ? purchaseData.items.length : 0);
+        console.log("Import items:", purchaseData.import_items ? purchaseData.import_items.length : 0);
+        console.log("Expense items:", purchaseData.expense_items ? purchaseData.expense_items.length : 0);
+        
+        // Log the full payload for debugging
+        console.log("📄 Full payload:", JSON.stringify(purchaseData, null, 2));
+
+        // Call the API
+        console.log("⏳ Calling API...");
+        const response = await purchasesApi.create(company.id, purchaseData);
+        
+        console.log('✅ Purchase created successfully! Response:', response);
+        alert(`Purchase ${response.purchase_number} saved successfully!`);
+        router.push(`/purchase/purchase-list`);
+
+    } catch (error: any) {
+        console.error("❌ ========== PURCHASE CREATION FAILED ==========");
+        console.error("Error object:", error);
+        
+        if (error.response) {
+            console.error("Status:", error.response.status);
+            console.error("Data:", error.response.data);
+            
+            // Extract detailed error message
+            let errorMessage = "Failed to create purchase: ";
+            
+            if (error.response.data && typeof error.response.data === 'object') {
+                if (error.response.data.detail) {
+                    // Handle array of errors
+                    if (Array.isArray(error.response.data.detail)) {
+                        errorMessage = error.response.data.detail.map((err: any) => 
+                            `${err.loc ? err.loc.join('.') + ': ' : ''}${err.msg}`
+                        ).join('\n');
+                    } else {
+                        errorMessage += JSON.stringify(error.response.data.detail);
+                    }
+                } else {
+                    errorMessage += JSON.stringify(error.response.data);
+                }
+            }
+            
+            alert(errorMessage);
+            
+        } else if (error.request) {
+            alert("No response from server. Please check your network connection.");
+        } else {
+            alert(`Error: ${error.message}`);
+        }
+        
+    } finally {
+        setIsSubmitting(false);
+        console.log("🏁 Submission process completed");
+    }
+};
 
     // Update item calculation
     const updateItem = (id: number, field: string, value: any) => {
@@ -536,6 +838,48 @@ export default function AddPurchasePage() {
         setItems(items.filter(item => item.id !== id));
     };
 
+    // Auto-fill supplier details when supplier is selected
+    const handleSupplierChange = (field: string, value: any) => {
+        handleFormChange(field, value);
+        
+        // Auto-fill supplier contact details if available
+        if (value) {
+            const selectedSupplier = suppliers.find(s => s.id === value);
+            if (selectedSupplier) {
+                setFormData(prev => ({
+                    ...prev,
+                    contact_email: selectedSupplier.email || prev.contact_email,
+                    contact_phone: selectedSupplier.mobile || selectedSupplier.phone || prev.contact_phone,
+                    contact_person: selectedSupplier.contact_person || selectedSupplier.name || prev.contact_person,
+                    shipping_address: selectedSupplier.shipping_address || selectedSupplier.address || prev.shipping_address,
+                    billing_address: selectedSupplier.billing_address || selectedSupplier.address || prev.billing_address,
+                }));
+            }
+        }
+    };
+
+    // Format supplier option label with email and phone
+    const formatSupplierOptionLabel = (option: any) => {
+        const supplier = suppliers.find(s => s.id === option.value);
+        if (!supplier) return option.label;
+        
+        const name = supplier.vendor_name || supplier.name || supplier.customer_name || `Vendor #${supplier.id}`;
+        
+        return (
+            <div className="py-1">
+                <div className="font-medium">{name}</div>
+                {(supplier.email || supplier.mobile || supplier.phone) && (
+                    <div className="text-xs text-gray-500">
+                        {supplier.email && <div> {supplier.email}</div>}
+                        {(supplier.mobile || supplier.phone) && (
+                            <div> {supplier.mobile || supplier.phone}</div>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div className="min-h-screen bg-gray-50 p-4 dark:bg-gray-dark md:p-6">
             {/* Breadcrumb */}
@@ -581,6 +925,23 @@ export default function AddPurchasePage() {
                         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                             <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Purchase Basic Details</h2>
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                {/* Add Purchase Type Dropdown */}
+                                <div>
+                                    <SelectField
+                                        label="Purchase Type"
+                                        name="purchase_type"
+                                        value={purchaseType}
+                                        onChange={(name, value) => setPurchaseType(value)}
+                                        options={[
+                                            { value: "purchase", label: "Purchase" },
+                                            { value: "purchase-import", label: "Purchase Import" },
+                                            { value: "purchase-expenses", label: "Purchase Expenses" },
+                                        ]}
+                                        required={true}
+                                        placeholder="Select Purchase Type"
+                                    />
+                                </div>
+                                
                                 <div>
                                     <SelectField
                                         label="Company"
@@ -592,6 +953,7 @@ export default function AddPurchasePage() {
                                         placeholder="Select Company"
                                     />
                                 </div>
+                                
                                 <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                                         Purchase Number <span className="text-red-500">*</span>
@@ -609,6 +971,29 @@ export default function AddPurchasePage() {
                                         <p className="mt-1 text-sm text-gray-500">Generating purchase number...</p>
                                     )}
                                 </div>
+                                
+                                {/* Supplier/Vendor Field with Email and Phone */}
+                                <div>
+                                    <SelectField
+                                        label="Supplier/Vendor"
+                                        name="supplier_id"
+                                        value={formData.supplier_id}
+                                        onChange={handleSupplierChange}
+                                        options={suppliers.map(supplier => ({
+                                            value: supplier.id,
+                                            label: supplier.vendor_name || supplier.name || supplier.customer_name || `Vendor #${supplier.id}`
+                                        }))}
+                                        required={true}
+                                        placeholder="Select Supplier"
+                                        formatOptionLabel={formatSupplierOptionLabel}
+                                    />
+                                    {suppliers.length > 0 && (
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Showing {suppliers.length} suppliers
+                                        </p>
+                                    )}
+                                </div>
+                                
                                 <div>
                                     <SelectField
                                         label="Payment Type"
@@ -627,20 +1012,7 @@ export default function AddPurchasePage() {
                                         placeholder="Select Payment Type"
                                     />
                                 </div>
-                                <div>
-                                    <SelectField
-                                        label="Supplier"
-                                        name="supplier_id"
-                                        value={formData.supplier_id}
-                                        onChange={handleFormChange}
-                                        options={suppliers.map(supplier => ({
-                                            value: supplier.id,
-                                            label: `${supplier.name} ${supplier.gstin ? `(${supplier.gstin})` : ''}`
-                                        }))}
-                                        required={true}
-                                        placeholder="Select Supplier"
-                                    />
-                                </div>
+                                
                                 <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                                         Purchase Date <span className="text-red-500">*</span>
@@ -700,7 +1072,8 @@ export default function AddPurchasePage() {
                             </div>
                         </div>
 
-                        {/* SECTION 2: Purchase Items Table */}
+                        {/* SECTION 2: Regular Purchase Items (ALWAYS VISIBLE) */}
+                        {purchaseType !== "purchase-expenses" && (
                         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                             <div className="mb-4 flex items-center justify-between">
                                 <h2 className="text-lg font-semibold text-dark dark:text-white">Purchase Items</h2>
@@ -896,8 +1269,229 @@ export default function AddPurchasePage() {
                                 </table>
                             </div>
                         </div>
+)}
+                        {/* SECTION 3: Purchase Type Specific Items */}
+                        {/* Import Items Section */}
+                       {(purchaseType === "purchase" || purchaseType === "purchase-import") && (      <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+                                <div className="mb-4 flex items-center justify-between">
+                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Import Items</h2>
+                                    <button
+                                        type="button"
+                                        onClick={addImportItem}
+                                        className="rounded-lg bg-primary px-4 py-2 text-white hover:bg-opacity-90"
+                                    >
+                                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                    </button>
+                                </div>
 
-                        {/* SECTION 3: Charges & Summary */}
+                                <div className="overflow-x-auto">
+                                    <table className="w-full">
+                                        <thead>
+                                            <tr className="border-b border-stroke dark:border-dark-3">
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">#</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Name</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Rate</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Per</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Disc %</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Amount</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {importItems.map((item, index) => (
+                                                <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
+                                                    <td className="px-4 py-3">{index + 1}</td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="text"
+                                                            value={item.name}
+                                                            onChange={(e) => updateImportItem(item.id, 'name', e.target.value)}
+                                                            className="w-full min-w-[200px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            placeholder="Enter item name"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="number"
+                                                            value={item.quantity}
+                                                            onChange={(e) => updateImportItem(item.id, 'quantity', parseFloat(e.target.value))}
+                                                            className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            min="0"
+                                                            step="0.001"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="number"
+                                                            value={item.rate}
+                                                            onChange={(e) => updateImportItem(item.id, 'rate', parseFloat(e.target.value))}
+                                                            className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            min="0"
+                                                            step="0.01"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <select
+                                                            value={item.per}
+                                                            onChange={(e) => updateImportItem(item.id, 'per', e.target.value)}
+                                                            className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        >
+                                                            <option value="unit">Unit</option>
+                                                            <option value="kg">Kg</option>
+                                                            <option value="liter">Liter</option>
+                                                            <option value="meter">Meter</option>
+                                                            <option value="box">Box</option>
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="number"
+                                                            value={item.discount_percent}
+                                                            onChange={(e) => updateImportItem(item.id, 'discount_percent', parseFloat(e.target.value))}
+                                                            className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            min="0"
+                                                            max="100"
+                                                            step="0.01"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3 font-medium">
+                                                        ₹{item.amount.toFixed(2)}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        {importItems.length > 1 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeImportItem(item.id)}
+                                                                className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                            >
+                                                                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                </svg>
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr>
+                                                <td colSpan={6} className="px-4 py-3 text-right font-semibold">
+                                                    Total:
+                                                </td>
+                                                <td className="px-4 py-3 font-bold text-primary">
+                                                    ₹{importItems.reduce((sum, item) => sum + item.amount, 0).toFixed(2)}
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Expense Items Section */}
+                        {purchaseType === "purchase-expenses" && (
+                            <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+                                <div className="mb-4 flex items-center justify-between">
+                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Expense Items</h2>
+                                    <button
+                                        type="button"
+                                        onClick={addExpenseItem}
+                                        className="rounded-lg bg-primary px-4 py-2 text-white hover:bg-opacity-90"
+                                    >
+                                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                    </button>
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                    <table className="w-full">
+                                        <thead>
+                                            <tr className="border-b border-stroke dark:border-dark-3">
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">#</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Particulars</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Rate</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Per</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Amount</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {expenseItems.map((item, index) => (
+                                                <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
+                                                    <td className="px-4 py-3">{index + 1}</td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="text"
+                                                            value={item.particulars}
+                                                            onChange={(e) => updateExpenseItem(item.id, 'particulars', e.target.value)}
+                                                            className="w-full min-w-[250px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            placeholder="Enter expense particulars"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="number"
+                                                            value={item.rate}
+                                                            onChange={(e) => updateExpenseItem(item.id, 'rate', parseFloat(e.target.value))}
+                                                            className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            min="0"
+                                                            step="0.01"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <select
+                                                            value={item.per}
+                                                            onChange={(e) => updateExpenseItem(item.id, 'per', e.target.value)}
+                                                            className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        >
+                                                            <option value="unit">Unit</option>
+                                                            <option value="kg">Kg</option>
+                                                            <option value="liter">Liter</option>
+                                                            <option value="meter">Meter</option>
+                                                            <option value="box">Box</option>
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-4 py-3 font-medium">
+                                                        ₹{item.amount.toFixed(2)}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        {expenseItems.length > 1 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeExpenseItem(item.id)}
+                                                                className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                            >
+                                                                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                </svg>
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr>
+                                                <td colSpan={4} className="px-4 py-3 text-right font-semibold">
+                                                    Total:
+                                                </td>
+                                                <td className="px-4 py-3 font-bold text-primary">
+                                                    ₹{expenseItems.reduce((sum, item) => sum + item.amount, 0).toFixed(2)}
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* SECTION 4: Charges & Summary */}
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                             {/* Left side - Charges & Discounts */}
                             <div className="lg:col-span-2">
@@ -1077,7 +1671,7 @@ export default function AddPurchasePage() {
                             </div>
                         </div>
 
-                        {/* SECTION 4: Previous Payments Information */}
+                        {/* SECTION 5: Previous Payments Information */}
                         <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
                             <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
                                 <h2 className="text-lg font-semibold text-dark dark:text-white">Previous Payments Information</h2>
@@ -1123,7 +1717,7 @@ export default function AddPurchasePage() {
                             )}
                         </div>
 
-                        {/* SECTION 5: Make Payment */}
+                        {/* SECTION 6: Make Payment */}
                         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                             <h2 className="mb-6 text-lg font-semibold text-dark dark:text-white">
                                 Make Payment
@@ -1233,102 +1827,23 @@ export default function AddPurchasePage() {
                             </div>
                         </div>
 
-                        {/* SECTION 6: Other Fields (Accordion) */}
+                        {/* SECTION 7: Other Fields (Accordion) */}
                         <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
                             <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
-                                <h2 className="text-lg font-semibold text-dark dark:text-white">
-                                    Other Fields
-                                </h2>
+                                <h2 className="text-lg font-semibold text-dark dark:text-white">Terms & Conditions</h2>
                                 <button
                                     type="button"
                                     onClick={() => setShowOtherFields(!showOtherFields)}
                                     className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
                                 >
-                                    <svg
-                                        className={`h-5 w-5 transition-transform ${showOtherFields ? "rotate-180" : ""
-                                            }`}
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                    >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={2}
-                                            d="M19 9l-7 7-7-7"
-                                        />
+                                    <svg className={`h-5 w-5 transition-transform ${showOtherFields ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                     </svg>
                                 </button>
                             </div>
-
                             {showOtherFields && (
                                 <div className="p-6">
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                        <div className="md:col-span-2">
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Billing Address
-                                            </label>
-                                            <textarea
-                                                value={formData.billing_address}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, billing_address: e.target.value })
-                                                }
-                                                rows={3}
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Shipping Address
-                                            </label>
-                                            <textarea
-                                                value={formData.shipping_address}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, shipping_address: e.target.value })
-                                                }
-                                                rows={3}
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Contact Person
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.contact_person}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, contact_person: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Contact Phone
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.contact_phone}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, contact_phone: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Contact Email
-                                            </label>
-                                            <input
-                                                type="email"
-                                                value={formData.contact_email}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, contact_email: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
                                         <div className="md:col-span-2">
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                                                 Terms & Conditions
@@ -1344,8 +1859,6 @@ export default function AddPurchasePage() {
                                 </div>
                             )}
                         </div>
-
-                       
 
                         {/* Action Buttons */}
                         <div className="rounded-lg p-6 dark:bg-gray-dark">

@@ -1,4 +1,6 @@
-"""Payroll API endpoints for employee and salary management."""
+"""
+Payroll API endpoints for employee and salary management.
+"""
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Form, File, UploadFile
 from fastapi.responses import JSONResponse
 
@@ -6,14 +8,17 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import date
 from decimal import Decimal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field,field_validator
+from passlib.context import CryptContext
+import secrets
+import string
+import re
 
 import os  # Add this
 import uuid  # Add this
-import shutil  # Add this
 
 from sqlalchemy.orm import joinedload
-from sqlalchemy import or_
+from sqlalchemy import or_, func, and_
 
 from app.database.connection import get_db
 from app.database.models import User, Company
@@ -33,17 +38,96 @@ from app.services.pt_service import PTService
 router = APIRouter(prefix="/companies/{company_id}/payroll", tags=["Payroll"])
 
 
-def get_company_or_404(company_id: str, current_user: User, db: Session) -> Company:
-    """Get company or raise 404."""
-    company = db.query(Company).filter(
-        Company.id == company_id,
-        Company.user_id == current_user.id
-    ).first()
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
-    return company
+def get_company_or_404(company_id: str, current_user, db: Session) -> Company:
+    """Get company or raise 404 - handles both users and employees."""
+    # Remove the type hint "User" from current_user parameter
+    
+    # Handle employee (dict) case
+    if isinstance(current_user, dict) and current_user.get("is_employee"):
+        # For employees, they can only access their own company
+        if str(current_user.get("company_id")) != company_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this company"
+            )
+        
+        # Get the company for employee
+        company = db.query(Company).filter(Company.id == company_id).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        
+        return company
+    
+    # Handle regular user (User object) case
+    elif isinstance(current_user, User):
+        company = db.query(Company).filter(
+            Company.id == company_id,
+            Company.user_id == current_user.id
+        ).first()
+        
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        
+        return company
+    
+    # Handle user in dict format (from get_current_active_user)
+    elif isinstance(current_user, dict) and current_user.get("type") == "user":
+        user_data = current_user.get("data")
+        if not user_data or not hasattr(user_data, "id"):
+            raise HTTPException(status_code=401, detail="Invalid user data")
+        
+        company = db.query(Company).filter(
+            Company.id == company_id,
+            Company.user_id == user_data.id
+        ).first()
+        
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        
+        return company
+    
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication data"
+        )
 
+pwd_context = CryptContext(
+    schemes=["bcrypt", "pbkdf2_sha256"],
+    default="pbkdf2_sha256",  # Use PBKDF2 as default to avoid bcrypt issues
+    deprecated="auto"
+)
 
+def hash_password(password: str) -> str:
+    """Hash a password for storing."""
+    try:
+        # Truncate password to 72 characters for bcrypt compatibility
+        if len(password) > 72:
+            password = password[:72]
+            print("Password truncated to 72 characters for bcrypt compatibility")
+        
+        return pwd_context.hash(password)
+    except Exception as e:
+        print(f"Error hashing password: {str(e)}")
+        # Fallback to PBKDF2
+        return pwd_context.hash(password, scheme="pbkdf2_sha256")
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a stored password against one provided by user."""
+    try:
+        # Truncate plain password for bcrypt if needed
+        if len(plain_password) > 72:
+            plain_password = plain_password[:72]
+        
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception as e:
+        print(f"Error verifying password: {str(e)}")
+        return False
+
+def generate_random_password(length: int = 12) -> str:
+    """Generate a random password."""
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
 # ==================== SCHEMAS ====================
 
 class DepartmentCreate(BaseModel):
@@ -70,7 +154,17 @@ class DesignationCreate(BaseModel):
     code: Optional[str] = None
     description: Optional[str] = None
     level: int = 1
+    is_active: Optional[bool] = True
+    permissions: Optional[List[str]] = Field(default_factory=list)
 
+
+class DesignationUpdate(BaseModel):
+    name: Optional[str] = None
+    code: Optional[str] = None
+    description: Optional[str] = None
+    level: Optional[int] = None
+    is_active: Optional[bool] = None
+    permissions: Optional[List[str]] = None 
 
 class DesignationResponse(BaseModel):
     id: str
@@ -79,15 +173,38 @@ class DesignationResponse(BaseModel):
     description: Optional[str]
     level: int
     is_active: bool
+    permissions: Optional[List[str]] = [] 
     
     class Config:
         from_attributes = True
+
+class DesignationStats(BaseModel):
+    total_designations: int
+    active_designations: int
+    inactive_designations: int
+    top_designations: List[dict]
+
+
+class PaginatedDesignations(BaseModel):
+    items: List[DesignationResponse]
+    pagination: dict
+
+
+class DesignationListResponse(BaseModel):
+    success: bool
+    data: PaginatedDesignations
+
+
+class DesignationStatsResponse(BaseModel):
+    success: bool
+    data: DesignationStats
 
 
 class EmployeeCreate(BaseModel):
     # Personal details
     first_name: str
     last_name: Optional[str] = None
+    password: Optional[str] = None 
     date_of_birth: Optional[date] = None
     gender: Optional[Gender] = None
     marital_status: Optional[MaritalStatus] = None
@@ -156,7 +273,18 @@ class EmployeeCreate(BaseModel):
     # Photo
     photo_url: Optional[str] = None
 
-
+    @field_validator('password')
+    @classmethod
+    def validate_password(cls, v):
+        if v is not None:
+            # Minimum 8 characters, at least one letter and one number
+            if len(v) < 8:
+                raise ValueError('Password must be at least 8 characters long')
+            if not re.search(r'[A-Za-z]', v):
+                raise ValueError('Password must contain at least one letter')
+            if not re.search(r'\d', v):
+                raise ValueError('Password must contain at least one number')
+        return v
 class EmployeeUpdate(BaseModel):
     # Personal details
     first_name: str
@@ -246,7 +374,7 @@ class EmployeeResponse(BaseModel):
     blood_group: Optional[str]
     email: Optional[str]
     phone: Optional[str]
-    
+    company_name: Optional[str] = None
     # Family details
     father_name: Optional[str]
     mother_name: Optional[str]
@@ -317,9 +445,9 @@ class EmployeeResponse(BaseModel):
     
     status: str
     
+    
     class Config:
         from_attributes = True
-
 
 class SalaryComponentCreate(BaseModel):
     code: str
@@ -470,20 +598,58 @@ async def create_designation(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Create a new designation."""
+    """Create a new designation with permissions."""
     company = get_company_or_404(company_id, current_user, db)
     
+    # Check for duplicate name or code
+    existing_name = db.query(Designation).filter(
+        Designation.company_id == company.id,
+        Designation.name == data.name
+    ).first()
+    
+    if existing_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Designation with name '{data.name}' already exists"
+        )
+    
+    if data.code:
+        existing_code = db.query(Designation).filter(
+            Designation.company_id == company.id,
+            Designation.code == data.code
+        ).first()
+        
+        if existing_code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Designation with code '{data.code}' already exists"
+            )
+    
+    # Prepare designation data
+    designation_data = data.model_dump(exclude_unset=True)
+    
+    # Create designation - handle permissions explicitly
     designation = Designation(
         company_id=company.id,
-        **data.model_dump()
+        name=designation_data.get('name'),
+        code=designation_data.get('code'),
+        description=designation_data.get('description'),
+        level=designation_data.get('level', 1),
+        is_active=designation_data.get('is_active', True),
+        permissions=designation_data.get('permissions', [])  # Handle permissions
     )
-    db.add(designation)
-    db.commit()
-    db.refresh(designation)
     
-    return designation
-
-
+    try:
+        db.add(designation)
+        db.commit()
+        db.refresh(designation)
+        return designation
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creating designation: {str(e)}"
+        )
 @router.get("/designations", response_model=List[DesignationResponse])
 async def list_designations(
     company_id: str,
@@ -501,11 +667,542 @@ async def list_designations(
     return designations
 
 
+@router.get("/designations/paginated", response_model=DesignationListResponse)
+async def get_paginated_designations(
+    company_id: str,
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    search: Optional[str] = Query(None, description="Search term"),
+    status_filter: Optional[str] = Query(None, description="Filter by status: active or inactive"),
+    sort_by: Optional[str] = Query("name", description="Field to sort by: name, level, created_at, employee_count"),
+    sort_order: Optional[str] = Query("asc", description="Sort order: asc or desc"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get paginated list of designations with employee count and permissions."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    # Build query with employee count
+    query = db.query(
+        Designation,
+        func.count(Employee.id).label('employee_count')
+    ).outerjoin(
+        Employee, 
+        and_(
+            Employee.designation_id == Designation.id,
+            Employee.status == EmployeeStatus.ACTIVE
+        )
+    ).filter(
+        Designation.company_id == company.id
+    ).group_by(Designation.id)
+    
+    # Apply status filter
+    if status_filter == "active":
+        query = query.filter(Designation.is_active == True)
+    elif status_filter == "inactive":
+        query = query.filter(Designation.is_active == False)
+    
+    # Apply search
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Designation.name.ilike(search_term),
+                Designation.code.ilike(search_term),
+                Designation.description.ilike(search_term)
+            )
+        )
+    
+    # Apply sorting
+    sort_fields = {
+        "name": Designation.name,
+        "level": Designation.level,
+        "created_at": Designation.created_at,
+        "employee_count": func.count(Employee.id),
+    }
+    
+    sort_field = sort_fields.get(sort_by, Designation.name)
+    if sort_order.lower() == "desc":
+        sort_field = sort_field.desc()
+    
+    query = query.order_by(sort_field)
+    
+    # Get total count
+    total = query.count()
+    
+    # Calculate offset
+    offset = (page - 1) * limit
+    
+    # Get paginated results
+    results = query.offset(offset).limit(limit).all()
+    
+    # Convert to list of designation dicts
+    designations = []
+    for designation, employee_count in results:
+        designation_dict = {
+            "id": designation.id,
+            "name": designation.name,
+            "code": designation.code,
+            "description": designation.description,
+            "level": designation.level,
+            "is_active": designation.is_active,
+            "permissions": designation.permissions or [],  # Add permissions
+            "employee_count": employee_count,
+            "created_at": designation.created_at.isoformat() if designation.created_at else None,
+            "updated_at": designation.updated_at.isoformat() if designation.updated_at else None,
+        }
+        designations.append(designation_dict)
+    
+    return {
+        "success": True,
+        "data": {
+            "items": designations,
+            "pagination": {
+                "total": total,
+                "page": page,
+                "limit": limit,
+                "total_pages": (total + limit - 1) // limit if limit > 0 else 0
+            }
+        }
+    }
+
+
+@router.post("/designations/{designation_id}/permissions", response_model=dict)
+async def set_designation_permissions(
+    company_id: str,
+    designation_id: str,
+    permissions: List[str],
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Set permissions for a designation."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    designation = db.query(Designation).filter(
+        Designation.id == designation_id,
+        Designation.company_id == company.id
+    ).first()
+    
+    if not designation:
+        raise HTTPException(status_code=404, detail="Designation not found")
+    
+    # Validate permissions (optional - you can add validation logic here)
+    # valid_permissions = get_valid_permissions()  # You can implement this
+    
+    designation.permissions = permissions
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": "Permissions updated successfully",
+        "data": {
+            "designation_id": designation_id,
+            "designation_name": designation.name,
+            "permissions": designation.permissions or []
+        }
+    }
+
+
+@router.get("/designations/{designation_id}/permissions", response_model=dict)
+async def get_designation_permissions(
+    company_id: str,
+    designation_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get permissions for a designation."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    designation = db.query(Designation).filter(
+        Designation.id == designation_id,
+        Designation.company_id == company.id
+    ).first()
+    
+    if not designation:
+        raise HTTPException(status_code=404, detail="Designation not found")
+    
+    return {
+        "success": True,
+        "data": {
+            "designation_id": designation_id,
+            "designation_name": designation.name,
+            "permissions": designation.permissions or []
+        }
+    }
+@router.get("/designations/search", response_model=dict)
+async def search_designations(
+    company_id: str,
+    search: str = Query(..., description="Search term"),
+    status_filter: Optional[str] = Query(None, description="Filter by status"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Search designations."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    query = db.query(Designation).filter(
+        Designation.company_id == company.id
+    )
+    
+    # Apply search
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Designation.name.ilike(search_term),
+                Designation.code.ilike(search_term),
+                Designation.description.ilike(search_term)
+            )
+        )
+    
+    # Apply status filter
+    if status_filter == "active":
+        query = query.filter(Designation.is_active == True)
+    elif status_filter == "inactive":
+        query = query.filter(Designation.is_active == False)
+    
+    designations = query.order_by(Designation.name).all()
+    
+    return {
+        "success": True,
+        "data": {
+            "items": designations,
+            "total": len(designations)
+        }
+    }
+
+
+@router.get("/designations/active", response_model=dict)
+async def get_active_designations(
+    company_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get all active designations for dropdowns."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    designations = db.query(Designation).filter(
+        Designation.company_id == company.id,
+        Designation.is_active == True
+    ).order_by(Designation.name).all()
+    
+    return {
+        "success": True,
+        "data": designations
+    }
+
+
+@router.get("/designations/stats", response_model=DesignationStatsResponse)
+async def get_designation_stats(
+    company_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get designation statistics."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    # Get total counts
+    total = db.query(func.count(Designation.id)).filter(
+        Designation.company_id == company.id
+    ).scalar()
+    
+    active = db.query(func.count(Designation.id)).filter(
+        Designation.company_id == company.id,
+        Designation.is_active == True
+    ).scalar()
+    
+    inactive = total - active
+    
+    # Get top designations by employee count
+    top_designations = db.query(
+        Designation.id,
+        Designation.name,
+        func.count(Employee.id).label('employee_count')
+    ).outerjoin(
+        Employee,
+        and_(
+            Employee.designation_id == Designation.id,
+            Employee.status == EmployeeStatus.ACTIVE
+        )
+    ).filter(
+        Designation.company_id == company.id,
+        Designation.is_active == True
+    ).group_by(Designation.id, Designation.name
+    ).order_by(func.count(Employee.id).desc()
+    ).limit(10).all()
+    
+    top_designations_list = [
+        {
+            "id": designation_id,
+            "name": designation_name,
+            "employee_count": employee_count
+        }
+        for designation_id, designation_name, employee_count in top_designations
+    ]
+    
+    return {
+        "success": True,
+        "data": {
+            "total_designations": total,
+            "active_designations": active,
+            "inactive_designations": inactive,
+            "top_designations": top_designations_list
+        }
+    }
+
+@router.get("/designations/{designation_id}", response_model=dict)
+async def get_designation_by_id(
+    company_id: str,
+    designation_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get a single designation by ID with permissions."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    designation = db.query(Designation).filter(
+        Designation.id == designation_id,
+        Designation.company_id == company.id
+    ).first()
+    
+    if not designation:
+        raise HTTPException(status_code=404, detail="Designation not found")
+    
+    # Get employee count
+    employee_count = db.query(func.count(Employee.id)).filter(
+        Employee.designation_id == designation_id,
+        Employee.status == EmployeeStatus.ACTIVE
+    ).scalar()
+    
+    designation_dict = {
+        "id": designation.id,
+        "name": designation.name,
+        "code": designation.code,
+        "description": designation.description,
+        "level": designation.level,
+        "is_active": designation.is_active,
+        "permissions": designation.permissions or [],  # Add permissions
+        "employee_count": employee_count,
+        "created_at": designation.created_at.isoformat() if designation.created_at else None,
+        "updated_at": designation.updated_at.isoformat() if designation.updated_at else None,
+    }
+    
+    return {
+        "success": True,
+        "data": designation_dict
+    }
+
+
+@router.put("/designations/{designation_id}", response_model=dict)
+async def update_designation(
+    company_id: str,
+    designation_id: str,
+    data: DesignationUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update a designation with permissions."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    designation = db.query(Designation).filter(
+        Designation.id == designation_id,
+        Designation.company_id == company.id
+    ).first()
+    
+    if not designation:
+        raise HTTPException(status_code=404, detail="Designation not found")
+    
+    update_data = data.model_dump(exclude_unset=True)
+    
+    # Check for duplicate name if updating name
+    if 'name' in update_data and update_data['name'] != designation.name:
+        existing_name = db.query(Designation).filter(
+            Designation.company_id == company.id,
+            Designation.name == update_data['name'],
+            Designation.id != designation_id
+        ).first()
+        
+        if existing_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Designation with name '{update_data['name']}' already exists"
+            )
+    
+    # Check for duplicate code if updating code
+    if 'code' in update_data and update_data['code'] != designation.code:
+        existing_code = db.query(Designation).filter(
+            Designation.company_id == company.id,
+            Designation.code == update_data['code'],
+            Designation.id != designation_id
+        ).first()
+        
+        if existing_code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Designation with code '{update_data['code']}' already exists"
+            )
+    
+    # Update fields including permissions
+    for key, value in update_data.items():
+        setattr(designation, key, value)
+    
+    try:
+        db.commit()
+        db.refresh(designation)
+        
+        return {
+            "success": True,
+            "data": {
+                "id": designation.id,
+                "name": designation.name,
+                "code": designation.code,
+                "description": designation.description,
+                "level": designation.level,
+                "is_active": designation.is_active,
+                "permissions": designation.permissions or []
+            }
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating designation: {str(e)}"
+        )
+
+@router.delete("/designations/{designation_id}", response_model=dict)
+async def delete_designation(
+    company_id: str,
+    designation_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a designation."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    designation = db.query(Designation).filter(
+        Designation.id == designation_id,
+        Designation.company_id == company.id
+    ).first()
+    
+    if not designation:
+        raise HTTPException(status_code=404, detail="Designation not found")
+    
+    # Check if designation is used by any active employee
+    employee_count = db.query(func.count(Employee.id)).filter(
+        Employee.designation_id == designation_id,
+        Employee.status == EmployeeStatus.ACTIVE
+    ).scalar()
+    
+    if employee_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete designation. It is assigned to {employee_count} active employees."
+        )
+    
+    db.delete(designation)
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": "Designation deleted successfully"
+    }
+
+
+@router.patch("/designations/{designation_id}/status", response_model=dict)
+async def toggle_designation_status(
+    company_id: str,
+    designation_id: str,
+    is_active: bool = Query(..., description="Set active status"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Toggle designation status."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    designation = db.query(Designation).filter(
+        Designation.id == designation_id,
+        Designation.company_id == company.id
+    ).first()
+    
+    if not designation:
+        raise HTTPException(status_code=404, detail="Designation not found")
+    
+    designation.is_active = is_active
+    db.commit()
+    db.refresh(designation)
+    
+    return {
+        "success": True,
+        "data": designation
+    }
+
+
+@router.post("/designations/{designation_id}/permissions", response_model=dict)
+async def set_designation_permissions(
+    company_id: str,
+    designation_id: str,
+    permissions: List[str],
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Set permissions for a designation."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    designation = db.query(Designation).filter(
+        Designation.id == designation_id,
+        Designation.company_id == company.id
+    ).first()
+    
+    if not designation:
+        raise HTTPException(status_code=404, detail="Designation not found")
+    
+    # In a real implementation, you would store permissions in a separate table
+    # For now, we'll just return success
+    
+    return {
+        "success": True,
+        "message": "Permissions updated",
+        "data": {
+            "designation_id": designation_id,
+            "permissions": permissions
+        }
+    }
+
+
+@router.get("/designations/{designation_id}/permissions", response_model=dict)
+async def get_designation_permissions(
+    company_id: str,
+    designation_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get permissions for a designation."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    designation = db.query(Designation).filter(
+        Designation.id == designation_id,
+        Designation.company_id == company.id
+    ).first()
+    
+    if not designation:
+        raise HTTPException(status_code=404, detail="Designation not found")
+    
+    # In a real implementation, you would fetch permissions from a separate table
+    # For now, return empty permissions list
+    
+    return {
+        "success": True,
+        "data": {
+            "permissions": []
+        }
+    }
+
+
 # ==================== EMPLOYEES ====================
 
 @router.post("/upload-image")
 async def upload_employee_image(
-    company_id: str,  # Remove Form(...) since this is a path parameter from the URL
+    company_id: str,
     employee_id: Optional[str] = Form(None),
     image: UploadFile = File(...),
     current_user: User = Depends(get_current_active_user),
@@ -596,7 +1293,17 @@ async def create_employee(
     
     # Prepare employee data with field mapping
     employee_data = data.model_dump(exclude_unset=True)
-    
+    password = employee_data.pop('password', None)
+    if password:
+        # Hash the password before storing
+        employee_data['password_hash'] = hash_password(password)
+    else:
+        # Generate a random password if not provided
+        random_password = generate_random_password()
+        employee_data['password_hash'] = hash_password(random_password)
+        # Store the plain password temporarily if you want to send it via email
+        # In real app, you'd send via email or secure channel
+        temp_password = random_password
     # Map frontend field names to database field names for salary components
     field_mapping = {
         'monthly_basic': 'basic_salary',
@@ -671,6 +1378,8 @@ async def create_employee(
         employee_data['monthly_medical'] = Decimal("1250")
     
     # Handle numeric conversions for all numeric fields
+    from decimal import InvalidOperation
+    
     numeric_fields = [
         'ctc', 'basic_salary', 'hra', 'special_allowance', 
         'conveyance_allowance', 'medical_allowance',
@@ -727,18 +1436,6 @@ async def create_employee(
     
     return employee
 
-def get_employees(db: Session = Depends(get_db)):
-    return (
-        db.query(Employee)
-        .options(
-            joinedload(Employee.department),
-            joinedload(Employee.designation)
-        )
-        .all()
-    )
-    
-
-# payroll.py (endpoint update)
 
 @router.get("/employees", response_model=List[EmployeeResponse])
 async def list_employees(
@@ -759,6 +1456,7 @@ async def list_employees(
         .options(
             joinedload(Employee.department),
             joinedload(Employee.designation),
+            joinedload(Employee.company)  # Add this line
         )
         .filter(Employee.company_id == company.id)
     )
@@ -790,17 +1488,7 @@ async def list_employees(
     offset = (page - 1) * page_size
     employees = query.order_by(Employee.employee_code).offset(offset).limit(page_size).all()
     
-    # Add pagination info to response headers (optional)
-    from fastapi import Response
-    
-    response = Response()
-    response.headers["X-Total-Count"] = str(total)
-    response.headers["X-Total-Pages"] = str((total + page_size - 1) // page_size)
-    response.headers["X-Page"] = str(page)
-    response.headers["X-Page-Size"] = str(page_size)
-    
     return employees
-
 
 @router.get("/employees/{employee_id}", response_model=EmployeeResponse)
 async def get_employee(
@@ -1483,3 +2171,44 @@ async def update_payroll_settings(
     settings = service.update_payroll_settings(company.id, **data)
     
     return {"message": "Settings updated"}
+
+
+
+
+@router.get("/test-employee-property")
+async def test_employee_property(
+    company_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Test if company_name property works."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    employee = db.query(Employee).options(
+        joinedload(Employee.company)
+    ).filter(
+        Employee.company_id == company.id
+    ).first()
+    
+    if not employee:
+        return {"error": "No employee found"}
+    
+    result = {
+        "employee_id": str(employee.id),
+        "employee_name": employee.full_name,
+        "company_id": str(employee.company_id),
+        
+        # Test the property directly
+        "has_company_name_property": hasattr(employee, 'company_name'),
+        "company_name_from_property": employee.company_name,
+        
+        # Test the relationship
+        "has_company_relationship": hasattr(employee, 'company'),
+        "company_object_exists": bool(employee.company),
+        "company_name_from_relationship": employee.company.name if employee.company else None,
+        
+        # Test Pydantic
+        "pydantic_response": EmployeeResponse.from_orm(employee).model_dump(),
+    }
+    
+    return result    

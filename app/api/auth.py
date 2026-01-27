@@ -1,179 +1,237 @@
-"""Authentication API routes."""
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any,Union
+import jwt
+from sqlalchemy import or_, func
+from passlib.context import CryptContext
+
 from app.database.connection import get_db
-from app.database.models import User
+from app.database.models import User,Company
+from app.database.payroll_models import Employee, EmployeeStatus
 from app.schemas.auth import UserCreate, UserLogin, UserResponse, TokenResponse, UserUpdate, PasswordChange
 from app.auth.supabase_client import auth_helper
 from app.auth.dependencies import get_current_user
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+# Add JWT config for employees
+EMPLOYEE_SECRET_KEY = "employee-secret-key-change-in-production"
+ALGORITHM = "HS256"
+EMPLOYEE_TOKEN_EXPIRE_MINUTES = 60 * 24
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(data: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user."""
-    # Check if user exists
-    existing_user = db.query(User).filter(User.email == data.email).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
+
+
+employee_pwd_context = CryptContext(
+    schemes=["bcrypt", "pbkdf2_sha256"],  # Support both bcrypt AND pbkdf2
+    default="bcrypt",  # Default to bcrypt
+    deprecated="auto"
+)
+class LoginResponse(BaseModel):
+    """Universal login response for both users and employees."""
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    refresh_token: Optional[str] = None
+    user_type: str  # "user" or "employee"
+    user_data: Dict[str, Any]
+
+
+# Helper functions for employee auth
+def verify_employee_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a stored password against one provided by employee."""
+    try:
+        return employee_pwd_context.verify(plain_password, hashed_password)
+    except Exception as e:
+        print(f"Password verification error: {e}")
+        print(f"Hash that failed: {hashed_password}")
+        return False
     
-    try:
-        # Register with Supabase
-        result = await auth_helper.sign_up(data.email, data.password, data.full_name)
-        
-        # Extract user info
-        user_info = result.get("user") or {}
-        session_info = result.get("session") or {}
-        
-        # Create local user
-        user = User(
-            email=data.email,
-            full_name=data.full_name,
-            phone=data.phone,
-            supabase_id=user_info.get("id", "") if isinstance(user_info, dict) else "",
-            is_verified=False
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        
-        # Get token from result
-        access_token = session_info.get("access_token", "pending-verification") if isinstance(session_info, dict) else "pending-verification"
-        refresh_token = session_info.get("refresh_token") if isinstance(session_info, dict) else None
-        
-        return TokenResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            token_type="bearer",
-            expires_in=86400,
-            user=UserResponse.model_validate(user)
-        )
-    except Exception as e:
-        print(f"Registration error: {e}")
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+def create_employee_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    """Create JWT access token for employees."""
+    to_encode = data.copy()
+    
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=EMPLOYEE_TOKEN_EXPIRE_MINUTES)
+    
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, EMPLOYEE_SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 
-
-@router.post("/login", response_model=TokenResponse)
+def get_employee_by_email(db: Session, email: str):
+    """Get employee by email (checks all email fields)."""
+    # Normalize email
+    email_lower = email.lower().strip()
+    
+    employee = db.query(Employee).options(
+        joinedload(Employee.department),
+        joinedload(Employee.designation),
+        joinedload(Employee.company)  # ADD THIS - CRITICAL!
+    ).filter(
+        or_(
+            func.lower(Employee.email) == email_lower,
+            func.lower(Employee.official_email) == email_lower,
+            func.lower(Employee.personal_email) == email_lower
+        ),
+        Employee.status == EmployeeStatus.ACTIVE  # Only active employees
+    ).first()
+    
+    return employee
+# Update the login endpoint
+@router.post("/login", response_model=LoginResponse)
 async def login(data: UserLogin, db: Session = Depends(get_db)):
-    """Login a user."""
+    """
+    Login endpoint for both users and employees.
+    First checks if it's a regular user (Supabase), 
+    then checks if it's an employee (local password).
+    """
     try:
-        # Login with Supabase
-        result = await auth_helper.sign_in(data.email, data.password)
+        # FIRST: Try to login as regular user with Supabase
+        try:
+            result = await auth_helper.sign_in(data.email, data.password)
+            
+            user_info = result.get("user") or {}
+            session_info = result.get("session") or {}
+            print(f"user_info:{user_info},session_info:{session_info}")
+            if session_info and session_info.get("access_token"):
+                # Regular user login successful
+                user = db.query(User).filter(User.email == data.email).first()
+                print(f"user:{user}")
+                if not user:
+                    user_metadata = user_info.get("user_metadata", {}) if isinstance(user_info, dict) else {}
+                    user = User(
+                        email=data.email,
+                        full_name=user_metadata.get("full_name", data.email.split("@")[0]),
+                        supabase_id=user_info.get("id", "") if isinstance(user_info, dict) else "",
+                        is_verified=True
+                    )
+                    print(f"not_user:{user}")
+                    db.add(user)
+                    db.commit()
+                    db.refresh(user)
+                
+                access_token = session_info.get("access_token")
+                refresh_token = session_info.get("refresh_token")
+                
+                return LoginResponse(
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    token_type="bearer",
+                    expires_in=86400,
+                    user_type="user",
+                    user_data=UserResponse.model_validate(user).model_dump()
+                )
+        except Exception as user_login_error:
+            # Supabase login failed, try employee login
+            print(f"User login failed, trying employee login: {user_login_error}")
+            pass
         
-        # Extract info
-        user_info = result.get("user") or {}
-        session_info = result.get("session") or {}
+        # SECOND: Try to login as employee
+        employee = get_employee_by_email(db, data.email)
+        print(f"Employee found: {employee}")
         
-        if not session_info or not session_info.get("access_token"):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials"
+        if employee:
+            # Debug: Print all email fields
+            print(f"DEBUG - Employee email fields:")
+            print(f"  email: {employee.email}")
+            print(f"  official_email: {employee.official_email}")
+            print(f"  personal_email: {employee.personal_email}")
+            print(f"  Input email: {data.email}")
+            print(f"  Company ID: {employee.company_id}")
+            print(f"  Has company relationship: {hasattr(employee, 'company')}")
+            print(f"  Company object: {employee.company}")
+            
+            # Check if employee has password set
+            if not employee.password_hash:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No password set. Please contact administrator."
+                )
+            
+            # Verify employee password
+            if not verify_employee_password(data.password, employee.password_hash):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid credentials"
+                )
+            
+            # Check employee status
+            if employee.status != EmployeeStatus.ACTIVE:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Employee account is {employee.status.value}"
+                )
+            
+            # Create employee JWT token
+            access_token_expires = timedelta(minutes=EMPLOYEE_TOKEN_EXPIRE_MINUTES)
+            access_token = create_employee_access_token(
+                data={
+                    "sub": str(employee.id),
+                    "employee_id": str(employee.id),
+                    "company_id": str(employee.company_id),
+                    "employee_code": employee.employee_code,
+                    "email": data.email,
+                    "type": "employee"
+                },
+                expires_delta=access_token_expires
+            )
+            
+            # Prepare employee data - WITH COMPANY_ID ADDED
+            employee_data = {
+                "id": str(employee.id),
+                "employee_code": employee.employee_code,
+                "first_name": employee.first_name,
+                "last_name": employee.last_name,
+                "full_name": employee.full_name,
+                "email": employee.email or employee.official_email or employee.personal_email or data.email,
+                "phone": employee.phone or "",
+                # ADD THIS - CRITICAL!
+                "company_id": str(employee.company_id),
+                "company_name": employee.company_name if hasattr(employee, 'company_name') else 
+                               (employee.company.name if employee.company else None),
+                "department": {
+                    "id": str(employee.department.id),
+                    "name": employee.department.name
+                } if employee.department and hasattr(employee.department, 'id') else None,
+                "designation": {
+                    "id": str(employee.designation.id),
+                    "name": employee.designation.name
+                } if employee.designation and hasattr(employee.designation, 'id') else None,
+                "date_of_joining": employee.date_of_joining.isoformat() if employee.date_of_joining else None,
+                "employee_type": employee.employee_type.value if employee.employee_type else None,
+                "status": employee.status.value if employee.status else None,
+                "photo_url": employee.photo_url or "",
+                "is_employee": True
+            }
+            
+            print(f"Employee data being returned: {employee_data}")
+            
+            return LoginResponse(
+                access_token=access_token,
+                refresh_token=None,
+                token_type="bearer",
+                expires_in=EMPLOYEE_TOKEN_EXPIRE_MINUTES * 60,
+                user_type="employee",
+                user_data=employee_data
             )
         
-        # Get or create local user
-        user = db.query(User).filter(User.email == data.email).first()
-        
-        if not user:
-            user_metadata = user_info.get("user_metadata", {}) if isinstance(user_info, dict) else {}
-            user = User(
-                email=data.email,
-                full_name=user_metadata.get("full_name", data.email.split("@")[0]),
-                supabase_id=user_info.get("id", "") if isinstance(user_info, dict) else "",
-                is_verified=True
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-        
-        # Get token from result
-        access_token = session_info.get("access_token")
-        refresh_token = session_info.get("refresh_token")
-        
-        return TokenResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            token_type="bearer",
-            expires_in=86400,
-            user=UserResponse.model_validate(user)
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Login error: {e}")
+        # If neither user nor employee found
+        print(f"No employee found for email: {data.email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
         )
-
-
-@router.get("/me", response_model=UserResponse)
-async def get_current_user_info(current_user: User = Depends(get_current_user)):
-    """Get current user information."""
-    return UserResponse.model_validate(current_user)
-
-
-@router.post("/logout")
-async def logout(current_user: User = Depends(get_current_user)):
-    """Logout the current user."""
-    # With Supabase, logout is handled client-side
-    return {"message": "Logged out successfully"}
-
-
-@router.post("/forgot-password")
-async def forgot_password(email: str):
-    """Send password reset email."""
-    try:
-        await auth_helper.reset_password(email)
-        return {"message": "Password reset email sent if account exists"}
-    except Exception:
-        # Don't reveal if email exists
-        return {"message": "Password reset email sent if account exists"}
-
-
-@router.put("/me", response_model=UserResponse)
-async def update_current_user(
-    data: UserUpdate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Update current user's profile."""
-    update_data = data.model_dump(exclude_unset=True)
-    
-    for field, value in update_data.items():
-        if value is not None:
-            setattr(current_user, field, value)
-    
-    db.commit()
-    db.refresh(current_user)
-    
-    return UserResponse.model_validate(current_user)
-
-
-@router.post("/change-password")
-async def change_password(
-    data: PasswordChange,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Change user's password."""
-    try:
-        # Verify current password by attempting to sign in
-        await auth_helper.sign_in(current_user.email, data.current_password)
         
-        # Update password in Supabase
-        await auth_helper.update_password(data.new_password)
-        
-        return {"message": "Password updated successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
+        print(f"Login error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Current password is incorrect"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials"
         )

@@ -3,7 +3,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from jose import jwt, JWTError
-from typing import Optional
+from typing import Optional, Union, Dict, Any
 from app.database.connection import get_db
 from app.database.models import User
 from app.config import settings
@@ -11,7 +11,8 @@ from app.auth.supabase_client import auth_helper
 
 # HTTP Bearer token scheme
 security = HTTPBearer(auto_error=False)
-
+EMPLOYEE_SECRET_KEY = "employee-secret-key-change-in-production"
+ALGORITHM = "HS256"
 
 async def get_token_from_header(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
@@ -32,11 +33,30 @@ async def verify_supabase_token(token: str) -> Optional[dict]:
         return None
 
 
+def get_actual_user(auth_data: Union[User, Dict[str, Any]]) -> User:
+    """Extract User object from auth data."""
+    if isinstance(auth_data, dict) and auth_data.get("type") == "user":
+        return auth_data.get("data")
+    elif isinstance(auth_data, User):
+        return auth_data
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not a regular user account"
+        )
+
+def is_employee(auth_data: Union[User, Dict[str, Any]]) -> bool:
+    """Check if auth data is for an employee."""
+    return isinstance(auth_data, dict) and auth_data.get("is_employee") == True
+
 async def get_current_user(
     token: Optional[str] = Depends(get_token_from_header),
     db: Session = Depends(get_db)
-) -> User:
-    """Get current authenticated user."""
+) -> Union[User, Dict[str, Any]]:
+    """
+    Get current authenticated user or employee.
+    Returns either a User object or employee dict based on token type.
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -46,7 +66,38 @@ async def get_current_user(
     if not token:
         raise credentials_exception
     
-    # For development without Supabase
+    # FIRST: Try to decode as employee JWT token
+    try:
+        payload = jwt.decode(token, EMPLOYEE_SECRET_KEY, algorithms=[ALGORITHM])
+        token_type = payload.get("type")
+        
+        if token_type == "employee":
+            # This is an employee token
+            employee_id = payload.get("employee_id")
+            company_id = payload.get("company_id")
+            employee_code = payload.get("employee_code")
+            email = payload.get("email")
+            
+            if not employee_id or not company_id:
+                raise credentials_exception
+            
+            # Return employee data as dict (not User object)
+            return {
+                "type": "employee",
+                "id": employee_id,
+                "company_id": company_id,
+                "employee_code": employee_code,
+                "email": email,
+                "is_employee": True
+            }
+    except JWTError:
+        # Not an employee token, continue to try other token types
+        pass
+    except Exception:
+        # Any other error with JWT decoding
+        pass
+    
+    # SECOND: For development without Supabase (mock token)
     if token == "mock-access-token" or not settings.SUPABASE_URL:
         # Try to find mock user or create one
         user = db.query(User).filter(User.email == "test@example.com").first()
@@ -60,9 +111,15 @@ async def get_current_user(
             db.add(user)
             db.commit()
             db.refresh(user)
-        return user
+        
+        # Mark as regular user
+        return {
+            "type": "user",
+            "data": user,
+            "is_employee": False
+        }
     
-    # Verify token with Supabase
+    # THIRD: Verify token with Supabase (regular user)
     supabase_user = await verify_supabase_token(token)
     if not supabase_user:
         raise credentials_exception
@@ -82,21 +139,44 @@ async def get_current_user(
         db.commit()
         db.refresh(user)
     
-    return user
-
+    # Mark as regular user
+    return {
+        "type": "user",
+        "data": user,
+        "is_employee": False
+    }
 
 async def get_current_active_user(
-    current_user: User = Depends(get_current_user)
-) -> User:
-    """Get current active user."""
-    if not current_user.is_active:
+    current_user: Union[User, Dict[str, Any]] = Depends(get_current_user)
+) -> Union[User, Dict[str, Any]]:
+    """Get current active user or employee."""
+    if isinstance(current_user, dict) and current_user.get("is_employee"):
+        # This is an employee, return as-is
+        return current_user
+    elif isinstance(current_user, dict) and current_user.get("type") == "user":
+        # This is a regular user in dict format
+        user = current_user.get("data")
+        if user and not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Inactive user"
+            )
+        return user
+    elif isinstance(current_user, User):
+        # This is a User object directly
+        if not current_user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Inactive user"
+            )
+        return current_user
+    else:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Inactive user"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user data"
         )
-    return current_user
-
-
+    
+    
 async def get_optional_user(
     token: Optional[str] = Depends(get_token_from_header),
     db: Session = Depends(get_db)

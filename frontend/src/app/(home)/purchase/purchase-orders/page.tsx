@@ -27,142 +27,275 @@ import {
   User,
   Copy,
   AlertCircle,
+  Loader2,
+  RefreshCw,
+  Building2,
+  FileDown,
+  FileUp,
+  Receipt,
 } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+
+// Define TypeScript interfaces based on your API response
+interface PurchaseOrder {
+  id: string;
+  order_number: string;
+  order_date: string;
+  status: string;
+  reference_number: string;
+  vendor_name: string;
+  total_amount: number;
+   exchange_rate: number; 
+  created_by: string; // This is now creator_id from backend
+  creator_name: string;
+   
+
+  currency: string;
+  created_at: string;
+}
+
+interface PurchaseOrderResponse {
+  purchases: PurchaseOrder[];
+  summary: {
+    total_orders: number;
+    total_amount: number;
+  };
+  pagination: {
+    page: number;
+    page_size: number;
+    total: number;
+    pages: number;
+  };
+}
 
 export default function PurchaseOrderListPage() {
-  // Sample data for purchase orders
-  const [purchaseOrders, setPurchaseOrders] = useState([
-    {
-      id: "1",
-      orderDate: "2024-01-10",
-      orderCode: "PO-001",
-      orderStatus: "Approved",
-      referenceNo: "REF-001",
-      supplierName: "ABC Suppliers",
-      total: 15000,
-      createdBy: "John Doe",
-      currencyCode: "USD",
-    },
-    {
-      id: "2",
-      orderDate: "2024-01-15",
-      orderCode: "PO-002",
-      orderStatus: "Pending",
-      referenceNo: "REF-002",
-      supplierName: "XYZ Corporation",
-      total: 25000,
-      createdBy: "Jane Smith",
-      currencyCode: "USD",
-    },
-    {
-      id: "3",
-      orderDate: "2024-01-20",
-      orderCode: "PO-003",
-      orderStatus: "Cancelled",
-      referenceNo: "REF-003",
-      supplierName: "Global Traders",
-      total: 18000,
-      createdBy: "Robert Johnson",
-      currencyCode: "USD",
-    },
-    {
-      id: "4",
-      orderDate: "2024-01-25",
-      orderCode: "PO-004",
-      orderStatus: "Approved",
-      referenceNo: "REF-004",
-      supplierName: "Tech Solutions Ltd",
-      total: 32000,
-      createdBy: "Sarah Wilson",
-      currencyCode: "USD",
-    },
-    {
-      id: "5",
-      orderDate: "2024-02-01",
-      orderCode: "PO-005",
-      orderStatus: "Delivered",
-      referenceNo: "REF-005",
-      supplierName: "ABC Suppliers",
-      total: 12500,
-      createdBy: "Mike Brown",
-      currencyCode: "USD",
-    },
-    {
-      id: "6",
-      orderDate: "2024-02-05",
-      orderCode: "PO-006",
-      orderStatus: "Approved",
-      referenceNo: "REF-006",
-      supplierName: "Global Traders",
-      total: 22000,
-      createdBy: "Emily Davis",
-      currencyCode: "USD",
-    },
-    {
-      id: "7",
-      orderDate: "2024-02-10",
-      orderCode: "PO-007",
-      orderStatus: "Pending",
-      referenceNo: "REF-007",
-      supplierName: "XYZ Corporation",
-      total: 18500,
-      createdBy: "David Miller",
-      currencyCode: "USD",
-    },
-    {
-      id: "8",
-      orderDate: "2024-02-15",
-      orderCode: "PO-008",
-      orderStatus: "Delivered",
-      referenceNo: "REF-008",
-      supplierName: "Tech Solutions Ltd",
-      total: 27500,
-      createdBy: "Lisa Anderson",
-      currencyCode: "USD",
-    },
-  ]);
+  const { company } = useAuth();
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [summaryData, setSummaryData] = useState({
+    total_orders: 0,
+    total_amount: 0,
+  });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    page_size: 10,
+    total: 0,
+    pages: 1,
+  });
 
-  // Sample users for filter
-  const [users] = useState([
-    { id: "1", name: "John Doe" },
-    { id: "2", name: "Jane Smith" },
-    { id: "3", name: "Robert Johnson" },
-    { id: "4", name: "Sarah Wilson" },
-    { id: "5", name: "Mike Brown" },
-    { id: "6", name: "Emily Davis" },
-    { id: "7", name: "David Miller" },
-    { id: "8", name: "Lisa Anderson" },
-  ]);
-
+  // Filter and search states
   const [searchTerm, setSearchTerm] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [userFilter, setUserFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
   const [showFilters, setShowFilters] = useState(false);
-  const [page, setPage] = useState(1);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [converting, setConverting] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
-  const pageSize = 10;
+  // Get token from localStorage
+  const getToken = () => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("access_token");
+    }
+    return null;
+  };
 
-  // Column visibility state
-  const [visibleColumns, setVisibleColumns] = useState({
-    orderDate: true,
-    orderCode: true,
-    orderStatus: true,
-    referenceNo: true,
-    supplierName: true,
-    total: true,
-    createdBy: true,
-    actions: true,
-  });
+  const convertToINR = (amount: number, currency: string, exchangeRate: number = 1): number => {
+  if (currency === 'INR') {
+    return amount;
+  }
+    return amount * exchangeRate;
+};
 
-  const [showColumnDropdown, setShowColumnDropdown] = useState(false);
+const formatCurrencyINR = (amount: number) => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 0,
+  }).format(amount);
+};
+  // Fetch purchase orders from API
+  const fetchPurchaseOrders = async () => {
+    try {
+      const token = getToken();
+      if (!company?.id || !token) {
+        setLoading(false);
+        return;
+      }
 
+      setLoading(true);
+      setError(null);
+      
+      // Build query parameters
+      const params = new URLSearchParams();
+      params.append("page", pagination.page.toString());
+      params.append("page_size", pagination.page_size.toString());
+      
+      if (searchTerm) {
+        params.append("search", searchTerm);
+      }
+      if (statusFilter) {
+        params.append("status", statusFilter);
+      }
+      if (fromDate) {
+        params.append("from_date", fromDate);
+      }
+      if (toDate) {
+        params.append("to_date", toDate);
+      }
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/orders/purchase?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Unauthorized - Please login again");
+        }
+        if (response.status === 404) {
+          throw new Error("Company not found");
+        }
+        throw new Error(`Failed to fetch purchase orders: ${response.statusText}`);
+      }
+
+      const data: PurchaseOrderResponse = await response.json();
+      
+      if (data.purchases) {
+        setPurchaseOrders(data.purchases);
+        setSummaryData(data.summary);
+        setPagination(data.pagination);
+      } else {
+        throw new Error("Invalid response format");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load purchase orders");
+      console.error("Error fetching purchase orders:", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Delete purchase order
+  const deletePurchaseOrder = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this purchase order?")) {
+      return;
+    }
+
+    try {
+      const token = getToken();
+      if (!company?.id || !token) {
+        throw new Error("Authentication required");
+      }
+
+      setDeleting(id);
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/orders/purchase/${id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        // Refresh the list
+        fetchPurchaseOrders();
+        alert("Purchase order deleted successfully");
+      } else {
+        const error = await response.json();
+        throw new Error(error.detail || "Failed to delete purchase order");
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete purchase order");
+      console.error("Error deleting purchase order:", err);
+    } finally {
+      setDeleting(null);
+      setActiveActionMenu(null);
+    }
+  };
+
+  // Convert to invoice
+  const handleConvertToInvoice = async (orderId: string) => {
+    if (!confirm("Convert this purchase order to an invoice?")) {
+      return;
+    }
+
+    try {
+      const token = getToken();
+      if (!company?.id || !token) {
+        throw new Error("Authentication required");
+      }
+
+      setConverting(orderId);
+      // TODO: Update this endpoint based on your API
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/orders/purchase/${orderId}/convert-to-invoice`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (response.ok) {
+        alert("Purchase order converted to invoice successfully!");
+        fetchPurchaseOrders(); // Refresh the list
+      } else {
+        const error = await response.json();
+        alert(error.detail || "Failed to convert to invoice");
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to convert to invoice");
+      console.error("Error converting to invoice:", err);
+    } finally {
+      setConverting(null);
+      setActiveActionMenu(null);
+    }
+  };
+
+  // Print purchase order
+  const handlePrint = (orderId: string) => {
+    window.open(`/purchase/purchase-orders/${orderId}/print`, "_blank");
+  };
+
+  // Download PDF
+  const handlePDF = (orderId: string) => {
+    window.open(`/purchase/purchase-orders/${orderId}/pdf`, "_blank");
+  };
+
+  // Initialize
+  useEffect(() => {
+    if (company?.id) {
+      fetchPurchaseOrders();
+    }
+  }, [company?.id]);
+
+  // Fetch data when pagination or filters change
+  useEffect(() => {
+    if (company?.id) {
+      fetchPurchaseOrders();
+    }
+  }, [company?.id, pagination.page, statusFilter, fromDate, toDate]);
+
+  // Click outside handlers for dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (!target.closest('.column-dropdown-container')) {
-        setShowColumnDropdown(false);
+      if (!target.closest('.action-dropdown-container')) {
+        setActiveActionMenu(null);
       }
     };
 
@@ -174,17 +307,18 @@ export default function PurchaseOrderListPage() {
 
   // Export functions
   const copyToClipboard = async () => {
-    const filtered = filteredPurchaseOrders;
-    const headers = ["Purchase Order Date", "Purchase Order Code", "Purchase Order Status", "Reference No", "Supplier Name", "Total", "Created By"];
+    const filtered = purchaseOrders;
+    const headers = ["Purchase Order Date", "Purchase Order Code", "Purchase Order Status", "Reference No.", "Supplier Name", "Total", "Created by"];
 
     const rows = filtered.map(order => [
-      formatDate(order.orderDate),
-      order.orderCode,
-      order.orderStatus,
-      order.referenceNo,
-      order.supplierName,
-      `$${order.total.toLocaleString()}`,
-      order.createdBy
+      formatDate(order.order_date),
+      order.order_number,
+      getStatusText(order.status),
+      order.reference_number || "",
+      order.vendor_name || "",
+       formatCurrencyINR(convertToINR(order.total_amount, order.currency, order.exchange_rate || 1)),
+
+        order.creator_name || order.created_by || "System"
     ]);
 
     const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
@@ -194,17 +328,20 @@ export default function PurchaseOrderListPage() {
   };
 
   const exportExcel = () => {
-    const filtered = filteredPurchaseOrders;
-    const exportData = filtered.map(order => ({
-      "Purchase Order Date": formatDate(order.orderDate),
-      "Purchase Order Code": order.orderCode,
-      "Purchase Order Status": order.orderStatus,
-      "Reference No": order.referenceNo,
-      "Supplier Name": order.supplierName,
-      "Total": order.total,
-      "Currency Code": order.currencyCode,
-      "Created By": order.createdBy,
-    }));
+    const filtered = purchaseOrders;
+ const exportData = filtered.map(order => ({
+  "Purchase Order Date": formatDate(order.order_date),
+  "Purchase Order Code": order.order_number,
+  "Purchase Order Status": getStatusText(order.status),
+  "Reference No.": order.reference_number || "",
+  "Supplier Name": order.vendor_name || "",
+  "Total (Original Currency)": order.total_amount,
+  "Original Currency": order.currency,
+  "Exchange Rate": order.exchange_rate || 1,
+  "Total (INR)": convertToINR(order.total_amount, order.currency, order.exchange_rate || 1),
+  "Created by": order.creator_name || order.created_by || "System",
+  "Created At": formatDate(order.created_at),
+}));
 
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
@@ -213,19 +350,20 @@ export default function PurchaseOrderListPage() {
   };
 
   const exportPDF = () => {
-    const filtered = filteredPurchaseOrders;
+    const filtered = purchaseOrders;
     const doc = new jsPDF();
 
     autoTable(doc, {
-      head: [["Purchase Order Date", "Purchase Order Code", "Purchase Order Status", "Reference No", "Supplier Name", "Total", "Created By"]],
+      head: [["Purchase Order Date", "Purchase Order Code", "Purchase Order Status", "Reference No.", "Supplier Name", "Total", "Created by"]],
       body: filtered.map(order => [
-        formatDate(order.orderDate),
-        order.orderCode,
-        order.orderStatus,
-        order.referenceNo,
-        order.supplierName,
-        `$${order.total.toLocaleString()}`,
-        order.createdBy
+        formatDate(order.order_date),
+        order.order_number,
+        getStatusText(order.status),
+        order.reference_number || "",
+        order.vendor_name || "",
+         formatCurrencyINR(convertToINR(order.total_amount, order.currency, order.exchange_rate || 1)),
+
+         order.creator_name || order.created_by || "System"
       ])
     });
 
@@ -233,32 +371,25 @@ export default function PurchaseOrderListPage() {
   };
 
   const exportCSV = () => {
-    const filtered = filteredPurchaseOrders;
-    const exportData = filtered.map(order => ({
-      "Purchase Order Date": formatDate(order.orderDate),
-      "Purchase Order Code": order.orderCode,
-      "Purchase Order Status": order.orderStatus,
-      "Reference No": order.referenceNo,
-      "Supplier Name": order.supplierName,
-      "Total": order.total,
-      "Currency Code": order.currencyCode,
-      "Created By": order.createdBy,
-    }));
+    const filtered = purchaseOrders;
+   const exportData = filtered.map(order => ({
+  "Purchase Order Date": formatDate(order.order_date),
+  "Purchase Order Code": order.order_number,
+  "Purchase Order Status": getStatusText(order.status),
+  "Reference No.": order.reference_number || "",
+  "Supplier Name": order.vendor_name || "",
+  "Total (Original Currency)": order.total_amount,
+  "Original Currency": order.currency,
+  "Exchange Rate": order.exchange_rate || 1,
+  "Total (INR)": convertToINR(order.total_amount, order.currency, order.exchange_rate || 1),
+  "Created by": order.creator_name || order.created_by || "System",
+  "Created At": formatDate(order.created_at),
+}));
 
     const ws = XLSX.utils.json_to_sheet(exportData);
     const csv = XLSX.utils.sheet_to_csv(ws);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     saveAs(blob, "purchase_orders.csv");
-  };
-
-  const toggleColumn = (key: keyof typeof visibleColumns) => {
-    setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  // Summary data
-  const summaryData = {
-    totalInvoices: purchaseOrders.length,
-    totalInvoiceAmount: purchaseOrders.reduce((sum, order) => sum + order.total, 0),
   };
 
   const formatDate = (dateString: string) => {
@@ -270,73 +401,127 @@ export default function PurchaseOrderListPage() {
     });
   };
 
+  const formatCurrency = (amount: number, currency: string) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: currency || 'INR',
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case "draft": return "Draft";
+      case "confirmed": return "Confirmed";
+      case "partially_fulfilled": return "Partially Fulfilled";
+      case "fulfilled": return "Fulfilled";
+      case "cancelled": return "Cancelled";
+      default: return status || "Draft";
+    }
+  };
+
   const getOrderStatusBadge = (status: string) => {
-    switch (status) {
-      case "Approved":
+    const statusText = getStatusText(status);
+    
+    switch (status?.toLowerCase()) {
+      case "confirmed":
+      case "fulfilled":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
             <CheckCircle className="w-3 h-3 mr-1" />
-            Approved
+            {statusText}
           </span>
         );
-      case "Pending":
+      case "draft":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
             <Clock className="w-3 h-3 mr-1" />
-            Pending
+            {statusText}
           </span>
         );
-      case "Delivered":
+      case "partially_fulfilled":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
             <CheckCircle className="w-3 h-3 mr-1" />
-            Delivered
+            {statusText}
           </span>
         );
-      case "Cancelled":
+      case "cancelled":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
             <XCircle className="w-3 h-3 mr-1" />
-            Cancelled
+            {statusText}
           </span>
         );
       default:
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400">
-            {status}
+            {statusText}
           </span>
         );
     }
   };
 
-  const filteredPurchaseOrders = purchaseOrders.filter((order) => {
-    const matchesSearch =
-      order.orderCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.supplierName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.referenceNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.createdBy.toLowerCase().includes(searchTerm.toLowerCase());
+  // Handle search with debounce
+  useEffect(() => {
+    if (!company?.id) return;
+    
+    const timeoutId = setTimeout(() => {
+      setPagination(prev => ({ ...prev, page: 1 }));
+      fetchPurchaseOrders();
+    }, 500);
 
-    const orderDate = new Date(order.orderDate);
-    const matchesFromDate = !fromDate || orderDate >= new Date(fromDate);
-    const matchesToDate = !toDate || orderDate <= new Date(toDate);
-    const matchesUser = !userFilter || order.createdBy === userFilter;
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm]);
 
-    return matchesSearch && matchesFromDate && matchesToDate && matchesUser;
-  });
+  const handlePageChange = (newPage: number) => {
+    setPagination(prev => ({ ...prev, page: newPage }));
+  };
 
-  const paginatedOrders = filteredPurchaseOrders.slice(
-    (page - 1) * pageSize,
-    page * pageSize
-  );
+  // Show company selection message if no company is selected
+  if (!company?.id) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center max-w-md p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+          <Building2 className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">No Company Selected</h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            Please select a company to view purchase orders.
+          </p>
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90 transition"
+          >
+            Go to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
-  const totalAmount = filteredPurchaseOrders.reduce((sum, order) => sum + order.total, 0);
+  if (loading && !refreshing && purchaseOrders.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-gray-600 dark:text-gray-400">Loading purchase orders...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
+      {/* Header with Company Info */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Building2 className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {company.name}
+              </span>
+            </div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
               Purchase Order List
             </h1>
@@ -344,28 +529,41 @@ export default function PurchaseOrderListPage() {
               Manage and track all purchase orders
             </p>
           </div>
-          <Link
-            href="/purchase/purchase-orders/new"
-            className="px-4 py-2 transition bg-primary hover:bg-opacity-90 text-white rounded-lg flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            Add Purchase Order
-          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setRefreshing(true);
+                fetchPurchaseOrders();
+              }}
+              disabled={refreshing}
+              className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+            <Link
+              href="/purchase/purchase-orders/new"
+              className="px-4 py-2 transition bg-primary hover:bg-opacity-90 text-white rounded-lg flex items-center gap-2"
+            >
+              <Plus className="w-5 h-5" />
+              Add Purchase Order
+            </Link>
+          </div>
         </div>
       </div>
 
       {/* Summary Cards */}
       <div className="px-6 py-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Total Invoices */}
+          {/* Total Orders */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {summaryData.totalInvoices}
+                  {summaryData.total_orders}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Total Invoices
+                  Total Purchase Orders
                 </p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
@@ -374,15 +572,15 @@ export default function PurchaseOrderListPage() {
             </div>
           </div>
 
-          {/* Total Invoice Amount */}
+          {/* Total Order Amount */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  ${summaryData.totalInvoiceAmount.toLocaleString()}
+                  {formatCurrency(summaryData.total_amount, "INR")}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Total Invoice Amount
+                  Total Purchase Amount
                 </p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
@@ -393,6 +591,24 @@ export default function PurchaseOrderListPage() {
         </div>
       </div>
 
+      {/* Error Message */}
+      {error && (
+        <div className="px-6">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
+            <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
+              <AlertCircle className="w-5 h-5" />
+              <p>{error}</p>
+              <button
+                onClick={() => setError(null)}
+                className="ml-auto text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="px-6 py-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="flex flex-wrap gap-4">
@@ -401,12 +617,9 @@ export default function PurchaseOrderListPage() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Search by order code, supplier, reference, or creator..."
+                placeholder="Search by order number, supplier, reference..."
                 value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setPage(1);
-                }}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-primary focus:border-transparent"
               />
             </div>
@@ -421,31 +634,6 @@ export default function PurchaseOrderListPage() {
               Filters
             </button>
 
-            <div className="relative column-dropdown-container">
-              <button
-                onClick={() => setShowColumnDropdown(!showColumnDropdown)}
-                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
-              >
-                Columns
-              </button>
-
-              {showColumnDropdown && (
-                <div className="absolute right-0 mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-3 z-10 min-w-[150px]">
-                  {Object.entries(visibleColumns).map(([key, value]) => (
-                    <label key={key} className="flex items-center gap-2 text-sm mb-2 last:mb-0 cursor-pointer text-gray-700 dark:text-gray-300">
-                      <input
-                        type="checkbox"
-                        checked={value}
-                        onChange={() => toggleColumn(key as keyof typeof visibleColumns)}
-                        className="rounded border-gray-300 dark:border-gray-600 text-primary focus:ring-primary"
-                      />
-                      <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-
             <button
               onClick={copyToClipboard}
               className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
@@ -458,6 +646,7 @@ export default function PurchaseOrderListPage() {
               onClick={exportExcel}
               className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
             >
+              <FileDown className="w-5 h-5" />
               Excel
             </button>
 
@@ -465,6 +654,7 @@ export default function PurchaseOrderListPage() {
               onClick={exportPDF}
               className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
             >
+              <FileDown className="w-5 h-5" />
               PDF
             </button>
 
@@ -472,6 +662,7 @@ export default function PurchaseOrderListPage() {
               onClick={exportCSV}
               className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
             >
+              <FileDown className="w-5 h-5" />
               CSV
             </button>
 
@@ -492,7 +683,7 @@ export default function PurchaseOrderListPage() {
                 value={fromDate}
                 onChange={(e) => {
                   setFromDate(e.target.value);
-                  setPage(1);
+                  setPagination(prev => ({ ...prev, page: 1 }));
                 }}
                 className="pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent"
                 placeholder="From Date"
@@ -507,36 +698,37 @@ export default function PurchaseOrderListPage() {
                 value={toDate}
                 onChange={(e) => {
                   setToDate(e.target.value);
-                  setPage(1);
+                  setPagination(prev => ({ ...prev, page: 1 }));
                 }}
                 className="pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent"
                 placeholder="To Date"
               />
             </div>
 
-            {/* Users Dropdown */}
+            {/* Status Filter */}
             <select
-              value={userFilter}
+              value={statusFilter}
               onChange={(e) => {
-                setUserFilter(e.target.value);
-                setPage(1);
+                setStatusFilter(e.target.value);
+                setPagination(prev => ({ ...prev, page: 1 }));
               }}
               className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent"
             >
-              <option value="">All Users</option>
-              {users.map((user) => (
-                <option key={user.id} value={user.name}>
-                  {user.name}
-                </option>
-              ))}
+              <option value="">All Status</option>
+              <option value="draft">Draft</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="partially_fulfilled">Partially Fulfilled</option>
+              <option value="fulfilled">Fulfilled</option>
+              <option value="cancelled">Cancelled</option>
             </select>
 
             <button
               onClick={() => {
                 setFromDate("");
                 setToDate("");
-                setUserFilter("");
-                setPage(1);
+                setStatusFilter("");
+                setSearchTerm("");
+                setPagination(prev => ({ ...prev, page: 1 }));
               }}
               className="text-sm text-primary hover:underline"
             >
@@ -550,228 +742,300 @@ export default function PurchaseOrderListPage() {
       <div className="p-6">
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="overflow-x-auto max-w-full">
-            <table className="w-full  table-fixed">
+            <table className="w-full">
               <thead>
                 <tr className="bg-gray-200 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
-                  {visibleColumns.orderDate && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Purchase Order Date
-                    </th>
-                  )}
-                  {visibleColumns.orderCode && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Purchase Order Code
-                    </th>
-                  )}
-                  {visibleColumns.orderStatus && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Purchase Order Status
-                    </th>
-                  )}
-                  {visibleColumns.referenceNo && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Reference No
-                    </th>
-                  )}
-                  {visibleColumns.supplierName && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Supplier Name
-                    </th>
-                  )}
-                  {visibleColumns.total && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Total
-                    </th>
-                  )}
-                  {visibleColumns.createdBy && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Created By
-                    </th>
-                  )}
-                  {visibleColumns.actions && (
-                    <th className="text-right px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Actions
-                    </th>
-                  )}
+                  <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    Purchase Order Date
+                  </th>
+                  <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    Purchase Order Code
+                  </th>
+                  <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    Purchase Order Status
+                  </th>
+                  <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    Reference No.
+                  </th>
+                  <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    Supplier Name
+                  </th>
+                  <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    Total
+                  </th>
+                  <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    Created by
+                  </th>
+                  <th className="text-right px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    Action
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-xs text-gray-700 dark:text-gray-300">
-                {paginatedOrders.length === 0 ? (
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                {purchaseOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <td colSpan={8} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                       <div className="flex flex-col items-center justify-center">
                         <ShoppingBag className="w-12 h-12 text-gray-400 mb-2" />
                         <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
-                          No purchase orders found
+                          {refreshing ? "Refreshing..." : "No purchase orders found"}
                         </p>
                         <p className="text-gray-500 dark:text-gray-400">
-                          Try adjusting your filters or add a new purchase order
+                          {refreshing 
+                            ? "Fetching latest data..." 
+                            : "Try adjusting your filters or add a new purchase order"}
                         </p>
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  paginatedOrders.map((order) => (
+                  purchaseOrders.map((order) => (
                     <tr
                       key={order.id}
                       className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                     >
-                      {visibleColumns.orderDate && (
-                        <td className="px-2.5 py-4 text-gray-700 dark:text-gray-300">
-                          {formatDate(order.orderDate)}
-                        </td>
-                      )}
-                      {visibleColumns.orderCode && (
-                        <td className="px-2.5 py-4 font-medium text-gray-900 dark:text-white">
-                          {order.orderCode}
-                        </td>
-                      )}
-                      {visibleColumns.orderStatus && (
-                        <td className="px-2.5 py-4">
-                          {getOrderStatusBadge(order.orderStatus)}
-                        </td>
-                      )}
-                      {visibleColumns.referenceNo && (
-                        <td className="px-2.5 py-4 text-gray-700 dark:text-gray-300">
-                          {order.referenceNo}
-                        </td>
-                      )}
-                      {visibleColumns.supplierName && (
-                        <td className="px-2.5 py-4">
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4 text-gray-400" />
-                            <span className="text-gray-700 dark:text-gray-300">
-                              {order.supplierName}
-                            </span>
-                          </div>
-                        </td>
-                      )}
-                      {visibleColumns.total && (
-                        <td className="px-2.5 py-4 font-medium text-gray-900 dark:text-white">
-                          ${order.total.toLocaleString()}
-                        </td>
-                      )}
-                      {visibleColumns.createdBy && (
-                        <td className="px-2.5 py-4">
-                          <div className="flex items-center gap-2">
-                            <User className="w-4 h-4 text-gray-400" />
-                            <span className="text-gray-700 dark:text-gray-300">
-                              {order.createdBy}
-                            </span>
-                          </div>
-                        </td>
-                      )}
-                      {visibleColumns.actions && (
-                        <td className="px-6 py-4 text-right">
-                          <div className="relative action-dropdown-container inline-block">
-                            <button
-                              onClick={() =>
-                                setActiveActionMenu(
-                                  activeActionMenu === order.id ? null : order.id
-                                )
-                              }
-                              className="p-2 rounded-lg text-gray-500 hover:text-gray-700
-        dark:text-gray-400 dark:hover:text-white
-        hover:bg-gray-100 dark:hover:bg-gray-700"
+                      <td className="px-6 py-4 text-gray-700 dark:text-gray-300">
+                        {formatDate(order.order_date)}
+                      </td>
+                      <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                        <Link 
+                          href={`/purchase/purchase-orders/${order.id}`}
+                          className="hover:text-primary hover:underline"
+                        >
+                          {order.order_number}
+                        </Link>
+                      </td>
+                      <td className="px-6 py-4">
+                        {getOrderStatusBadge(order.status)}
+                      </td>
+                      <td className="px-6 py-4 text-gray-700 dark:text-gray-300">
+                        {order.reference_number || "-"}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 text-gray-400" />
+                          <span className="text-gray-700 dark:text-gray-300">
+                            {order.vendor_name || "N/A"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+  <div className="flex flex-col">
+    {/* Original amount with currency */}
+    {order.currency == 'INR' && (
+    <span className="font-medium text-gray-900 dark:text-white">
+      {formatCurrency(order.total_amount, order.currency)}
+    </span>
+     )}
+    {/* Converted to INR */}
+    {order.currency !== 'INR' && (
+      <span className="font-medium text-gray-900 dark:text-white">
+         {formatCurrencyINR(convertToINR(order.total_amount, order.currency, order.exchange_rate || 1))}
+      </span>
+    )}
+  </div>
+</td>
+                     
+                       <td className="px-6 py-4">
+  <div className="flex items-center gap-2">
+    <User className="w-4 h-4 text-gray-400" />
+    <span className="text-gray-700 dark:text-gray-300">
+      {/* Use creator_name if available, otherwise fallback to created_by */}
+      {order.creator_name || order.created_by || "System"}
+    </span>
+  </div>
+</td>
+                    
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {/* View Button */}
+                          <Link
+                            href={`/purchase/purchase-orders/${order.id}`}
+                            className="p-2 rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            title="View"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Link>
+
+                          {/* Edit Button (only for draft orders) */}
+                          {order.status === "draft" && (
+                            <Link
+                              href={`/purchase/purchase-orders/edit/${order.id}`}
+                              className="p-2 rounded-lg text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                              title="Edit"
                             >
-                              <MoreVertical className="w-5 h-5" />
+                              <Edit className="w-4 h-4" />
+                            </Link>
+                          )}
+
+                          {/* Convert to Invoice Button */}
+                          <button
+                            onClick={() => handleConvertToInvoice(order.id)}
+                            disabled={converting === order.id}
+                            className="p-2 rounded-lg text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors disabled:opacity-50"
+                            title="Convert to Invoice"
+                          >
+                            {converting === order.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Receipt className="w-4 h-4" />
+                            )}
+                          </button>
+
+                          {/* Print Button */}
+                          <button
+                            onClick={() => handlePrint(order.id)}
+                            className="p-2 rounded-lg text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            title="Print"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
+
+                          {/* PDF Button */}
+                          <button
+                            onClick={() => handlePDF(order.id)}
+                            className="p-2 rounded-lg text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                            title="Download PDF"
+                          >
+                            <FileDown className="w-4 h-4" />
+                          </button>
+
+                          {/* Delete Button (only for draft orders) */}
+                          {order.status === "draft" && (
+                            <button
+                              onClick={() => deletePurchaseOrder(order.id)}
+                              disabled={deleting === order.id}
+                              className="p-2 rounded-lg text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                              title="Delete"
+                            >
+                              {deleting === order.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                            </button>
+                          )}
+
+                          {/* Dropdown for more actions (mobile) */}
+                          <div className="relative action-dropdown-container">
+                            <button
+                              onClick={() => setActiveActionMenu(activeActionMenu === order.id ? null : order.id)}
+                              className="p-2 rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors md:hidden"
+                              title="More actions"
+                            >
+                              <MoreVertical className="w-4 h-4" />
                             </button>
 
+                            {/* Dropdown menu for mobile */}
                             {activeActionMenu === order.id && (
-                              <div
-                                className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800
-          border border-gray-200 dark:border-gray-700
-          rounded-lg shadow-lg z-20"
-                              >
+                              <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 md:hidden">
                                 <Link
                                   href={`/purchase/purchase-orders/${order.id}`}
                                   onClick={() => setActiveActionMenu(null)}
-                                  className="flex items-center gap-2 px-4 py-2 text-sm
-            text-gray-700 dark:text-gray-300
-            hover:bg-gray-100 dark:hover:bg-gray-700"
+                                  className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                                 >
                                   <Eye className="w-4 h-4" />
                                   View
                                 </Link>
-
-                                <Link
-                                  href={`/purchase/purchase-orders/edit/${order.id}`}
-                                  onClick={() => setActiveActionMenu(null)}
-                                  className="flex items-center gap-2 px-4 py-2 text-sm
-            text-gray-700 dark:text-gray-300
-            hover:bg-gray-100 dark:hover:bg-gray-700"
-                                >
-                                  <Edit className="w-4 h-4" />
-                                  Edit
-                                </Link>
-
+                                
+                                {order.status === "draft" && (
+                                  <>
+                                    <Link
+                                      href={`/purchase/purchase-orders/edit/${order.id}`}
+                                      onClick={() => setActiveActionMenu(null)}
+                                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                    >
+                                      <Edit className="w-4 h-4" />
+                                      Edit
+                                    </Link>
+                                    
+                                    <button
+                                      onClick={() => {
+                                        setActiveActionMenu(null);
+                                        deletePurchaseOrder(order.id);
+                                      }}
+                                      disabled={deleting === order.id}
+                                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30"
+                                    >
+                                      {deleting === order.id ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="w-4 h-4" />
+                                      )}
+                                      Delete
+                                    </button>
+                                  </>
+                                )}
+                                
                                 <button
                                   onClick={() => {
                                     setActiveActionMenu(null);
-                                    // handleDelete(order.id);
+                                    handleConvertToInvoice(order.id);
                                   }}
-                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm
-            text-red-600 dark:text-red-400
-            hover:bg-red-50 dark:hover:bg-red-900/30"
+                                  disabled={converting === order.id}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                                 >
-                                  <Trash2 className="w-4 h-4" />
-                                  Delete
+                                  {converting === order.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Receipt className="w-4 h-4" />
+                                  )}
+                                  Convert to Invoice
+                                </button>
+                                
+                                <button
+                                  onClick={() => {
+                                    setActiveActionMenu(null);
+                                    handlePrint(order.id);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                >
+                                  <Printer className="w-4 h-4" />
+                                  Print
+                                </button>
+                                
+                                <button
+                                  onClick={() => {
+                                    setActiveActionMenu(null);
+                                    handlePDF(order.id);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                >
+                                  <FileDown className="w-4 h-4" />
+                                  Download PDF
                                 </button>
                               </div>
                             )}
                           </div>
-                        </td>
-                      )}
-
+                        </div>
+                      </td>
                     </tr>
                   ))
                 )}
               </tbody>
-              {paginatedOrders.length > 0 && visibleColumns.total && (
-                <tfoot>
-                  <tr className="bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
-                    <td
-                      colSpan={
-                        Object.values(visibleColumns).filter(Boolean).length -
-                        (visibleColumns.total ? 1 : 0) -
-                        (visibleColumns.actions ? 1 : 0)
-                      }
-                      className="px-6 py-4 text-right font-semibold text-gray-900 dark:text-white"
-                    >
-                      Total Amount:
-                    </td>
-                    <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
-                      ${totalAmount.toLocaleString()}
-                    </td>
-                    {visibleColumns.actions && (
-                      <td></td>
-                    )}
-                  </tr>
-                </tfoot>
-              )}
             </table>
           </div>
         </div>
 
         {/* Pagination */}
-        {filteredPurchaseOrders.length > pageSize && (
+        {pagination.total > pagination.page_size && (
           <div className="mt-4 flex items-center justify-between">
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Showing {(page - 1) * pageSize + 1} to{" "}
-              {Math.min(page * pageSize, filteredPurchaseOrders.length)} of {filteredPurchaseOrders.length} results
+              Showing {((pagination.page - 1) * pagination.page_size) + 1} to{" "}
+              {Math.min(pagination.page * pagination.page_size, pagination.total)} of {pagination.total} results
             </p>
             <div className="flex gap-2">
               <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
+                onClick={() => handlePageChange(pagination.page - 1)}
+                disabled={pagination.page === 1}
                 className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Previous
               </button>
 
               <button
-                onClick={() => setPage((p) => p + 1)}
-                disabled={page * pageSize >= filteredPurchaseOrders.length}
+                onClick={() => handlePageChange(pagination.page + 1)}
+                disabled={pagination.page >= pagination.pages}
                 className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Next

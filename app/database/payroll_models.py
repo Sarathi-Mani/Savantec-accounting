@@ -7,10 +7,12 @@ from sqlalchemy import (
     Column, Integer, String, Text, DateTime, Date, Numeric, Boolean,
     ForeignKey, Enum, JSON, Index, or_, and_
 )
+from sqlalchemy.dialects.postgresql import JSONB
+
 from sqlalchemy.orm import relationship
 from app.database.connection import Base
 from app.database.models import generate_uuid
-
+from passlib.context import CryptContext
 
 # ==================== ENUMS ====================
 
@@ -105,6 +107,17 @@ class TaxRegime(str, PyEnum):
     NEW = "new"
 
 
+pwd_context = CryptContext(
+    schemes=["pbkdf2_sha256"],  # Only use PBKDF2
+    default="pbkdf2_sha256",
+    pbkdf2_sha256__default_rounds=30000,  # Default iterations
+    deprecated="auto"
+)
+
+def verify_password(password: str, hashed: str) -> bool:
+    return pwd_context.verify(password[:72], hashed)
+
+
 # ==================== MODELS ====================
 
 class Department(Base):
@@ -145,7 +158,7 @@ class Designation(Base):
     code = Column(String(20))
     description = Column(Text)
     level = Column(Integer, default=1)  # Hierarchy level
-    
+    permissions = Column(JSONB, default=list) 
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -285,7 +298,12 @@ class Employee(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
+    @property
+    def company_name(self):
+        """Get company name from relationship."""
+        if hasattr(self, 'company') and self.company:
+            return self.company.name
+        return None
     # Relationships (unchanged)
     department = relationship("Department", back_populates="employees", foreign_keys=[department_id])
     designation = relationship("Designation", back_populates="employees")
@@ -294,6 +312,7 @@ class Employee(Base):
     payroll_entries = relationship("PayrollEntry", back_populates="employee")
     loans = relationship("EmployeeLoan", back_populates="employee")
     tax_declarations = relationship("EmployeeTaxDeclaration", back_populates="employee")
+    company = relationship("Company", backref="employees")
 
     __table_args__ = (
         Index("idx_employee_company", "company_id"),
@@ -301,7 +320,7 @@ class Employee(Base):
         Index("idx_employee_department", "department_id"),
         Index("idx_employee_status", "status"),
     )
-
+    
     def __repr__(self):
         return f"<Employee {self.employee_code} - {self.full_name}>"
 

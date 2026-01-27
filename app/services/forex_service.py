@@ -17,7 +17,7 @@ from sqlalchemy import func, and_
 
 from app.database.models import (
     Currency, ExchangeRate, ForexGainLoss, ExchangeRateSource,
-    Invoice, PurchaseInvoice, Transaction
+    Invoice, Purchase, Transaction
 )
 
 

@@ -137,6 +137,11 @@ class VoucherType(str, PyEnum):
     STOCK_JOURNAL = "stock_journal"  # Stock transfer between godowns
 
 
+class CreatorType(str, PyEnum):
+    USER = "user"
+    EMPLOYEE = "employee"
+
+
 class EntryType(str, PyEnum):
     """Simple entry types for Quick Entry UI."""
     MONEY_IN = "money_in"
@@ -172,6 +177,11 @@ class ExchangeRateSource(str, PyEnum):
     OANDA = "oanda"
     XE = "xe"
 
+# In models.py
+class PurchaseType(str, enum.Enum):
+    PURCHASE = "purchase"  # Changed to lowercase
+    PURCHASE_IMPORT = "purchase_import"  # Changed to lowercase
+    PURCHASE_EXPENSES = "purchase_expenses"  # Changed to lowercase
 
 # ==================== MULTI-CURRENCY MODELS ====================
 
@@ -611,6 +621,7 @@ class Company(Base):
     accounts = relationship("Account", back_populates="company", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="company", cascade="all, delete-orphan")
     bank_imports = relationship("BankImport", back_populates="company", cascade="all, delete-orphan")
+    
     proforma_invoices = relationship("ProformaInvoice", back_populates="company", cascade="all, delete-orphan")
     purchase_requests = relationship("PurchaseRequest", back_populates="company", cascade="all, delete-orphan")
     __table_args__ = (
@@ -1286,7 +1297,7 @@ class Transaction(Base):
     reversed_by = relationship("Transaction", foreign_keys=[reversed_by_id], remote_side=[id])
     reverses = relationship("Transaction", foreign_keys=[reverses_id], remote_side=[id])
     scenario = relationship("Scenario")
-
+    created_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"))
     __table_args__ = (
         Index("idx_transaction_company", "company_id"),
         Index("idx_transaction_date", "transaction_date"),
@@ -1792,7 +1803,8 @@ class PurchaseOrder(Base):
     
     notes = Column(Text)
     terms = Column(Text)
-    
+    creator_type = Column(String(10), default="user", nullable=False)
+    creator_id = Column(String(36), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -2449,186 +2461,246 @@ class ProformaInvoiceItem(Base):
     proforma_invoice = relationship("ProformaInvoice", back_populates="items")
     product = relationship("Product")
 
-class PurchaseInvoice(Base):
-    """Purchase Invoice model - Bills received from vendors with GST Input Credit."""
-    __tablename__ = "purchase_invoices"
+class Purchase(Base):
+    """Main Purchase model - Combines purchase, purchase-import, and purchase-expenses"""
+    __tablename__ = "purchases"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     vendor_id = Column(String(36), ForeignKey("vendors.id", ondelete="SET NULL"))
     
+    # Purchase type: purchase, purchase-import, purchase-expenses
+    purchase_type = Column(Enum(PurchaseType), default=PurchaseType.PURCHASE, nullable=False)
+    
     # Invoice identification
-    invoice_number = Column(String(50), nullable=False, index=True)
+    purchase_number = Column(String(50), nullable=False, unique=True, index=True)
+    reference_no = Column(String(100))
     vendor_invoice_number = Column(String(100))
     invoice_date = Column(DateTime, nullable=False, default=datetime.utcnow)
     vendor_invoice_date = Column(DateTime)
     due_date = Column(DateTime)
     
-    # Linked documents
-    purchase_order_id = Column(String(36), ForeignKey("purchase_orders.id", ondelete="SET NULL"))
-    receipt_note_id = Column(String(36), ForeignKey("receipt_notes.id", ondelete="SET NULL"))
+    # Payment type for the entire purchase
+    payment_type = Column(String(50))  # cash, credit, bank_transfer, cheque, online
     
-    # Place of supply (State code for GST)
-    place_of_supply = Column(String(2))
-    place_of_supply_name = Column(String(100))
-    
-    # Reverse charge mechanism
-    is_reverse_charge = Column(Boolean, default=False)
+    # Charges and discounts
+    freight_charges = Column(Numeric(14, 2), default=0)
+    freight_type = Column(String(20), default="fixed")  # fixed or percentage
+    packing_forwarding_charges = Column(Numeric(14, 2), default=0)
+    pf_type = Column(String(20), default="fixed")  # fixed or percentage
+    discount_on_all = Column(Numeric(14, 2), default=0)
+    discount_type = Column(String(20), default="percentage")  # percentage or fixed
+    round_off = Column(Numeric(14, 2), default=0)
     
     # Amounts (all in INR)
     subtotal = Column(Numeric(14, 2), default=0)
     discount_amount = Column(Numeric(14, 2), default=0)
-    
-    # GST breakup - Input Credit
-    cgst_amount = Column(Numeric(14, 2), default=0)
-    sgst_amount = Column(Numeric(14, 2), default=0)
-    igst_amount = Column(Numeric(14, 2), default=0)
-    cess_amount = Column(Numeric(14, 2), default=0)
-    
     total_tax = Column(Numeric(14, 2), default=0)
     total_amount = Column(Numeric(14, 2), default=0)
-    
-    # TDS (Tax Deducted at Source)
-    tds_applicable = Column(Boolean, default=False)
-    tds_section_id = Column(String(36), ForeignKey("tds_sections.id", ondelete="SET NULL"))
-    tds_rate = Column(Numeric(5, 2), default=0)
-    tds_amount = Column(Numeric(14, 2), default=0)
-    
-    # Net payable (after TDS deduction)
-    net_payable = Column(Numeric(14, 2), default=0)
+    grand_total = Column(Numeric(14, 2), default=0)
     
     # Payment tracking
     amount_paid = Column(Numeric(14, 2), default=0)
     balance_due = Column(Numeric(14, 2), default=0)
-    outstanding_amount = Column(Numeric(14, 2), default=0)
+    
+    # Contact information
+    contact_person = Column(String(200))
+    contact_phone = Column(String(20))
+    contact_email = Column(String(255))
+    shipping_address = Column(Text)
+    billing_address = Column(Text)
+    
+    # Additional info
+    notes = Column(Text)
+    terms = Column(Text)
     
     # Status
     status = Column(Enum(PurchaseInvoiceStatus), default=PurchaseInvoiceStatus.DRAFT)
     
-    # GST eligibility for input credit
-    itc_eligible = Column(Boolean, default=True)
-    itc_claimed = Column(Boolean, default=False)
-    
-    # Additional info
-    notes = Column(Text)
-    
+    # Audit fields
+    created_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    deleted_at = Column(DateTime)
 
     # Relationships
     company = relationship("Company")
     vendor = relationship("Vendor")
-    purchase_order = relationship("PurchaseOrder")
-    receipt_note = relationship("ReceiptNote")
-    tds_section = relationship("TDSSection")
-    items = relationship("PurchaseInvoiceItem", back_populates="purchase_invoice", cascade="all, delete-orphan")
-    payments = relationship("PurchasePayment", back_populates="purchase_invoice", cascade="all, delete-orphan")
-    tds_entries = relationship("TDSEntry", back_populates="purchase_invoice", cascade="all, delete-orphan")
-
+    creator = relationship("User")
+    items = relationship("PurchaseItem", back_populates="purchase", cascade="all, delete-orphan")
+    import_items = relationship("PurchaseImportItem", back_populates="purchase", cascade="all, delete-orphan")
+    expense_items = relationship("PurchaseExpenseItem", back_populates="purchase", cascade="all, delete-orphan")
+    payments = relationship("PurchasePayment", back_populates="purchase", cascade="all, delete-orphan")
+    tds_entries = relationship("TDSEntry", back_populates="purchase", cascade="all, delete-orphan")
     __table_args__ = (
-        Index("idx_purchase_invoice_company", "company_id"),
-        Index("idx_purchase_invoice_vendor", "vendor_id"),
-        Index("idx_purchase_invoice_date", "invoice_date"),
-        Index("idx_purchase_invoice_status", "status"),
+        Index("idx_purchase_company", "company_id"),
+        Index("idx_purchase_vendor", "vendor_id"),
+        Index("idx_purchase_date", "invoice_date"),
+        Index("idx_purchase_type", "purchase_type"),
+        Index("idx_purchase_status", "status"),
+        Index("idx_purchase_number", "purchase_number"),
     )
 
     def __repr__(self):
-        return f"<PurchaseInvoice {self.invoice_number}>"
+        return f"<Purchase {self.purchase_number}>"
 
 
-class PurchaseInvoiceItem(Base):
-    """Purchase Invoice line item model."""
-    __tablename__ = "purchase_invoice_items"
+class PurchaseItem(Base):
+    """Regular purchase items (with products)"""
+    __tablename__ = "purchase_items"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    purchase_invoice_id = Column(String(36), ForeignKey("purchase_invoices.id", ondelete="CASCADE"), nullable=False)
+    purchase_id = Column(String(36), ForeignKey("purchases.id", ondelete="CASCADE"), nullable=False)
     product_id = Column(String(36), ForeignKey("items.id", ondelete="SET NULL"))
     
     # Item details
     description = Column(String(500), nullable=False)
+    item_code = Column(String(100))
     hsn_code = Column(String(8))
     
     # Quantity and pricing
-    quantity = Column(Numeric(10, 3), nullable=False)
+    quantity = Column(Numeric(10, 3), nullable=False, default=1)
     unit = Column(String(20), default="unit")
-    unit_price = Column(Numeric(12, 2), nullable=False)
+    purchase_price = Column(Numeric(12, 2), nullable=False, default=0)
+    unit_cost = Column(Numeric(12, 2), default=0)
     
     # Discount
     discount_percent = Column(Numeric(5, 2), default=0)
     discount_amount = Column(Numeric(12, 2), default=0)
     
-    # Tax
-    gst_rate = Column(Numeric(5, 2), nullable=False)
-    cgst_rate = Column(Numeric(5, 2), default=0)
-    sgst_rate = Column(Numeric(5, 2), default=0)
+    # GST Tax rates
+    gst_rate = Column(Numeric(5, 2), default=18)
+    cgst_rate = Column(Numeric(5, 2), default=9)
+    sgst_rate = Column(Numeric(5, 2), default=9)
     igst_rate = Column(Numeric(5, 2), default=0)
     
+    # Tax amounts
     cgst_amount = Column(Numeric(12, 2), default=0)
     sgst_amount = Column(Numeric(12, 2), default=0)
     igst_amount = Column(Numeric(12, 2), default=0)
-    cess_amount = Column(Numeric(12, 2), default=0)
+    tax_amount = Column(Numeric(12, 2), default=0)
     
     # Totals
-    taxable_amount = Column(Numeric(14, 2), nullable=False)
-    total_amount = Column(Numeric(14, 2), nullable=False)
-    
-    # ITC eligibility for this item
-    itc_eligible = Column(Boolean, default=True)
-    
-    # Stock tracking
-    stock_received = Column(Boolean, default=False)
-    godown_id = Column(String(36), ForeignKey("godowns.id", ondelete="SET NULL"))
+    total_amount = Column(Numeric(14, 2), nullable=False, default=0)
     
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    purchase_invoice = relationship("PurchaseInvoice", back_populates="items")
+    purchase = relationship("Purchase", back_populates="items")
     product = relationship("Product")
-    godown = relationship("Godown")
 
     __table_args__ = (
-        Index("idx_purchase_item_invoice", "purchase_invoice_id"),
+        Index("idx_purchase_item_purchase", "purchase_id"),
+        Index("idx_purchase_item_product", "product_id"),
     )
 
     def __repr__(self):
-        return f"<PurchaseInvoiceItem {self.description[:30]}>"
+        return f"<PurchaseItem {self.description[:30]}>"
+
+
+class PurchaseImportItem(Base):
+    """Import items for purchase-import type"""
+    __tablename__ = "purchase_import_items"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    purchase_id = Column(String(36), ForeignKey("purchases.id", ondelete="CASCADE"), nullable=False)
+    
+    # Item details
+    name = Column(String(500), nullable=False)
+    
+    # Quantity and pricing
+    quantity = Column(Numeric(10, 3), nullable=False, default=1)
+    rate = Column(Numeric(12, 2), nullable=False, default=0)
+    per = Column(String(20), default="unit")
+    
+    # Discount
+    discount_percent = Column(Numeric(5, 2), default=0)
+    
+    # Totals
+    amount = Column(Numeric(14, 2), nullable=False, default=0)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    purchase = relationship("Purchase", back_populates="import_items")
+
+    __table_args__ = (
+        Index("idx_import_item_purchase", "purchase_id"),
+    )
+
+    def __repr__(self):
+        return f"<PurchaseImportItem {self.name[:30]}>"
+
+
+class PurchaseExpenseItem(Base):
+    """Expense items for purchase-expenses type"""
+    __tablename__ = "purchase_expense_items"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    purchase_id = Column(String(36), ForeignKey("purchases.id", ondelete="CASCADE"), nullable=False)
+    
+    # Expense particulars
+    particulars = Column(String(500), nullable=False)
+    
+    # Rate and per unit
+    rate = Column(Numeric(12, 2), nullable=False, default=0)
+    per = Column(String(20), default="unit")
+    
+    # Total amount
+    amount = Column(Numeric(14, 2), nullable=False, default=0)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    purchase = relationship("Purchase", back_populates="expense_items")
+
+    __table_args__ = (
+        Index("idx_expense_item_purchase", "purchase_id"),
+    )
+
+    def __repr__(self):
+        return f"<PurchaseExpenseItem {self.particulars[:30]}>"
 
 
 class PurchasePayment(Base):
-    """Payment model for purchase invoices."""
+    """Payment model for purchases"""
     __tablename__ = "purchase_payments"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    purchase_invoice_id = Column(String(36), ForeignKey("purchase_invoices.id", ondelete="CASCADE"), nullable=False)
+    purchase_id = Column(String(36), ForeignKey("purchases.id", ondelete="CASCADE"), nullable=False)
     
     # Payment details
     amount = Column(Numeric(14, 2), nullable=False)
     payment_date = Column(DateTime, nullable=False, default=datetime.utcnow)
-    payment_mode = Column(Enum(PaymentMode), nullable=False)
+    payment_type = Column(String(50))  # credit, cash, card, bank_transfer, cheque
+    account = Column(String(100))  # Account name (e.g., ICICI Bank, IDFC First Bank)
     
     # Reference
+    payment_note = Column(Text)
     reference_number = Column(String(100))
-    bank_account_id = Column(String(36), ForeignKey("bank_accounts.id", ondelete="SET NULL"))
     
     # Transaction linking
     transaction_id = Column(String(36), ForeignKey("transactions.id", ondelete="SET NULL"))
     
-    notes = Column(Text)
-    
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    purchase_invoice = relationship("PurchaseInvoice", back_populates="payments")
-    bank_account = relationship("BankAccount")
+    purchase = relationship("Purchase", back_populates="payments")
     transaction = relationship("Transaction")
 
     __table_args__ = (
-        Index("idx_purchase_payment_invoice", "purchase_invoice_id"),
+        Index("idx_purchase_payment_purchase", "purchase_id"),
         Index("idx_purchase_payment_date", "payment_date"),
     )
 
     def __repr__(self):
-        return f"<PurchasePayment {self.amount} for PI {self.purchase_invoice_id}>"
+        return f"<PurchasePayment {self.amount} for Purchase {self.purchase_id}>"
+
+
 
 
 class TDSEntry(Base):
@@ -2639,7 +2711,7 @@ class TDSEntry(Base):
     company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     
     # Linked purchase invoice
-    purchase_invoice_id = Column(String(36), ForeignKey("purchase_invoices.id", ondelete="CASCADE"))
+    purchase_invoice_id = Column(String(36), ForeignKey("purchases.id", ondelete="CASCADE"))
     
     # Deductee (Vendor) details
     vendor_id = Column(String(36), ForeignKey("vendors.id", ondelete="SET NULL"))
@@ -2678,7 +2750,7 @@ class TDSEntry(Base):
 
     # Relationships
     company = relationship("Company")
-    purchase_invoice = relationship("PurchaseInvoice", back_populates="tds_entries")
+    purchase = relationship("Purchase", back_populates="tds_entries")
     vendor = relationship("Vendor")
     tds_section = relationship("TDSSection")
 
@@ -2803,7 +2875,7 @@ class SerialNumber(Base):
     status = Column(Enum(SerialNumberStatus), default=SerialNumberStatus.AVAILABLE)
     
     # Purchase reference
-    purchase_invoice_id = Column(String(36), ForeignKey("purchase_invoices.id", ondelete="SET NULL"))
+    purchase_invoice_id = Column(String(36), ForeignKey("purchases.id", ondelete="SET NULL"))
     purchase_date = Column(DateTime)
     purchase_rate = Column(Numeric(14, 2))
     

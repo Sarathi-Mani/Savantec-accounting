@@ -8,53 +8,88 @@ from app.schemas.company import (
     CompanyCreate, CompanyUpdate, CompanyResponse,
     BankAccountCreate, BankAccountUpdate, BankAccountResponse
 )
+from typing import Optional, Union, Dict, Any
 from app.services.company_service import CompanyService
 from app.auth.dependencies import get_current_active_user
-
+from app.auth.dependencies import get_current_user,get_actual_user
 router = APIRouter(prefix="/companies", tags=["Companies"])
-
 
 @router.post("", response_model=CompanyResponse, status_code=status.HTTP_201_CREATED)
 async def create_company(
     data: CompanyCreate,
-    current_user: User = Depends(get_current_active_user),
+    auth_data: Union[User, Dict[str, Any]] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Create a new company/business profile."""
+    # Only regular users can create companies, not employees
+    user = get_actual_user(auth_data)
+    
     service = CompanyService(db)
-    company = service.create_company(current_user, data)
+    company = service.create_company(user, data)
     return CompanyResponse.model_validate(company)
 
 
 @router.get("", response_model=List[CompanyResponse])
 async def list_companies(
-    current_user: User = Depends(get_current_active_user),
+    auth_data: Union[User, Dict[str, Any]] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List all companies for the current user."""
-    service = CompanyService(db)
-    companies = service.get_companies(current_user)
-    return [CompanyResponse.model_validate(c) for c in companies]
-
+    """List companies - works for both users and employees."""
+    
+    if isinstance(auth_data, dict) and auth_data.get("is_employee"):
+        # Employee: return only their company
+        company_id = auth_data.get("company_id")
+        if not company_id:
+            return []
+        
+        company = db.query(Company).filter(Company.id == company_id).first()
+        return [CompanyResponse.model_validate(company)] if company else []
+    else:
+        # Regular user
+        user = get_actual_user(auth_data)
+        service = CompanyService(db)
+        companies = service.get_companies(user)
+        return [CompanyResponse.model_validate(c) for c in companies]
+    
 
 @router.get("/{company_id}", response_model=CompanyResponse)
 async def get_company(
     company_id: str,
-    current_user: User = Depends(get_current_active_user),
+    auth_data: Union[User, Dict[str, Any]] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get a company by ID."""
-    service = CompanyService(db)
-    company = service.get_company(company_id, current_user)
+    """Get a company by ID - works for both users and employees."""
+    if isinstance(auth_data, dict) and auth_data.get("is_employee"):
+        # Employee: can only access their own company
+        employee_company_id = auth_data.get("company_id")
+        if employee_company_id != company_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this company"
+            )
+        
+        company = db.query(Company).filter(Company.id == company_id).first()
+        if not company:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Company not found"
+            )
+        
+        return CompanyResponse.model_validate(company)
+    else:
+        # Regular user
+        user = get_actual_user(auth_data)
+        service = CompanyService(db)
+        company = service.get_company(company_id, user)
+        
+        if not company:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Company not found"
+            )
+        
+        return CompanyResponse.model_validate(company)
     
-    if not company:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Company not found"
-        )
-    
-    return CompanyResponse.model_validate(company)
-
 
 @router.put("/{company_id}", response_model=CompanyResponse)
 async def update_company(

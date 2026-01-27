@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.database.models import (
     Company, Customer, Account, Transaction, TransactionEntry, Invoice, InvoiceItem,
-    PurchaseInvoice, PurchaseInvoiceItem, Payment, PurchasePayment, QuickEntry,
+    Purchase, PurchaseItem,PurchaseImportItem,PurchaseExpenseItem,PurchasePayment, Payment, PurchasePayment, QuickEntry,
     Product, StockEntry, StockMovementType, AccountType, VoucherType, EntryType,
     ReferenceType, TransactionStatus, PaymentMode, InvoiceStatus, PurchaseInvoiceStatus,
     PurchaseOrder, SalesOrder,
@@ -351,7 +351,7 @@ class VoucherEngine:
     def create_purchase_voucher(
         self,
         company: Company,
-        invoice: PurchaseInvoice,
+        invoice: Purchase,
     ) -> VoucherResult:
         """Create accounting entries for a purchase invoice.
         
@@ -673,7 +673,7 @@ class VoucherEngine:
         self,
         company: Company,
         payment: PurchasePayment,
-        invoice: PurchaseInvoice,
+        invoice: Purchase,
         payment_account: Optional[Account] = None,
     ) -> VoucherResult:
         """Create accounting entries for a payment (purchase payment).
@@ -976,7 +976,7 @@ class VoucherEngine:
     def create_credit_note(
         self,
         company: Company,
-        original_invoice: PurchaseInvoice,
+        original_invoice: Purchase,
         return_items: List[Dict[str, Any]],
         voucher_date: Optional[datetime] = None,
         reason: str = "",

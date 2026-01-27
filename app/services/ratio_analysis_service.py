@@ -15,7 +15,7 @@ from sqlalchemy import func
 
 from app.database.models import (
     Account, AccountType, Transaction, TransactionEntry, TransactionStatus,
-    Invoice, PurchaseInvoice
+    Invoice, Purchase
 )
 
 
@@ -98,9 +98,9 @@ class RatioAnalysisService:
             Invoice.outstanding_amount > 0,
         ).scalar() or Decimal('0')
         
-        payables = self.db.query(func.sum(PurchaseInvoice.outstanding_amount)).filter(
-            PurchaseInvoice.company_id == company_id,
-            PurchaseInvoice.outstanding_amount > 0,
+        payables = self.db.query(func.sum(Purchase.outstanding_amount)).filter(
+            Purchase.company_id == company_id,
+            Purchase.outstanding_amount > 0,
         ).scalar() or Decimal('0')
         
         # Calculate ratios

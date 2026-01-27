@@ -22,7 +22,6 @@ from app.api import (
     sales_tickets_router,
     sales_dashboard_router,
     alternative_products_router,
-    # Add these imports
     brands_router,
     categories_router,
 )
@@ -31,11 +30,11 @@ from app.api.quick_entry import router as quick_entry_router
 from app.api.inventory import router as inventory_router
 from app.api.orders import router as orders_router
 from app.api.vendors import router as vendors_router
+from app.api.purchases import router as purchases_router
 from app.api.purchase_requests import router as purchase_requests_router
 from app.api.gst_integration import router as gst_integration_router
-from app.api.purchases import router as purchases_router
 from app.api.tds import router as tds_router
-from app.api.vendors import router as vendors_router
+# REMOVE DUPLICATE: from app.api.vendors import router as vendors_router
 from app.api.business_dashboard import router as business_dashboard_router
 from app.api.payroll import router as payroll_router
 from app.api.currencies import router as currencies_router
@@ -45,7 +44,7 @@ from app.api.banking import router as banking_router
 from app.api.reports_advanced import router as reports_advanced_router
 from app.api.additional_endpoints import router as additional_router
 from app.api.attendance_leave import router as attendance_leave_router
-from app.api.upload import router as upload_router  # ADD THIS IMPORT
+from app.api.upload import router as upload_router
 
 # Create FastAPI application
 app = FastAPI(
@@ -73,14 +72,14 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:6767",  # React dev server
+        "http://localhost:6767",
         "http://127.0.0.1:6767",
         "http://localhost:6768",
         "http://127.0.0.1:6768",
-        "http://localhost:3000",  # ADD THIS for React dev server on port 3000
+        "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "https://accounts-demo.sellfiz.com",  # Production frontend
-        "https://accounts-demo-api.sellfiz.com",  # Production API
+        "https://accounts-demo.sellfiz.com",
+        "https://accounts-demo-api.sellfiz.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -90,11 +89,11 @@ app.add_middleware(
 # Create directories
 os.makedirs("static", exist_ok=True)
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-os.makedirs("uploads/employees", exist_ok=True)  # ADD THIS for employee uploads
+os.makedirs("uploads/employees", exist_ok=True)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")  # ADD THIS
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Include API routers
 app.include_router(auth_router, prefix="/api")
@@ -107,16 +106,20 @@ app.include_router(dashboard_router, prefix="/api")
 app.include_router(accounting_router, prefix="/api")
 app.include_router(quick_entry_router, prefix="/api")
 app.include_router(inventory_router, prefix="/api")
-app.include_router(proforma_invoices.router,prefix="/api")
+app.include_router(proforma_invoices.router, prefix="/api")
 app.include_router(orders_router, prefix="/api")
 app.include_router(gst_integration_router, prefix="/api")
-app.include_router(purchases_router, prefix="/api")
+
+# CHANGE THIS LINE - Remove prefix since router already has /api/purchases
+app.include_router(purchases_router)  # NO PREFIX HERE!
+
 app.include_router(tds_router, prefix="/api")
-app.include_router(vendors_router, prefix="/api")
+app.include_router(vendors_router, prefix="/api")  # KEEP ONLY ONE!
+
 app.include_router(business_dashboard_router, prefix="/api")
 app.include_router(payroll_router, prefix="/api")
 app.include_router(currencies_router, prefix="/api")
-app.include_router(vendors_router, prefix="/api")
+# REMOVE THIS DUPLICATE: app.include_router(vendors_router, prefix="/api")
 app.include_router(cost_centers_router, prefix="/api")
 app.include_router(gst_reconciliation_router, prefix="/api")
 app.include_router(banking_router, prefix="/api")
@@ -133,20 +136,7 @@ app.include_router(sales_dashboard_router)
 app.include_router(alternative_products_router, prefix="/api")
 app.include_router(brands_router, prefix="/api")
 app.include_router(categories_router, prefix="/api")
-app.include_router(upload_router, prefix="/api")  # ADD THIS LINE
-
-# Also add a simple upload endpoint directly in payroll router
-# Update your app/api/payroll.py to include this at the end:
-
-# @router.post("/upload-image")
-# async def upload_employee_image(
-#     company_id: str,
-#     employee_id: Optional[str] = Form(None),
-#     image: UploadFile = File(...),
-#     current_user: User = Depends(get_current_active_user),
-#     db: Session = Depends(get_db)
-# ):
-#     # ... upload code ...
+app.include_router(upload_router, prefix="/api")
 
 
 @app.on_event("startup")
@@ -156,6 +146,12 @@ async def startup_event():
     print(f"[OK] {settings.APP_NAME} v{settings.APP_VERSION} started!")
     print(f"[API] Docs: http://localhost:6768/api/docs")
     print(f"[WEB] Frontend: http://localhost:6767")
+    
+    # Debug: Print all routes
+    print("\n[DEBUG] Registered routes (purchases only):")
+    for route in app.routes:
+        if hasattr(route, "methods") and "purchases" in str(route.path):
+            print(f"  {route.methods} {route.path}")
 
 
 @app.get("/health")
@@ -182,7 +178,7 @@ async def api_info():
             "vendors": "/api/companies/{company_id}/vendors",
             "products": "/api/companies/{company_id}/products",
             "invoices": "/api/companies/{company_id}/invoices",
-            "purchases": "/api/companies/{company_id}/purchases",
+            "purchases": "/api/purchases",  # UPDATED
             "tds": "/api/companies/{company_id}/tds",
             "gst": "/api/companies/{company_id}/gst",
             "dashboard": "/api/companies/{company_id}/dashboard",
@@ -190,7 +186,7 @@ async def api_info():
             "transactions": "/api/companies/{company_id}/transactions",
             "bank_import": "/api/companies/{company_id}/bank-import",
             "reports": "/api/companies/{company_id}/reports",
-            "upload": "/api/upload",  # ADD THIS
+            "upload": "/api/upload",
             "brands": "/api/companies/{company_id}/brands",
             "categories": "/api/companies/{company_id}/categories",
             "payroll": "/api/companies/{company_id}/payroll",

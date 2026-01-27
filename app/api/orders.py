@@ -1,16 +1,18 @@
 """Orders API - Sales and Purchase order endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional, List,Dict,Any
 from datetime import datetime, date
 from decimal import Decimal
-
-from pydantic import field_validator, model_validator,BaseModel, Field
+from sqlalchemy import or_, func
+from pydantic import field_validator, model_validator,BaseModel, Field,ConfigDict
 from app.database.connection import get_db
 from app.database.models import User, Company, OrderStatus
+from app.database.payroll_models import Employee
+
 from app.services.order_service import OrderService
 from app.auth.dependencies import get_current_active_user
-
+from app.database.models import User, CreatorType  ,Company, OrderStatus, PurchaseOrder, Vendor  # Add PurchaseOrd 
 router = APIRouter(prefix="/companies/{company_id}/orders", tags=["Orders"])
 
 
@@ -30,6 +32,7 @@ def get_company_or_404(company_id: str, current_user: User, db: Session) -> Comp
 class OrderItemInput(BaseModel):
     product_id: Optional[str] = None
     item_code: Optional[str] = None # New field
+  
     description: str
     quantity: Decimal
     unit: str = "unit"
@@ -41,7 +44,7 @@ class OrderItemInput(BaseModel):
     cgst_rate: Optional[Decimal] = None  # New field
     sgst_rate: Optional[Decimal] = None  # New field
     igst_rate: Optional[Decimal] = Decimal("0")  # New field
-    taxable_amount: Optional[Decimal] = None  # New field
+    tax_amount: Optional[Decimal] = None  # New field
     total_amount: Optional[Decimal] = None  # New field
     
     # Add validator to ensure we have either unit_price or rate
@@ -64,6 +67,7 @@ class OrderItemInput(BaseModel):
 class OrderItemResponse(BaseModel):
     id: str
     product_id: Optional[str]
+    product_name: Optional[str] = None
     item_code: Optional[str]
     description: str
     quantity: Decimal
@@ -205,7 +209,6 @@ class SalesOrderResponse(BaseModel):
             Decimal: str
         }
 
-
 class PurchaseOrderCreate(BaseModel):
     vendor_id: str
     items: List[OrderItemInput]
@@ -213,7 +216,22 @@ class PurchaseOrderCreate(BaseModel):
     expected_date: Optional[datetime] = None
     notes: Optional[str] = None
     terms: Optional[str] = None
-
+    # ADD THESE MISSING FIELDS:
+    reference_number: Optional[str] = None
+    currency: str = "INR"
+    exchange_rate: Decimal = Decimal("1.0")
+    freight_charges: Decimal = Decimal("0")
+    other_charges: Decimal = Decimal("0")
+    discount_on_all: Decimal = Decimal("0")
+    round_off: Decimal = Decimal("0")
+    subtotal: Optional[Decimal] = None
+    tax_amount: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
+    creator_id: Optional[str] = None
+    creator_type: CreatorType = CreatorType.USER 
+    model_config = ConfigDict(
+        json_encoders={Decimal: str}
+    )
 
 class PurchaseOrderUpdate(BaseModel):
     vendor_id: Optional[str] = None
@@ -222,29 +240,55 @@ class PurchaseOrderUpdate(BaseModel):
     expected_date: Optional[datetime] = None
     notes: Optional[str] = None
     terms: Optional[str] = None
-
-
+   
+    reference_number: Optional[str] = None
+    currency: Optional[str] = None
+    exchange_rate: Optional[Decimal] = None
+    freight_charges: Optional[Decimal] = None
+    other_charges: Optional[Decimal] = None
+    discount_on_all: Optional[Decimal] = None
+    round_off: Optional[Decimal] = None
+    subtotal: Optional[Decimal] = None
+    tax_amount: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
+    
+    class Config:
+        json_encoders = {
+            Decimal: str
+        }
 class PurchaseOrderResponse(BaseModel):
     id: str
     order_number: str
     order_date: datetime
-    expected_date: Optional[datetime]
-    vendor_id: Optional[str]
+    expected_date: Optional[datetime] = None
+    vendor_id: Optional[str] = None
+      
+    vendor: Optional[Dict[str, Any]] = None  # ← This MUST exist
+    
     status: str
-    subtotal: Decimal
-    tax_amount: Decimal
-    total_amount: Decimal
-    quantity_ordered: Optional[Decimal]
-    quantity_received: Optional[Decimal]
-    notes: Optional[str]
+    subtotal: Optional[Decimal] = None
+    tax_amount: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
+    quantity_ordered: Optional[Decimal] = None
+    quantity_received: Optional[Decimal] = None
+    notes: Optional[str] = None
     terms: Optional[str] = None
     created_at: datetime
-    items: Optional[List[OrderItemResponse]] = None
-    
+    updated_at: Optional[datetime] = None
+    items: List[OrderItemResponse] = []
+    # Add these fields:
+    reference_number: Optional[str] = None
+    currency: str = "INR"
+    exchange_rate: Decimal = Decimal("1.0")
+    freight_charges: Decimal = Decimal("0")
+    other_charges: Decimal = Decimal("0")
+    discount_on_all: Decimal = Decimal("0")
+    round_off: Decimal = Decimal("0")
+    created_by: Optional[str] = None
+    creator_name: Optional[str] = None
+    updated_at: Optional[datetime] = None
     class Config:
         from_attributes = True
-
-
 class DeliveryNoteItemInput(BaseModel):
     product_id: Optional[str] = None
     description: str
@@ -819,75 +863,237 @@ async def create_purchase_order(
     company = get_company_or_404(company_id, current_user, db)
     service = OrderService(db)
     
+    # Convert items to dict and handle Decimal conversions
+    items_dict = []
+    for item in data.items:
+        item_dict = item.model_dump()
+        
+        # DEBUG: Print what we're getting
+        print(f"DEBUG API: BEFORE conversion - tax_amount: {item_dict.get('tax_amount')}, type: {type(item_dict.get('tax_amount'))}")
+        
+        # Handle item_code
+        item_code = item_dict.get('item_code', '')
+        item_dict['item_code'] = str(item_code).strip() if item_code is not None else ''
+        
+        # Convert ALL Decimal fields to strings for Decimal() constructor
+        decimal_fields = [
+            'quantity', 'rate', 'discount_percent', 'discount_amount',
+            'gst_rate', 'tax_amount', 'total_amount'
+        ]
+        
+        for field in decimal_fields:
+            if field in item_dict:
+                value = item_dict[field]
+                if value is not None:
+                    # Convert to string
+                    item_dict[field] = str(value)
+                else:
+                    print(f"DEBUG API: WARNING: {field} is None, defaulting to '0'")
+                    item_dict[field] = "0"
+        
+        print(f"DEBUG API: AFTER conversion - tax_amount: {item_dict.get('tax_amount')}, type: {type(item_dict.get('tax_amount'))}")
+        items_dict.append(item_dict)
+    
+    # Debug the final items_dict
+    print(f"DEBUG API: Final items_dict[0]: {items_dict[0] if items_dict else 'Empty'}")
+    creator_id = data.creator_id or current_user.id
+    creator_type = data.creator_type.value  # Convert enum to string
+    print(f"created_by:{creator_type}")
+    # Convert Decimal fields to strings for service layer
     order = service.create_purchase_order(
         company=company,
         vendor_id=data.vendor_id,
-        items=[i.model_dump() for i in data.items],
+        items=items_dict,
         order_date=data.order_date,
         expected_date=data.expected_date,
         notes=data.notes,
         terms=data.terms,
+        reference_number=data.reference_number,
+        currency=data.currency,
+        exchange_rate=Decimal(str(data.exchange_rate)) if data.exchange_rate is not None else Decimal("1.0"),
+        freight_charges=Decimal(str(data.freight_charges)) if data.freight_charges is not None else Decimal("0"),
+        other_charges=Decimal(str(data.other_charges)) if data.other_charges is not None else Decimal("0"),
+        discount_on_all=Decimal(str(data.discount_on_all)) if data.discount_on_all is not None else Decimal("0"),
+        round_off=Decimal(str(data.round_off)) if data.round_off is not None else Decimal("0"),
+        subtotal=Decimal(str(data.subtotal)) if data.subtotal is not None else None,
+        tax_amount=Decimal(str(data.tax_amount)) if data.tax_amount is not None else None,
+        total_amount=Decimal(str(data.total_amount)) if data.total_amount is not None else None,
+       creator_id=creator_id,
+        creator_type=creator_type,
     )
     
-    return PurchaseOrderResponse(
-        id=order.id,
-        order_number=order.order_number,
-        order_date=order.order_date,
-        expected_date=order.expected_date,
-        vendor_id=order.vendor_id,
-        status=order.status.value,
-        subtotal=order.subtotal,
-        tax_amount=order.tax_amount,
-        total_amount=order.total_amount,
-        quantity_ordered=order.quantity_ordered,
-        quantity_received=order.quantity_received,
-        notes=order.notes,
-        terms=order.terms,
-        created_at=order.created_at,
-    )
+    # Get order with items
+    order_with_items = service.get_purchase_order_with_items(order.id, company)
+    
+    return PurchaseOrderResponse.from_orm(order_with_items)
 
-
-@router.get("/purchase", response_model=List[PurchaseOrderResponse])
+@router.get("/purchase", response_model=dict)
 async def list_purchase_orders(
     company_id: str,
     vendor_id: Optional[str] = None,
     status: Optional[str] = None,
+    search: Optional[str] = None,
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+    creator_id: Optional[str] = None,
+    creator_type: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """List purchase orders."""
+    """List purchase orders with filtering and pagination."""
     company = get_company_or_404(company_id, current_user, db)
-    service = OrderService(db)
     
-    order_status = None
-    if status:
-        try:
-            order_status = OrderStatus(status)
-        except ValueError:
-            pass
+    # Apply filters
+    query = db.query(PurchaseOrder).filter(
+        PurchaseOrder.company_id == company.id
+    )
     
-    orders = service.get_purchase_orders(company, vendor_id, order_status)
+    # ... [your existing filter code] ...
     
-    return [
-        PurchaseOrderResponse(
-            id=o.id,
-            order_number=o.order_number,
-            order_date=o.order_date,
-            expected_date=o.expected_date,
-            vendor_id=o.vendor_id,
-            status=o.status.value,
-            subtotal=o.subtotal or Decimal("0"),
-            tax_amount=o.tax_amount or Decimal("0"),
-            total_amount=o.total_amount or Decimal("0"),
-            quantity_ordered=o.quantity_ordered,
-            quantity_received=o.quantity_received,
-            notes=o.notes,
-            terms=o.terms,
-            created_at=o.created_at,
-        )
-        for o in orders
-    ]
-
+    # Get total count
+    total = query.count()
+    
+    # Apply pagination
+    offset = (page - 1) * page_size
+    orders = query.order_by(PurchaseOrder.order_date.desc())\
+                 .offset(offset)\
+                 .limit(page_size)\
+                 .all()
+    
+    # Calculate summary data
+    total_amount = db.query(func.sum(PurchaseOrder.total_amount))\
+                     .filter(PurchaseOrder.company_id == company.id)\
+                     .scalar() or Decimal("0")
+    
+    # Collect creator IDs for batch querying
+    user_ids = []
+    employee_ids = []
+    
+    for order in orders:
+        if order.creator_id and order.creator_type:
+            print(f"DEBUG: Order {order.order_number} has creator_id: {order.creator_id}, creator_type: {order.creator_type}")
+            if order.creator_type == 'user':
+                user_ids.append(order.creator_id)
+            elif order.creator_type == 'employee':
+                employee_ids.append(order.creator_id)
+    
+    print(f"DEBUG: User IDs to fetch: {user_ids}")
+    print(f"DEBUG: Employee IDs to fetch: {employee_ids}")
+    
+    # Batch fetch users
+    users_dict = {}
+    if user_ids:
+        users = db.query(User).filter(User.id.in_(user_ids)).all()
+        users_dict = {user.id: user for user in users}
+        print(f"DEBUG: Fetched {len(users)} users")
+        for user in users:
+            print(f"  User {user.id}: full_name='{getattr(user, 'full_name', 'NOT SET')}', "
+                  f"name='{getattr(user, 'name', 'NOT SET')}', "
+                  f"email='{user.email}'")
+    
+    # Batch fetch employees
+    employees_dict = {}
+    if employee_ids:
+        employees = db.query(Employee).filter(Employee.id.in_(employee_ids)).all()
+        employees_dict = {emp.id: emp for emp in employees}
+        print(f"DEBUG: Fetched {len(employees)} employees")
+        for emp in employees:
+            print(f"  Employee {emp.id}: full_name='{getattr(emp, 'full_name', 'NOT SET')}', "
+                  f"name='{getattr(emp, 'name', 'NOT SET')}'")
+    
+    # Build orders response
+    orders_response = []
+    for order in orders:
+        creator_name = None
+        created_by_name = None
+        
+        # Get creator name
+        if order.creator_id and order.creator_type:
+            if order.creator_type == 'user':
+                user = users_dict.get(order.creator_id)
+                if user:
+                    # Try to get full_name, fallback to name, then email
+                    creator_name = (
+                        getattr(user, 'full_name', None) or
+                        getattr(user, 'name', None) or
+                        user.email or
+                        "User"
+                    )
+                    print(f"DEBUG: User {order.creator_id} -> name: {creator_name}")
+            elif order.creator_type == 'employee':
+                employee = employees_dict.get(order.creator_id)
+                if employee:
+                    # Try to get full_name, fallback to name
+                    creator_name = (
+                        getattr(employee, 'full_name', None) or
+                        getattr(employee, 'name', None) or
+                        "Employee"
+                    )
+                    print(f"DEBUG: Employee {order.creator_id} -> name: {creator_name}")
+        
+        # Set created_by_name for backward compatibility
+        created_by_name = creator_name
+        
+        orders_response.append({
+            "id": order.id,
+            "order_number": order.order_number,
+            "order_date": order.order_date,
+            "expected_date": order.expected_date,
+            "vendor_id": order.vendor_id,
+            "vendor_name": order.vendor.name if order.vendor else None,
+            "status": order.status.value,
+            "reference_number": order.reference_number,
+            "currency": order.currency,
+            "exchange_rate": order.exchange_rate,
+            "freight_charges": order.freight_charges or Decimal("0"),
+            "other_charges": order.other_charges or Decimal("0"),
+            "discount_on_all": order.discount_on_all or Decimal("0"),
+            "round_off": order.round_off or Decimal("0"),
+            "subtotal": order.subtotal or Decimal("0"),
+            "tax_amount": order.tax_amount or Decimal("0"),
+            "total_amount": order.total_amount or Decimal("0"),
+            "quantity_ordered": order.quantity_ordered,
+            "quantity_received": order.quantity_received,
+            "notes": order.notes,
+            "terms": order.terms,
+            # New fields
+            "creator_id": order.creator_id,
+            "creator_type": order.creator_type,
+            "creator_name": creator_name,
+            # For backward compatibility - IMPORTANT: These should show names, not IDs
+            "created_by": creator_name or order.creator_id,  # Show name first, fallback to ID
+            "created_by_name": created_by_name,  # This should show the name
+            "created_at": order.created_at,
+            "updated_at": order.updated_at,
+        })
+    
+    # Debug first order
+    if orders_response:
+        print("\nDEBUG: First order in response:")
+        first_order = orders_response[0]
+        print(f"  order_number: {first_order['order_number']}")
+        print(f"  creator_id: {first_order['creator_id']}")
+        print(f"  creator_type: {first_order['creator_type']}")
+        print(f"  creator_name: {first_order['creator_name']}")
+        print(f"  created_by: {first_order['created_by']}")
+        print(f"  created_by_name: {first_order['created_by_name']}")
+    
+    # Return with pagination and summary info
+    return {
+        "purchases": orders_response,
+        "summary": {
+            "total_orders": total,
+            "total_amount": total_amount
+        },
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "pages": (total + page_size - 1) // page_size
+        }
+    }
 
 @router.get("/purchase/{order_id}", response_model=PurchaseOrderResponse)
 async def get_purchase_order(
@@ -900,44 +1106,104 @@ async def get_purchase_order(
     company = get_company_or_404(company_id, current_user, db)
     service = OrderService(db)
     
+    # Get order with items and vendor
     order = service.get_purchase_order_with_items(order_id, company)
     if not order:
         raise HTTPException(status_code=404, detail="Purchase order not found")
-    
+    if order.items and len(order.items) > 0:
+        for i, item in enumerate(order.items):
+            print(f"DEBUG: Item {i}:")
+            print(f"  - Product ID: {item.product_id}")
+            print(f"  - Has product object: {item.product is not None}")
+            if item.product:
+                print(f"  - Product name: {item.product.name}")
+                
     # Build items list
-    items_response = [
-        OrderItemResponse(
-            id=item.id,
-            product_id=item.product_id,
-            description=item.description,
-            quantity=item.quantity,
-            unit=item.unit,
-            rate=item.rate,
-            gst_rate=item.gst_rate,
-            tax_amount=item.tax_amount,
-            total_amount=item.total_amount,
-        )
-        for item in order.items
-    ]
+    items_response = []
+    if order.items:
+        for item in order.items:
+            # Calculate taxable amount
+            taxable_amount = (item.quantity * item.rate) - (item.discount_amount or Decimal("0"))
+            product_name = None
+           
+            if item.product:
+                product_name = item.product.name
+              
+            item_response = OrderItemResponse(
+                id=str(item.id),
+                product_id=str(item.product_id) if item.product_id else None,
+                product_name=product_name,
+                item_code=item.item_code or "",
+                description=item.description or "",
+                quantity=item.quantity,
+                unit=item.unit or "",
+                unit_price=item.rate or Decimal("0"),
+                discount_percent=item.discount_percent or Decimal("0"),
+                discount_amount=item.discount_amount or Decimal("0"),
+                gst_rate=item.gst_rate or Decimal("0"),
+                cgst_rate=Decimal("0"),
+                sgst_rate=Decimal("0"),
+                igst_rate=Decimal("0"),
+                taxable_amount=taxable_amount,
+                total_amount=item.total_amount,
+                quantity_pending=item.quantity_pending,
+            )
+            items_response.append(item_response)
     
-    return PurchaseOrderResponse(
-        id=order.id,
-        order_number=order.order_number,
-        order_date=order.order_date,
-        expected_date=order.expected_date,
-        vendor_id=order.vendor_id,
-        status=order.status.value,
-        subtotal=order.subtotal or Decimal("0"),
-        tax_amount=order.tax_amount or Decimal("0"),
-        total_amount=order.total_amount or Decimal("0"),
-        quantity_ordered=order.quantity_ordered,
-        quantity_received=order.quantity_received,
-        notes=order.notes,
-        terms=order.terms,
-        created_at=order.created_at,
-        items=items_response,
-    )
-
+    # Create vendor info
+    vendor_info = None
+    if order.vendor:
+        vendor_info = {
+            "id": str(order.vendor.id),
+            "name": order.vendor.name or "",
+            "email": order.vendor.email or "",
+            "contact": order.vendor.contact or "",
+            "address": order.vendor.billing_address or order.vendor.shipping_address or "",
+        }
+    
+    # Debug: Print what we're returning
+    print(f"DEBUG: Items response count: {len(items_response)}")
+    print(f"DEBUG: Vendor info: {vendor_info}")
+    
+    # Build the response
+    response_data = {
+        "id": str(order.id),
+        "order_number": order.order_number,
+        "order_date": order.order_date,
+        "expected_date": order.expected_date,
+        "vendor_id": str(order.vendor_id) if order.vendor_id else None,
+        "vendor": vendor_info,  # Make sure this is included
+        "status": order.status.value,
+        "subtotal": order.subtotal or Decimal("0"),
+        "tax_amount": order.tax_amount or Decimal("0"),
+        "total_amount": order.total_amount or Decimal("0"),
+        "quantity_ordered": order.quantity_ordered,
+        "quantity_received": order.quantity_received,
+        "notes": order.notes,
+        "terms": order.terms,
+        "created_at": order.created_at,
+        "items": items_response,  # Make sure this is included
+        "currency": order.currency or "INR",
+        "exchange_rate": order.exchange_rate or Decimal("1"),
+        "freight_charges": order.freight_charges or Decimal("0"),
+        "other_charges": order.other_charges or Decimal("0"),
+        "discount_on_all": order.discount_on_all or Decimal("0"),
+        "round_off": order.round_off or Decimal("0"),
+        "reference_number": order.reference_number,
+        "created_by": order.creator_id or "",
+        "creator_name": "",  # You might need to fetch this from users table
+        "updated_at": order.updated_at,
+    }
+    
+    # Convert to Pydantic model
+    response = PurchaseOrderResponse(**response_data)
+    
+    # Debug: Print the final response
+    print(f"DEBUG: Final response dict keys: {response.dict().keys()}")
+    print(f"DEBUG: Has vendor in dict: {'vendor' in response.dict()}")
+    print(f"DEBUG: Has items in dict: {'items' in response.dict()}")
+    
+    return response
 
 @router.put("/purchase/{order_id}", response_model=PurchaseOrderResponse)
 async def update_purchase_order(
@@ -961,50 +1227,184 @@ async def update_purchase_order(
             detail="Only draft orders can be updated"
         )
     
-    updated_order = service.update_purchase_order(
-        order=order,
-        vendor_id=data.vendor_id,
-        items=[i.model_dump() for i in data.items] if data.items else None,
-        order_date=data.order_date,
-        expected_date=data.expected_date,
-        notes=data.notes,
-        terms=data.terms,
-    )
+    # Prepare items data for update
+    items_data = None
+    if data.items is not None:
+        items_data = []
+        for item in data.items:
+            item_dict = item.model_dump()
+            
+            # Handle Decimal conversions
+            item_code = item_dict.get('item_code', '')
+            item_dict['item_code'] = str(item_code).strip() if item_code is not None else ''
+            
+            # Convert Decimal fields to strings for service layer
+            decimal_fields = [
+                'quantity', 'unit_price', 'rate', 'discount_percent', 
+                'discount_amount', 'gst_rate', 'tax_amount', 'total_amount',
+                'cgst_rate', 'sgst_rate', 'igst_rate'
+            ]
+            
+            for field in decimal_fields:
+                if field in item_dict and item_dict[field] is not None:
+                    item_dict[field] = str(item_dict[field])
+            
+            items_data.append(item_dict)
     
-    # Build items list for response
-    items_response = [
-        OrderItemResponse(
-            id=item.id,
-            description=item.description,
-            quantity=item.quantity,
-            unit=item.unit,
-            rate=item.rate,
-            gst_rate=item.gst_rate,
-            tax_amount=item.tax_amount,
-            total_amount=item.total_amount,
+    try:
+        print(f"DEBUG API: Updating purchase order with data:")
+        print(f"  - reference_number: {data.reference_number}")
+        print(f"  - currency: {data.currency}")
+        print(f"  - exchange_rate: {data.exchange_rate}")
+        print(f"  - freight_charges: {data.freight_charges}")
+        print(f"  - other_charges: {data.other_charges}")
+        print(f"  - discount_on_all: {data.discount_on_all}")
+        print(f"  - round_off: {data.round_off}")
+        
+        # Update the order - pass ALL fields to the service
+        updated_order = service.update_purchase_order(
+            order=order,
+            vendor_id=data.vendor_id,
+            items=items_data,
+            order_date=data.order_date,
+            expected_date=data.expected_date,
+            notes=data.notes,
+            terms=data.terms,
+            # Pass the new fields
+            reference_number=data.reference_number,
+            currency=data.currency,
+            exchange_rate=data.exchange_rate,
+            freight_charges=data.freight_charges,
+            other_charges=data.other_charges,
+            discount_on_all=data.discount_on_all,
+            round_off=data.round_off,
+            subtotal=data.subtotal,
+            tax_amount=data.tax_amount,
+            total_amount=data.total_amount,
         )
-        for item in updated_order.items
-    ]
+        
+        print(f"DEBUG API: Order updated")
+        print(f"DEBUG API: Checking if fields were updated:")
+        print(f"  - reference_number in DB: {updated_order.reference_number}")
+        print(f"  - currency in DB: {updated_order.currency}")
+        
+        # Get the fully loaded order
+        order_with_details = service.get_purchase_order_with_items(order.id, company)
+        
+        if not order_with_details:
+            raise HTTPException(status_code=404, detail="Updated order not found")
+        
+        # Build items response
+        items_response = []
+        if order_with_details.items:
+            for item in order_with_details.items:
+                taxable_amount = (item.quantity * item.rate) - (item.discount_amount or Decimal("0"))
+                
+                product_name = None
+                if hasattr(item, 'product') and item.product:
+                    product_name = item.product.name
+                
+                item_response = OrderItemResponse(
+                    id=str(item.id),
+                    product_id=str(item.product_id) if item.product_id else None,
+                    product_name=product_name,
+                    item_code=item.item_code or "",
+                    description=item.description or "",
+                    quantity=item.quantity or Decimal("0"),
+                    unit=item.unit or "",
+                    unit_price=item.rate or Decimal("0"),
+                    discount_percent=item.discount_percent or Decimal("0"),
+                    discount_amount=item.discount_amount or Decimal("0"),
+                    gst_rate=item.gst_rate or Decimal("0"),
+                    cgst_rate=item.cgst_rate if hasattr(item, 'cgst_rate') else Decimal("0"),
+                    sgst_rate=item.sgst_rate if hasattr(item, 'sgst_rate') else Decimal("0"),
+                    igst_rate=item.igst_rate if hasattr(item, 'igst_rate') else Decimal("0"),
+                    taxable_amount=taxable_amount,
+                    total_amount=item.total_amount or Decimal("0"),
+                    quantity_pending=item.quantity_pending or Decimal("0"),
+                )
+                items_response.append(item_response)
+        
+        # Create vendor info
+        vendor_info = None
+        if hasattr(order_with_details, 'vendor') and order_with_details.vendor:
+            vendor = order_with_details.vendor
+            vendor_info = {
+                "id": str(vendor.id),
+                "name": vendor.name or "",
+                "email": vendor.email or "",
+                "phone": vendor.contact or "",
+                "address": vendor.billing_address or vendor.shipping_address or "",
+            }
+        
+        # Get creator information
+        creator_name = None
+        if hasattr(order_with_details, 'creator_id') and order_with_details.creator_id:
+            if hasattr(order_with_details, 'creator_type') and order_with_details.creator_type:
+                if order_with_details.creator_type == 'user':
+                    creator = db.query(User).filter(User.id == order_with_details.creator_id).first()
+                    if creator:
+                        creator_name = (
+                            getattr(creator, 'full_name', None) or
+                            getattr(creator, 'name', None) or
+                            creator.email or
+                            "User"
+                        )
+                elif order_with_details.creator_type == 'employee':
+                    employee = db.query(Employee).filter(Employee.id == order_with_details.creator_id).first()
+                    if employee:
+                        creator_name = (
+                            getattr(employee, 'full_name', None) or
+                            getattr(employee, 'name', None) or
+                            "Employee"
+                        )
+        
+        # Build the response
+        response_data = {
+            "id": str(order_with_details.id),
+            "order_number": order_with_details.order_number,
+            "order_date": order_with_details.order_date,
+            "expected_date": order_with_details.expected_date,
+            "vendor_id": str(order_with_details.vendor_id) if order_with_details.vendor_id else None,
+            "vendor": vendor_info,
+            "status": order_with_details.status.value,
+            "subtotal": order_with_details.subtotal or Decimal("0"),
+            "tax_amount": order_with_details.tax_amount or Decimal("0"),
+            "total_amount": order_with_details.total_amount or Decimal("0"),
+            "quantity_ordered": order_with_details.quantity_ordered or Decimal("0"),
+            "quantity_received": order_with_details.quantity_received or Decimal("0"),
+            "notes": order_with_details.notes,
+            "terms": order_with_details.terms,
+            "created_at": order_with_details.created_at,
+            "items": items_response,
+            # **MAKE SURE THESE FIELDS ARE INCLUDED:**
+            "reference_number": order_with_details.reference_number,
+            "currency": order_with_details.currency or "INR",
+            "exchange_rate": order_with_details.exchange_rate or Decimal("1"),
+            "freight_charges": order_with_details.freight_charges or Decimal("0"),
+            "other_charges": order_with_details.other_charges or Decimal("0"),
+            "discount_on_all": order_with_details.discount_on_all or Decimal("0"),
+            "round_off": order_with_details.round_off or Decimal("0"),
+            "creator_id": order_with_details.creator_id,
+            "creator_type": order_with_details.creator_type,
+            "creator_name": creator_name,
+            "created_by": creator_name or order_with_details.creator_id,
+            "created_by_name": creator_name,
+            "updated_at": order_with_details.updated_at or datetime.utcnow(),
+        }
+        
+        print(f"DEBUG API: Response built with reference_number: {response_data['reference_number']}")
+        print(f"DEBUG API: Response built with currency: {response_data['currency']}")
+        print(f"DEBUG API: Response built with exchange_rate: {response_data['exchange_rate']}")
+        
+        return PurchaseOrderResponse(**response_data)
+        
+    except Exception as e:
+        print(f"DEBUG API: Error in update endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=str(e))
     
-    return PurchaseOrderResponse(
-        id=updated_order.id,
-        order_number=updated_order.order_number,
-        order_date=updated_order.order_date,
-        expected_date=updated_order.expected_date,
-        vendor_id=updated_order.vendor_id,
-        status=updated_order.status.value,
-        subtotal=updated_order.subtotal or Decimal("0"),
-        tax_amount=updated_order.tax_amount or Decimal("0"),
-        total_amount=updated_order.total_amount or Decimal("0"),
-        quantity_ordered=updated_order.quantity_ordered,
-        quantity_received=updated_order.quantity_received,
-        notes=updated_order.notes,
-        terms=updated_order.terms,
-        created_at=updated_order.created_at,
-        items=items_response,
-    )
-
-
 @router.post("/purchase/{order_id}/confirm")
 async def confirm_purchase_order(
     company_id: str,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 import { vendorsApi, productsApi, ordersApi } from "@/services/api";
@@ -171,16 +171,15 @@ function ProductSelectField({
     );
 }
 
-export default function AddPurchaseOrderPage() {
+export default function EditPurchaseOrderPage() {
     const router = useRouter();
+    const params = useParams();
     const { company, user } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     const [showOtherFields, setShowOtherFields] = useState(false);
-    const [nextPurchaseOrderNumber, setNextPurchaseOrderNumber] = useState("");
-    const [loadingPurchaseOrderNumber, setLoadingPurchaseOrderNumber] = useState(false);
     const [showAddCurrencyModal, setShowAddCurrencyModal] = useState(false);
     const [newCurrency, setNewCurrency] = useState({ code: "", name: "", rate: 1 });
-
     const [productSearch, setProductSearch] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
 
@@ -227,13 +226,6 @@ export default function AddPurchaseOrderPage() {
         subtotal: 0,
         total_tax: 0,
         total_amount: 0,
-
-        // Additional fields
-        shipping_address: "",
-        billing_address: "",
-        contact_person: "",
-        contact_phone: "",
-        contact_email: "",
     });
 
     // Purchase order items state
@@ -260,70 +252,105 @@ export default function AddPurchaseOrderPage() {
 
     // Load data on component mount
     useEffect(() => {
-        if (company?.id) {
+        if (company?.id && params.id) {
+            loadPurchaseOrderData();
             loadSuppliers();
             loadProducts();
-            loadNextPurchaseOrderNumber();
         }
-    }, [company?.id]);
+    }, [company?.id, params.id]);
 
-    const loadNextPurchaseOrderNumber = async () => {
-        if (!company?.id) return;
-
+    const loadPurchaseOrderData = async () => {
         try {
-            setLoadingPurchaseOrderNumber(true);
-            // Generate purchase order number (you can modify this logic)
-            const today = new Date();
-            const year = today.getFullYear();
-            const month = String(today.getMonth() + 1).padStart(2, '0');
-            const poNumber = `PO-${year}${month}-001`;
-            setNextPurchaseOrderNumber(poNumber);
+            setIsLoading(true);
+            const response = await ordersApi.getPurchaseOrder(company!.id, params.id as string);
+            
+            // Populate form data
+            setFormData({
+                supplier_id: response.vendor_id || "",
+                purchase_order_date: response.order_date ? new Date(response.order_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                reference_no: response.reference_number || "",
+                reference_date: "",
+                currency: response.currency || "INR",
+                exchange_rate: parseFloat(response.exchange_rate || "1"),
+                delivery_date: response.expected_date ? new Date(response.expected_date).toISOString().split('T')[0] : "",
+                notes: response.notes || "",
+                terms: response.terms || `1. Goods must be delivered in perfect condition.
+2. All items must be properly packed.
+3. Payment terms: 30 days from invoice date.
+4. Any damaged goods will be returned at supplier's expense.`,
+                freight_charges: parseFloat(response.freight_charges || "0"),
+                freight_type: "fixed",
+                other_charges: parseFloat(response.other_charges || "0"),
+                other_charges_type: "fixed",
+                discount_on_all: parseFloat(response.discount_on_all || "0"),
+                discount_type: "percentage",
+                round_off: parseFloat(response.round_off || "0"),
+                subtotal: parseFloat(response.subtotal || "0"),
+                total_tax: parseFloat(response.tax_amount || "0"),
+                total_amount: parseFloat(response.total_amount || "0"),
+            });
+
+            // Populate items
+            if (response.items && response.items.length > 0) {
+                const formattedItems = response.items.map((item: any, index: number) => ({
+                    id: index + 1,
+                    product_id: item.product_id || "",
+                    description: item.description || "",
+                    item_code: item.item_code || "",
+                    quantity: parseFloat(item.quantity || "1"),
+                    unit: item.unit || "unit",
+                    purchase_price: parseFloat(item.rate || item.unit_price || "0"),
+                    discount_percent: parseFloat(item.discount_percent || "0"),
+                    discount_amount: parseFloat(item.discount_amount || "0"),
+                    gst_rate: parseFloat(item.gst_rate || "18"),
+                    cgst_rate: parseFloat(item.cgst_rate || "9"),
+                    sgst_rate: parseFloat(item.sgst_rate || "9"),
+                    igst_rate: parseFloat(item.igst_rate || "0"),
+                    tax_amount: parseFloat(item.tax_amount || "0"),
+                    unit_cost: parseFloat(item.rate || item.unit_price || "0"),
+                    total_amount: parseFloat(item.total_amount || "0"),
+                }));
+                setItems(formattedItems);
+            }
         } catch (error) {
-            console.error("Failed to load next purchase order number:", error);
+            console.error("Failed to load purchase order:", error);
+            alert("Failed to load purchase order data");
+            router.push("/purchase/purchase-orders");
         } finally {
-            setLoadingPurchaseOrderNumber(false);
+            setIsLoading(false);
         }
     };
 
-const loadSuppliers = async () => {
-    try {
-        setLoading(prev => ({ ...prev, suppliers: true }));
-        const response = await vendorsApi.list(company!.id, {
-            page_size: 100,
-            search: "",
-        });
-        
-        console.log("Full vendors API response:", response);
-        console.log("Response type:", typeof response);
-        console.log("Response keys:", Object.keys(response));
-        
-        // Check different possible structures
-        if (Array.isArray(response)) {
-            console.log("Response is an array:", response);
-            setSuppliers(response);
-        } else if (response && Array.isArray(response.data)) {
-            console.log("Response.data is an array:", response.data);
-            setSuppliers(response.data);
-        } else if (response && response.data && Array.isArray(response.data.vendors)) {
-            console.log("Response.data.vendors:", response.data.vendors);
-            setSuppliers(response.data.vendors);
-        } else if (response && response.vendors) {
-            console.log("Response.vendors:", response.vendors);
-            setSuppliers(response.vendors);
-        } else if (response && response.customers) {
-            console.log("Response.customers (fallback):", response.customers);
-            setSuppliers(response.customers);
-        } else {
-            console.log("No vendors found, setting empty array");
-            setSuppliers([]);
+    const loadSuppliers = async () => {
+        try {
+            setLoading(prev => ({ ...prev, suppliers: true }));
+            const response = await vendorsApi.list(company!.id, {
+                page_size: 100,
+                search: "",
+            });
+            
+            // Check different possible structures
+            if (Array.isArray(response)) {
+                setSuppliers(response);
+            } else if (response && Array.isArray(response.data)) {
+                setSuppliers(response.data);
+            } else if (response && response.data && Array.isArray(response.data.vendors)) {
+                setSuppliers(response.data.vendors);
+            } else if (response && response.vendors) {
+                setSuppliers(response.vendors);
+            } else if (response && response.customers) {
+                setSuppliers(response.customers);
+            } else {
+                setSuppliers([]);
+            }
+            
+        } catch (error) {
+            console.error("Failed to load suppliers:", error);
+        } finally {
+            setLoading(prev => ({ ...prev, suppliers: false }));
         }
-        
-    } catch (error) {
-        console.error("Failed to load suppliers:", error);
-    } finally {
-        setLoading(prev => ({ ...prev, suppliers: false }));
-    }
-};
+    };
+
     const loadProducts = async () => {
         try {
             setLoading(prev => ({ ...prev, products: true }));
@@ -367,152 +394,125 @@ const loadSuppliers = async () => {
     };
 
     // Calculate totals
-  const calculateTotals = () => {
-    let subtotal = 0;
-    let totalTax = 0;
-    let totalItemDiscount = 0;
+    const calculateTotals = () => {
+        let subtotal = 0;
+        let totalTax = 0;
+        let totalItemDiscount = 0;
 
-    items.forEach(item => {
-        const itemTotal = item.quantity * item.purchase_price;
-        const discount = item.discount_percent > 0 ?
-            itemTotal * (item.discount_percent / 100) : 0;
-        const taxable = itemTotal - discount;
-        const tax = taxable * (item.gst_rate / 100);
+        items.forEach(item => {
+            const itemTotal = item.quantity * item.purchase_price;
+            const discount = item.discount_percent > 0 ?
+                itemTotal * (item.discount_percent / 100) : 0;
+            const taxable = itemTotal - discount;
+            const tax = taxable * (item.gst_rate / 100);
 
-        subtotal += taxable;
-        totalTax += tax;
-        totalItemDiscount += discount;
-        
-        console.log("Item calculation:", {
-            itemTotal,
-            discount,
-            taxable,
-            tax,
-            gst_rate: item.gst_rate
+            subtotal += taxable;
+            totalTax += tax;
+            totalItemDiscount += discount;
         });
-    });
 
-    // Calculate additional charges and discounts
-    const freightCharges = formData.freight_charges || 0;
-    const otherCharges = formData.other_charges || 0;
-    const discountOnAll = formData.discount_on_all || 0;
+        // Calculate additional charges and discounts
+        const freightCharges = formData.freight_charges || 0;
+        const otherCharges = formData.other_charges || 0;
+        const discountOnAll = formData.discount_on_all || 0;
 
-    const discountAllAmount = formData.discount_type === 'percentage'
-        ? subtotal * (discountOnAll / 100)
-        : discountOnAll;
+        const discountAllAmount = formData.discount_type === 'percentage'
+            ? subtotal * (discountOnAll / 100)
+            : discountOnAll;
 
-    const totalBeforeTax = subtotal;
-    const totalAfterTax = totalBeforeTax + totalTax;
-    const totalAfterCharges = totalAfterTax + freightCharges + otherCharges;
-    const totalAfterDiscountAll = totalAfterCharges - discountAllAmount;
-    const grandTotal = totalAfterDiscountAll + (formData.round_off || 0);
+        const totalBeforeTax = subtotal;
+        const totalAfterTax = totalBeforeTax + totalTax;
+        const totalAfterCharges = totalAfterTax + freightCharges + otherCharges;
+        const totalAfterDiscountAll = totalAfterCharges - discountAllAmount;
+        const grandTotal = totalAfterDiscountAll + (formData.round_off || 0);
 
-    console.log("Final totals calculation:", {
-        subtotal,
-        totalTax,
-        totalItemDiscount,
-        freightCharges,
-        otherCharges,
-        discountAllAmount,
-        roundOff: formData.round_off,
-        grandTotal
-    });
-
-    return {
-        subtotal: Number(totalBeforeTax.toFixed(2)),
-        totalTax: Number(totalTax.toFixed(2)),
-        itemDiscount: Number(totalItemDiscount.toFixed(2)),
-        freight: Number(freightCharges.toFixed(2)),
-        otherCharges: Number(otherCharges.toFixed(2)),
-        discountAll: Number(discountAllAmount.toFixed(2)),
-        roundOff: Number(formData.round_off || 0),
-        grandTotal: Number(grandTotal.toFixed(2)),
-        totalAfterCharges: Number(totalAfterCharges.toFixed(2)),
-        totalAfterDiscountAll: Number(totalAfterDiscountAll.toFixed(2)),
+        return {
+            subtotal: Number(totalBeforeTax.toFixed(2)),
+            totalTax: Number(totalTax.toFixed(2)),
+            itemDiscount: Number(totalItemDiscount.toFixed(2)),
+            freight: Number(freightCharges.toFixed(2)),
+            otherCharges: Number(otherCharges.toFixed(2)),
+            discountAll: Number(discountAllAmount.toFixed(2)),
+            roundOff: Number(formData.round_off || 0),
+            grandTotal: Number(grandTotal.toFixed(2)),
+            totalAfterCharges: Number(totalAfterCharges.toFixed(2)),
+            totalAfterDiscountAll: Number(totalAfterDiscountAll.toFixed(2)),
+        };
     };
-};
+
     const totals = calculateTotals();
 
-const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!company?.id) return;
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!company?.id || !params.id) return;
 
-    setIsSubmitting(true);
-    try {
-        console.log("=== FRONTEND CALCULATIONS ===");
-        console.log("Items:", items);
-        console.log("Totals:", totals);
-        console.log("Form Data:", formData);
+        setIsSubmitting(true);
+        try {
+            console.log("=== UPDATING PURCHASE ORDER ===");
+            console.log("Items:", items);
+            console.log("Totals:", totals);
+            console.log("Form Data:", formData);
 
-        // Prepare items with all fields
-        const preparedItems = items.map(item => {
-            console.log("Item calculation:", {
-                purchase_price: item.purchase_price,
-                quantity: item.quantity,
-                discount_percent: item.discount_percent,
-                gst_rate: item.gst_rate,
-                calculated_total: item.total_amount
+            // Prepare items with all fields
+            const preparedItems = items.map(item => {
+                return {
+                    product_id: item.product_id ? String(item.product_id) : null,
+                    description: item.description || "",
+                    quantity: Number(item.quantity) || 1,
+                    unit: item.unit || "unit",
+                    rate: Number(item.purchase_price) || 0,
+                    item_code: item.item_code || "",
+                    discount_percent: Number(item.discount_percent || 0),
+                    discount_amount: Number(item.discount_amount || 0),
+                    gst_rate: Number(item.gst_rate || 0),
+                    tax_amount: Number(item.tax_amount || 0),
+                    total_amount: Number(item.total_amount || 0),
+                };
             });
-            
-            return {
-                product_id: item.product_id ? String(item.product_id) : null,
-                description: item.description || "",
-                quantity: Number(item.quantity) || 1,
-                unit: item.unit || "unit",
-                rate: Number(item.purchase_price) || 0,  // Use rate not unit_price
-                item_code: item.item_code || "",
-                discount_percent: Number(item.discount_percent || 0),
-                discount_amount: Number(item.discount_amount || 0),
-                gst_rate: Number(item.gst_rate || 0),
-                tax_amount: Number(item.tax_amount || 0),
-                total_amount: Number(item.total_amount || 0),
+
+            // Prepare purchase order data for update
+            const purchaseOrderData = {
+                vendor_id: formData.supplier_id,
+                order_date: formData.purchase_order_date,
+                expected_date: formData.delivery_date || null,
+                reference_number: formData.reference_no || null,
+                notes: formData.notes || "",
+                terms: formData.terms || "",
+                subtotal: totals.subtotal,
+                tax_amount: totals.totalTax,
+                total_amount: totals.grandTotal,
+                freight_charges: formData.freight_charges || 0,
+                other_charges: formData.other_charges || 0,
+                discount_on_all: formData.discount_on_all || 0,
+                round_off: formData.round_off || 0,
+                currency: formData.currency,
+                exchange_rate: formData.exchange_rate,
+                items: preparedItems,
             };
-        });
 
-        // Prepare purchase order data
-        const purchaseOrderData = {
-            vendor_id: formData.supplier_id,
-            order_date: formData.purchase_order_date,
-            expected_date: formData.delivery_date || null,
-            reference_number: formData.reference_no || null,
-            notes: formData.notes || "",
-            terms: formData.terms || "",
-            subtotal: totals.subtotal,  // Send calculated subtotal
-            tax_amount: totals.totalTax,  // Send calculated tax
-            total_amount: totals.grandTotal,  // Send calculated grand total
-            freight_charges: formData.freight_charges || 0,
-            other_charges: formData.other_charges || 0,
-            discount_on_all: formData.discount_on_all || 0,
-            round_off: formData.round_off || 0,
-            currency: formData.currency,
-            exchange_rate: formData.exchange_rate,
-            items: preparedItems,
-        };
+            console.log("=== PURCHASE ORDER UPDATE DATA ===");
+            console.log(JSON.stringify(purchaseOrderData, null, 2));
 
-        console.log("=== PURCHASE ORDER DATA BEING SENT ===");
-        console.log(JSON.stringify(purchaseOrderData, null, 2));
+            // Call the API to update
+            const response = await ordersApi.updatePurchaseOrder(
+                company.id, 
+                params.id as string, 
+                purchaseOrderData
+            );
+            
+            console.log('=== UPDATE RESPONSE ===');
+            console.log('Purchase order updated successfully:', response);
+            
+            alert("Purchase order updated successfully!");
+            router.push(`/purchase/purchase-orders/${params.id}`);
 
-        // Call the API
-        const response = await ordersApi.createPurchaseOrder(company.id, purchaseOrderData);
-        
-        console.log('=== BACKEND RESPONSE ===');
-        console.log('Purchase order created successfully:', response);
-        
-        // Check if response matches what we sent
-        console.log('=== DATA VALIDATION ===');
-        console.log('Sent subtotal:', totals.subtotal, 'Received subtotal:', response.subtotal);
-        console.log('Sent total:', totals.grandTotal, 'Received total:', response.total_amount);
-        
-        alert("Purchase order saved successfully!");
-        router.push(`/purchase/purchase-orders`);
-
-    } catch (error: any) {
-        console.error("Error creating purchase order:", error);
-        // ... error handling
-    } finally {
-        setIsSubmitting(false);
-    }
-};
+        } catch (error: any) {
+            console.error("Error updating purchase order:", error);
+            alert(error.message || "Failed to update purchase order. Please try again.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     // Update item calculation
     const updateItem = (id: number, field: string, value: any) => {
@@ -620,6 +620,19 @@ const handleSubmit = async (e: React.FormEvent) => {
         setItems(items.filter(item => item.id !== id));
     };
 
+    if (isLoading) {
+        return (
+            <div className="min-h-screen bg-gray-50 dark:bg-gray-dark p-4 md:p-6">
+                <div className="flex items-center justify-center h-64">
+                    <div className="text-center">
+                        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                        <p className="mt-4 text-dark-6">Loading purchase order data...</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="min-h-screen bg-gray-50 p-4 dark:bg-gray-dark md:p-6">
             {/* Add Currency Modal */}
@@ -719,7 +732,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                             <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
                             </svg>
-                            <span className="ml-1 font-medium text-dark dark:text-white md:ml-2">Add Purchase Order</span>
+                            <span className="ml-1 font-medium text-dark dark:text-white md:ml-2">Edit Purchase Order</span>
                         </div>
                     </li>
                 </ol>
@@ -727,8 +740,8 @@ const handleSubmit = async (e: React.FormEvent) => {
 
             {/* Page Header */}
             <div className="mb-6">
-                <h1 className="text-2xl font-bold text-dark dark:text-white">Purchase – Add / Update Purchase Order</h1>
-                <p className="text-dark-6">Create new purchase order with supplier details and items</p>
+                <h1 className="text-2xl font-bold text-dark dark:text-white">Edit Purchase Order</h1>
+                <p className="text-dark-6">Update purchase order details and items</p>
             </div>
 
             <form onSubmit={handleSubmit}>
@@ -750,23 +763,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                                         placeholder="Select Company"
                                     />
                                 </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Purchase Order Number <span className="text-red-500">*</span>
-                                    </label>
-                                    <div className="flex gap-2">
-                                        <input
-                                            type="text"
-                                            value={loadingPurchaseOrderNumber ? "Loading..." : nextPurchaseOrderNumber}
-                                            className="flex-1 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 outline-none dark:border-dark-3 dark:bg-dark-2"
-                                            readOnly
-                                            disabled={loadingPurchaseOrderNumber}
-                                        />
-                                    </div>
-                                    {loadingPurchaseOrderNumber && (
-                                        <p className="mt-1 text-sm text-gray-500">Generating purchase order number...</p>
-                                    )}
-                                </div>
+                              
                                 <div>
                                     <SelectField
                                         label="Currency"
@@ -811,19 +808,18 @@ const handleSubmit = async (e: React.FormEvent) => {
                                     </div>
                                 )}
                                 <div>
-                                    
-                                  <SelectField
-    label="Supplier"
-    name="supplier_id"
-    value={formData.supplier_id}
-    onChange={handleFormChange}
-    options={suppliers.map(supplier => ({
-        value: supplier.id,
-        label: `${supplier.name}${supplier.email ? ` (${supplier.email})` : ''}${supplier.contact ? ` ${-supplier.contact}` : ''}`
-    }))}
-    required={true}
-    placeholder="Select Supplier"
-/>
+                                    <SelectField
+                                        label="Supplier"
+                                        name="supplier_id"
+                                        value={formData.supplier_id}
+                                        onChange={handleFormChange}
+                                        options={suppliers.map(supplier => ({
+                                            value: supplier.id,
+                                            label: `${supplier.name}${supplier.email ? ` (${supplier.email})` : ''}${supplier.contact ? ` ${supplier.contact}` : ''}`
+                                        }))}
+                                        required={true}
+                                        placeholder="Select Supplier"
+                                    />
                                 </div>
                                 <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
@@ -845,17 +841,6 @@ const handleSubmit = async (e: React.FormEvent) => {
                                         type="text"
                                         value={formData.reference_no || ""}
                                         onChange={(e) => setFormData({ ...formData, reference_no: e.target.value })}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Reference Date
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={formData.reference_date}
-                                        onChange={(e) => handleFormChange('reference_date', e.target.value)}
                                         className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                     />
                                 </div>
@@ -1277,7 +1262,6 @@ const handleSubmit = async (e: React.FormEvent) => {
                                 <div className="p-6">
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div className="md:col-span-2">
-                                           
                                             <textarea
                                                 value={formData.terms}
                                                 onChange={(e) => setFormData({ ...formData, terms: e.target.value })}
@@ -1298,15 +1282,15 @@ const handleSubmit = async (e: React.FormEvent) => {
                                     disabled={isSubmitting}
                                     className="min-w-[180px] rounded-lg bg-green-600 px-6 py-3 font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
                                 >
-                                    {isSubmitting ? "Saving..." : "Save Purchase Order"}
+                                    {isSubmitting ? "Updating..." : "Update Purchase Order"}
                                 </button>
 
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={() => router.push(`/purchase/purchase-orders/${params.id}`)}
                                     className="min-w-[180px] rounded-lg border border-stroke bg-white px-6 py-3 font-medium text-dark transition hover:bg-gray-50 dark:border-dark-3 dark:bg-gray-dark dark:text-white"
                                 >
-                                    Close
+                                    Cancel
                                 </button>
                             </div>
                         </div>

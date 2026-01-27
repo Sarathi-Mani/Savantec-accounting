@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.database.models import Invoice, PurchaseInvoice, Customer
+from app.database.models import Invoice, Purchase, Customer
 
 
 class AgingReportService:
@@ -130,14 +130,14 @@ class AgingReportService:
         if not buckets:
             buckets = [0, 30, 60, 90, 180]
         
-        query = self.db.query(PurchaseInvoice).filter(
-            PurchaseInvoice.company_id == company_id,
-            PurchaseInvoice.outstanding_amount > 0,
-            PurchaseInvoice.invoice_date <= as_of_date,
+        query = self.db.query(Purchase).filter(
+            Purchase.company_id == company_id,
+            Purchase.outstanding_amount > 0,
+            Purchase.invoice_date <= as_of_date,
         )
         
         if vendor_id:
-            query = query.filter(PurchaseInvoice.vendor_id == vendor_id)
+            query = query.filter(Purchase.vendor_id == vendor_id)
         
         invoices = query.all()
         

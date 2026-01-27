@@ -30,32 +30,42 @@ const api = axios.create({
   },
 });
 
-// Add token to requests
-api.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("access_token");
+api.interceptors.request.use(
+  (config) => {
+    
+    // FIX: Check for employee token too
+    const userType = localStorage.getItem('user_type');
+    let token;
+    
+    if (userType === 'employee') {
+      token = localStorage.getItem('employee_token');
+    } else {
+      token = localStorage.getItem('access_token');
+    }
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-  }
-  return config;
-});
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
-// Handle auth errors
+// Response interceptor to handle errors
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("user");
-        localStorage.removeItem("company_id");
-        window.location.href = "/auth/sign-in";
-      }
+      // Handle unauthorized access
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
     }
     return Promise.reject(error);
   }
 );
+
+
 
 // Auth types
 export interface LoginRequest {
@@ -1665,6 +1675,17 @@ export interface PurchaseOrderCreate {
   expected_date?: string;
   notes?: string;
   terms?: string;
+  // Add these missing fields:
+  reference_number?: string;
+  currency?: string;
+  exchange_rate?: number;
+  freight_charges?: number;
+  other_charges?: number;
+  discount_on_all?: number;
+  round_off?: number;
+  subtotal?: number;
+  tax_amount?: number;
+  total_amount?: number;
 }
 
 // ============== Orders API ==============
@@ -1807,6 +1828,7 @@ export const ordersApi = {
     await api.delete(`/companies/${companyId}/orders/receipt-notes/${noteId}`);
   },
 };
+
 
 
 // Purchase Requests API
@@ -2170,14 +2192,20 @@ export const purchasesApi = {
       vendor_id?: string;
       from_date?: string;
       to_date?: string;
+      purchase_type?: string;
     }
   ): Promise<PurchaseListResponse> => {
-    const response = await api.get(`/companies/${companyId}/purchases`, { params });
+    // Add company_id to query params
+    const queryParams = { company_id: companyId, ...params };
+    const response = await api.get(`/purchases`, { params: queryParams });
     return response.data;
   },
 
   get: async (companyId: string, invoiceId: string): Promise<PurchaseInvoice> => {
-    const response = await api.get(`/companies/${companyId}/purchases/${invoiceId}`);
+    // Add company_id to query params
+    const response = await api.get(`/purchases/${invoiceId}`, {
+      params: { company_id: companyId }
+    });
     return response.data;
   },
 
@@ -2189,7 +2217,7 @@ export const purchasesApi = {
     due_date?: string;
     place_of_supply?: string;
     is_reverse_charge?: boolean;
-  
+    purchase_type?: string;
     purchase_order_id?: string;
     receipt_note_id?: string;
     notes?: string;
@@ -2208,12 +2236,15 @@ export const purchasesApi = {
       itc_eligible?: boolean;
     }>;
   }): Promise<PurchaseInvoice> => {
-    const response = await api.post(`/companies/${companyId}/purchases`, data);
+    // Add company_id to query params
+    const response = await api.post(`/purchases?company_id=${companyId}`, data);
     return response.data;
   },
 
   approve: async (companyId: string, invoiceId: string): Promise<PurchaseInvoice> => {
-    const response = await api.post(`/companies/${companyId}/purchases/${invoiceId}/approve`);
+    const response = await api.post(`/purchases/${invoiceId}/approve`, null, {
+      params: { company_id: companyId }
+    });
     return response.data;
   },
 
@@ -2229,7 +2260,9 @@ export const purchasesApi = {
       notes?: string;
     }
   ): Promise<PurchasePayment> => {
-    const response = await api.post(`/companies/${companyId}/purchases/${invoiceId}/payments`, data);
+    const response = await api.post(`/purchases/${invoiceId}/payments`, data, {
+      params: { company_id: companyId }
+    });
     return response.data;
   },
 
@@ -2238,14 +2271,19 @@ export const purchasesApi = {
     invoiceId: string,
     godown_id?: string
   ): Promise<{ message: string; entries_created: number }> => {
-    const response = await api.post(`/companies/${companyId}/purchases/${invoiceId}/receive-stock`, null, {
-      params: godown_id ? { godown_id } : {},
+    const response = await api.post(`/purchases/${invoiceId}/receive-stock`, null, {
+      params: { 
+        company_id: companyId,
+        ...(godown_id && { godown_id }) 
+      }
     });
     return response.data;
   },
 
   cancel: async (companyId: string, invoiceId: string, reason?: string): Promise<PurchaseInvoice> => {
-    const response = await api.post(`/companies/${companyId}/purchases/${invoiceId}/cancel`, reason ? { reason } : undefined);
+    const response = await api.post(`/purchases/${invoiceId}/cancel`, reason ? { reason } : undefined, {
+      params: { company_id: companyId }
+    });
     return response.data;
   },
 
@@ -2254,13 +2292,16 @@ export const purchasesApi = {
     fromDate: string,
     toDate: string
   ): Promise<InputGSTSummary> => {
-    const response = await api.get(`/companies/${companyId}/purchases/reports/input-gst`, {
-      params: { from_date: fromDate, to_date: toDate },
+    const response = await api.get(`/purchases/reports/input-gst`, {
+      params: { 
+        company_id: companyId,
+        from_date: fromDate, 
+        to_date: toDate 
+      },
     });
     return response.data;
   },
 };
-
 // Inventory Types
 export interface StockGroup {
   id: string;
@@ -2756,7 +2797,47 @@ export interface Designation {
   description?: string;
   level: number;
   is_active: boolean;
+  employee_count?: number;
+  created_at?: string;
+  updated_at?: string;
 }
+export interface PaginatedDesignations {
+  items: Designation[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    total_pages: number;
+  };
+}
+
+export interface DesignationStats {
+  total_designations: number;
+  active_designations: number;
+  inactive_designations: number;
+  top_designations: Array<{
+    id: string;
+    name: string;
+    employee_count: number;
+  }>;
+}
+
+export interface DesignationCreateData {
+  name: string;
+  code?: string;
+  description?: string;
+  level?: number;
+  is_active?: boolean;
+}
+
+export interface DesignationUpdateData {
+  name?: string;
+  code?: string;
+  description?: string;
+  level?: number;
+  is_active?: boolean;
+}
+
 
 export interface Employee {
   id: string;
@@ -3077,6 +3158,119 @@ export const payrollApi = {
     data: { name: string; code?: string; level?: number }
   ): Promise<Designation> => {
     const response = await api.post(`/companies/${companyId}/payroll/designations`, data);
+    return response.data;
+  },
+
+  getDesignations: async (
+    companyId: string,
+    params?: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      status?: "active" | "inactive";
+      sort_by?: string;
+      sort_order?: "asc" | "desc";
+    }
+  ): Promise<{ success: boolean; data: { items: Designation[]; pagination: any } }> => {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.status) queryParams.append('status_filter', params.status);
+    if (params?.sort_by) queryParams.append('sort_by', params.sort_by);
+    if (params?.sort_order) queryParams.append('sort_order', params.sort_order);
+    
+    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    const response = await api.get(`/companies/${companyId}/payroll/designations/paginated${queryString}`);
+    return response.data;
+  },
+
+  // Search designations
+  searchDesignations: async (
+    companyId: string,
+    search: string,
+    status?: string
+  ): Promise<{ success: boolean; data: { items: Designation[]; total: number } }> => {
+    const queryParams = new URLSearchParams();
+    queryParams.append('search', search);
+    if (status) queryParams.append('status_filter', status);
+    
+    const response = await api.get(`/companies/${companyId}/payroll/designations/search?${queryParams.toString()}`);
+    return response.data;
+  },
+
+  // Get all active designations for dropdowns
+  getActiveDesignations: async (companyId: string): Promise<{ success: boolean; data: Designation[] }> => {
+    const response = await api.get(`/companies/${companyId}/payroll/designations/active`);
+    return response.data;
+  },
+
+  // Get designation statistics
+getDesignationStats: async (companyId: string): Promise<{ success: boolean; data: DesignationStats }> => {
+    const response = await api.get(`/companies/${companyId}/payroll/designations/stats`);
+    return response.data;
+  },
+  
+  // Get a single designation by ID
+  getDesignationById: async (
+    designationId: string,
+    companyId: string
+  ): Promise<{ success: boolean; data: Designation }> => {
+    const response = await api.get(`/companies/${companyId}/payroll/designations/${designationId}`);
+    return response.data;
+  },
+
+  // Update a designation
+  updateDesignation: async (
+    designationId: string,
+    companyId: string,
+    data: DesignationUpdateData
+  ): Promise<{ success: boolean; data: Designation }> => {
+    const response = await api.put(`/companies/${companyId}/payroll/designations/${designationId}`, data);
+    return response.data;
+  },
+
+  // Delete a designation
+  deleteDesignation: async (
+    designationId: string,
+    companyId: string
+  ): Promise<{ success: boolean; message: string }> => {
+    const response = await api.delete(`/companies/${companyId}/payroll/designations/${designationId}`);
+    return response.data;
+  },
+
+  // Toggle designation status
+  toggleDesignationStatus: async (
+    designationId: string,
+    companyId: string,
+    isActive: boolean
+  ): Promise<{ success: boolean; data: Designation }> => {
+    const response = await api.patch(
+      `/companies/${companyId}/payroll/designations/${designationId}/status`,
+      { is_active: isActive }
+    );
+    return response.data;
+  },
+
+  // Set permissions for a designation
+  setDesignationPermissions: async (
+    designationId: string,
+    companyId: string,
+    permissions: string[]
+  ): Promise<{ success: boolean; message: string; data: any }> => {
+    const response = await api.post(
+      `/companies/${companyId}/payroll/designations/${designationId}/permissions`,
+      { permissions }
+    );
+    return response.data;
+  },
+
+  // Get permissions for a designation
+  getDesignationPermissions: async (
+    designationId: string,
+    companyId: string
+  ): Promise<{ success: boolean; data: any }> => {
+    const response = await api.get(`/companies/${companyId}/payroll/designations/${designationId}/permissions`);
     return response.data;
   },
 

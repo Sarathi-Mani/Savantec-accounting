@@ -6,7 +6,7 @@ from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP
 
 from app.database.models import (
-    TDSSection, TDSEntry, Company, Customer, PurchaseInvoice,
+    TDSSection, TDSEntry, Company, Customer, Purchase,
     Account, Transaction, TransactionEntry, AccountType, TransactionStatus, ReferenceType
 )
 

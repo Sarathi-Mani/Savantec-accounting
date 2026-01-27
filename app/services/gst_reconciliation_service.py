@@ -15,7 +15,7 @@ from enum import Enum
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 
-from app.database.models import PurchaseInvoice
+from app.database.models import Purchase
 
 
 class GSTR2MatchStatus(str, Enum):
@@ -50,7 +50,7 @@ class GSTR2Record:
 class ReconciliationResult:
     """Result of reconciling a single record."""
     gstr_record: GSTR2Record
-    purchase_invoice: Optional[PurchaseInvoice]
+    purchase_invoice: Optional[Purchase]
     match_status: GSTR2MatchStatus
     amount_difference: Decimal
     tax_difference: Decimal
@@ -183,10 +183,10 @@ class GSTReconciliationService:
         """
         # Search for matching purchase invoice
         # First try exact match on GSTIN + Invoice Number
-        purchase_invoice = self.db.query(PurchaseInvoice).filter(
-            PurchaseInvoice.company_id == company_id,
-            PurchaseInvoice.vendor_gstin == gstr_record.supplier_gstin,
-            PurchaseInvoice.invoice_number == gstr_record.invoice_number,
+        purchase_invoice = self.db.query(Purchase).filter(
+            Purchase.company_id == company_id,
+            Purchase.vendor_gstin == gstr_record.supplier_gstin,
+            Purchase.invoice_number == gstr_record.invoice_number,
         ).first()
         
         if not purchase_invoice:
@@ -255,12 +255,12 @@ class GSTReconciliationService:
         self,
         company_id: str,
         gstr_record: GSTR2Record,
-    ) -> Optional[PurchaseInvoice]:
+    ) -> Optional[Purchase]:
         """Attempt fuzzy matching for purchase invoice."""
         # Try matching by invoice number alone (different GSTIN format)
-        invoice = self.db.query(PurchaseInvoice).filter(
-            PurchaseInvoice.company_id == company_id,
-            PurchaseInvoice.invoice_number == gstr_record.invoice_number,
+        invoice = self.db.query(Purchase).filter(
+            Purchase.company_id == company_id,
+            Purchase.invoice_number == gstr_record.invoice_number,
         ).first()
         
         if invoice:
@@ -271,11 +271,11 @@ class GSTReconciliationService:
             from_date = gstr_record.invoice_date.replace(day=1)
             to_date = gstr_record.invoice_date.replace(day=28)  # Safe for all months
             
-            invoice = self.db.query(PurchaseInvoice).filter(
-                PurchaseInvoice.company_id == company_id,
-                PurchaseInvoice.total_amount == gstr_record.invoice_value,
-                PurchaseInvoice.invoice_date >= from_date,
-                PurchaseInvoice.invoice_date <= to_date,
+            invoice = self.db.query(Purchase).filter(
+                Purchase.company_id == company_id,
+                Purchase.total_amount == gstr_record.invoice_value,
+                Purchase.invoice_date >= from_date,
+                Purchase.invoice_date <= to_date,
             ).first()
         
         return invoice
@@ -309,10 +309,10 @@ class GSTReconciliationService:
         gstr_invoice_numbers = {r.invoice_number for r in gstr_records}
         gstr_gstins = {r.supplier_gstin for r in gstr_records}
         
-        unmatched_in_books = self.db.query(PurchaseInvoice).filter(
-            PurchaseInvoice.company_id == company_id,
-            PurchaseInvoice.vendor_gstin.in_(gstr_gstins),
-            ~PurchaseInvoice.invoice_number.in_(gstr_invoice_numbers),
+        unmatched_in_books = self.db.query(Purchase).filter(
+            Purchase.company_id == company_id,
+            Purchase.vendor_gstin.in_(gstr_gstins),
+            ~Purchase.invoice_number.in_(gstr_invoice_numbers),
         ).count()
         
         summary["not_in_gstr"] = unmatched_in_books
@@ -378,10 +378,10 @@ class GSTReconciliationService:
         else:
             to_date = date(year, month + 1, 1)
         
-        purchases = self.db.query(PurchaseInvoice).filter(
-            PurchaseInvoice.company_id == company_id,
-            PurchaseInvoice.invoice_date >= from_date,
-            PurchaseInvoice.invoice_date < to_date,
+        purchases = self.db.query(Purchase).filter(
+            Purchase.company_id == company_id,
+            Purchase.invoice_date >= from_date,
+            Purchase.invoice_date < to_date,
         ).all()
         
         itc_as_per_books = {

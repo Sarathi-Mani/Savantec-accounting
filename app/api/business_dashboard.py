@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from app.database.connection import get_db
 from app.database.models import (
-    User, Company, Invoice, InvoiceStatus, PurchaseInvoice, PurchaseInvoiceStatus,
+    User, Company, Invoice, InvoiceStatus, Purchase, PurchaseInvoiceStatus,
     PurchaseOrder, SalesOrder, OrderStatus, Payment, PurchasePayment,
     TDSEntry, Transaction, TransactionEntry, Account, AccountType
 )
@@ -131,11 +131,11 @@ async def get_business_summary(
     ).scalar() or Decimal("0")
     
     # Total Purchases (from purchase invoices)
-    purchases_result = db.query(func.sum(PurchaseInvoice.total_amount)).filter(
-        PurchaseInvoice.company_id == company.id,
-        PurchaseInvoice.invoice_date >= start_date,
-        PurchaseInvoice.invoice_date <= end_date,
-        PurchaseInvoice.status.notin_([PurchaseInvoiceStatus.DRAFT, PurchaseInvoiceStatus.CANCELLED])
+    purchases_result = db.query(func.sum(Purchase.total_amount)).filter(
+        Purchase.company_id == company.id,
+        Purchase.invoice_date >= start_date,
+        Purchase.invoice_date <= end_date,
+        Purchase.status.notin_([PurchaseInvoiceStatus.DRAFT, PurchaseInvoiceStatus.CANCELLED])
     ).scalar() or Decimal("0")
     
     return BusinessSummary(
@@ -171,15 +171,15 @@ async def get_gst_summary(
     
     # Input GST (from purchase invoices)
     input_gst = db.query(
-        func.coalesce(func.sum(PurchaseInvoice.cgst_amount), 0).label('cgst'),
-        func.coalesce(func.sum(PurchaseInvoice.sgst_amount), 0).label('sgst'),
-        func.coalesce(func.sum(PurchaseInvoice.igst_amount), 0).label('igst'),
+        func.coalesce(func.sum(Purchase.cgst_amount), 0).label('cgst'),
+        func.coalesce(func.sum(Purchase.sgst_amount), 0).label('sgst'),
+        func.coalesce(func.sum(Purchase.igst_amount), 0).label('igst'),
     ).filter(
-        PurchaseInvoice.company_id == company.id,
-        PurchaseInvoice.invoice_date >= start_date,
-        PurchaseInvoice.invoice_date <= end_date,
-        PurchaseInvoice.status.notin_([PurchaseInvoiceStatus.DRAFT, PurchaseInvoiceStatus.CANCELLED]),
-        PurchaseInvoice.itc_eligible == True
+        Purchase.company_id == company.id,
+        Purchase.invoice_date >= start_date,
+        Purchase.invoice_date <= end_date,
+        Purchase.status.notin_([PurchaseInvoiceStatus.DRAFT, PurchaseInvoiceStatus.CANCELLED]),
+        Purchase.itc_eligible == True
     ).first()
     
     cgst_out = float(output_gst.cgst or 0)
@@ -272,33 +272,33 @@ async def get_itc_summary(
     # Available ITC (from eligible purchase invoices not yet claimed)
     available = db.query(
         func.coalesce(func.sum(
-            PurchaseInvoice.cgst_amount + 
-            PurchaseInvoice.sgst_amount + 
-            PurchaseInvoice.igst_amount
+            Purchase.cgst_amount + 
+            Purchase.sgst_amount + 
+            Purchase.igst_amount
         ), 0)
     ).filter(
-        PurchaseInvoice.company_id == company.id,
-        PurchaseInvoice.invoice_date >= start_date,
-        PurchaseInvoice.invoice_date <= end_date,
-        PurchaseInvoice.itc_eligible == True,
-        PurchaseInvoice.itc_claimed == False,
-        PurchaseInvoice.status.notin_([PurchaseInvoiceStatus.DRAFT, PurchaseInvoiceStatus.CANCELLED])
+        Purchase.company_id == company.id,
+        Purchase.invoice_date >= start_date,
+        Purchase.invoice_date <= end_date,
+        Purchase.itc_eligible == True,
+        Purchase.itc_claimed == False,
+        Purchase.status.notin_([PurchaseInvoiceStatus.DRAFT, PurchaseInvoiceStatus.CANCELLED])
     ).scalar() or Decimal("0")
     
     # Utilized ITC (claimed)
     utilized = db.query(
         func.coalesce(func.sum(
-            PurchaseInvoice.cgst_amount + 
-            PurchaseInvoice.sgst_amount + 
-            PurchaseInvoice.igst_amount
+            Purchase.cgst_amount + 
+            Purchase.sgst_amount + 
+            Purchase.igst_amount
         ), 0)
     ).filter(
-        PurchaseInvoice.company_id == company.id,
-        PurchaseInvoice.invoice_date >= start_date,
-        PurchaseInvoice.invoice_date <= end_date,
-        PurchaseInvoice.itc_eligible == True,
-        PurchaseInvoice.itc_claimed == True,
-        PurchaseInvoice.status.notin_([PurchaseInvoiceStatus.DRAFT, PurchaseInvoiceStatus.CANCELLED])
+        Purchase.company_id == company.id,
+        Purchase.invoice_date >= start_date,
+        Purchase.invoice_date <= end_date,
+        Purchase.itc_eligible == True,
+        Purchase.itc_claimed == True,
+        Purchase.status.notin_([PurchaseInvoiceStatus.DRAFT, PurchaseInvoiceStatus.CANCELLED])
     ).scalar() or Decimal("0")
     
     # ITC expiring soon (invoices older than 10 months where ITC not claimed)
@@ -306,16 +306,16 @@ async def get_itc_summary(
     expiring_cutoff = date.today() - relativedelta(months=10)
     expiring = db.query(
         func.coalesce(func.sum(
-            PurchaseInvoice.cgst_amount + 
-            PurchaseInvoice.sgst_amount + 
-            PurchaseInvoice.igst_amount
+            Purchase.cgst_amount + 
+            Purchase.sgst_amount + 
+            Purchase.igst_amount
         ), 0)
     ).filter(
-        PurchaseInvoice.company_id == company.id,
-        PurchaseInvoice.invoice_date <= expiring_cutoff,
-        PurchaseInvoice.itc_eligible == True,
-        PurchaseInvoice.itc_claimed == False,
-        PurchaseInvoice.status.notin_([PurchaseInvoiceStatus.DRAFT, PurchaseInvoiceStatus.CANCELLED])
+        Purchase.company_id == company.id,
+        Purchase.invoice_date <= expiring_cutoff,
+        Purchase.itc_eligible == True,
+        Purchase.itc_claimed == False,
+        Purchase.status.notin_([PurchaseInvoiceStatus.DRAFT, PurchaseInvoiceStatus.CANCELLED])
     ).scalar() or Decimal("0")
     
     return ITCSummaryResponse(
@@ -419,16 +419,16 @@ async def get_outstanding_summary(
     ).count()
     
     # Outstanding Payables (unpaid purchase invoices)
-    payables = db.query(func.sum(PurchaseInvoice.balance_due)).filter(
-        PurchaseInvoice.company_id == company.id,
-        PurchaseInvoice.balance_due > 0,
-        PurchaseInvoice.status.notin_([PurchaseInvoiceStatus.CANCELLED, PurchaseInvoiceStatus.DRAFT])
+    payables = db.query(func.sum(Purchase.balance_due)).filter(
+        Purchase.company_id == company.id,
+        Purchase.balance_due > 0,
+        Purchase.status.notin_([PurchaseInvoiceStatus.CANCELLED, PurchaseInvoiceStatus.DRAFT])
     ).scalar() or Decimal("0")
     
-    payables_count = db.query(PurchaseInvoice).filter(
-        PurchaseInvoice.company_id == company.id,
-        PurchaseInvoice.balance_due > 0,
-        PurchaseInvoice.status.notin_([PurchaseInvoiceStatus.CANCELLED, PurchaseInvoiceStatus.DRAFT])
+    payables_count = db.query(Purchase).filter(
+        Purchase.company_id == company.id,
+        Purchase.balance_due > 0,
+        Purchase.status.notin_([PurchaseInvoiceStatus.CANCELLED, PurchaseInvoiceStatus.DRAFT])
     ).count()
     
     # Overdue amounts
@@ -440,11 +440,11 @@ async def get_outstanding_summary(
         Invoice.status.notin_([InvoiceStatus.CANCELLED, InvoiceStatus.VOID, InvoiceStatus.DRAFT])
     ).scalar() or Decimal("0")
     
-    overdue_payables = db.query(func.sum(PurchaseInvoice.balance_due)).filter(
-        PurchaseInvoice.company_id == company.id,
-        PurchaseInvoice.balance_due > 0,
-        PurchaseInvoice.due_date < today,
-        PurchaseInvoice.status.notin_([PurchaseInvoiceStatus.CANCELLED, PurchaseInvoiceStatus.DRAFT])
+    overdue_payables = db.query(func.sum(Purchase.balance_due)).filter(
+        Purchase.company_id == company.id,
+        Purchase.balance_due > 0,
+        Purchase.due_date < today,
+        Purchase.status.notin_([PurchaseInvoiceStatus.CANCELLED, PurchaseInvoiceStatus.DRAFT])
     ).scalar() or Decimal("0")
     
     return {
