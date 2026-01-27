@@ -71,14 +71,16 @@ export default function SalesDashboardPage() {
   const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month' | 'year'>('month');
 
-  // Format currency
-  const formatCurrency = (amount: number): string => {
+  // Format currency (handles NaN, null, undefined)
+  const formatCurrency = (amount: number | undefined | null): string => {
+    const n = Number(amount);
+    if (!Number.isFinite(n)) return '₹0';
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(amount);
+    }).format(n);
   };
 
   // Format date
@@ -141,17 +143,23 @@ export default function SalesDashboardPage() {
         const isCurrentMonth = invoiceDate.getMonth() === currentMonth && 
                                invoiceDate.getFullYear() === currentYear;
         
-        totalRevenue += invoice.total_amount || 0;
-        totalPaid += invoice.amount_paid || 0;
-        totalPending += invoice.balance_due || 0;
-        
-        // Calculate GST totals
-        totalCgst += invoice.cgst_amount || 0;
-        totalSgst += invoice.sgst_amount || 0;
-        totalIgst += invoice.igst_amount || 0;
+        // Coerce to number to avoid string concat and NaN
+        const amt = Number(invoice.total_amount) || 0;
+        const paid = Number(invoice.amount_paid) || 0;
+        const due = Number(invoice.balance_due) || 0;
+        const cgst = Number(invoice.cgst_amount) || 0;
+        const sgst = Number(invoice.sgst_amount) || 0;
+        const igst = Number(invoice.igst_amount) || 0;
+
+        totalRevenue += amt;
+        totalPaid += paid;
+        totalPending += due;
+        totalCgst += cgst;
+        totalSgst += sgst;
+        totalIgst += igst;
 
         if (isCurrentMonth) {
-          currentMonthRevenue += invoice.total_amount || 0;
+          currentMonthRevenue += amt;
           currentMonthInvoices++;
         }
 
@@ -160,22 +168,22 @@ export default function SalesDashboardPage() {
             ['pending', 'partially_paid'].includes(invoice.status) &&
             new Date(invoice.due_date) < now) {
           overdueCount++;
-          overdueAmount += invoice.balance_due || 0;
+          overdueAmount += due;
         }
       });
 
       setSalesSummary({
-        total_invoices: invoiceResponse.total_invoices || invoices.length,
-        total_revenue: totalRevenue,
-        total_paid: totalPaid,
-        total_pending: totalPending,
+        total_invoices: invoiceResponse.total_invoices ?? invoices.length,
+        total_revenue: Number.isFinite(totalRevenue) ? totalRevenue : 0,
+        total_paid: Number.isFinite(totalPaid) ? totalPaid : 0,
+        total_pending: Number.isFinite(totalPending) ? totalPending : 0,
         overdue_count: overdueCount,
-        overdue_amount: overdueAmount,
-        current_month_revenue: currentMonthRevenue,
+        overdue_amount: Number.isFinite(overdueAmount) ? overdueAmount : 0,
+        current_month_revenue: Number.isFinite(currentMonthRevenue) ? currentMonthRevenue : 0,
         current_month_invoices: currentMonthInvoices,
-        total_cgst: totalCgst,
-        total_sgst: totalSgst,
-        total_igst: totalIgst,
+        total_cgst: Number.isFinite(totalCgst) ? totalCgst : 0,
+        total_sgst: Number.isFinite(totalSgst) ? totalSgst : 0,
+        total_igst: Number.isFinite(totalIgst) ? totalIgst : 0,
       });
 
     } catch (error) {
@@ -281,9 +289,9 @@ export default function SalesDashboardPage() {
                 <div className="flex items-center gap-1 mt-2">
                   <TrendingUp className="w-4 h-4 text-green-500" />
                   <span className="text-sm text-green-600">
-                    {dashboardData?.monthly_sales ? 
-                      `₹${Math.round(dashboardData.monthly_sales).toLocaleString()} this month` : 
-                      'Loading...'}
+                    {typeof salesSummary?.current_month_revenue === 'number' && Number.isFinite(salesSummary.current_month_revenue)
+                      ? `₹${Math.round(salesSummary.current_month_revenue).toLocaleString()} this month`
+                      : 'Loading...'}
                   </span>
                 </div>
               </div>
@@ -302,9 +310,9 @@ export default function SalesDashboardPage() {
                   {formatCurrency(salesSummary?.total_paid || 0)}
                 </p>
                 <div className="mt-2 text-sm text-gray-500">
-                  {dashboardData?.total_paid ? 
-                    `${Math.round((dashboardData.total_paid / dashboardData.total_sales) * 100)}% of total` : 
-                    'Loading...'}
+                  {typeof salesSummary?.total_revenue === 'number' && salesSummary.total_revenue > 0 && Number.isFinite(salesSummary.total_paid)
+                    ? `${Math.round((salesSummary.total_paid / salesSummary.total_revenue) * 100)}% of total`
+                    : 'Loading...'}
                 </div>
               </div>
               <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/20 flex items-center justify-center">

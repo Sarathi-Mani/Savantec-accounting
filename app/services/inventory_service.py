@@ -1,13 +1,13 @@
 """Inventory Service - Stock management and tracking."""
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, List, Tuple, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, and_
 
 from app.database.models import (
     Company, StockGroup, Product, Godown, Batch, StockEntry,
-    BillOfMaterial, BOMComponent, StockMovementType
+    BillOfMaterial, BOMComponent, StockMovementType, Brand, Category
 )
 
 
@@ -592,3 +592,345 @@ class InventoryService:
             })
         
         return valuation
+
+    # ============== Advanced Reports ==============
+    
+    def get_stock_ledger(
+        self,
+        company: Company,
+        product_id: str,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+        godown_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get stock ledger (item-wise transaction history with running balance).
+        
+        Returns all stock movements for a product with running balance.
+        """
+        product = self.db.query(Product).filter(
+            Product.id == product_id,
+            Product.company_id == company.id
+        ).first()
+        
+        if not product:
+            return {"error": "Product not found"}
+        
+        # Build query for stock entries
+        query = self.db.query(StockEntry).filter(
+            StockEntry.product_id == product_id
+        )
+        
+        if from_date:
+            query = query.filter(StockEntry.entry_date >= from_date)
+        if to_date:
+            query = query.filter(StockEntry.entry_date <= to_date)
+        if godown_id:
+            query = query.filter(StockEntry.godown_id == godown_id)
+        
+        entries = query.order_by(StockEntry.entry_date.asc(), StockEntry.created_at.asc()).all()
+        
+        # Calculate opening balance (sum of all transactions before from_date)
+        opening_balance = Decimal("0")
+        if from_date:
+            opening_query = self.db.query(
+                func.sum(StockEntry.quantity)
+            ).filter(
+                StockEntry.product_id == product_id,
+                StockEntry.entry_date < from_date
+            )
+            if godown_id:
+                opening_query = opening_query.filter(StockEntry.godown_id == godown_id)
+            opening_balance = opening_query.scalar() or Decimal("0")
+        else:
+            opening_balance = product.opening_stock or Decimal("0")
+        
+        # Build ledger with running balance
+        ledger_entries = []
+        running_balance = opening_balance
+        total_in = Decimal("0")
+        total_out = Decimal("0")
+        
+        for entry in entries:
+            qty = entry.quantity or Decimal("0")
+            
+            # Determine if it's inward or outward
+            inward_types = [
+                StockMovementType.PURCHASE,
+                StockMovementType.TRANSFER_IN,
+                StockMovementType.ADJUSTMENT_IN,
+                StockMovementType.MANUFACTURING_IN,
+            ]
+            
+            if entry.movement_type in inward_types:
+                inward_qty = qty
+                outward_qty = Decimal("0")
+                running_balance += qty
+                total_in += qty
+            else:
+                inward_qty = Decimal("0")
+                outward_qty = abs(qty)
+                running_balance -= abs(qty)
+                total_out += abs(qty)
+            
+            ledger_entries.append({
+                "date": entry.entry_date.isoformat() if entry.entry_date else None,
+                "movement_type": entry.movement_type.value if entry.movement_type else None,
+                "reference_type": entry.reference_type,
+                "reference_number": entry.reference_number,
+                "godown": entry.godown.name if entry.godown else None,
+                "batch": entry.batch.batch_number if entry.batch else None,
+                "inward_qty": float(inward_qty),
+                "outward_qty": float(outward_qty),
+                "rate": float(entry.rate or 0),
+                "value": float(entry.value or 0),
+                "balance": float(running_balance),
+                "narration": entry.narration,
+            })
+        
+        return {
+            "product_id": product_id,
+            "product_name": product.name,
+            "product_code": product.sku,
+            "unit": product.primary_unit or product.unit,
+            "opening_balance": float(opening_balance),
+            "total_inward": float(total_in),
+            "total_outward": float(total_out),
+            "closing_balance": float(running_balance),
+            "entries": ledger_entries,
+        }
+    
+    def get_stock_by_brand(
+        self,
+        company: Company,
+        include_zero_stock: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get stock summary grouped by brand.
+        
+        Returns for each brand: item count, total quantity, total value, low stock items.
+        """
+        # Query products grouped by brand
+        query = self.db.query(
+            Brand.id.label("brand_id"),
+            Brand.name.label("brand_name"),
+            func.count(Product.id).label("item_count"),
+            func.sum(Product.current_stock).label("total_quantity"),
+            func.sum(Product.current_stock * Product.standard_cost).label("total_value"),
+            func.sum(
+                func.case(
+                    (Product.current_stock <= Product.min_stock_level, 1),
+                    else_=0
+                )
+            ).label("low_stock_count"),
+            func.sum(
+                func.case(
+                    (Product.current_stock <= 0, 1),
+                    else_=0
+                )
+            ).label("out_of_stock_count"),
+        ).select_from(Product).outerjoin(
+            Brand, Product.brand_id == Brand.id
+        ).filter(
+            Product.company_id == company.id,
+            Product.is_active == True,
+            Product.is_service == False,
+        )
+        
+        if not include_zero_stock:
+            query = query.filter(Product.current_stock > 0)
+        
+        results = query.group_by(Brand.id, Brand.name).all()
+        
+        brand_data = []
+        for row in results:
+            brand_data.append({
+                "brand_id": row.brand_id,
+                "brand_name": row.brand_name or "No Brand / Unassigned",
+                "item_count": row.item_count or 0,
+                "total_quantity": float(row.total_quantity or 0),
+                "total_value": float(row.total_value or 0),
+                "low_stock_count": row.low_stock_count or 0,
+                "out_of_stock_count": row.out_of_stock_count or 0,
+            })
+        
+        # Sort by total value descending
+        brand_data.sort(key=lambda x: x["total_value"], reverse=True)
+        
+        return brand_data
+    
+    def get_stock_by_category(
+        self,
+        company: Company,
+        include_zero_stock: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get stock summary grouped by category.
+        
+        Returns for each category: item count, total quantity, total value, low stock items.
+        """
+        # Query products grouped by category
+        query = self.db.query(
+            Category.id.label("category_id"),
+            Category.name.label("category_name"),
+            func.count(Product.id).label("item_count"),
+            func.sum(Product.current_stock).label("total_quantity"),
+            func.sum(Product.current_stock * Product.standard_cost).label("total_value"),
+            func.sum(
+                func.case(
+                    (Product.current_stock <= Product.min_stock_level, 1),
+                    else_=0
+                )
+            ).label("low_stock_count"),
+            func.sum(
+                func.case(
+                    (Product.current_stock <= 0, 1),
+                    else_=0
+                )
+            ).label("out_of_stock_count"),
+        ).select_from(Product).outerjoin(
+            Category, Product.category_id == Category.id
+        ).filter(
+            Product.company_id == company.id,
+            Product.is_active == True,
+            Product.is_service == False,
+        )
+        
+        if not include_zero_stock:
+            query = query.filter(Product.current_stock > 0)
+        
+        results = query.group_by(Category.id, Category.name).all()
+        
+        category_data = []
+        for row in results:
+            category_data.append({
+                "category_id": row.category_id,
+                "category_name": row.category_name or "Uncategorized",
+                "item_count": row.item_count or 0,
+                "total_quantity": float(row.total_quantity or 0),
+                "total_value": float(row.total_value or 0),
+                "low_stock_count": row.low_stock_count or 0,
+                "out_of_stock_count": row.out_of_stock_count or 0,
+            })
+        
+        # Sort by total value descending
+        category_data.sort(key=lambda x: x["total_value"], reverse=True)
+        
+        return category_data
+    
+    def get_stock_list(
+        self,
+        company: Company,
+        brand_id: Optional[str] = None,
+        category_id: Optional[str] = None,
+        godown_id: Optional[str] = None,
+        low_stock_only: bool = False,
+        out_of_stock_only: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get detailed stock list with filters.
+        """
+        query = self.db.query(Product).filter(
+            Product.company_id == company.id,
+            Product.is_active == True,
+            Product.is_service == False,
+        )
+        
+        if brand_id:
+            query = query.filter(Product.brand_id == brand_id)
+        if category_id:
+            query = query.filter(Product.category_id == category_id)
+        if low_stock_only:
+            query = query.filter(Product.current_stock <= Product.min_stock_level)
+        if out_of_stock_only:
+            query = query.filter(Product.current_stock <= 0)
+        
+        products = query.order_by(Product.name).all()
+        
+        stock_list = []
+        for product in products:
+            stock_list.append({
+                "product_id": product.id,
+                "product_name": product.name,
+                "product_code": product.sku,
+                "brand_name": product.brand.name if product.brand else None,
+                "category_name": product.category.name if product.category else None,
+                "unit": product.primary_unit or product.unit,
+                "current_stock": float(product.current_stock or 0),
+                "min_stock_level": float(product.min_stock_level or 0),
+                "standard_cost": float(product.standard_cost or 0),
+                "sale_price": float(product.sale_price or product.unit_price or 0),
+                "stock_value": float((product.current_stock or 0) * (product.standard_cost or 0)),
+                "is_low_stock": (product.current_stock or 0) <= (product.min_stock_level or 0),
+                "is_out_of_stock": (product.current_stock or 0) <= 0,
+            })
+        
+        return stock_list
+    
+    def get_negative_stock_items(
+        self,
+        company: Company,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all products with negative stock.
+        """
+        products = self.db.query(Product).filter(
+            Product.company_id == company.id,
+            Product.is_active == True,
+            Product.is_service == False,
+            Product.current_stock < 0,
+        ).order_by(Product.current_stock.asc()).all()
+        
+        negative_stock = []
+        for product in products:
+            negative_stock.append({
+                "product_id": product.id,
+                "product_name": product.name,
+                "product_code": product.sku,
+                "brand_name": product.brand.name if product.brand else None,
+                "category_name": product.category.name if product.category else None,
+                "unit": product.primary_unit or product.unit,
+                "current_stock": float(product.current_stock or 0),
+                "min_stock_level": float(product.min_stock_level or 0),
+                "negative_amount": abs(float(product.current_stock or 0)),
+            })
+        
+        return negative_stock
+    
+    def generate_sku(
+        self,
+        company: Company,
+        product_name: str,
+        category_id: Optional[str] = None,
+        brand_id: Optional[str] = None,
+    ) -> str:
+        """
+        Auto-generate SKU for a product.
+        
+        Format: CAT-BRD-XXXX where XXXX is a sequential number.
+        """
+        # Get category prefix
+        cat_prefix = "GEN"
+        if category_id:
+            category = self.db.query(Category).filter(Category.id == category_id).first()
+            if category:
+                cat_prefix = category.name[:3].upper()
+        
+        # Get brand prefix
+        brand_prefix = ""
+        if brand_id:
+            brand = self.db.query(Brand).filter(Brand.id == brand_id).first()
+            if brand:
+                brand_prefix = brand.name[:3].upper() + "-"
+        
+        # Get next sequence number
+        prefix = f"{cat_prefix}-{brand_prefix}"
+        existing = self.db.query(func.count(Product.id)).filter(
+            Product.company_id == company.id,
+            Product.sku.like(f"{prefix}%")
+        ).scalar() or 0
+        
+        next_num = existing + 1
+        sku = f"{prefix}{next_num:04d}"
+        
+        return sku

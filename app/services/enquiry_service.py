@@ -1,16 +1,16 @@
 """Enquiry service for managing sales enquiries."""
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func
+from sqlalchemy import and_, or_, func, case, extract
 
 from app.database.models import (
-    Enquiry, EnquiryStatus, EnquirySource,
+    Enquiry, EnquiryStatus, EnquirySource, EnquiryItem,
     SalesTicket, SalesTicketStatus, SalesTicketStage,
     SalesTicketLog, SalesTicketLogAction,
     Quotation, QuotationStatus,
-    Customer, Contact, Company
+    Customer, Contact, Company, Product, Brand
 )
 from app.database.payroll_models import Employee
 
@@ -515,7 +515,270 @@ class EnquiryService:
         
         return query.order_by(Enquiry.follow_up_date).all()
 
+    # ==================== REPORTING METHODS ====================
+    
+    def get_enquiry_aging_report(
+        self,
+        company_id: str,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+        status: Optional[EnquiryStatus] = None,
+        sales_person_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get enquiry aging report with buckets.
+        
+        Buckets:
+        - 0-7 days
+        - 8-15 days
+        - 16-30 days
+        - 31-60 days
+        - 60+ days
+        """
+        today = datetime.utcnow().date()
+        
+        # Base query
+        query = self.db.query(Enquiry).filter(Enquiry.company_id == company_id)
+        
+        if from_date:
+            query = query.filter(Enquiry.enquiry_date >= from_date)
+        if to_date:
+            query = query.filter(Enquiry.enquiry_date <= to_date)
+        if status:
+            query = query.filter(Enquiry.status == status)
+        if sales_person_id:
+            query = query.filter(Enquiry.sales_person_id == sales_person_id)
+        
+        enquiries = query.all()
+        
+        # Initialize buckets
+        buckets = {
+            "0-7": {"count": 0, "total_value": Decimal("0"), "enquiries": []},
+            "8-15": {"count": 0, "total_value": Decimal("0"), "enquiries": []},
+            "16-30": {"count": 0, "total_value": Decimal("0"), "enquiries": []},
+            "31-60": {"count": 0, "total_value": Decimal("0"), "enquiries": []},
+            "60+": {"count": 0, "total_value": Decimal("0"), "enquiries": []},
+        }
+        
+        # Status breakdown
+        status_breakdown = {}
+        
+        for enquiry in enquiries:
+            # Calculate age in days
+            enquiry_date = enquiry.enquiry_date.date() if isinstance(enquiry.enquiry_date, datetime) else enquiry.enquiry_date
+            age_days = (today - enquiry_date).days
+            
+            # Determine bucket
+            if age_days <= 7:
+                bucket_key = "0-7"
+            elif age_days <= 15:
+                bucket_key = "8-15"
+            elif age_days <= 30:
+                bucket_key = "16-30"
+            elif age_days <= 60:
+                bucket_key = "31-60"
+            else:
+                bucket_key = "60+"
+            
+            # Update bucket
+            buckets[bucket_key]["count"] += 1
+            buckets[bucket_key]["total_value"] += enquiry.expected_value or Decimal("0")
+            buckets[bucket_key]["enquiries"].append({
+                "id": enquiry.id,
+                "enquiry_number": enquiry.enquiry_number,
+                "subject": enquiry.subject,
+                "status": enquiry.status.value if enquiry.status else None,
+                "expected_value": float(enquiry.expected_value or 0),
+                "age_days": age_days,
+                "enquiry_date": enquiry_date.isoformat(),
+            })
+            
+            # Update status breakdown
+            status_val = enquiry.status.value if enquiry.status else "unknown"
+            if status_val not in status_breakdown:
+                status_breakdown[status_val] = {"count": 0, "total_value": Decimal("0")}
+            status_breakdown[status_val]["count"] += 1
+            status_breakdown[status_val]["total_value"] += enquiry.expected_value or Decimal("0")
+        
+        # Convert decimals to floats for JSON serialization
+        for bucket_key in buckets:
+            buckets[bucket_key]["total_value"] = float(buckets[bucket_key]["total_value"])
+        for status_key in status_breakdown:
+            status_breakdown[status_key]["total_value"] = float(status_breakdown[status_key]["total_value"])
+        
+        return {
+            "report_date": today.isoformat(),
+            "total_enquiries": len(enquiries),
+            "total_value": float(sum(e.expected_value or Decimal("0") for e in enquiries)),
+            "buckets": buckets,
+            "status_breakdown": status_breakdown,
+        }
+    
+    def get_enquiries_by_engineer(
+        self,
+        company_id: str,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get enquiry report grouped by sales engineer.
+        
+        Returns metrics: count, total value, conversion rate, average age.
+        """
+        # Base query with engineer info
+        query = self.db.query(
+            Enquiry.sales_person_id,
+            func.count(Enquiry.id).label("total_count"),
+            func.sum(Enquiry.expected_value).label("total_value"),
+            func.count(case((Enquiry.status == EnquiryStatus.CONVERTED_TO_QUOT, 1))).label("converted_count"),
+            func.avg(
+                func.julianday(func.current_date()) - func.julianday(Enquiry.enquiry_date)
+            ).label("avg_age_days")
+        ).filter(Enquiry.company_id == company_id)
+        
+        if from_date:
+            query = query.filter(Enquiry.enquiry_date >= from_date)
+        if to_date:
+            query = query.filter(Enquiry.enquiry_date <= to_date)
+        
+        # Group by sales person
+        query = query.group_by(Enquiry.sales_person_id)
+        
+        results = query.all()
+        
+        # Get engineer names
+        engineer_data = []
+        for row in results:
+            engineer_name = "Unassigned"
+            if row.sales_person_id:
+                engineer = self.db.query(Employee).filter(Employee.id == row.sales_person_id).first()
+                if engineer:
+                    engineer_name = f"{engineer.first_name} {engineer.last_name}"
+            
+            total_count = row.total_count or 0
+            converted_count = row.converted_count or 0
+            conversion_rate = (converted_count / total_count * 100) if total_count > 0 else 0
+            
+            engineer_data.append({
+                "sales_person_id": row.sales_person_id,
+                "sales_person_name": engineer_name,
+                "total_count": total_count,
+                "total_value": float(row.total_value or 0),
+                "converted_count": converted_count,
+                "conversion_rate": round(conversion_rate, 2),
+                "avg_age_days": round(float(row.avg_age_days or 0), 1),
+            })
+        
+        # Sort by total count descending
+        engineer_data.sort(key=lambda x: x["total_count"], reverse=True)
+        
+        return engineer_data
+    
+    def get_enquiries_by_state(
+        self,
+        company_id: str,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get enquiry report grouped by customer state.
+        
+        Returns metrics: count, total value, conversion rate.
+        """
+        # Query with customer state
+        query = self.db.query(
+            Customer.billing_state.label("state"),
+            Customer.billing_state_code.label("state_code"),
+            func.count(Enquiry.id).label("total_count"),
+            func.sum(Enquiry.expected_value).label("total_value"),
+            func.count(case((Enquiry.status == EnquiryStatus.CONVERTED_TO_QUOT, 1))).label("converted_count"),
+        ).join(
+            Customer, Enquiry.customer_id == Customer.id, isouter=True
+        ).filter(Enquiry.company_id == company_id)
 
-# Import at the end to avoid circular imports
-from datetime import timedelta
+        if from_date:
+            query = query.filter(Enquiry.enquiry_date >= from_date)
+        if to_date:
+            query = query.filter(Enquiry.enquiry_date <= to_date)
+
+        # Group by state
+        query = query.group_by(Customer.billing_state, Customer.billing_state_code)
+        
+        results = query.all()
+        
+        state_data = []
+        for row in results:
+            total_count = row.total_count or 0
+            converted_count = row.converted_count or 0
+            conversion_rate = (converted_count / total_count * 100) if total_count > 0 else 0
+            
+            state_data.append({
+                "state": row.state or "Unknown",
+                "state_code": row.state_code or "",
+                "total_count": total_count,
+                "total_value": float(row.total_value or 0),
+                "converted_count": converted_count,
+                "conversion_rate": round(conversion_rate, 2),
+            })
+        
+        # Sort by total count descending
+        state_data.sort(key=lambda x: x["total_count"], reverse=True)
+        
+        return state_data
+    
+    def get_enquiries_by_brand(
+        self,
+        company_id: str,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get enquiry report grouped by brand.
+        
+        This joins enquiry items to products to get brand information.
+        """
+        # Query via enquiry items -> products -> brands
+        query = self.db.query(
+            Brand.id.label("brand_id"),
+            Brand.name.label("brand_name"),
+            func.count(func.distinct(Enquiry.id)).label("total_count"),
+            func.sum(Enquiry.expected_value).label("total_value"),
+            func.count(func.distinct(case((Enquiry.status == EnquiryStatus.CONVERTED_TO_QUOT, Enquiry.id)))).label("converted_count"),
+        ).select_from(Enquiry).join(
+            EnquiryItem, Enquiry.id == EnquiryItem.enquiry_id, isouter=True
+        ).join(
+            Product, EnquiryItem.product_id == Product.id, isouter=True
+        ).join(
+            Brand, Product.brand_id == Brand.id, isouter=True
+        ).filter(Enquiry.company_id == company_id)
+        
+        if from_date:
+            query = query.filter(Enquiry.enquiry_date >= from_date)
+        if to_date:
+            query = query.filter(Enquiry.enquiry_date <= to_date)
+        
+        # Group by brand
+        query = query.group_by(Brand.id, Brand.name)
+        
+        results = query.all()
+        
+        brand_data = []
+        for row in results:
+            total_count = row.total_count or 0
+            converted_count = row.converted_count or 0
+            conversion_rate = (converted_count / total_count * 100) if total_count > 0 else 0
+            
+            brand_data.append({
+                "brand_id": row.brand_id,
+                "brand_name": row.brand_name or "Unknown / No Brand",
+                "total_count": total_count,
+                "total_value": float(row.total_value or 0),
+                "converted_count": converted_count,
+                "conversion_rate": round(conversion_rate, 2),
+            })
+        
+        # Sort by total count descending
+        brand_data.sort(key=lambda x: x["total_count"], reverse=True)
+        
+        return brand_data
 

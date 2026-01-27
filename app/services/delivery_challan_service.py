@@ -84,6 +84,9 @@ class DeliveryChallanService:
                 if sales_order:
                     customer_id = sales_order.customer_id
         
+        # Normalize empty godown id to None to satisfy FK constraint
+        from_godown_id = from_godown_id or None
+
         # Create delivery challan
         dc = DeliveryChallan(
             id=generate_uuid(),
@@ -116,7 +119,7 @@ class DeliveryChallanService:
                 dc.delivery_to_address = customer.shipping_address or customer.billing_address
                 dc.delivery_to_city = customer.shipping_city or customer.billing_city
                 dc.delivery_to_state = customer.shipping_state or customer.billing_state
-                dc.delivery_to_pincode = customer.shipping_pincode or customer.billing_pincode
+                dc.delivery_to_pincode = customer.shipping_zip or customer.billing_zip
         
         # Set dispatch address from godown or company
         if from_godown_id:
@@ -188,6 +191,9 @@ class DeliveryChallanService:
         
         Used when customer returns goods.
         """
+        # Normalize empty godown id to None to satisfy FK constraint
+        to_godown_id = to_godown_id or None
+
         # Get info from original DC if provided
         original_dc = None
         if original_dc_id:
@@ -409,11 +415,38 @@ class DeliveryChallanService:
         delivered_at: Optional[datetime] = None,
         received_by: Optional[str] = None,
     ) -> DeliveryChallan:
-        """Mark DC as delivered."""
+        """Mark DC Out as delivered."""
         dc.status = DeliveryChallanStatus.DELIVERED
         dc.delivered_at = delivered_at or datetime.utcnow()
         dc.received_by = received_by
         dc.updated_at = datetime.utcnow()
+        
+        self.db.commit()
+        self.db.refresh(dc)
+        
+        return dc
+
+    def mark_received(
+        self,
+        dc: DeliveryChallan,
+        received_at: Optional[datetime] = None,
+        received_by: Optional[str] = None,
+    ) -> DeliveryChallan:
+        """Mark DC In as received (goods inward)."""
+        if dc.dc_type != DeliveryChallanType.DC_IN:
+            raise ValueError("Can only mark DC In as received")
+        
+        if dc.status not in [DeliveryChallanStatus.DRAFT]:
+            raise ValueError("Can only receive DCs in DRAFT status")
+        
+        dc.status = "received"  # Use string value directly for PostgreSQL enum compatibility
+        dc.delivered_at = received_at or datetime.utcnow()
+        dc.received_by = received_by
+        dc.updated_at = datetime.utcnow()
+        
+        # Update stock (add back to inventory for returns)
+        if not dc.stock_updated:
+            self.update_stock_for_dc(dc)
         
         self.db.commit()
         self.db.refresh(dc)

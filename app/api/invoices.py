@@ -138,7 +138,7 @@ async def get_dashboard_summary(
 async def list_invoices(
     company_id: str,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=1000),
     search: Optional[str] = None,
     status: Optional[str] = None,
     from_date: Optional[date] = None,

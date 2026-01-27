@@ -122,7 +122,7 @@ DEFAULT_INVOICE_BODY = """
     <p><strong>{{ customer.name }}</strong></p>
     {% if customer.gstin %}<p>GSTIN: {{ customer.gstin }}</p>{% endif %}
     <p>{{ customer.billing_address_line1 }}</p>
-    <p>{{ customer.billing_city }}, {{ customer.billing_state }} - {{ customer.billing_pincode }}</p>
+    <p>{{ customer.billing_city }}, {{ customer.billing_state }} - {{ customer.billing_zip }}</p>
 </div>
 
 <table class="items-table">

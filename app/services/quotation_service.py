@@ -185,6 +185,11 @@ class QuotationService:
         excel_file_content: Optional[bytes] = None,
         excel_filename: Optional[str] = None,
         quotation_type: Optional[str] = "item",  # Add this parameter
+        # Multi-currency support
+        currency_code: str = "INR",
+        exchange_rate: Decimal = Decimal("1.0"),
+        # PDF options
+        show_images_in_pdf: bool = True,
         **kwargs  # Accept additional fields
     ) -> Quotation:
         """Create a new quotation with all fields and GST calculations."""
@@ -250,6 +255,13 @@ class QuotationService:
             validity_date=validity_date,
             place_of_supply=place_of_supply,
             place_of_supply_name=place_of_supply_name,
+            
+            # Multi-currency support
+            currency_code=currency_code,
+            exchange_rate=exchange_rate,
+            
+            # PDF options
+            show_images_in_pdf=show_images_in_pdf,
          
             subject=subject or f"Quotation {quotation_number}",
             notes=notes,
@@ -357,6 +369,10 @@ class QuotationService:
         quotation.total_tax = total_cgst + total_sgst + total_igst
         quotation.total_amount = subtotal + quotation.total_tax
         
+        # Calculate base currency total (in INR) for reporting
+        exchange_rate_decimal = Decimal(str(exchange_rate)) if exchange_rate else Decimal("1.0")
+        quotation.base_currency_total = self._round_amount(quotation.total_amount * exchange_rate_decimal)
+        
         self.db.commit()
         self.db.refresh(quotation)
         
@@ -380,6 +396,11 @@ class QuotationService:
         excel_notes: Optional[str] = None,
         excel_file_content: Optional[bytes] = None,
         excel_filename: Optional[str] = None,
+        # Multi-currency support
+        currency_code: Optional[str] = None,
+        exchange_rate: Optional[Decimal] = None,
+        # PDF options
+        show_images_in_pdf: Optional[bool] = None,
     ) -> Quotation:
         """Update a quotation (only if in DRAFT status)."""
         if quotation.status != QuotationStatus.DRAFT:
@@ -526,6 +547,20 @@ class QuotationService:
             quotation.igst_amount = total_igst
             quotation.total_tax = total_cgst + total_sgst + total_igst
             quotation.total_amount = subtotal + quotation.total_tax
+        
+        # Update multi-currency fields
+        if currency_code is not None:
+            quotation.currency_code = currency_code
+        if exchange_rate is not None:
+            quotation.exchange_rate = exchange_rate
+        
+        # Update PDF options
+        if show_images_in_pdf is not None:
+            quotation.show_images_in_pdf = show_images_in_pdf
+        
+        # Calculate base currency total (in INR) for reporting
+        current_exchange_rate = Decimal(str(quotation.exchange_rate or 1.0))
+        quotation.base_currency_total = self._round_amount(quotation.total_amount * current_exchange_rate)
         
         quotation.updated_at = datetime.utcnow()
         self.db.commit()
@@ -862,3 +897,253 @@ class QuotationService:
             print(f"Error reading Excel notes file: {e}")
         
         return None
+    
+    def compare_quotations(
+        self,
+        company_id: str,
+        quotation_ids: List[str],
+    ) -> Dict[str, Any]:
+        """
+        Compare multiple quotations side by side.
+        
+        Returns comparison data including:
+        - Basic quotation info
+        - Item-by-item comparison
+        - Price differences
+        - Terms comparison
+        """
+        if len(quotation_ids) < 2:
+            raise ValueError("Need at least 2 quotations to compare")
+        if len(quotation_ids) > 5:
+            raise ValueError("Can only compare up to 5 quotations at once")
+        
+        # Fetch quotations
+        quotations = self.db.query(Quotation).filter(
+            Quotation.id.in_(quotation_ids),
+            Quotation.company_id == company_id
+        ).all()
+        
+        if len(quotations) != len(quotation_ids):
+            raise ValueError("One or more quotations not found")
+        
+        # Build comparison data
+        comparison = {
+            "quotations": [],
+            "items_comparison": [],
+            "summary": {
+                "lowest_total": None,
+                "highest_total": None,
+                "average_total": 0,
+            }
+        }
+        
+        # Build quotation summaries
+        totals = []
+        all_items_by_description = {}
+        
+        for quotation in quotations:
+            customer_name = ""
+            if quotation.customer:
+                customer_name = quotation.customer.name
+            
+            quote_data = {
+                "id": quotation.id,
+                "quotation_number": quotation.quotation_number,
+                "quotation_date": quotation.quotation_date.isoformat() if quotation.quotation_date else None,
+                "customer_name": customer_name,
+                "status": quotation.status.value if quotation.status else "draft",
+                "currency_code": quotation.currency_code or "INR",
+                "subtotal": float(quotation.subtotal or 0),
+                "discount_amount": float(quotation.discount_amount or 0),
+                "total_tax": float(quotation.total_tax or 0),
+                "total_amount": float(quotation.total_amount or 0),
+                "terms": quotation.terms,
+                "payment_terms": quotation.payment_terms,
+                "validity_date": quotation.validity_date.isoformat() if quotation.validity_date else None,
+                "items": [],
+            }
+            
+            totals.append(float(quotation.total_amount or 0))
+            
+            # Collect items
+            for item in quotation.items:
+                item_data = {
+                    "id": item.id,
+                    "description": item.description,
+                    "hsn_code": item.hsn_code,
+                    "quantity": float(item.quantity or 0),
+                    "unit": item.unit,
+                    "unit_price": float(item.unit_price or 0),
+                    "discount_percent": float(item.discount_percent or 0),
+                    "gst_rate": float(item.gst_rate or 0),
+                    "total_amount": float(item.total_amount or 0),
+                }
+                quote_data["items"].append(item_data)
+                
+                # Group items by description for comparison
+                desc_key = item.description.lower().strip()
+                if desc_key not in all_items_by_description:
+                    all_items_by_description[desc_key] = {
+                        "description": item.description,
+                        "hsn_code": item.hsn_code,
+                        "quotations": {}
+                    }
+                all_items_by_description[desc_key]["quotations"][quotation.id] = {
+                    "quantity": float(item.quantity or 0),
+                    "unit_price": float(item.unit_price or 0),
+                    "discount_percent": float(item.discount_percent or 0),
+                    "total_amount": float(item.total_amount or 0),
+                }
+            
+            comparison["quotations"].append(quote_data)
+        
+        # Build items comparison
+        for desc_key, item_data in all_items_by_description.items():
+            prices = [q_data["unit_price"] for q_data in item_data["quotations"].values()]
+            totals_for_item = [q_data["total_amount"] for q_data in item_data["quotations"].values()]
+            
+            comparison["items_comparison"].append({
+                "description": item_data["description"],
+                "hsn_code": item_data["hsn_code"],
+                "quotations": item_data["quotations"],
+                "price_range": {
+                    "min": min(prices) if prices else 0,
+                    "max": max(prices) if prices else 0,
+                    "difference": max(prices) - min(prices) if prices else 0,
+                },
+                "total_range": {
+                    "min": min(totals_for_item) if totals_for_item else 0,
+                    "max": max(totals_for_item) if totals_for_item else 0,
+                },
+            })
+        
+        # Calculate summary
+        if totals:
+            min_total = min(totals)
+            max_total = max(totals)
+            avg_total = sum(totals) / len(totals)
+            
+            comparison["summary"] = {
+                "lowest_total": min_total,
+                "highest_total": max_total,
+                "average_total": round(avg_total, 2),
+                "difference": round(max_total - min_total, 2),
+                "lowest_quotation_id": quotations[totals.index(min_total)].id,
+                "highest_quotation_id": quotations[totals.index(max_total)].id,
+            }
+        
+        return comparison
+    
+    def get_quotation_items_report(
+        self,
+        company_id: str,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get quotation item-level report.
+        
+        Aggregates by product showing:
+        - Total quantity quoted
+        - Total value quoted
+        - Number of quotations
+        - Conversion rate (quoted to won)
+        """
+        # Base query for quotation items
+        from app.database.models import QuotationItem
+        
+        query = self.db.query(
+            QuotationItem.product_id,
+            QuotationItem.description,
+            QuotationItem.hsn_code,
+            func.count(func.distinct(QuotationItem.quotation_id)).label("quotation_count"),
+            func.sum(QuotationItem.quantity).label("total_quantity"),
+            func.sum(QuotationItem.taxable_amount).label("total_value"),
+            func.sum(QuotationItem.total_amount).label("total_with_tax"),
+        ).join(
+            Quotation, QuotationItem.quotation_id == Quotation.id
+        ).filter(
+            Quotation.company_id == company_id
+        )
+        
+        if from_date:
+            query = query.filter(Quotation.quotation_date >= from_date)
+        if to_date:
+            query = query.filter(Quotation.quotation_date <= to_date)
+        
+        results = query.group_by(
+            QuotationItem.product_id,
+            QuotationItem.description,
+            QuotationItem.hsn_code
+        ).all()
+        
+        # Get conversion data
+        converted_items = {}
+        converted_query = self.db.query(
+            QuotationItem.product_id,
+            QuotationItem.description,
+            func.sum(QuotationItem.quantity).label("converted_quantity"),
+        ).join(
+            Quotation, QuotationItem.quotation_id == Quotation.id
+        ).filter(
+            Quotation.company_id == company_id,
+            Quotation.status == QuotationStatus.CONVERTED,
+        )
+        
+        if from_date:
+            converted_query = converted_query.filter(Quotation.quotation_date >= from_date)
+        if to_date:
+            converted_query = converted_query.filter(Quotation.quotation_date <= to_date)
+        
+        converted_results = converted_query.group_by(
+            QuotationItem.product_id,
+            QuotationItem.description
+        ).all()
+        
+        for row in converted_results:
+            key = row.product_id or row.description
+            converted_items[key] = float(row.converted_quantity or 0)
+        
+        # Build report
+        items_report = []
+        total_value = Decimal("0")
+        
+        for row in results:
+            key = row.product_id or row.description
+            converted_qty = converted_items.get(key, 0)
+            total_qty = float(row.total_quantity or 0)
+            conversion_rate = (converted_qty / total_qty * 100) if total_qty > 0 else 0
+            
+            product_name = row.description
+            if row.product_id:
+                product = self.db.query(Product).filter(Product.id == row.product_id).first()
+                if product:
+                    product_name = product.name
+            
+            value = row.total_value or Decimal("0")
+            total_value += value
+            
+            items_report.append({
+                "product_id": row.product_id,
+                "product_name": product_name,
+                "description": row.description,
+                "hsn_code": row.hsn_code,
+                "quotation_count": row.quotation_count or 0,
+                "total_quantity": total_qty,
+                "converted_quantity": converted_qty,
+                "conversion_rate": round(conversion_rate, 2),
+                "total_value": float(value),
+                "total_with_tax": float(row.total_with_tax or 0),
+            })
+        
+        # Sort by total value
+        items_report.sort(key=lambda x: x["total_value"], reverse=True)
+        
+        return {
+            "items": items_report,
+            "summary": {
+                "total_items": len(items_report),
+                "total_value": float(total_value),
+                "total_quotations": len(set(r.product_id or r.description for r in results)),
+            }
+        }

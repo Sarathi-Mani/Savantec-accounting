@@ -57,7 +57,7 @@ export default function DeliveryChallansPage() {
         if (statusFilter) params.append("status", statusFilter);
 
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/companies/${company.id}/delivery-challans?${params}`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/delivery-challans?${params}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -86,6 +86,8 @@ export default function DeliveryChallansPage() {
       case "in_transit":
         return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400";
       case "delivered":
+        return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
+      case "received":
         return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
       case "cancelled":
         return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";

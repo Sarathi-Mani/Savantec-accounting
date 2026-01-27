@@ -8,6 +8,7 @@ from sqlalchemy import (
     Column,
     Integer,
     Date,
+    Time,
     String,
     Text,
     DateTime,
@@ -69,9 +70,14 @@ class PaymentMode(str, PyEnum):
     """Payment mode enumeration."""
     UPI = "upi"
     BANK_TRANSFER = "bank_transfer"
+    IMPS = "imps"  # Immediate Payment Service
+    NEFT = "neft"  # National Electronic Funds Transfer
+    RTGS = "rtgs"  # Real Time Gross Settlement
     CASH = "cash"
     CHEQUE = "cheque"
     CARD = "card"
+    DD = "dd"  # Demand Draft
+    ONLINE = "online"
     OTHER = "other"
 
 
@@ -629,6 +635,12 @@ class Company(Base):
         Index("idx_company_gstin", "gstin"),
     )
 
+    @property
+    def address(self):
+        """Single-line address from address_line1, address_line2, city, state, pincode."""
+        parts = [self.address_line1, self.address_line2, self.city, self.state, self.pincode]
+        return ", ".join(p for p in parts if p) or None
+
     def __repr__(self):
         return f"<Company {self.name}>"
 
@@ -801,6 +813,40 @@ class Customer(Base):
     contact_persons = relationship("ContactPerson", back_populates="customer", cascade="all, delete-orphan")
     contacts = relationship("Contact", back_populates="customer", cascade="all, delete-orphan")
     purchase_requests = relationship("PurchaseRequest", back_populates="customer", cascade="all, delete-orphan")
+
+    # Compatibility aliases for code that expects these attribute names
+    @property
+    def gstin(self):
+        return self.tax_number
+
+    @property
+    def billing_pincode(self):
+        return self.billing_zip
+
+    @property
+    def shipping_pincode(self):
+        return self.shipping_zip
+
+    @property
+    def pincode(self):
+        return self.billing_zip or self.shipping_zip
+
+    @property
+    def phone(self):
+        return self.contact or self.mobile
+
+    @property
+    def address(self):
+        return self.billing_address
+
+    @property
+    def city(self):
+        return self.billing_city
+
+    @property
+    def state(self):
+        return self.billing_state
+
     def __repr__(self):
         return f"<Customer(id={self.id}, name='{self.name}', company_id={self.company_id})>"
 
@@ -840,6 +886,13 @@ class Product(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)
     
+    # Inventory columns (aliased by properties below for code compatibility)
+    current_stock = Column(Numeric(14, 3), default=0)  # Actual DB column for stock
+    min_stock_level = Column(Numeric(14, 3), default=0)  # Minimum stock threshold
+    reorder_level = Column(Numeric(14, 3), default=0)  # Reorder point
+    standard_cost = Column(Numeric(15, 2), default=0)  # Standard/average cost
+    unit_price = Column(Numeric(15, 2), default=0)  # Default selling unit price
+    
     # ADD this column if not present
     stock_group_id = Column(String(36), ForeignKey("stock_groups.id", ondelete="SET NULL"), index=True)
     is_active = Column(Boolean, default=True, index=True)
@@ -855,7 +908,14 @@ class Product(Base):
     
     brand_id = Column(String(36), ForeignKey("brands.id", ondelete="SET NULL"), nullable=True, index=True)
     category_id = Column(String(36), ForeignKey("categories.id", ondelete="SET NULL"), nullable=True, index=True)
-     # Add these relationships
+    
+    # Approval workflow
+    approval_status = Column(String(50), default="approved")  # draft, pending, approved, rejected
+    approved_by = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    
+    # Add these relationships
     brand = relationship("Brand", backref="products")
     category = relationship("Category", backref="products")
 
@@ -1040,6 +1100,11 @@ class Invoice(Base):
     ack_number = Column(String(50))
     ack_date = Column(DateTime)
     signed_qr = Column(Text)
+    
+    # Courier tracking
+    courier_company = Column(String(200))
+    courier_docket_number = Column(String(100))
+    courier_tracking_url = Column(String(500))
     
     # PDF storage
     pdf_url = Column(String(500))
@@ -1483,6 +1548,9 @@ class Godown(Base):
     name = Column(String(255), nullable=False)
     code = Column(String(50))
     address = Column(Text)
+    city = Column(String(100))
+    state = Column(String(100))
+    pincode = Column(String(20))
     
     # Parent for sub-locations
     parent_id = Column(String(36), ForeignKey("godowns.id", ondelete="SET NULL"))
@@ -1685,6 +1753,9 @@ class SalesOrder(Base):
     
     # Status
     status = Column(Enum(OrderStatus), default=OrderStatus.DRAFT)
+    
+    # Store workflow status
+    store_status = Column(String(50), default="pending")  # pending, order_in_process, ready_for_delivery, out_for_delivery, delivered
     
     # Amounts
     subtotal = Column(Numeric(14, 2), default=0)
@@ -2081,7 +2152,36 @@ class Vendor(Base):
         Index("idx_vendor_company_code", "company_id", "vendor_code", unique=True),
         Index("idx_vendor_company_tax", "company_id", "tax_number"),
     )
-    
+
+    # Compatibility aliases for code that expects these attribute names
+    @property
+    def gstin(self):
+        return self.tax_number
+
+    @property
+    def pan(self):
+        return self.pan_number
+
+    @property
+    def phone(self):
+        return self.contact or self.mobile
+
+    @property
+    def address(self):
+        return self.billing_address
+
+    @property
+    def city(self):
+        return self.billing_city
+
+    @property
+    def state(self):
+        return self.billing_state
+
+    @property
+    def pincode(self):
+        return self.billing_zip
+
     def __repr__(self):
         return f"<Vendor(id={self.id}, name='{self.name}', company_id={self.company_id})>"
     
@@ -2495,9 +2595,21 @@ class Purchase(Base):
     # Amounts (all in INR)
     subtotal = Column(Numeric(14, 2), default=0)
     discount_amount = Column(Numeric(14, 2), default=0)
+    
+    # GST breakup
+    cgst_amount = Column(Numeric(14, 2), default=0)
+    sgst_amount = Column(Numeric(14, 2), default=0)
+    igst_amount = Column(Numeric(14, 2), default=0)
+    cess_amount = Column(Numeric(14, 2), default=0)
+    
     total_tax = Column(Numeric(14, 2), default=0)
     total_amount = Column(Numeric(14, 2), default=0)
     grand_total = Column(Numeric(14, 2), default=0)
+    
+    # ITC (Input Tax Credit) tracking
+    itc_eligible = Column(Boolean, default=True)
+    itc_claimed = Column(Boolean, default=False)
+    itc_claim_date = Column(DateTime, nullable=True)
     
     # Payment tracking
     amount_paid = Column(Numeric(14, 2), default=0)
@@ -4132,7 +4244,15 @@ class Quotation(Base):
     place_of_supply = Column(String(2))
     place_of_supply_name = Column(String(100))
     
-    # Amounts (all in INR)
+    # Multi-currency support
+    currency_code = Column(String(3), default="INR")  # ISO 4217: INR, USD, EUR
+    exchange_rate = Column(Numeric(14, 6), default=1.0)  # Exchange rate to INR
+    base_currency_total = Column(Numeric(14, 2))  # Total in INR (for reporting)
+    
+    # PDF generation options
+    show_images_in_pdf = Column(Boolean, default=True)  # Toggle to show/hide images in PDF
+    
+    # Amounts (in selected currency)
     subtotal = Column(Numeric(14, 2), default=0)
     discount_amount = Column(Numeric(14, 2), default=0)
     
@@ -4208,9 +4328,12 @@ class DeliveryChallanType(str, PyEnum):
 class DeliveryChallanStatus(str, PyEnum):
     """Delivery Challan status enumeration."""
     DRAFT = "draft"
+    # DC Out statuses
     DISPATCHED = "dispatched"
     IN_TRANSIT = "in_transit"
     DELIVERED = "delivered"
+    # DC In statuses
+    RECEIVED = "received"  # Goods received inward
     PARTIALLY_RETURNED = "partially_returned"
     RETURNED = "returned"
     CANCELLED = "cancelled"
@@ -4284,6 +4407,17 @@ class DeliveryChallan(Base):
     delivered_at = Column(DateTime)
     received_by = Column(String(255))
     receiver_signature_url = Column(String(500))
+    
+    # Acknowledgement tracking
+    acknowledgement_image_url = Column(String(500))
+    acknowledgement_status = Column(String(50), default="pending")  # pending, acknowledged
+    acknowledged_at = Column(DateTime)
+    acknowledged_by = Column(String(200))
+    
+    # Courier tracking
+    courier_company = Column(String(200))
+    courier_docket_number = Column(String(100))
+    courier_tracking_url = Column(String(500))
     
     notes = Column(Text)
     
@@ -4722,6 +4856,594 @@ class SalesTicketLog(Base):
 
     def __repr__(self):
         return f"<SalesTicketLog {self.action_type.value}>"
+
+
+# ==================== VISIT TRACKING MODULE ====================
+
+class VisitStatus(str, PyEnum):
+    """Visit status enumeration."""
+    PLANNED = "planned"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class ProjectStatus(str, PyEnum):
+    """Project status enumeration."""
+    PLANNING = "planning"
+    IN_PROGRESS = "in_progress"
+    ON_HOLD = "on_hold"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class TaskPriority(str, PyEnum):
+    """Task priority enumeration."""
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
+class TaskStatus(str, PyEnum):
+    """Task status enumeration."""
+    TODO = "todo"
+    IN_PROGRESS = "in_progress"
+    REVIEW = "review"
+    DONE = "done"
+
+
+class Project(Base):
+    """Project model - Track projects with milestones and tasks."""
+    __tablename__ = "projects"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    customer_id = Column(String(36), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
+    
+    project_code = Column(String(50), nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    
+    start_date = Column(Date, nullable=True)
+    target_end_date = Column(Date, nullable=True)
+    actual_end_date = Column(Date, nullable=True)
+    
+    status = Column(Enum(ProjectStatus), default=ProjectStatus.PLANNING)
+    
+    # Budget
+    budget = Column(Numeric(14, 2), default=0)
+    actual_cost = Column(Numeric(14, 2), default=0)
+    
+    # Project manager
+    manager_id = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    
+    # Progress (0-100)
+    progress_percent = Column(Integer, default=0)
+    
+    notes = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    company = relationship("Company")
+    customer = relationship("Customer")
+    manager = relationship("Employee")
+    milestones = relationship("ProjectMilestone", back_populates="project", cascade="all, delete-orphan")
+    tasks = relationship("ProjectTask", back_populates="project", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_project_company", "company_id"),
+        Index("idx_project_customer", "customer_id"),
+        Index("idx_project_status", "status"),
+    )
+
+    def __repr__(self):
+        return f"<Project {self.project_code}>"
+
+
+class ProjectMilestone(Base):
+    """Project Milestone model - Key milestones in a project."""
+    __tablename__ = "project_milestones"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    
+    target_date = Column(Date, nullable=True)
+    completion_date = Column(Date, nullable=True)
+    
+    is_completed = Column(Boolean, default=False)
+    
+    # Order for sorting
+    sort_order = Column(Integer, default=0)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    project = relationship("Project", back_populates="milestones")
+    tasks = relationship("ProjectTask", back_populates="milestone")
+
+    __table_args__ = (
+        Index("idx_milestone_project", "project_id"),
+    )
+
+    def __repr__(self):
+        return f"<ProjectMilestone {self.name}>"
+
+
+class IssueSeverity(str, PyEnum):
+    """Issue severity enumeration."""
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class IssueStatus(str, PyEnum):
+    """Issue status enumeration."""
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
+    CLOSED = "closed"
+    REOPENED = "reopened"
+
+
+class IssueCategory(str, PyEnum):
+    """Issue category enumeration."""
+    BUG = "bug"
+    FEATURE_REQUEST = "feature_request"
+    SUPPORT = "support"
+    COMPLAINT = "complaint"
+    OTHER = "other"
+
+
+class Issue(Base):
+    """Issue model - Track issues, bugs, complaints, and support requests."""
+    __tablename__ = "issues"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    
+    issue_number = Column(String(50), nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    
+    category = Column(Enum(IssueCategory), default=IssueCategory.SUPPORT)
+    severity = Column(Enum(IssueSeverity), default=IssueSeverity.MEDIUM)
+    status = Column(Enum(IssueStatus), default=IssueStatus.OPEN)
+    
+    # Reporter
+    reported_by_id = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    reported_by_customer_id = Column(String(36), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
+    reported_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Assignment
+    assigned_to_id = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    assigned_at = Column(DateTime, nullable=True)
+    
+    # Resolution
+    resolved_by_id = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    resolution_notes = Column(Text, nullable=True)
+    
+    # Related entities
+    project_id = Column(String(36), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
+    product_id = Column(String(36), ForeignKey("items.id", ondelete="SET NULL"), nullable=True)
+    
+    # Attachments (JSON list of URLs)
+    attachments = Column(JSON, nullable=True)
+    
+    # Tags (JSON list)
+    tags = Column(JSON, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    company = relationship("Company")
+    reported_by = relationship("Employee", foreign_keys=[reported_by_id])
+    reported_by_customer = relationship("Customer")
+    assigned_to = relationship("Employee", foreign_keys=[assigned_to_id])
+    resolved_by = relationship("Employee", foreign_keys=[resolved_by_id])
+    project = relationship("Project")
+    product = relationship("Product")
+    comments = relationship("IssueComment", back_populates="issue", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_issue_company", "company_id"),
+        Index("idx_issue_status", "status"),
+        Index("idx_issue_severity", "severity"),
+        Index("idx_issue_assigned", "assigned_to_id"),
+    )
+
+    def __repr__(self):
+        return f"<Issue {self.issue_number}>"
+
+
+class IssueComment(Base):
+    """Issue Comment model - Comments and updates on issues."""
+    __tablename__ = "issue_comments"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    issue_id = Column(String(36), ForeignKey("issues.id", ondelete="CASCADE"), nullable=False)
+    
+    content = Column(Text, nullable=False)
+    author_id = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    
+    # Activity type (comment, status_change, assignment)
+    activity_type = Column(String(50), default="comment")
+    
+    # Attachments
+    attachments = Column(JSON, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    issue = relationship("Issue", back_populates="comments")
+    author = relationship("Employee")
+
+    __table_args__ = (
+        Index("idx_issue_comment_issue", "issue_id"),
+    )
+
+    def __repr__(self):
+        return f"<IssueComment {self.id}>"
+
+
+class ProjectTask(Base):
+    """Project Task model - Individual tasks in a project."""
+    __tablename__ = "project_tasks"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    milestone_id = Column(String(36), ForeignKey("project_milestones.id", ondelete="SET NULL"), nullable=True)
+    
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    
+    assigned_to = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    
+    priority = Column(Enum(TaskPriority), default=TaskPriority.MEDIUM)
+    status = Column(Enum(TaskStatus), default=TaskStatus.TODO)
+    
+    start_date = Column(Date, nullable=True)
+    due_date = Column(Date, nullable=True)
+    completion_date = Column(Date, nullable=True)
+    
+    # Time tracking
+    estimated_hours = Column(Numeric(6, 2), default=0)
+    actual_hours = Column(Numeric(6, 2), default=0)
+    
+    # Order for sorting
+    sort_order = Column(Integer, default=0)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    project = relationship("Project", back_populates="tasks")
+    milestone = relationship("ProjectMilestone", back_populates="tasks")
+    assignee = relationship("Employee")
+
+    __table_args__ = (
+        Index("idx_task_project", "project_id"),
+        Index("idx_task_milestone", "milestone_id"),
+        Index("idx_task_assigned", "assigned_to"),
+        Index("idx_task_status", "status"),
+    )
+
+    def __repr__(self):
+        return f"<ProjectTask {self.title}>"
+
+
+class Visit(Base):
+    """Visit/Field visit model - Tracks employee visits to customers."""
+    __tablename__ = "visits"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    employee_id = Column(String(36), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    customer_id = Column(String(36), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
+    enquiry_id = Column(String(36), ForeignKey("enquiries.id", ondelete="SET NULL"), nullable=True)
+    
+    visit_date = Column(Date, nullable=False)
+    
+    # Distance tracking
+    start_km = Column(Numeric(10, 2), nullable=True)
+    end_km = Column(Numeric(10, 2), nullable=True)
+    distance_km = Column(Numeric(10, 2), nullable=True)  # Calculated
+    
+    # Location tracking (JSON: {lat, lng, address})
+    start_location = Column(JSON, nullable=True)
+    end_location = Column(JSON, nullable=True)
+    
+    # Time tracking
+    check_in_time = Column(DateTime, nullable=True)
+    check_out_time = Column(DateTime, nullable=True)
+    
+    # Visit details
+    purpose = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
+    outcome = Column(Text, nullable=True)
+    
+    status = Column(Enum(VisitStatus), default=VisitStatus.PLANNED)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    company = relationship("Company")
+    employee = relationship("Employee")
+    customer = relationship("Customer")
+    enquiry = relationship("Enquiry")
+
+    __table_args__ = (
+        Index("idx_visit_company", "company_id"),
+        Index("idx_visit_employee", "employee_id"),
+        Index("idx_visit_customer", "customer_id"),
+        Index("idx_visit_date", "visit_date"),
+        Index("idx_visit_status", "status"),
+    )
+
+    def __repr__(self):
+        return f"<Visit {self.id} on {self.visit_date}>"
+
+
+class ExpenseCategory(str, PyEnum):
+    """Expense category enumeration."""
+    TRAVEL = "travel"
+    FOOD = "food"
+    ACCOMMODATION = "accommodation"
+    COMMUNICATION = "communication"
+    FUEL = "fuel"
+    STATIONARY = "stationary"
+    OTHER = "other"
+
+
+class ExpenseStatus(str, PyEnum):
+    """Expense status enumeration."""
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    REIMBURSED = "reimbursed"
+
+
+class AdvanceRequestStatus(str, PyEnum):
+    """Advance request status enumeration."""
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    DISBURSED = "disbursed"
+    SETTLED = "settled"
+
+
+class EmployeeExpense(Base):
+    """Employee Expense model - Track employee expenses for reimbursement."""
+    __tablename__ = "employee_expenses"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    employee_id = Column(String(36), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    
+    expense_date = Column(Date, nullable=False)
+    category = Column(Enum(ExpenseCategory), nullable=False)
+    description = Column(Text, nullable=True)
+    amount = Column(Numeric(14, 2), nullable=False)
+    
+    # Attachments
+    receipt_url = Column(String(500), nullable=True)
+    
+    # Approval workflow
+    status = Column(Enum(ExpenseStatus), default=ExpenseStatus.DRAFT)
+    submitted_at = Column(DateTime, nullable=True)
+    approved_by = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    
+    # Reimbursement
+    reimbursed_at = Column(DateTime, nullable=True)
+    reimbursement_reference = Column(String(100), nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    company = relationship("Company")
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    approver = relationship("Employee", foreign_keys=[approved_by])
+
+    __table_args__ = (
+        Index("idx_expense_company", "company_id"),
+        Index("idx_expense_employee", "employee_id"),
+        Index("idx_expense_date", "expense_date"),
+        Index("idx_expense_status", "status"),
+    )
+
+    def __repr__(self):
+        return f"<EmployeeExpense {self.id} - {self.amount}>"
+
+
+class AdvanceRequest(Base):
+    """Advance Request model - Employee salary/expense advances."""
+    __tablename__ = "advance_requests"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    employee_id = Column(String(36), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    
+    request_date = Column(Date, nullable=False)
+    amount = Column(Numeric(14, 2), nullable=False)
+    reason = Column(Text, nullable=True)
+    
+    # Approval workflow
+    status = Column(Enum(AdvanceRequestStatus), default=AdvanceRequestStatus.PENDING)
+    approved_by = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    
+    # Disbursement
+    disbursed_at = Column(DateTime, nullable=True)
+    disbursement_reference = Column(String(100), nullable=True)
+    
+    # Settlement (deduction from salary)
+    settlement_mode = Column(String(50), default="salary_deduction")  # salary_deduction, cash, bank
+    monthly_deduction = Column(Numeric(14, 2), nullable=True)  # If settled via salary
+    settled_amount = Column(Numeric(14, 2), default=0)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    company = relationship("Company")
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    approver = relationship("Employee", foreign_keys=[approved_by])
+
+    __table_args__ = (
+        Index("idx_advance_company", "company_id"),
+        Index("idx_advance_employee", "employee_id"),
+        Index("idx_advance_status", "status"),
+    )
+
+    def __repr__(self):
+        return f"<AdvanceRequest {self.id} - {self.amount}>"
+
+
+class AppointmentLetter(Base):
+    """Appointment Letter model - Employee appointment letters."""
+    __tablename__ = "appointment_letters"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    employee_id = Column(String(36), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    
+    letter_number = Column(String(50), nullable=False)
+    issue_date = Column(Date, nullable=False)
+    
+    # Letter content
+    designation = Column(String(200), nullable=False)
+    department = Column(String(200), nullable=True)
+    joining_date = Column(Date, nullable=False)
+    probation_period_months = Column(Integer, default=6)
+    basic_salary = Column(Numeric(14, 2), nullable=False)
+    total_ctc = Column(Numeric(14, 2), nullable=True)
+    
+    # Additional terms
+    notice_period_days = Column(Integer, default=30)
+    work_location = Column(String(200), nullable=True)
+    reporting_to = Column(String(200), nullable=True)
+    additional_terms = Column(Text, nullable=True)
+    
+    # PDF storage
+    pdf_url = Column(String(500), nullable=True)
+    
+    # Acknowledgement
+    acknowledged_at = Column(DateTime, nullable=True)
+    signature_url = Column(String(500), nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    company = relationship("Company")
+    employee = relationship("Employee")
+
+    __table_args__ = (
+        Index("idx_appt_company", "company_id"),
+        Index("idx_appt_employee", "employee_id"),
+    )
+
+    def __repr__(self):
+        return f"<AppointmentLetter {self.letter_number}>"
+
+
+class SalesTarget(Base):
+    """Sales Target model - Monthly/yearly targets for sales staff."""
+    __tablename__ = "sales_targets"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    employee_id = Column(String(36), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    
+    # Target period
+    target_year = Column(Integer, nullable=False)
+    target_month = Column(Integer, nullable=True)  # Null for yearly targets
+    
+    # Target values
+    target_amount = Column(Numeric(14, 2), nullable=False)  # Sales value target
+    target_enquiries = Column(Integer, default=0)  # Number of enquiries target
+    target_quotations = Column(Integer, default=0)  # Number of quotations target
+    target_conversions = Column(Integer, default=0)  # Number of conversions target
+    target_visits = Column(Integer, default=0)  # Number of visits target
+    
+    # Achieved values (updated periodically)
+    achieved_amount = Column(Numeric(14, 2), default=0)
+    achieved_enquiries = Column(Integer, default=0)
+    achieved_quotations = Column(Integer, default=0)
+    achieved_conversions = Column(Integer, default=0)
+    achieved_visits = Column(Integer, default=0)
+    
+    notes = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    company = relationship("Company")
+    employee = relationship("Employee")
+
+    __table_args__ = (
+        Index("idx_sales_target_company", "company_id"),
+        Index("idx_sales_target_employee", "employee_id"),
+        Index("idx_sales_target_period", "target_year", "target_month"),
+    )
+
+    def __repr__(self):
+        return f"<SalesTarget {self.employee_id} {self.target_year}/{self.target_month}>"
+
+
+class VisitPlan(Base):
+    """Visit Plan model - Scheduled visits for employees."""
+    __tablename__ = "visit_plans"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    employee_id = Column(String(36), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    customer_id = Column(String(36), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
+    
+    planned_date = Column(Date, nullable=False)
+    planned_time = Column(Time, nullable=True)
+    
+    purpose = Column(Text, nullable=True)
+    priority = Column(String(20), default="medium")  # low, medium, high
+    
+    status = Column(String(50), default="pending")  # pending, confirmed, cancelled, completed
+    
+    # Reference to actual visit if completed
+    visit_id = Column(String(36), ForeignKey("visits.id", ondelete="SET NULL"), nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    company = relationship("Company")
+    employee = relationship("Employee")
+    customer = relationship("Customer")
+    visit = relationship("Visit")
+
+    __table_args__ = (
+        Index("idx_visit_plan_company", "company_id"),
+        Index("idx_visit_plan_employee", "employee_id"),
+        Index("idx_visit_plan_date", "planned_date"),
+        Index("idx_visit_plan_status", "status"),
+    )
+
+    def __repr__(self):
+        return f"<VisitPlan {self.id} for {self.planned_date}>"
 
 
 # Indian State codes for GST

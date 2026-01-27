@@ -276,8 +276,9 @@ export default function ViewQuotationPage() {
       doc.setFont(undefined, 'bold');
       doc.text(company?.name || "Your Company", 20, 55);
       doc.setFont(undefined, 'normal');
-      if (company?.address) {
-        doc.text(company.address, 20, 60);
+      const companyAddr = company?.address ?? [company?.address_line1, company?.address_line2, company?.city, company?.state, company?.pincode].filter(Boolean).join(", ");
+      if (companyAddr) {
+        doc.text(companyAddr, 20, 60);
       }
       
       // Customer Info

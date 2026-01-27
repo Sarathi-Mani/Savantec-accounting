@@ -952,6 +952,15 @@ class InvoiceService:
             Invoice.status != InvoiceStatus.CANCELLED
         ).first()
         
+        # Handle case where gst_totals might be None
+        total_cgst = Decimal("0")
+        total_sgst = Decimal("0")
+        total_igst = Decimal("0")
+        if gst_totals:
+            total_cgst = gst_totals.cgst or Decimal("0")
+            total_sgst = gst_totals.sgst or Decimal("0")
+            total_igst = gst_totals.igst or Decimal("0")
+        
         return {
             "total_invoices": total_invoices,
             "total_revenue": total_revenue,
@@ -961,8 +970,8 @@ class InvoiceService:
             "overdue_amount": overdue_amount,
             "current_month_revenue": current_month_revenue,
             "current_month_invoices": current_month_invoices,
-            "total_cgst": gst_totals.cgst or Decimal("0"),
-            "total_sgst": gst_totals.sgst or Decimal("0"),
-            "total_igst": gst_totals.igst or Decimal("0"),
+            "total_cgst": total_cgst,
+            "total_sgst": total_sgst,
+            "total_igst": total_igst,
         }
 

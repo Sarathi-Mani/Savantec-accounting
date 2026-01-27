@@ -736,3 +736,175 @@ async def get_stock_by_warehouse(
             for w in warehouse_stock
         ]
     }
+
+
+# ============== Advanced Reports ==============
+
+@router.get("/stock-ledger/{product_id}")
+async def get_stock_ledger(
+    company_id: str,
+    product_id: str,
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    godown_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get stock ledger for a product (item-wise transaction history with running balance).
+    
+    Returns all stock movements for the product with running balance calculation.
+    """
+    company = get_company_or_404(company_id, current_user, db)
+    service = InventoryService(db)
+    
+    return service.get_stock_ledger(
+        company=company,
+        product_id=product_id,
+        from_date=from_date,
+        to_date=to_date,
+        godown_id=godown_id,
+    )
+
+
+@router.get("/stock-by-brand")
+async def get_stock_by_brand(
+    company_id: str,
+    include_zero_stock: bool = Query(False),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get stock summary grouped by brand.
+    
+    Returns for each brand: item count, total quantity, total value, low stock items.
+    """
+    company = get_company_or_404(company_id, current_user, db)
+    service = InventoryService(db)
+    
+    data = service.get_stock_by_brand(company, include_zero_stock)
+    
+    # Calculate totals
+    totals = {
+        "total_items": sum(b["item_count"] for b in data),
+        "total_quantity": sum(b["total_quantity"] for b in data),
+        "total_value": sum(b["total_value"] for b in data),
+        "total_low_stock": sum(b["low_stock_count"] for b in data),
+        "total_out_of_stock": sum(b["out_of_stock_count"] for b in data),
+    }
+    
+    return {
+        "brands": data,
+        "totals": totals,
+    }
+
+
+@router.get("/stock-by-category")
+async def get_stock_by_category(
+    company_id: str,
+    include_zero_stock: bool = Query(False),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get stock summary grouped by category.
+    
+    Returns for each category: item count, total quantity, total value, low stock items.
+    """
+    company = get_company_or_404(company_id, current_user, db)
+    service = InventoryService(db)
+    
+    data = service.get_stock_by_category(company, include_zero_stock)
+    
+    # Calculate totals
+    totals = {
+        "total_items": sum(c["item_count"] for c in data),
+        "total_quantity": sum(c["total_quantity"] for c in data),
+        "total_value": sum(c["total_value"] for c in data),
+        "total_low_stock": sum(c["low_stock_count"] for c in data),
+        "total_out_of_stock": sum(c["out_of_stock_count"] for c in data),
+    }
+    
+    return {
+        "categories": data,
+        "totals": totals,
+    }
+
+
+@router.get("/stock-list")
+async def get_stock_list(
+    company_id: str,
+    brand_id: Optional[str] = Query(None),
+    category_id: Optional[str] = Query(None),
+    godown_id: Optional[str] = Query(None),
+    low_stock_only: bool = Query(False),
+    out_of_stock_only: bool = Query(False),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get detailed stock list with filters.
+    
+    Returns all products with their current stock levels, can be filtered by brand, category, etc.
+    """
+    company = get_company_or_404(company_id, current_user, db)
+    service = InventoryService(db)
+    
+    return service.get_stock_list(
+        company=company,
+        brand_id=brand_id,
+        category_id=category_id,
+        godown_id=godown_id,
+        low_stock_only=low_stock_only,
+        out_of_stock_only=out_of_stock_only,
+    )
+
+
+@router.get("/negative-stock")
+async def get_negative_stock(
+    company_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all products with negative stock.
+    
+    Useful for identifying stock discrepancies.
+    """
+    company = get_company_or_404(company_id, current_user, db)
+    service = InventoryService(db)
+    
+    items = service.get_negative_stock_items(company)
+    
+    return {
+        "items": items,
+        "total_count": len(items),
+        "total_negative_quantity": sum(i["negative_amount"] for i in items),
+    }
+
+
+@router.post("/generate-sku")
+async def generate_sku(
+    company_id: str,
+    product_name: str = Query(...),
+    category_id: Optional[str] = Query(None),
+    brand_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Auto-generate SKU for a product.
+    
+    Returns a unique SKU based on company settings and product attributes.
+    """
+    company = get_company_or_404(company_id, current_user, db)
+    service = InventoryService(db)
+    
+    sku = service.generate_sku(
+        company=company,
+        product_name=product_name,
+        category_id=category_id,
+        brand_id=brand_id,
+    )
+    
+    return {"sku": sku}

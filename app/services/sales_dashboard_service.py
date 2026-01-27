@@ -3,7 +3,7 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func, extract
+from sqlalchemy import and_, or_, func, extract, case
 
 from app.database.models import (
     SalesTicket, SalesTicketStatus, SalesTicketStage,
@@ -11,8 +11,8 @@ from app.database.models import (
     Quotation, QuotationStatus,
     SalesOrder,
     DeliveryChallan, DeliveryChallanStatus,
-    Invoice, InvoiceStatus,
-    Customer
+    Invoice, InvoiceStatus, InvoiceItem,
+    Customer, Product, Brand, Category
 )
 from app.database.payroll_models import Employee
 
@@ -505,5 +505,391 @@ class SalesDashboardService:
             "funnel": self.get_pipeline_funnel(company_id),
             "conversion_rates": self.get_conversion_rates(company_id),
             "deal_cycle": self.get_average_deal_cycle(company_id),
+        }
+
+    # ==================== SALES REPORTS ====================
+
+    def get_sales_by_brand(
+        self,
+        company_id: str,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get sales report grouped by brand.
+        
+        Returns for each brand: invoice count, total quantity, total amount.
+        """
+        if not from_date:
+            from_date = datetime.utcnow().date() - timedelta(days=365)
+        if not to_date:
+            to_date = datetime.utcnow().date()
+        
+        # Query: Invoice -> InvoiceItem -> Product -> Brand
+        results = self.db.query(
+            Brand.id.label("brand_id"),
+            Brand.name.label("brand_name"),
+            func.count(func.distinct(Invoice.id)).label("invoice_count"),
+            func.sum(InvoiceItem.quantity).label("total_quantity"),
+            func.sum(InvoiceItem.total_amount).label("total_amount"),
+            func.sum(InvoiceItem.taxable_amount).label("taxable_amount"),
+        ).select_from(Invoice).join(
+            InvoiceItem, Invoice.id == InvoiceItem.invoice_id
+        ).join(
+            Product, InvoiceItem.product_id == Product.id, isouter=True
+        ).join(
+            Brand, Product.brand_id == Brand.id, isouter=True
+        ).filter(
+            and_(
+                Invoice.company_id == company_id,
+                Invoice.invoice_date >= from_date,
+                Invoice.invoice_date <= to_date,
+                Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.COMPLETED])
+            )
+        ).group_by(Brand.id, Brand.name).all()
+        
+        brand_data = []
+        total_sales = Decimal("0")
+        
+        for row in results:
+            total_amount = row.total_amount or Decimal("0")
+            total_sales += total_amount
+            
+            brand_data.append({
+                "brand_id": row.brand_id,
+                "brand_name": row.brand_name or "No Brand / Unassigned",
+                "invoice_count": row.invoice_count or 0,
+                "total_quantity": float(row.total_quantity or 0),
+                "total_amount": float(total_amount),
+                "taxable_amount": float(row.taxable_amount or 0),
+            })
+        
+        # Calculate percentage
+        for item in brand_data:
+            item["percentage"] = round((item["total_amount"] / float(total_sales) * 100) if total_sales > 0 else 0, 2)
+        
+        # Sort by total amount descending
+        brand_data.sort(key=lambda x: x["total_amount"], reverse=True)
+        
+        return brand_data
+    
+    def get_sales_by_state(
+        self,
+        company_id: str,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get sales report grouped by customer state.
+        
+        Returns for each state: invoice count, total amount, customer count.
+        """
+        if not from_date:
+            from_date = datetime.utcnow().date() - timedelta(days=365)
+        if not to_date:
+            to_date = datetime.utcnow().date()
+        
+        # Query: Invoice -> Customer (for state)
+        results = self.db.query(
+            Customer.billing_state.label("state"),
+            Customer.billing_state_code.label("state_code"),
+            func.count(func.distinct(Invoice.id)).label("invoice_count"),
+            func.count(func.distinct(Customer.id)).label("customer_count"),
+            func.sum(Invoice.total_amount).label("total_amount"),
+            func.sum(Invoice.taxable_amount).label("taxable_amount"),
+            func.sum(Invoice.cgst_amount + Invoice.sgst_amount).label("sgst_cgst"),
+            func.sum(Invoice.igst_amount).label("igst"),
+        ).select_from(Invoice).join(
+            Customer, Invoice.customer_id == Customer.id, isouter=True
+        ).filter(
+            and_(
+                Invoice.company_id == company_id,
+                Invoice.invoice_date >= from_date,
+                Invoice.invoice_date <= to_date,
+                Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.COMPLETED])
+            )
+        ).group_by(Customer.billing_state, Customer.billing_state_code).all()
+        
+        state_data = []
+        total_sales = Decimal("0")
+        
+        for row in results:
+            total_amount = row.total_amount or Decimal("0")
+            total_sales += total_amount
+            
+            # Determine if intra-state or inter-state based on GST
+            is_intrastate = (row.sgst_cgst or 0) > 0
+            
+            state_data.append({
+                "state": row.state or "Unknown",
+                "state_code": row.state_code or "",
+                "invoice_count": row.invoice_count or 0,
+                "customer_count": row.customer_count or 0,
+                "total_amount": float(total_amount),
+                "taxable_amount": float(row.taxable_amount or 0),
+                "sgst_cgst": float(row.sgst_cgst or 0),
+                "igst": float(row.igst or 0),
+                "supply_type": "Intra-State" if is_intrastate else "Inter-State",
+            })
+        
+        # Calculate percentage
+        for item in state_data:
+            item["percentage"] = round((item["total_amount"] / float(total_sales) * 100) if total_sales > 0 else 0, 2)
+        
+        # Sort by total amount descending
+        state_data.sort(key=lambda x: x["total_amount"], reverse=True)
+        
+        return state_data
+    
+    def get_sales_by_category(
+        self,
+        company_id: str,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get sales report grouped by product category.
+        
+        Returns for each category: invoice count, total quantity, total amount.
+        """
+        if not from_date:
+            from_date = datetime.utcnow().date() - timedelta(days=365)
+        if not to_date:
+            to_date = datetime.utcnow().date()
+        
+        # Query: Invoice -> InvoiceItem -> Product -> Category
+        results = self.db.query(
+            Category.id.label("category_id"),
+            Category.name.label("category_name"),
+            func.count(func.distinct(Invoice.id)).label("invoice_count"),
+            func.sum(InvoiceItem.quantity).label("total_quantity"),
+            func.sum(InvoiceItem.total_amount).label("total_amount"),
+        ).select_from(Invoice).join(
+            InvoiceItem, Invoice.id == InvoiceItem.invoice_id
+        ).join(
+            Product, InvoiceItem.product_id == Product.id, isouter=True
+        ).join(
+            Category, Product.category_id == Category.id, isouter=True
+        ).filter(
+            and_(
+                Invoice.company_id == company_id,
+                Invoice.invoice_date >= from_date,
+                Invoice.invoice_date <= to_date,
+                Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.COMPLETED])
+            )
+        ).group_by(Category.id, Category.name).all()
+        
+        category_data = []
+        total_sales = Decimal("0")
+        
+        for row in results:
+            total_amount = row.total_amount or Decimal("0")
+            total_sales += total_amount
+            
+            category_data.append({
+                "category_id": row.category_id,
+                "category_name": row.category_name or "Uncategorized",
+                "invoice_count": row.invoice_count or 0,
+                "total_quantity": float(row.total_quantity or 0),
+                "total_amount": float(total_amount),
+            })
+        
+        # Calculate percentage
+        for item in category_data:
+            item["percentage"] = round((item["total_amount"] / float(total_sales) * 100) if total_sales > 0 else 0, 2)
+        
+        # Sort by total amount descending
+        category_data.sort(key=lambda x: x["total_amount"], reverse=True)
+        
+        return category_data
+    
+    def get_engineer_performance(
+        self,
+        company_id: str,
+        employee_id: Optional[str] = None,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get comprehensive performance report for sales engineers.
+        
+        Returns for each engineer:
+        - Total enquiries
+        - Total quotations
+        - Total invoices (conversions)
+        - Total sales amount
+        - Conversion rate
+        - Achievement vs target
+        """
+        from app.database.models import SalesTarget
+        
+        if not from_date:
+            from_date = datetime.utcnow().date() - timedelta(days=30)
+        if not to_date:
+            to_date = datetime.utcnow().date()
+        
+        # Get all sales employees
+        from app.database.payroll_models import Employee
+        emp_query = self.db.query(Employee).filter(Employee.company_id == company_id)
+        if employee_id:
+            emp_query = emp_query.filter(Employee.id == employee_id)
+        
+        employees = emp_query.all()
+        performance_data = []
+        
+        for employee in employees:
+            # Enquiries count
+            enquiries = self.db.query(func.count(Enquiry.id)).filter(
+                Enquiry.company_id == company_id,
+                Enquiry.sales_person_id == employee.id,
+                Enquiry.enquiry_date >= from_date,
+                Enquiry.enquiry_date <= to_date,
+            ).scalar() or 0
+            
+            # Quotations count and value
+            quotations = self.db.query(
+                func.count(Quotation.id).label("count"),
+                func.sum(Quotation.total_amount).label("value")
+            ).filter(
+                Quotation.company_id == company_id,
+                Quotation.sales_person_id == employee.id,
+                Quotation.quotation_date >= from_date,
+                Quotation.quotation_date <= to_date,
+            ).first()
+            
+            quotation_count = quotations.count or 0
+            quotation_value = float(quotations.value or 0)
+            
+            # Invoices (conversions) count and value
+            invoices = self.db.query(
+                func.count(Invoice.id).label("count"),
+                func.sum(Invoice.total_amount).label("value")
+            ).filter(
+                Invoice.company_id == company_id,
+                Invoice.sales_person_id == employee.id,
+                Invoice.invoice_date >= from_date,
+                Invoice.invoice_date <= to_date,
+                Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.COMPLETED])
+            ).first()
+            
+            invoice_count = invoices.count or 0
+            invoice_value = float(invoices.value or 0)
+            
+            # Conversion rate
+            conversion_rate = (invoice_count / quotation_count * 100) if quotation_count > 0 else 0
+            
+            # Get current month's target
+            current_year = datetime.utcnow().year
+            current_month = datetime.utcnow().month
+            
+            target = self.db.query(SalesTarget).filter(
+                SalesTarget.company_id == company_id,
+                SalesTarget.employee_id == employee.id,
+                SalesTarget.target_year == current_year,
+                SalesTarget.target_month == current_month,
+            ).first()
+            
+            target_amount = float(target.target_amount) if target else 0
+            achievement_percent = (invoice_value / target_amount * 100) if target_amount > 0 else 0
+            
+            performance_data.append({
+                "employee_id": employee.id,
+                "employee_name": f"{employee.first_name} {employee.last_name}",
+                "enquiries": enquiries,
+                "quotations": quotation_count,
+                "quotation_value": quotation_value,
+                "invoices": invoice_count,
+                "invoice_value": invoice_value,
+                "conversion_rate": round(conversion_rate, 2),
+                "target_amount": target_amount,
+                "achievement_percent": round(achievement_percent, 2),
+            })
+        
+        # Sort by invoice value descending
+        performance_data.sort(key=lambda x: x["invoice_value"], reverse=True)
+        
+        return performance_data
+    
+    def get_admin_dashboard_summary(
+        self,
+        company_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Get combined admin dashboard with all key metrics.
+        """
+        today = datetime.utcnow().date()
+        month_start = today.replace(day=1)
+        year_start = today.replace(month=1, day=1)
+        
+        # Today's stats
+        todays_enquiries = self.db.query(func.count(Enquiry.id)).filter(
+            Enquiry.company_id == company_id,
+            func.date(Enquiry.enquiry_date) == today
+        ).scalar() or 0
+        
+        todays_quotations = self.db.query(func.count(Quotation.id)).filter(
+            Quotation.company_id == company_id,
+            func.date(Quotation.quotation_date) == today
+        ).scalar() or 0
+        
+        todays_invoices = self.db.query(
+            func.count(Invoice.id),
+            func.sum(Invoice.total_amount)
+        ).filter(
+            Invoice.company_id == company_id,
+            func.date(Invoice.invoice_date) == today,
+            Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.COMPLETED])
+        ).first()
+        
+        # Monthly stats
+        monthly_sales = self.db.query(func.sum(Invoice.total_amount)).filter(
+            Invoice.company_id == company_id,
+            Invoice.invoice_date >= month_start,
+            Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.COMPLETED])
+        ).scalar() or Decimal("0")
+        
+        # Yearly stats  
+        yearly_sales = self.db.query(func.sum(Invoice.total_amount)).filter(
+            Invoice.company_id == company_id,
+            Invoice.invoice_date >= year_start,
+            Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.COMPLETED])
+        ).scalar() or Decimal("0")
+        
+        # Pending payments
+        pending_payments = self.db.query(func.sum(Invoice.balance_due)).filter(
+            Invoice.company_id == company_id,
+            Invoice.balance_due > 0,
+        ).scalar() or Decimal("0")
+        
+        # Overdue invoices
+        overdue_invoices = self.db.query(func.count(Invoice.id)).filter(
+            Invoice.company_id == company_id,
+            Invoice.due_date < today,
+            Invoice.balance_due > 0,
+        ).scalar() or 0
+        
+        # Top performers (this month)
+        top_performers = self.get_engineer_performance(
+            company_id=company_id,
+            from_date=month_start,
+            to_date=today,
+        )[:5]
+        
+        return {
+            "today": {
+                "enquiries": todays_enquiries,
+                "quotations": todays_quotations,
+                "invoices": todays_invoices[0] or 0,
+                "sales_value": float(todays_invoices[1] or 0),
+            },
+            "monthly": {
+                "sales": float(monthly_sales),
+            },
+            "yearly": {
+                "sales": float(yearly_sales),
+            },
+            "pending_payments": float(pending_payments),
+            "overdue_invoices": overdue_invoices,
+            "top_performers": top_performers,
         }
 

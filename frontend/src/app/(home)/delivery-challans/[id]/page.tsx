@@ -70,7 +70,7 @@ export default function DeliveryChallanDetailPage() {
 
       try {
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/companies/${company.id}/delivery-challans/${dcId}`,
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/delivery-challans/${dcId}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -97,7 +97,7 @@ export default function DeliveryChallanDetailPage() {
     setActionLoading(action);
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/companies/${company.id}/delivery-challans/${dcId}/${action}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/delivery-challans/${dcId}/${action}`,
         {
           method: "POST",
           headers: {
@@ -129,7 +129,7 @@ export default function DeliveryChallanDetailPage() {
     setActionLoading("delete");
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/companies/${company.id}/delivery-challans/${dcId}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/delivery-challans/${dcId}`,
         {
           method: "DELETE",
           headers: {
@@ -160,6 +160,8 @@ export default function DeliveryChallanDetailPage() {
       case "in_transit":
         return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400";
       case "delivered":
+        return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
+      case "received":
         return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
       case "cancelled":
         return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
@@ -195,10 +197,57 @@ export default function DeliveryChallanDetailPage() {
   }
 
   const isDraft = dc.status === "draft";
-  const canDispatch = dc.status === "draft";
-  const canMarkInTransit = dc.status === "dispatched";
-  const canMarkDelivered = ["dispatched", "in_transit"].includes(dc.status);
-  const canCancel = !["cancelled", "delivered"].includes(dc.status);
+  const isDcOut = dc.dc_type === "dc_out";
+  const isDcIn = dc.dc_type === "dc_in";
+  
+  // DC Out workflow: Draft -> Dispatched -> In Transit -> Delivered
+  const canDispatch = isDcOut && dc.status === "draft";
+  const canMarkInTransit = isDcOut && dc.status === "dispatched";
+  const canMarkDelivered = isDcOut && ["dispatched", "in_transit"].includes(dc.status);
+  
+  // DC In workflow: Draft -> Received (Inward)
+  const canMarkReceived = isDcIn && dc.status === "draft";
+  
+  // Return: Can create return (DC In) from DC Out that has been dispatched/delivered
+  const canCreateReturn = isDcOut && ["dispatched", "in_transit", "delivered"].includes(dc.status);
+  
+  const canCancel = !["cancelled", "delivered", "received"].includes(dc.status);
+
+  const handleCreateReturn = async () => {
+    const token = getToken();
+    if (!company?.id || !token || !dcId) return;
+
+    if (!confirm("Create a return DC In from this DC Out? This will copy all items to a new return challan.")) {
+      return;
+    }
+
+    setActionLoading("return");
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/delivery-challans/${dcId}/create-return`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (response.ok) {
+        const newDc = await response.json();
+        router.push(`/delivery-challans/${newDc.id}`);
+      } else {
+        const errorData = await response.json();
+        alert(errorData.detail || "Failed to create return");
+      }
+    } catch (error) {
+      console.error("Failed to create return:", error);
+      alert("Failed to create return");
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -267,6 +316,26 @@ export default function DeliveryChallanDetailPage() {
             </button>
           )}
 
+          {canMarkReceived && (
+            <button
+              onClick={() => performAction("received", { received_by: "Warehouse" })}
+              disabled={actionLoading === "received"}
+              className="rounded-lg bg-green-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-600 disabled:opacity-50"
+            >
+              {actionLoading === "received" ? "..." : "Mark as Inward"}
+            </button>
+          )}
+
+          {canCreateReturn && (
+            <button
+              onClick={handleCreateReturn}
+              disabled={actionLoading === "return"}
+              className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600 disabled:opacity-50"
+            >
+              {actionLoading === "return" ? "Creating..." : "Return"}
+            </button>
+          )}
+
           {canCancel && (
             <button
               onClick={() => performAction("cancel", { reason: "Cancelled by user" })}
@@ -304,10 +373,24 @@ export default function DeliveryChallanDetailPage() {
             </div>
             {dc.delivered_at && (
               <div className="flex justify-between">
-                <span className="text-dark-6">Delivered:</span>
+                <span className="text-dark-6">{isDcIn ? "Received:" : "Delivered:"}</span>
                 <span className="text-dark dark:text-white">
                   {dayjs(dc.delivered_at).format("DD MMM YYYY")}
                 </span>
+              </div>
+            )}
+            {dc.original_dc_id && (
+              <div className="flex justify-between">
+                <span className="text-dark-6">Original DC:</span>
+                <Link href={`/delivery-challans/${dc.original_dc_id}`} className="text-primary hover:underline">
+                  View Original DC Out
+                </Link>
+              </div>
+            )}
+            {dc.return_reason && (
+              <div className="flex justify-between">
+                <span className="text-dark-6">Return Reason:</span>
+                <span className="text-dark dark:text-white">{dc.return_reason}</span>
               </div>
             )}
           </div>

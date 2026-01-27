@@ -102,6 +102,12 @@ class MarkDeliveredRequest(BaseModel):
     received_by: Optional[str] = None
 
 
+class MarkReceivedRequest(BaseModel):
+    """Request to mark DC In as received (inward)."""
+    received_at: Optional[datetime] = None
+    received_by: Optional[str] = None
+
+
 class CancelRequest(BaseModel):
     reason: Optional[str] = None
 
@@ -416,6 +422,29 @@ async def mark_delivered(
     return _dc_to_response(dc, db)
 
 
+@router.post("/companies/{company_id}/delivery-challans/{dc_id}/received", response_model=DCResponse)
+async def mark_received(
+    company_id: str,
+    dc_id: str,
+    data: MarkReceivedRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Mark DC In as received (goods inward)."""
+    get_company_or_404(company_id, current_user, db)
+    service = DeliveryChallanService(db)
+    
+    dc = service.get_delivery_challan(company_id, dc_id)
+    if not dc:
+        raise HTTPException(status_code=404, detail="Delivery challan not found")
+    
+    try:
+        dc = service.mark_received(dc, received_at=data.received_at, received_by=data.received_by)
+        return _dc_to_response(dc, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/companies/{company_id}/delivery-challans/{dc_id}/link-invoice", response_model=DCResponse)
 async def link_dc_to_invoice(
     company_id: str,
@@ -465,6 +494,59 @@ async def cancel_dc(
         dc = service.cancel_dc(dc, reason=data.reason)
         return _dc_to_response(dc, db)
     except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/companies/{company_id}/delivery-challans/{dc_id}/create-return", response_model=DCResponse)
+async def create_return_dc(
+    company_id: str,
+    dc_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Create a DC In (return) from an existing DC Out."""
+    company = get_company_or_404(company_id, current_user, db)
+    service = DeliveryChallanService(db)
+    
+    # Get the original DC Out
+    original_dc = service.get_delivery_challan(company_id, dc_id)
+    if not original_dc:
+        raise HTTPException(status_code=404, detail="Delivery challan not found")
+    
+    if original_dc.dc_type != "dc_out":
+        raise HTTPException(status_code=400, detail="Can only create returns from DC Out")
+    
+    if original_dc.status not in ["delivered", "dispatched", "in_transit"]:
+        raise HTTPException(status_code=400, detail="Can only create returns from dispatched/delivered DCs")
+    
+    # Copy items from original DC
+    items = []
+    if original_dc.items:
+        for item in original_dc.items:
+            items.append({
+                "product_id": item.product_id,
+                "description": item.description,
+                "hsn_code": item.hsn_code,
+                "quantity": float(item.quantity),
+                "unit": item.unit,
+                "unit_price": float(item.unit_price) if item.unit_price else 0,
+                "godown_id": item.godown_id,
+            })
+    
+    try:
+        dc_in = service.create_dc_in(
+            company=company,
+            items=items,
+            customer_id=original_dc.customer_id,
+            original_dc_id=original_dc.id,
+            invoice_id=original_dc.invoice_id,
+            to_godown_id=original_dc.from_godown_id,  # Return to original godown
+            return_reason="Return from " + original_dc.dc_number,
+            auto_update_stock=False,  # Stock updated when marked as received
+        )
+        
+        return _dc_to_response(dc_in, db)
+    except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 

@@ -12,6 +12,14 @@ from app.database.models import (
 )
 
 
+def _safe_int(val: Any, default: int = 0) -> int:
+    """Parse int from string, tolerant of spaces and non-numeric values."""
+    if val is None:
+        return default
+    s = str(val).replace(" ", "").strip()
+    return int(s) if s.isdigit() else default
+
+
 class GSTIntegrationService:
     """Service for GST portal integrations."""
     
@@ -80,7 +88,7 @@ class GSTIntegrationService:
                 "Addr1": customer.billing_address_line1 if customer else "",
                 "Addr2": customer.billing_address_line2 if customer else "",
                 "Loc": customer.billing_city if customer else "",
-                "Pin": int(customer.billing_pincode or 0) if customer else 0,
+                "Pin": _safe_int(customer.billing_zip) if customer else 0,
                 "Stcd": customer.billing_state_code if customer else "",
                 "Pos": invoice.place_of_supply or company.state_code or "",
             },
@@ -213,8 +221,8 @@ class GSTIntegrationService:
             "toAddr1": customer.billing_address_line1 if customer else "",
             "toAddr2": customer.billing_address_line2 if customer else "",
             "toPlace": customer.billing_city if customer else "",
-            "toPincode": int(customer.billing_pincode or 0) if customer else 0,
-            "toStateCode": int(customer.billing_state_code or 0) if customer else 0,
+            "toPincode": _safe_int(customer.billing_zip) if customer else 0,
+            "toStateCode": _safe_int(customer.billing_state_code) if customer else 0,
             "totalValue": float(invoice.subtotal or 0),
             "cgstValue": float(invoice.cgst_amount or 0),
             "sgstValue": float(invoice.sgst_amount or 0),

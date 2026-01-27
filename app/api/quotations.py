@@ -113,6 +113,11 @@ class QuotationCreateRequest(BaseModel):
     payment_terms: Optional[str] = None
     excel_notes: Optional[str] = None
     items: List[QuotationItemCreate]
+    # Multi-currency support
+    currency_code: str = "INR"
+    exchange_rate: float = 1.0
+    # PDF options
+    show_images_in_pdf: bool = True
 
 
 
@@ -130,6 +135,11 @@ class QuotationUpdateRequest(BaseModel):
     payment_terms: Optional[str] = None
     excel_notes: Optional[str] = None
     items: Optional[List[QuotationItemCreate]] = None
+    # Multi-currency support
+    currency_code: Optional[str] = None
+    exchange_rate: Optional[float] = None
+    # PDF options
+    show_images_in_pdf: Optional[bool] = None
 
 class SubItemResponse(BaseModel):  # Add this schema
     id: str
@@ -178,6 +188,13 @@ class QuotationResponse(BaseModel):
     subject: Optional[str]
     place_of_supply: Optional[str]
     place_of_supply_name: Optional[str]
+    # Multi-currency support
+    currency_code: str = "INR"
+    exchange_rate: float = 1.0
+    base_currency_total: Optional[float] = None
+    # PDF options
+    show_images_in_pdf: bool = True
+    # Amounts
     subtotal: float
     discount_amount: float
     cgst_amount: float
@@ -529,7 +546,10 @@ async def create_quotation(
             excel_notes=quotation_data.get("excel_notes"),
             excel_file_content=excel_file_content,
             excel_filename=excel_filename,
-            quotation_type=quotation_type  # Pass quotation_type to service
+            quotation_type=quotation_type,  # Pass quotation_type to service
+            # Multi-currency support
+            currency_code=quotation_data.get("currency_code", "INR"),
+            exchange_rate=Decimal(str(quotation_data.get("exchange_rate", 1.0))),
         )
         
         return _quotation_to_response(quotation, db)
@@ -971,6 +991,62 @@ async def check_expired_quotations(
     return {"expired_count": count}
 
 
+class CompareQuotationsRequest(BaseModel):
+    quotation_ids: List[str]
+
+
+@router.get("/companies/{company_id}/quotations/reports/items")
+async def get_quotation_items_report(
+    company_id: str,
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get quotation item-level report.
+    
+    Aggregates by product showing quantity quoted, value, conversion rate.
+    """
+    company = get_company_or_404(company_id, current_user, db)
+    service = QuotationService(db)
+    
+    return service.get_quotation_items_report(
+        company_id=company_id,
+        from_date=from_date,
+        to_date=to_date,
+    )
+
+
+@router.post("/companies/{company_id}/quotations/compare")
+async def compare_quotations(
+    company_id: str,
+    data: CompareQuotationsRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Compare multiple quotations side by side.
+    
+    Accepts 2-5 quotation IDs and returns comparison data including:
+    - Basic quotation info for each
+    - Item-by-item comparison
+    - Price differences
+    - Terms comparison
+    """
+    company = get_company_or_404(company_id, current_user, db)
+    service = QuotationService(db)
+    
+    try:
+        comparison = service.compare_quotations(
+            company_id=company_id,
+            quotation_ids=data.quotation_ids,
+        )
+        return comparison
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 # ==================== HELPER FUNCTIONS ====================
 
 def _quotation_to_response(quotation, db: Session, include_items: bool = True) -> dict:
@@ -1005,6 +1081,13 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
         "subject": quotation.subject,
         "place_of_supply": quotation.place_of_supply,
         "place_of_supply_name": quotation.place_of_supply_name,
+        # Multi-currency support
+        "currency_code": quotation.currency_code or "INR",
+        "exchange_rate": float(quotation.exchange_rate or 1.0),
+        "base_currency_total": float(quotation.base_currency_total or quotation.total_amount or 0),
+        # PDF options
+        "show_images_in_pdf": quotation.show_images_in_pdf if quotation.show_images_in_pdf is not None else True,
+        # Amounts
         "subtotal": float(quotation.subtotal or 0),
         "discount_amount": float(quotation.discount_amount or 0),
         "cgst_amount": float(quotation.cgst_amount or 0),

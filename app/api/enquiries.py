@@ -548,6 +548,110 @@ def count_enquiries(
     return {"count": count}
 
 
+# ==================== ENQUIRY REPORTS ====================
+
+@router.get("/enquiries/reports/aging")
+def get_enquiry_aging_report(
+    company_id: str,
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    status: Optional[EnquiryStatus] = Query(None),
+    sales_person_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Get enquiry aging report.
+    
+    Returns enquiries grouped by age buckets (0-7, 8-15, 16-30, 31-60, 60+ days)
+    with count, total value, and status breakdown.
+    """
+    get_company(db, company_id)
+    
+    from app.services.enquiry_service import EnquiryService
+    service = EnquiryService(db)
+    
+    return service.get_enquiry_aging_report(
+        company_id=company_id,
+        from_date=from_date,
+        to_date=to_date,
+        status=status,
+        sales_person_id=sales_person_id,
+    )
+
+
+@router.get("/enquiries/reports/by-engineer")
+def get_enquiries_by_engineer(
+    company_id: str,
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Get enquiry report grouped by sales engineer.
+    
+    Returns for each engineer: total count, total value, conversion rate, average age.
+    """
+    get_company(db, company_id)
+    
+    from app.services.enquiry_service import EnquiryService
+    service = EnquiryService(db)
+    
+    return service.get_enquiries_by_engineer(
+        company_id=company_id,
+        from_date=from_date,
+        to_date=to_date,
+    )
+
+
+@router.get("/enquiries/reports/by-state")
+def get_enquiries_by_state(
+    company_id: str,
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Get enquiry report grouped by customer state.
+    
+    Returns for each state: total count, total value, conversion rate.
+    """
+    get_company(db, company_id)
+    
+    from app.services.enquiry_service import EnquiryService
+    service = EnquiryService(db)
+    
+    return service.get_enquiries_by_state(
+        company_id=company_id,
+        from_date=from_date,
+        to_date=to_date,
+    )
+
+
+@router.get("/enquiries/reports/by-brand")
+def get_enquiries_by_brand(
+    company_id: str,
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Get enquiry report grouped by brand.
+    
+    Returns for each brand: total count, total value, conversion rate.
+    Note: This joins enquiry items to products to get brand information.
+    """
+    get_company(db, company_id)
+    
+    from app.services.enquiry_service import EnquiryService
+    service = EnquiryService(db)
+    
+    return service.get_enquiries_by_brand(
+        company_id=company_id,
+        from_date=from_date,
+        to_date=to_date,
+    )
+
+
 @router.get("/enquiries/pending-followups", response_model=List[EnquiryResponse])
 def get_pending_followups(
     company_id: str,

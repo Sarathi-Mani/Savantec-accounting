@@ -124,7 +124,7 @@ export default function NewDeliveryChallanPage() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/companies/${company.id}/delivery-challans/${endpoint}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/delivery-challans/${endpoint}`,
         {
           method: "POST",
           headers: {

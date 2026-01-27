@@ -151,6 +151,10 @@ export const NAV_DATA = [
             title: "New Enquiry",
             url: "/enquiries/new",
           },
+          {
+            title: "Enquiry Reports",
+            url: "/enquiries/reports",
+          },
         ],
       },
 
@@ -238,6 +242,7 @@ export const NAV_DATA = [
         items: [
           { title: "All Quotations", url: "/quotations" },
           { title: "Create Quotation", url: "/quotations/new" },
+          { title: "Compare Quotations", url: "/quotations/compare" },
         ],
       },
       {
@@ -560,6 +565,10 @@ export const NAV_DATA = [
           { title: "Stock Summary", url: "/inventory/warehouse-report" },
           { title: "Stock Valuation", url: "/reports/stock-valuation" },
           { title: "Movement Analysis", url: "/reports/stock-movement" },
+          { title: "Brand Summary", url: "/inventory/reports?tab=brand" },
+          { title: "Category Summary", url: "/inventory/reports?tab=category" },
+          { title: "Stock Ledger", url: "/inventory/reports?tab=ledger" },
+          { title: "Stock List", url: "/inventory/reports?tab=list" },
         ],
       },
       {
@@ -589,6 +598,10 @@ export const NAV_DATA = [
           { title: "Sales Summary", url: "/reports/sales-analysis" },
           { title: "Customer-wise Sales", url: "/reports/sales-by-customer" },
           { title: "Product-wise Sales", url: "/reports/sales-by-product" },
+          { title: "Brand-wise Sales", url: "/reports/sales-reports?tab=brand" },
+          { title: "State-wise Sales", url: "/reports/sales-reports?tab=state" },
+          { title: "Category-wise Sales", url: "/reports/sales-reports?tab=category" },
+          { title: "Engineer-wise Sales", url: "/reports/sales-reports?tab=engineer" },
         ],
       },
     ],

@@ -74,6 +74,13 @@ async def get_dashboard_summary(
     invoice_service = InvoiceService(db)
     summary = invoice_service.get_dashboard_summary(company)
     
+    # Safely convert to float with fallback to 0
+    def safe_float(val):
+        try:
+            return float(val) if val is not None else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+    
     return {
         "company": {
             "id": company.id,
@@ -81,24 +88,24 @@ async def get_dashboard_summary(
             "gstin": company.gstin
         },
         "invoices": {
-            "total": summary["total_invoices"],
-            "current_month": summary["current_month_invoices"]
+            "total": summary["total_invoices"] or 0,
+            "current_month": summary["current_month_invoices"] or 0
         },
         "revenue": {
-            "total": float(summary["total_revenue"]),
-            "current_month": float(summary["current_month_revenue"]),
-            "pending": float(summary["total_pending"]),
-            "paid": float(summary["total_paid"])
+            "total": safe_float(summary["total_revenue"]),
+            "current_month": safe_float(summary["current_month_revenue"]),
+            "pending": safe_float(summary["total_pending"]),
+            "paid": safe_float(summary["total_paid"])
         },
         "overdue": {
-            "count": summary["overdue_count"],
-            "amount": float(summary["overdue_amount"])
+            "count": summary["overdue_count"] or 0,
+            "amount": safe_float(summary["overdue_amount"])
         },
         "gst": {
-            "cgst": float(summary["total_cgst"]),
-            "sgst": float(summary["total_sgst"]),
-            "igst": float(summary["total_igst"]),
-            "total": float(summary["total_cgst"] + summary["total_sgst"] + summary["total_igst"])
+            "cgst": safe_float(summary["total_cgst"]),
+            "sgst": safe_float(summary["total_sgst"]),
+            "igst": safe_float(summary["total_igst"]),
+            "total": safe_float(summary["total_cgst"]) + safe_float(summary["total_sgst"]) + safe_float(summary["total_igst"])
         }
     }
 
