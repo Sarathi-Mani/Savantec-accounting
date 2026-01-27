@@ -63,23 +63,88 @@ async def create_invoice(
     response = InvoiceResponse.model_validate(invoice)
     if customer:
         response.customer_name = customer.name
-        response.customer_gstin = customer.tax_number
+        # Use getattr to safely access the attribute, fall back to tax_number or gstin
+        response.customer_gstin = getattr(customer, 'gstin', None) or getattr(customer, 'tax_number', None)
         response.customer_email = customer.email
-        response.customer_phone = customer.contact or customer.mobile
+        # Try contact, then mobile, then phone
+        response.customer_phone = getattr(customer, 'contact', None) or getattr(customer, 'mobile', None) or getattr(customer, 'phone', None)
     
     return response
 
+@router.get("/dashboard/summary")
+async def get_dashboard_summary(
+    company_id: str,
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get dashboard summary data."""
+    company = get_company_or_404(company_id, current_user, db)
+    
+    invoice_service = InvoiceService(db)
+    dashboard_data = invoice_service.get_dashboard_data(company, from_date, to_date)
+    
+    # Get overall totals using the get_invoices method
+    _, _, overall_summary = invoice_service.get_invoices(
+        company, 
+        page=1, 
+        page_size=1
+    )
+    
+    # Get total invoices count
+    total_invoices = invoice_service.get_total_invoices_count(company)
+    
+    # Prepare response
+    response_data = {
+        "today_sales": float(dashboard_data.get("today_sales", Decimal("0"))),
+        "weekly_sales": float(dashboard_data.get("weekly_sales", Decimal("0"))),
+        "monthly_sales": float(dashboard_data.get("monthly_sales", Decimal("0"))),
+        "total_pending": float(dashboard_data.get("total_pending", Decimal("0"))),
+        "total_sales": float(overall_summary.get("total_amount", Decimal("0"))),
+        "total_paid": float(overall_summary.get("total_paid", Decimal("0"))),
+        "total_invoices": total_invoices,
+        "top_customers": dashboard_data.get("top_customers", []),
+        "sales_by_status": dashboard_data.get("sales_by_status", {}),
+        "recent_invoices": []
+    }
+    
+    # Convert recent invoices to response format
+    recent_invoices = dashboard_data.get("recent_invoices", [])
+    for invoice in recent_invoices:
+        invoice_dict = {
+            "id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "invoice_date": invoice.invoice_date,
+            "customer_name": invoice.customer_name,
+            "customer": {
+                "name": invoice.customer_name,
+                "gstin": invoice.customer_gstin,
+                "contact": invoice.customer_phone
+            } if invoice.customer_name else None,
+            "total_amount": float(invoice.total_amount or Decimal("0")),
+            "amount_paid": float(invoice.amount_paid or Decimal("0")),
+            "balance_due": float(invoice.balance_due or Decimal("0")),
+            "status": invoice.status.value,
+            "voucher_type": invoice.voucher_type.value if invoice.voucher_type else "sales",
+            "reference_no": invoice.reference_no,
+            "created_at": invoice.created_at
+        }
+        response_data["recent_invoices"].append(invoice_dict)
+    
+    return response_data
 
 @router.get("", response_model=InvoiceListResponse)
 async def list_invoices(
     company_id: str,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
+    search: Optional[str] = None,
     status: Optional[str] = None,
-    customer_id: Optional[str] = None,
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
-    search: Optional[str] = None,
+    customer_id: Optional[str] = None,  # MOVE customer_id AFTER date parameters
+    voucher_type: Optional[str] = None,  # Added voucher_type if needed
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -88,7 +153,15 @@ async def list_invoices(
     
     invoice_service = InvoiceService(db)
     invoices, total, summary = invoice_service.get_invoices(
-        company, page, page_size, status, customer_id, from_date, to_date, search
+        company=company,
+        page=page,
+        page_size=page_size,
+        voucher_type=voucher_type,  # Pass voucher_type
+        status=status,
+        customer_id=customer_id,
+        from_date=from_date,
+        to_date=to_date,
+        search=search
     )
     
     invoice_responses = []
@@ -96,11 +169,13 @@ async def list_invoices(
         response = InvoiceResponse.model_validate(invoice)
         if invoice.customer:
             response.customer_name = invoice.customer.name
-            response.customer_gstin = invoice.customer.gstin
+            response.customer_gstin = getattr(invoice.customer, 'gstin', None) or getattr(invoice.customer, 'tax_number', None)
             response.customer_email = invoice.customer.email
-            response.customer_phone = invoice.customer.phone
+            response.customer_phone = getattr(invoice.customer, 'contact', None) or getattr(invoice.customer, 'mobile', None) or getattr(invoice.customer, 'phone', None)
         invoice_responses.append(response)
     
+    total_invoices = invoice_service.get_total_invoices_count(company)
+
     return InvoiceListResponse(
         invoices=invoice_responses,
         total=total,
@@ -108,9 +183,9 @@ async def list_invoices(
         page_size=page_size,
         total_amount=summary["total_amount"],
         total_paid=summary["total_paid"],
-        total_pending=summary["total_pending"]
+        total_pending=summary["total_pending"],
+        total_invoices=total_invoices
     )
-
 
 @router.get("/{invoice_id}", response_model=InvoiceResponse)
 async def get_invoice(
@@ -135,9 +210,11 @@ async def get_invoice(
     response = InvoiceResponse.model_validate(invoice)
     if invoice.customer:
         response.customer_name = invoice.customer.name
-        response.customer_gstin = invoice.customer.gstin
+        # Use getattr to safely access the attribute
+        response.customer_gstin = getattr(invoice.customer, 'gstin', None) or getattr(invoice.customer, 'tax_number', None)
         response.customer_email = invoice.customer.email
-        response.customer_phone = invoice.customer.phone
+        # Try contact, then mobile, then phone
+        response.customer_phone = getattr(invoice.customer, 'contact', None) or getattr(invoice.customer, 'mobile', None) or getattr(invoice.customer, 'phone', None)
     
     # Add godown names to warehouse allocations
     from app.database.models import Godown

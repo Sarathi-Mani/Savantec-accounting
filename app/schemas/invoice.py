@@ -326,6 +326,8 @@ class InvoiceResponse(BaseModel):
     invoice_number: str
     invoice_date: datetime
     due_date: Optional[datetime] = None
+
+    reference_no: Optional[str] = None
     
     invoice_type: str
     place_of_supply: Optional[str] = None
@@ -383,6 +385,7 @@ class InvoiceListResponse(BaseModel):
     total_amount: Decimal = Decimal("0")
     total_paid: Decimal = Decimal("0")
     total_pending: Decimal = Decimal("0")
+    total_invoices: int = 0 
 
 
 class InvoiceSummary(BaseModel):

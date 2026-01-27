@@ -435,42 +435,117 @@ class InvoiceService:
         search: Optional[str] = None
     ) -> Tuple[List[Invoice], int, dict]:
         """Get invoices with pagination and filters."""
+        from sqlalchemy import or_
+        import re
+        
         query = self.db.query(Invoice).filter(Invoice.company_id == company.id)
         
         # Status filter
         if status:
             query = query.filter(Invoice.status == status)
         
-        # Customer filter
+        # Customer filter - FIXED: Handle both string and date types
         if customer_id:
-            query = query.filter(Invoice.customer_id == customer_id)
+            # Convert to string if it's a date object
+            if isinstance(customer_id, date):
+                # It's a date, not a customer_id - ignore this filter
+                print(f"Warning: customer_id parameter is a date: {customer_id}")
+            elif isinstance(customer_id, str):
+                # It's a string, check if it's empty
+                customer_id_str = customer_id.strip()
+                if customer_id_str:
+                    # Check if it's a valid UUID (not a date string)
+                    uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+                    date_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+                    
+                    if uuid_pattern.match(customer_id_str):
+                        # It's a valid UUID, filter by customer_id
+                        query = query.filter(Invoice.customer_id == customer_id_str)
+                    elif date_pattern.match(customer_id_str):
+                        # It's a date string - ignore this filter
+                        print(f"Warning: customer_id parameter appears to be a date string: {customer_id_str}")
+                    else:
+                        # Try to search by customer name
+                        query = query.filter(Invoice.customer_name.ilike(f'%{customer_id_str}%'))
+            else:
+                # customer_id is some other type - convert to string
+                try:
+                    customer_id_str = str(customer_id).strip()
+                    if customer_id_str:
+                        # Try to filter by customer name
+                        query = query.filter(Invoice.customer_name.ilike(f'%{customer_id_str}%'))
+                except:
+                    # If conversion fails, ignore the filter
+                    pass
         
         # Date range filter
         if from_date:
             query = query.filter(Invoice.invoice_date >= from_date)
         if to_date:
             query = query.filter(Invoice.invoice_date <= to_date)
-        if voucher_type:
-          try:
-            voucher_enum = VoucherType(voucher_type.lower())
-            query = query.filter(Invoice.voucher_type == voucher_enum)
-          except ValueError:
-            # Invalid voucher type - ignore filter
-            pass
+        
+        # Voucher type filter
+        if voucher_type and isinstance(voucher_type, str) and voucher_type.strip():
+            try:
+                # Convert string to VoucherType enum
+                from app.database.models import InvoiceVoucher
+                voucher_enum = InvoiceVoucher(voucher_type.lower())
+                query = query.filter(Invoice.voucher_type == voucher_enum)
+            except ValueError:
+                # Invalid voucher type - ignore filter
+                print(f"Warning: Invalid voucher type: {voucher_type}")
+        
         # Search filter
-        if search:
+        if search and isinstance(search, str) and search.strip():
             search_filter = f"%{search}%"
-            query = query.filter(Invoice.invoice_number.ilike(search_filter))
+            query = query.filter(
+                or_(
+                    Invoice.invoice_number.ilike(search_filter),
+                    Invoice.customer_name.ilike(search_filter),
+                    Invoice.reference_no.ilike(search_filter),
+                    Invoice.customer_gstin.ilike(search_filter)
+                )
+            )
         
         # Get total count
         total = query.count()
         
         # Get summary
-        summary = self.db.query(
+        summary_query = self.db.query(
             func.sum(Invoice.total_amount).label('total_amount'),
             func.sum(Invoice.amount_paid).label('total_paid'),
             func.sum(Invoice.balance_due).label('total_pending')
-        ).filter(Invoice.company_id == company.id).first()
+        ).filter(Invoice.company_id == company.id)
+        
+        # Apply same filters to summary
+        if status:
+            summary_query = summary_query.filter(Invoice.status == status)
+        
+        # Customer filter for summary
+        if customer_id and isinstance(customer_id, str):
+            customer_id_str = customer_id.strip()
+            if customer_id_str:
+                uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+                if uuid_pattern.match(customer_id_str):
+                    summary_query = summary_query.filter(Invoice.customer_id == customer_id_str)
+        
+        if from_date:
+            summary_query = summary_query.filter(Invoice.invoice_date >= from_date)
+        if to_date:
+            summary_query = summary_query.filter(Invoice.invoice_date <= to_date)
+        
+        if search and isinstance(search, str) and search.strip():
+            search_filter = f"%{search}%"
+            summary_query = summary_query.filter(
+                or_(
+                    Invoice.invoice_number.ilike(search_filter),
+                    Invoice.customer_name.ilike(search_filter),
+                    Invoice.reference_no.ilike(search_filter),
+                    Invoice.customer_gstin.ilike(search_filter)
+                )
+            )
+        
+        summary = summary_query.first()
         
         summary_dict = {
             "total_amount": summary.total_amount or Decimal("0"),
@@ -480,10 +555,126 @@ class InvoiceService:
         
         # Pagination
         offset = (page - 1) * page_size
-        invoices = query.order_by(Invoice.invoice_date.desc()).offset(offset).limit(page_size).all()
+        invoices = query.order_by(Invoice.created_at.desc()).offset(offset).limit(page_size).all()
         
         return invoices, total, summary_dict
+
+
+
+    def get_dashboard_data(
+        self,
+        company: Company,
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None
+    ) -> dict:
+        """Get dashboard-specific invoice data."""
+        from datetime import datetime, timedelta
+        
+        today = datetime.utcnow().date()
+        
+        # Default date ranges if not provided
+        if not from_date:
+            from_date = today.replace(day=1)  # First day of current month
+        
+        if not to_date:
+            to_date = today
+        
+        # Today's sales
+        today_query = self.db.query(
+            func.count(Invoice.id).label('count'),
+            func.sum(Invoice.total_amount).label('total')
+        ).filter(
+            Invoice.company_id == company.id,
+            Invoice.invoice_date == today
+        ).first()
+        
+        # Weekly sales (last 7 days)
+        week_ago = today - timedelta(days=7)
+        weekly_query = self.db.query(
+            func.count(Invoice.id).label('count'),
+            func.sum(Invoice.total_amount).label('total')
+        ).filter(
+            Invoice.company_id == company.id,
+            Invoice.invoice_date >= week_ago,
+            Invoice.invoice_date <= today
+        ).first()
+        
+        # Monthly sales
+        monthly_query = self.db.query(
+            func.count(Invoice.id).label('count'),
+            func.sum(Invoice.total_amount).label('total')
+        ).filter(
+            Invoice.company_id == company.id,
+            Invoice.invoice_date >= from_date,
+            Invoice.invoice_date <= to_date
+        ).first()
+        
+        # Pending payments
+        pending_query = self.db.query(
+            func.sum(Invoice.balance_due).label('total_pending'),
+            func.count(Invoice.id).label('count')
+        ).filter(
+            Invoice.company_id == company.id,
+            Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PARTIALLY_PAID])
+        ).first()
+        
+        # Top customers (last 30 days)
+        thirty_days_ago = today - timedelta(days=30)
+        top_customers = self.db.query(
+            Invoice.customer_name,
+            func.count(Invoice.id).label('invoice_count'),
+            func.sum(Invoice.total_amount).label('total_amount')
+        ).filter(
+            Invoice.company_id == company.id,
+            Invoice.invoice_date >= thirty_days_ago,
+            Invoice.invoice_date <= today
+        ).group_by(Invoice.customer_name).order_by(
+            func.sum(Invoice.total_amount).desc()
+        ).limit(5).all()
+        
+        # Recent invoices
+        recent_invoices = self.db.query(Invoice).filter(
+            Invoice.company_id == company.id
+        ).order_by(
+            Invoice.created_at.desc()
+        ).limit(5).all()
+        
+        # Sales by status
+        sales_by_status = {}
+        status_query = self.db.query(
+            Invoice.status,
+            func.sum(Invoice.total_amount).label('total_amount'),
+            func.count(Invoice.id).label('count')
+        ).filter(
+            Invoice.company_id == company.id,
+            Invoice.invoice_date >= from_date,
+            Invoice.invoice_date <= to_date
+        ).group_by(Invoice.status).all()
+        
+        for status, amount, count in status_query:
+            sales_by_status[status.value] = float(amount or 0)
+        
+        return {
+            "today_sales": today_query.total or Decimal("0"),
+            "weekly_sales": weekly_query.total or Decimal("0"),
+            "monthly_sales": monthly_query.total or Decimal("0"),
+            "total_pending": pending_query.total_pending or Decimal("0"),
+            "top_customers": [
+                {
+                    "customer_name": row.customer_name or "Walk-in Customer",
+                    "invoice_count": row.invoice_count,
+                    "total_amount": float(row.total_amount or Decimal("0"))
+                }
+                for row in top_customers
+            ],
+            "recent_invoices": recent_invoices,
+            "sales_by_status": sales_by_status
+        }
     
+    def get_total_invoices_count(self, company: Company) -> int:
+        """Get total number of invoices for a company."""
+        return self.db.query(Invoice).filter(Invoice.company_id == company.id).count()
+
     def update_invoice(self, invoice: Invoice, data: InvoiceUpdate) -> Invoice:
         """Update an invoice."""
         update_data = data.model_dump(exclude_unset=True)
