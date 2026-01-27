@@ -174,6 +174,27 @@ class StockMovementType(str, PyEnum):
     ADJUSTMENT_OUT = "adjustment_out"  # Manual adjustment decrease
     MANUFACTURING_IN = "manufacturing_in"  # Finished goods from production
     MANUFACTURING_OUT = "manufacturing_out"  # Raw materials consumed
+    REPACK_IN = "repack_in"      # Goods received from repackaging
+    REPACK_OUT = "repack_out"    # Goods consumed in repackaging
+    CONVERSION_IN = "conversion_in"  # Product converted TO (destination)
+    CONVERSION_OUT = "conversion_out"  # Product converted FROM (source)
+
+
+class StockJournalType(str, PyEnum):
+    """Type of stock journal voucher."""
+    TRANSFER = "transfer"        # Inter-godown transfer (same item)
+    MANUFACTURING = "manufacturing"  # Assembly: components -> finished goods
+    DISASSEMBLY = "disassembly"  # Disassembly: finished goods -> components
+    REPACKAGING = "repackaging"  # Repack: Product A -> Product B (different packaging)
+    CONVERSION = "conversion"    # Product transformation: A+C -> B
+    ADJUSTMENT = "adjustment"    # Stock adjustment (damage, expiry, samples)
+
+
+class StockJournalStatus(str, PyEnum):
+    """Stock journal status."""
+    DRAFT = "draft"
+    CONFIRMED = "confirmed"
+    CANCELLED = "cancelled"
 
 
 class ExchangeRateSource(str, PyEnum):
@@ -1650,6 +1671,145 @@ class StockEntry(Base):
 
     def __repr__(self):
         return f"<StockEntry {self.movement_type} - {self.quantity}>"
+
+
+class StockJournal(Base):
+    """
+    Stock Journal Voucher model - For recording stock adjustments, transfers, and manufacturing.
+    
+    Supports various operations like Tally:
+    - Inter-godown transfers
+    - Manufacturing/Assembly (consume raw materials -> produce finished goods)
+    - Disassembly (finished goods -> components)
+    - Repackaging (Product A -> Product B)
+    - Conversions (A + C -> B)
+    - Adjustments (damage, expiry, samples)
+    """
+    __tablename__ = "stock_journals"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    
+    # Voucher details
+    voucher_number = Column(String(50), nullable=False, index=True)
+    voucher_date = Column(DateTime, nullable=False, default=datetime.utcnow)
+    journal_type = Column(Enum(StockJournalType), nullable=False, default=StockJournalType.ADJUSTMENT)
+    status = Column(Enum(StockJournalStatus), default=StockJournalStatus.DRAFT)
+    
+    # For transfers
+    from_godown_id = Column(String(36), ForeignKey("godowns.id", ondelete="SET NULL"))
+    to_godown_id = Column(String(36), ForeignKey("godowns.id", ondelete="SET NULL"))
+    
+    # For manufacturing - reference BOM
+    bom_id = Column(String(36), ForeignKey("bills_of_material.id", ondelete="SET NULL"))
+    
+    # Description and notes
+    narration = Column(Text)
+    notes = Column(Text)
+    
+    # Additional cost tracking (manufacturing overhead, transport, etc.)
+    additional_cost = Column(Numeric(14, 2), default=0)
+    additional_cost_type = Column(String(100))  # "manufacturing_overhead", "transport", etc.
+    
+    # Audit
+    created_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    confirmed_at = Column(DateTime)
+    confirmed_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"))
+    cancelled_at = Column(DateTime)
+    cancelled_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"))
+    cancellation_reason = Column(Text)
+
+    # Relationships
+    company = relationship("Company")
+    from_godown = relationship("Godown", foreign_keys=[from_godown_id])
+    to_godown = relationship("Godown", foreign_keys=[to_godown_id])
+    bom = relationship("BillOfMaterial")
+    source_items = relationship("StockJournalItem", back_populates="stock_journal", 
+                                foreign_keys="[StockJournalItem.stock_journal_id]",
+                                primaryjoin="and_(StockJournal.id==StockJournalItem.stock_journal_id, "
+                                           "StockJournalItem.item_type=='source')",
+                                cascade="all, delete-orphan", overlaps="destination_items,stock_journal")
+    destination_items = relationship("StockJournalItem", back_populates="stock_journal",
+                                    foreign_keys="[StockJournalItem.stock_journal_id]",
+                                    primaryjoin="and_(StockJournal.id==StockJournalItem.stock_journal_id, "
+                                               "StockJournalItem.item_type=='destination')",
+                                    cascade="all, delete-orphan", overlaps="source_items,stock_journal")
+    items = relationship("StockJournalItem", back_populates="stock_journal", 
+                        foreign_keys="[StockJournalItem.stock_journal_id]",
+                        cascade="all, delete-orphan", overlaps="source_items,destination_items")
+
+    __table_args__ = (
+        Index("idx_stock_journal_company", "company_id"),
+        Index("idx_stock_journal_date", "voucher_date"),
+        Index("idx_stock_journal_type", "journal_type"),
+    )
+
+    def __repr__(self):
+        return f"<StockJournal {self.voucher_number} - {self.journal_type}>"
+
+
+class StockJournalItem(Base):
+    """
+    Stock Journal Item model - Individual line items in a stock journal.
+    
+    Items are categorized as:
+    - source: Items being consumed/transferred out (decreases stock)
+    - destination: Items being produced/transferred in (increases stock)
+    
+    For a simple transfer: source and destination have same product, different godowns
+    For manufacturing: sources are raw materials, destinations are finished goods
+    For repackaging: source is Product A, destination is Product B
+    """
+    __tablename__ = "stock_journal_items"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    stock_journal_id = Column(String(36), ForeignKey("stock_journals.id", ondelete="CASCADE"), nullable=False)
+    
+    # Item type: source (consumption) or destination (production)
+    item_type = Column(String(20), nullable=False)  # 'source' or 'destination'
+    
+    # Product details
+    product_id = Column(String(36), ForeignKey("items.id", ondelete="CASCADE"), nullable=False)
+    godown_id = Column(String(36), ForeignKey("godowns.id", ondelete="SET NULL"))
+    batch_id = Column(String(36), ForeignKey("batches.id", ondelete="SET NULL"))
+    
+    # Quantity and value
+    quantity = Column(Numeric(14, 3), nullable=False)
+    unit = Column(String(20))
+    rate = Column(Numeric(14, 2), default=0)
+    value = Column(Numeric(14, 2), default=0)  # quantity * rate
+    
+    # For cost allocation in manufacturing (percentage of total cost)
+    cost_allocation_percent = Column(Numeric(5, 2), default=100)  # For by-products/co-products
+    
+    # Tracking
+    serial_numbers = Column(JSON)  # List of serial numbers if applicable
+    notes = Column(Text)
+    
+    # Link to actual stock entry created
+    stock_entry_id = Column(String(36), ForeignKey("stock_entries.id", ondelete="SET NULL"))
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    stock_journal = relationship("StockJournal", back_populates="items", 
+                                foreign_keys=[stock_journal_id],
+                                overlaps="source_items,destination_items")
+    product = relationship("Product")
+    godown = relationship("Godown")
+    batch = relationship("Batch")
+    stock_entry = relationship("StockEntry")
+
+    __table_args__ = (
+        Index("idx_sj_item_journal", "stock_journal_id"),
+        Index("idx_sj_item_product", "product_id"),
+        Index("idx_sj_item_type", "item_type"),
+    )
+
+    def __repr__(self):
+        return f"<StockJournalItem {self.item_type}: {self.quantity} x {self.product_id}>"
 
 
 class BillOfMaterial(Base):
@@ -4771,29 +4931,6 @@ class Enquiry(Base):
 
     def __repr__(self):
         return f"<Enquiry {self.enquiry_number}>"
-
-
-class SalesTicketLogAction(str, PyEnum):
-    """Sales ticket log action types."""
-    CREATED = "created"
-    STATUS_CHANGED = "status_changed"
-    STAGE_CHANGED = "stage_changed"
-    ENQUIRY_CREATED = "enquiry_created"
-    QUOTATION_CREATED = "quotation_created"
-    QUOTATION_SENT = "quotation_sent"
-    QUOTATION_APPROVED = "quotation_approved"
-    QUOTATION_REJECTED = "quotation_rejected"
-    SALES_ORDER_CREATED = "sales_order_created"
-    DELIVERY_CREATED = "delivery_created"
-    DELIVERY_DISPATCHED = "delivery_dispatched"
-    DELIVERY_COMPLETED = "delivery_completed"
-    INVOICE_CREATED = "invoice_created"
-    PAYMENT_RECEIVED = "payment_received"
-    NOTE_ADDED = "note_added"
-    CONTACT_CHANGED = "contact_changed"
-    SALES_PERSON_CHANGED = "sales_person_changed"
-    VALUE_UPDATED = "value_updated"
-    FOLLOW_UP_SCHEDULED = "follow_up_scheduled"
 
 
 class SalesTicketLogAction(str, PyEnum):

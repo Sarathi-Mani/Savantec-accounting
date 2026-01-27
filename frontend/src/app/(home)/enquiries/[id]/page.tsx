@@ -93,12 +93,9 @@ export default function EnquiryDetailView() {
   const companyId = typeof window !== "undefined" ? localStorage.getItem("company_id") : null;
 useEffect(() => {
   if (companyId && enquiryId) {
-    console.log("Fetching enquiry with ID:", enquiryId);
     fetchEnquiry();
-  } else {
-    console.log("Cannot fetch: companyId =", companyId, "enquiryId =", enquiryId);
   }
-}, [companyId, enquiryId]); // Make sure enquiryId is in dependencies
+}, [companyId, enquiryId]);
 
  const fetchEnquiry = async () => {
   try {
@@ -119,22 +116,10 @@ useEffect(() => {
 
     const data = await response.json();
     
-    // DEBUG: Check what's coming from API
-    console.log("=== DEBUG VIEW PAGE ===");
-    console.log("Full API response:", data);
-    console.log("products_interested exists?", "products_interested" in data);
-    console.log("products_interested value:", data.products_interested);
-    console.log("Type of products_interested:", typeof data.products_interested);
-    console.log("Is it array?", Array.isArray(data.products_interested));
-    console.log("=== END DEBUG ===");
-    
     setEnquiry(data);
 
     // Extract items from products_interested (contains price data)
     if (data.products_interested && Array.isArray(data.products_interested)) {
-      console.log("Setting items from products_interested. Count:", data.products_interested.length);
-      console.log("First item:", data.products_interested[0]);
-      
       setItems(data.products_interested.map((item: any) => ({
         description: item.description || "",
         quantity: item.quantity || 1,
@@ -147,19 +132,17 @@ useEffect(() => {
       })));
     } else if (data.items && Array.isArray(data.items)) {
       // Fallback to items relationship
-      console.log("No products_interested, using items. Count:", data.items.length);
       setItems(data.items.map((item: any) => ({
         description: item.description || "",
         quantity: item.quantity || 1,
-        suitable_item: "", // Not in items table
-        purchase_price: 0, // Not in items table
-        sales_price: 0, // Not in items table
+        suitable_item: "",
+        purchase_price: 0,
+        sales_price: 0,
         image_url: item.image_url,
         notes: item.notes || "",
         product_id: item.product_id,
       })));
     } else {
-      console.log("No items found in response");
       setItems([]);
     }
   } catch (err) {

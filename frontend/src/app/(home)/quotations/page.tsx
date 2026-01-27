@@ -146,8 +146,67 @@ export default function QuotationsPage() {
   };
 
   const handleConvertToDC = async (quotationId: string) => {
-    // TODO: Implement DC conversion logic
-    alert("DC conversion feature coming soon!");
+    const token = getToken();
+    if (!company?.id || !token) return;
+
+    if (!confirm("Create a Delivery Challan from this quotation?")) return;
+
+    try {
+      // Fetch quotation details first
+      const quotationRes = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/quotations/${quotationId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (!quotationRes.ok) {
+        alert("Failed to fetch quotation details");
+        return;
+      }
+
+      const quotation = await quotationRes.json();
+
+      // Create DC Out from quotation
+      const dcData = {
+        customer_id: quotation.customer_id,
+        quotation_id: quotationId,
+        dc_date: new Date().toISOString(),
+        items: (quotation.items || []).map((item: any) => ({
+          product_id: item.product_id,
+          description: item.description || item.product_name || "",
+          hsn_code: item.hsn_code || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "NOS",
+          unit_price: item.unit_price || 0,
+          godown_id: null,
+        })),
+      };
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/delivery-challans/dc-out`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(dcData),
+        }
+      );
+
+      if (response.ok) {
+        const dc = await response.json();
+        alert(`Delivery Challan ${dc.dc_number} created successfully!`);
+        window.location.href = `/delivery-challans/${dc.id}`;
+      } else {
+        const error = await response.json();
+        alert(error.detail || "Failed to create Delivery Challan");
+      }
+    } catch (error) {
+      console.error("Failed to convert to DC:", error);
+      alert("Failed to convert quotation to Delivery Challan");
+    }
   };
 
   const handlePrint = (quotationId: string) => {

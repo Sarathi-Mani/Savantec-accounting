@@ -344,6 +344,22 @@ export const NAV_DATA = [
         ],
       },
       {
+        title: "Stock Journal",
+        icon: Icons.ScrollText,
+        items: [
+          { title: "All Journals", url: "/inventory/stock-journal" },
+          { title: "New Journal", url: "/inventory/stock-journal/new" },
+          { title: "Transfer", url: "/inventory/stock-journal/new?type=transfer" },
+          { title: "Conversion", url: "/inventory/stock-journal/new?type=conversion" },
+        ],
+      },
+      {
+        title: "Stock Ledger",
+        url: "/inventory/stock-ledger",
+        icon: Icons.BookOpen,
+        items: [],
+      },
+      {
         title: "Godowns",
         url: "/inventory/godowns",
         icon: Icons.Warehouse,

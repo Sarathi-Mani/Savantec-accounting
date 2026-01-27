@@ -98,7 +98,7 @@ def serialize_value(value: Any) -> Any:
         return value.value
     try:
         return str(value)
-    except:
+    except Exception:
         return None
 
 

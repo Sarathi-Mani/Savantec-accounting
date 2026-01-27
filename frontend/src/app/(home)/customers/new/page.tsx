@@ -405,9 +405,6 @@ const handleSubmit = async (e: React.FormEvent) => {
   shipping_country: sameAsBilling ? formData.billing_country : (formData.shipping_country || "India"),
   shipping_zip: sameAsBilling ? formData.billing_zip : (formData.shipping_zip || ""),
 };
-    // ⬇️⬇️⬇️ ADD THESE 2 LINES HERE ⬇️⬇️⬇️
-    console.log("=== DEBUG: API Data Being Sent ===");
-    console.log(JSON.stringify(apiData, null, 2));
     
     await customersApi.create(company.id, apiData);
   

@@ -38,6 +38,12 @@ def fix_enums():
         add_enum_value_if_not_exists(conn, "deliverychallanstatus", "received")
         add_enum_value_if_not_exists(conn, "deliverychallanstatus", "RECEIVED")
         
+        # Add new stock movement types
+        add_enum_value_if_not_exists(conn, "stockmovementtype", "repack_in")
+        add_enum_value_if_not_exists(conn, "stockmovementtype", "repack_out")
+        add_enum_value_if_not_exists(conn, "stockmovementtype", "conversion_in")
+        add_enum_value_if_not_exists(conn, "stockmovementtype", "conversion_out")
+        
         print("Enum updates complete!")
 
 def fix_columns():

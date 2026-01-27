@@ -705,9 +705,6 @@ def update_enquiry_edit(
     db: Session = Depends(get_db),
 ):
     """Update enquiry with edit page data."""
-    print(f"DEBUG: Received update request for enquiry {enquiry_id}")
-    print(f"DEBUG: Request data: {data.model_dump()}")
-    
     get_company(db, company_id)
     
     service = SimpleEnquiryService(db)
@@ -722,32 +719,25 @@ def update_enquiry_edit(
     if data.status is not None:
         try:
             update_data['status'] = EnquiryStatus(data.status)
-            print(f"DEBUG: Setting status to {data.status}")
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid status: {data.status}")
     
     if data.pending_remarks is not None:
         enquiry.pending_remarks = data.pending_remarks
-        print(f"DEBUG: Setting pending_remarks to {data.pending_remarks}")
     
     if data.quotation_no is not None:
         enquiry.quotation_no = data.quotation_no
-        print(f"DEBUG: Setting quotation_no to {data.quotation_no}")
     
     if data.quotation_date is not None:
         enquiry.quotation_date = data.quotation_date
-        print(f"DEBUG: Setting quotation_date to {data.quotation_date}")
     
     # Update enquiry items if provided
     if data.items is not None:
-        print(f"DEBUG: Processing {len(data.items)} items")
-        
         # First, delete existing items
         db.query(EnquiryItem).filter(EnquiryItem.enquiry_id == enquiry_id).delete()
         
         # Then create new items WITHOUT the fields that don't exist in EnquiryItem
         for index, item_data in enumerate(data.items):
-            print(f"DEBUG: Creating item {index}: {item_data}")
             item = EnquiryItem(
                 id=os.urandom(16).hex(),
                 enquiry_id=enquiry_id,
@@ -785,7 +775,6 @@ def update_enquiry_edit(
     db.commit()
     db.refresh(enquiry)
     
-    print(f"DEBUG: Enquiry updated successfully")
     return enrich_enquiry(enquiry, db)
 
     

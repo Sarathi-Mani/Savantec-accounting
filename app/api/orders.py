@@ -367,23 +367,16 @@ async def create_sales_order(
     db: Session = Depends(get_db)
 ):
     """Create a new sales order."""
-    print("=" * 80)
-    print("API ENDPOINT: Starting sales order creation")
-    
     company = get_company_or_404(company_id, current_user, db)
     service = OrderService(db)
     
     try:
-        print(f"API: Processing {len(data.items)} items from frontend")
-        
         # Convert items to dict for service
         items_data = []
-        for idx, item in enumerate(data.items):
+        for item in data.items:
             item_dict = item.model_dump()
-            print(f"API: Item {idx} - unit_price: {item_dict.get('unit_price')}, rate: {item_dict.get('rate')}")
             items_data.append(item_dict)
         
-        print(f"API: Calling service.create_sales_order")
         order = service.create_sales_order(
             company=company,
             customer_id=data.customer_id,
@@ -417,19 +410,9 @@ async def create_sales_order(
             terms_of_delivery=data.terms_of_delivery,
         )
         
-        print(f"API: Order created successfully: {order.order_number}")
-        print(f"API: Order has {len(order.items)} items")
-        
         # Build items list for response
         items_response = []
-        for idx, item in enumerate(order.items):
-            print(f"\nAPI: Processing item {idx} for response:")
-            print(f"  - id: {item.id}")
-            print(f"  - unit_price: {item.unit_price}, type: {type(item.unit_price)}")
-            print(f"  - gst_rate: {item.gst_rate}, type: {type(item.gst_rate)}")
-            print(f"  - total_amount: {item.total_amount}, type: {type(item.total_amount)}")
-            
-            # Ensure all Decimal fields have values
+        for item in order.items:
             item_response = OrderItemResponse(
                 id=item.id,
                 product_id=item.product_id,
@@ -449,8 +432,6 @@ async def create_sales_order(
                 quantity_pending=item.quantity_pending or Decimal("0"),
             )
             items_response.append(item_response)
-        
-        print(f"\nAPI: Building final response...")
         
         # Build the response with safe defaults
         response = SalesOrderResponse(
@@ -490,33 +471,9 @@ async def create_sales_order(
             items=items_response,
         )
         
-        print(f"API: Response built successfully")
-        
-        # Test serialization
-        try:
-            response_json = response.model_dump_json()
-            print(f"API: Response serialized to JSON successfully")
-            print(f"API: First item in response: {items_response[0].model_dump() if items_response else 'No items'}")
-        except Exception as json_error:
-            print(f"API: JSON serialization error: {json_error}")
-            import traceback
-            traceback.print_exc()
-            # Try to identify which field is causing the issue
-            for field_name, field_value in response:
-                try:
-                    import json
-                    json.dumps({field_name: field_value})
-                except Exception as field_error:
-                    print(f"API: Field '{field_name}' serialization error: {field_error}")
-        
-        print("=" * 80)
         return response
         
     except Exception as e:
-        print(f"API: Error in endpoint: {e}")
-        import traceback
-        traceback.print_exc()
-        print("=" * 80)
         raise HTTPException(status_code=400, detail=str(e))
     
 @router.get("/sales", response_model=List[SalesOrderResponse])
@@ -868,9 +825,6 @@ async def create_purchase_order(
     for item in data.items:
         item_dict = item.model_dump()
         
-        # DEBUG: Print what we're getting
-        print(f"DEBUG API: BEFORE conversion - tax_amount: {item_dict.get('tax_amount')}, type: {type(item_dict.get('tax_amount'))}")
-        
         # Handle item_code
         item_code = item_dict.get('item_code', '')
         item_dict['item_code'] = str(item_code).strip() if item_code is not None else ''
@@ -885,20 +839,14 @@ async def create_purchase_order(
             if field in item_dict:
                 value = item_dict[field]
                 if value is not None:
-                    # Convert to string
                     item_dict[field] = str(value)
                 else:
-                    print(f"DEBUG API: WARNING: {field} is None, defaulting to '0'")
                     item_dict[field] = "0"
         
-        print(f"DEBUG API: AFTER conversion - tax_amount: {item_dict.get('tax_amount')}, type: {type(item_dict.get('tax_amount'))}")
         items_dict.append(item_dict)
     
-    # Debug the final items_dict
-    print(f"DEBUG API: Final items_dict[0]: {items_dict[0] if items_dict else 'Empty'}")
     creator_id = data.creator_id or current_user.id
     creator_type = data.creator_type.value  # Convert enum to string
-    print(f"created_by:{creator_type}")
     # Convert Decimal fields to strings for service layer
     order = service.create_purchase_order(
         company=company,
@@ -973,35 +921,22 @@ async def list_purchase_orders(
     
     for order in orders:
         if order.creator_id and order.creator_type:
-            print(f"DEBUG: Order {order.order_number} has creator_id: {order.creator_id}, creator_type: {order.creator_type}")
             if order.creator_type == 'user':
                 user_ids.append(order.creator_id)
             elif order.creator_type == 'employee':
                 employee_ids.append(order.creator_id)
-    
-    print(f"DEBUG: User IDs to fetch: {user_ids}")
-    print(f"DEBUG: Employee IDs to fetch: {employee_ids}")
     
     # Batch fetch users
     users_dict = {}
     if user_ids:
         users = db.query(User).filter(User.id.in_(user_ids)).all()
         users_dict = {user.id: user for user in users}
-        print(f"DEBUG: Fetched {len(users)} users")
-        for user in users:
-            print(f"  User {user.id}: full_name='{getattr(user, 'full_name', 'NOT SET')}', "
-                  f"name='{getattr(user, 'name', 'NOT SET')}', "
-                  f"email='{user.email}'")
     
     # Batch fetch employees
     employees_dict = {}
     if employee_ids:
         employees = db.query(Employee).filter(Employee.id.in_(employee_ids)).all()
         employees_dict = {emp.id: emp for emp in employees}
-        print(f"DEBUG: Fetched {len(employees)} employees")
-        for emp in employees:
-            print(f"  Employee {emp.id}: full_name='{getattr(emp, 'full_name', 'NOT SET')}', "
-                  f"name='{getattr(emp, 'name', 'NOT SET')}'")
     
     # Build orders response
     orders_response = []
@@ -1021,7 +956,6 @@ async def list_purchase_orders(
                         user.email or
                         "User"
                     )
-                    print(f"DEBUG: User {order.creator_id} -> name: {creator_name}")
             elif order.creator_type == 'employee':
                 employee = employees_dict.get(order.creator_id)
                 if employee:
@@ -1031,7 +965,6 @@ async def list_purchase_orders(
                         getattr(employee, 'name', None) or
                         "Employee"
                     )
-                    print(f"DEBUG: Employee {order.creator_id} -> name: {creator_name}")
         
         # Set created_by_name for backward compatibility
         created_by_name = creator_name
@@ -1069,17 +1002,6 @@ async def list_purchase_orders(
             "updated_at": order.updated_at,
         })
     
-    # Debug first order
-    if orders_response:
-        print("\nDEBUG: First order in response:")
-        first_order = orders_response[0]
-        print(f"  order_number: {first_order['order_number']}")
-        print(f"  creator_id: {first_order['creator_id']}")
-        print(f"  creator_type: {first_order['creator_type']}")
-        print(f"  creator_name: {first_order['creator_name']}")
-        print(f"  created_by: {first_order['created_by']}")
-        print(f"  created_by_name: {first_order['created_by_name']}")
-    
     # Return with pagination and summary info
     return {
         "purchases": orders_response,
@@ -1110,14 +1032,6 @@ async def get_purchase_order(
     order = service.get_purchase_order_with_items(order_id, company)
     if not order:
         raise HTTPException(status_code=404, detail="Purchase order not found")
-    if order.items and len(order.items) > 0:
-        for i, item in enumerate(order.items):
-            print(f"DEBUG: Item {i}:")
-            print(f"  - Product ID: {item.product_id}")
-            print(f"  - Has product object: {item.product is not None}")
-            if item.product:
-                print(f"  - Product name: {item.product.name}")
-                
     # Build items list
     items_response = []
     if order.items:
@@ -1161,10 +1075,6 @@ async def get_purchase_order(
             "address": order.vendor.billing_address or order.vendor.shipping_address or "",
         }
     
-    # Debug: Print what we're returning
-    print(f"DEBUG: Items response count: {len(items_response)}")
-    print(f"DEBUG: Vendor info: {vendor_info}")
-    
     # Build the response
     response_data = {
         "id": str(order.id),
@@ -1197,11 +1107,6 @@ async def get_purchase_order(
     
     # Convert to Pydantic model
     response = PurchaseOrderResponse(**response_data)
-    
-    # Debug: Print the final response
-    print(f"DEBUG: Final response dict keys: {response.dict().keys()}")
-    print(f"DEBUG: Has vendor in dict: {'vendor' in response.dict()}")
-    print(f"DEBUG: Has items in dict: {'items' in response.dict()}")
     
     return response
 
@@ -1252,16 +1157,7 @@ async def update_purchase_order(
             items_data.append(item_dict)
     
     try:
-        print(f"DEBUG API: Updating purchase order with data:")
-        print(f"  - reference_number: {data.reference_number}")
-        print(f"  - currency: {data.currency}")
-        print(f"  - exchange_rate: {data.exchange_rate}")
-        print(f"  - freight_charges: {data.freight_charges}")
-        print(f"  - other_charges: {data.other_charges}")
-        print(f"  - discount_on_all: {data.discount_on_all}")
-        print(f"  - round_off: {data.round_off}")
-        
-        # Update the order - pass ALL fields to the service
+        # Update the order
         updated_order = service.update_purchase_order(
             order=order,
             vendor_id=data.vendor_id,
@@ -1282,11 +1178,6 @@ async def update_purchase_order(
             tax_amount=data.tax_amount,
             total_amount=data.total_amount,
         )
-        
-        print(f"DEBUG API: Order updated")
-        print(f"DEBUG API: Checking if fields were updated:")
-        print(f"  - reference_number in DB: {updated_order.reference_number}")
-        print(f"  - currency in DB: {updated_order.currency}")
         
         # Get the fully loaded order
         order_with_details = service.get_purchase_order_with_items(order.id, company)
@@ -1393,16 +1284,9 @@ async def update_purchase_order(
             "updated_at": order_with_details.updated_at or datetime.utcnow(),
         }
         
-        print(f"DEBUG API: Response built with reference_number: {response_data['reference_number']}")
-        print(f"DEBUG API: Response built with currency: {response_data['currency']}")
-        print(f"DEBUG API: Response built with exchange_rate: {response_data['exchange_rate']}")
-        
         return PurchaseOrderResponse(**response_data)
         
     except Exception as e:
-        print(f"DEBUG API: Error in update endpoint: {e}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=400, detail=str(e))
     
 @router.post("/purchase/{order_id}/confirm")
@@ -1564,24 +1448,28 @@ async def delete_delivery_note(
     if not note:
         raise HTTPException(status_code=404, detail="Delivery note not found")
     
-    # Reverse stock movements
-    service = OrderService(db)
-    for item in note.items:
-        if item.product_id:
-            service.inventory_service.record_stock_in(
-                company=company,
-                product_id=item.product_id,
-                quantity=item.quantity,
-                godown_id=note.godown_id,
-                reference_type="delivery_note_reversal",
-                reference_id=note.id,
-                reference_number=f"{note.delivery_number}-REV",
-            )
-    
-    db.delete(note)
-    db.commit()
-    
-    return {"message": "Delivery note deleted successfully"}
+    try:
+        # Reverse stock movements
+        service = OrderService(db)
+        for item in note.items:
+            if item.product_id:
+                service.inventory_service.record_stock_in(
+                    company=company,
+                    product_id=item.product_id,
+                    quantity=item.quantity,
+                    godown_id=note.godown_id,
+                    reference_type="delivery_note_reversal",
+                    reference_id=note.id,
+                    reference_number=f"{note.delivery_number}-REV",
+                )
+        
+        db.delete(note)
+        db.commit()
+        
+        return {"message": "Delivery note deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete delivery note: {str(e)}")
 
 
 # ============== Receipt Note Endpoints ==============
@@ -1702,21 +1590,25 @@ async def delete_receipt_note(
     if not note:
         raise HTTPException(status_code=404, detail="Receipt note not found")
     
-    # Reverse stock movements
-    service = OrderService(db)
-    for item in note.items:
-        if item.product_id and item.accepted_quantity:
-            service.inventory_service.record_stock_out(
-                company=company,
-                product_id=item.product_id,
-                quantity=item.accepted_quantity,
-                godown_id=note.godown_id,
-                reference_type="receipt_note_reversal",
-                reference_id=note.id,
-                reference_number=f"{note.receipt_number}-REV",
-            )
-    
-    db.delete(note)
-    db.commit()
-    
-    return {"message": "Receipt note deleted successfully"}
+    try:
+        # Reverse stock movements
+        service = OrderService(db)
+        for item in note.items:
+            if item.product_id and item.accepted_quantity:
+                service.inventory_service.record_stock_out(
+                    company=company,
+                    product_id=item.product_id,
+                    quantity=item.accepted_quantity,
+                    godown_id=note.godown_id,
+                    reference_type="receipt_note_reversal",
+                    reference_id=note.id,
+                    reference_number=f"{note.receipt_number}-REV",
+                )
+        
+        db.delete(note)
+        db.commit()
+        
+        return {"message": "Receipt note deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete receipt note: {str(e)}")

@@ -2,7 +2,7 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime, date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 
 
@@ -251,7 +251,7 @@ class InvoiceCreate(BaseModel):
         if isinstance(v, (int, float, str)):
             try:
                 return Decimal(str(v))
-            except:
+            except (ValueError, InvalidOperation):
                 return Decimal('0.00')
         return v
     
@@ -262,7 +262,7 @@ class InvoiceCreate(BaseModel):
         if isinstance(v, str):
             try:
                 return date.fromisoformat(v.split('T')[0])
-            except:
+            except ValueError:
                 pass
         return v
     

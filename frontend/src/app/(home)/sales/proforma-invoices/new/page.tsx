@@ -446,16 +446,27 @@ const salesmanOptions = useMemo(() => {
 }, [salesmen]);
 
     const loadBankAccounts = async () => {
+        if (!company?.id) return;
+        
         try {
             setLoading(prev => ({ ...prev, bankAccounts: true }));
-            // TODO: Implement bank accounts API
-            // For now, use dummy data
-            const dummyAccounts = [
-                { id: "1", name: "HDFC Bank", account_number: "XXXX5678" },
-                { id: "2", name: "ICICI Bank", account_number: "XXXX1234" },
-                { id: "3", name: "SBI Bank", account_number: "XXXX9876" },
-            ];
-            setBankAccounts(dummyAccounts);
+            const token = localStorage.getItem("access_token");
+            const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/bank-accounts`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+            if (response.ok) {
+                const data = await response.json();
+                setBankAccounts(data.map((acc: any) => ({
+                    id: acc.id,
+                    name: acc.bank_name,
+                    account_number: acc.account_number,
+                })));
+            }
         } catch (error) {
             console.error("Failed to load bank accounts:", error);
         } finally {

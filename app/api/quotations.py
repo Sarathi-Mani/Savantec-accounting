@@ -401,11 +401,6 @@ async def get_sales_engineers(
         return sales_engineers
         
     except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"Error fetching sales engineers: {str(e)}")
-        print(f"Traceback: {error_details}")
-        
         raise HTTPException(
             status_code=500, 
             detail=f"Error fetching sales engineers: {str(e)}"
@@ -474,8 +469,7 @@ async def create_quotation(
                         return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
                     else:
                         return datetime.strptime(date_str, '%Y-%m-%d')
-                except Exception as e:
-                    print(f"Error parsing date {date_str}: {e}")
+                except Exception:
                     return None
             return None
         
@@ -623,29 +617,19 @@ async def get_next_quotation_number(
     db: Session = Depends(get_db)
 ):
     """Get the next quotation number for a company."""
-    print(f"=== DEBUG START: get_next_quotation_number for company {company_id} ===")
-    
     try:
         company = get_company_or_404(company_id, current_user, db)
-        print(f"Company found: {company.name}")
         
         # Get the last quotation for this company
         last_quotation = db.query(Quotation).filter(
             Quotation.company_id == company_id
         ).order_by(Quotation.created_at.desc()).first()
         
-        print(f"Last quotation query result: {last_quotation}")
-        
-        if last_quotation:
-            print(f"Last quotation ID: {last_quotation.id}")
-            print(f"Last quotation number: {last_quotation.quotation_number}")
-        
         if last_quotation and last_quotation.quotation_number:
             # Extract number from format - handle multiple formats
             import re
             
             quotation_number = last_quotation.quotation_number
-            print(f"Processing quotation number: {quotation_number}")
             
             # Try different patterns
             patterns = [
@@ -661,30 +645,20 @@ async def get_next_quotation_number(
                 if match:
                     try:
                         next_num = int(match.group(1)) + 1
-                        print(f"Pattern matched: {pattern}, next_num: {next_num}")
                         break
-                    except (ValueError, IndexError) as e:
-                        print(f"Error with pattern {pattern}: {e}")
+                    except (ValueError, IndexError):
                         continue
             
             # Format the next number (use 4 digits for consistency)
             next_quotation_number = f"QT-{next_num:04d}"
-            print(f"Generated next number: {next_quotation_number}")
             
         else:
             # No quotations yet, start from 0001
             next_quotation_number = "QT-0001"
-            print(f"No quotations found, using default: {next_quotation_number}")
         
-        # Create response
-        response_data = {"quotation_number": next_quotation_number}
-        print(f"Returning response: {response_data}")
-        
-        return response_data
+        return {"quotation_number": next_quotation_number}
         
     except Exception as e:
-        print(f"=== ERROR in get_next_quotation_number: {e} ===")
-        print(f"Traceback: {traceback.format_exc()}")
         # Return a proper error response
         return {"quotation_number": "QT-0001", "error": str(e)}
         
@@ -758,8 +732,7 @@ async def update_quotation(
                         return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
                     else:
                         return datetime.strptime(date_str, '%Y-%m-%d').date()
-                except Exception as e:
-                    print(f"Error parsing date {date_str}: {e}")
+                except Exception:
                     return None
             return None
         
@@ -1064,7 +1037,7 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
             employee = db.query(Employee).filter(Employee.id == quotation.sales_person_id).first()
             if employee:
                 sales_person_name = employee.full_name or f"{employee.first_name} {employee.last_name or ''}".strip()
-        except:
+        except Exception:
             pass
     
     response = {

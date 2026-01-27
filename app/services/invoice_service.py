@@ -474,7 +474,7 @@ class InvoiceService:
                     if customer_id_str:
                         # Try to filter by customer name
                         query = query.filter(Invoice.customer_name.ilike(f'%{customer_id_str}%'))
-                except:
+                except (ValueError, TypeError):
                     # If conversion fails, ignore the filter
                     pass
         

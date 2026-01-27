@@ -43,9 +43,7 @@ def verify_employee_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a stored password against one provided by employee."""
     try:
         return employee_pwd_context.verify(plain_password, hashed_password)
-    except Exception as e:
-        print(f"Password verification error: {e}")
-        print(f"Hash that failed: {hashed_password}")
+    except Exception:
         return False
     
 def create_employee_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -95,11 +93,9 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
             
             user_info = result.get("user") or {}
             session_info = result.get("session") or {}
-            print(f"user_info:{user_info},session_info:{session_info}")
             if session_info and session_info.get("access_token"):
                 # Regular user login successful
                 user = db.query(User).filter(User.email == data.email).first()
-                print(f"user:{user}")
                 if not user:
                     user_metadata = user_info.get("user_metadata", {}) if isinstance(user_info, dict) else {}
                     user = User(
@@ -108,7 +104,6 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
                         supabase_id=user_info.get("id", "") if isinstance(user_info, dict) else "",
                         is_verified=True
                     )
-                    print(f"not_user:{user}")
                     db.add(user)
                     db.commit()
                     db.refresh(user)
@@ -124,26 +119,14 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
                     user_type="user",
                     user_data=UserResponse.model_validate(user).model_dump()
                 )
-        except Exception as user_login_error:
+        except Exception:
             # Supabase login failed, try employee login
-            print(f"User login failed, trying employee login: {user_login_error}")
             pass
         
         # SECOND: Try to login as employee
         employee = get_employee_by_email(db, data.email)
-        print(f"Employee found: {employee}")
         
         if employee:
-            # Debug: Print all email fields
-            print(f"DEBUG - Employee email fields:")
-            print(f"  email: {employee.email}")
-            print(f"  official_email: {employee.official_email}")
-            print(f"  personal_email: {employee.personal_email}")
-            print(f"  Input email: {data.email}")
-            print(f"  Company ID: {employee.company_id}")
-            print(f"  Has company relationship: {hasattr(employee, 'company')}")
-            print(f"  Company object: {employee.company}")
-            
             # Check if employee has password set
             if not employee.password_hash:
                 raise HTTPException(
@@ -207,8 +190,6 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
                 "is_employee": True
             }
             
-            print(f"Employee data being returned: {employee_data}")
-            
             return LoginResponse(
                 access_token=access_token,
                 refresh_token=None,
@@ -219,7 +200,6 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
             )
         
         # If neither user nor employee found
-        print(f"No employee found for email: {data.email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
@@ -227,10 +207,7 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
         
     except HTTPException:
         raise
-    except Exception as e:
-        print(f"Login error: {e}")
-        import traceback
-        traceback.print_exc()
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"

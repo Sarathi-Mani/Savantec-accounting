@@ -327,14 +327,8 @@ const handleSubmit = async (e: React.FormEvent) => {
       status: "pending"
     };
     
-    console.log("=== DEBUG: Purchase Request API Data ===");
-    console.log(JSON.stringify(apiData, null, 2));
-    
-    // FIX: Use the purchaseRequestsApi from your api.ts file
-    const response = await purchaseRequestsApi.create(company.id, apiData);
-    
-    console.log("=== DEBUG: Purchase Request API Response ===");
-    console.log(response);
+    // Use the purchaseRequestsApi from api.ts
+    await purchaseRequestsApi.create(company.id, apiData);
     
     router.push("/purchase-req");
   } catch (error: any) {

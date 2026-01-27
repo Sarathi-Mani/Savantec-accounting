@@ -51,19 +51,19 @@ async def get_ledger(
     if from_date:
         try:
             fd = datetime.fromisoformat(from_date.replace('Z', '+00:00'))
-        except:
+        except ValueError:
             try:
                 fd = datetime.strptime(from_date, '%Y-%m-%d')
-            except:
+            except ValueError:
                 pass
     
     if to_date:
         try:
             td = datetime.fromisoformat(to_date.replace('Z', '+00:00'))
-        except:
+        except ValueError:
             try:
                 td = datetime.strptime(to_date, '%Y-%m-%d')
-            except:
+            except ValueError:
                 pass
     
     result = service.get_account_ledger(company_id, account_id, fd, td)

@@ -314,8 +314,12 @@ class PayrollService:
             elif component.calculation_type == ComponentCalculationType.PERCENTAGE_OF_BASIC:
                 amount = self._round_amount(basic_amount * (component.percentage or Decimal("0")) / 100)
             elif component.calculation_type == ComponentCalculationType.PERCENTAGE_OF_GROSS:
-                # Will be calculated during payroll
-                pass
+                # PERCENTAGE_OF_GROSS components (like ESI) cannot be calculated during 
+                # salary structure creation because gross salary is unknown at this stage.
+                # These are calculated during actual payroll processing using the dedicated
+                # services (esi_service, pf_service) which have access to the full gross.
+                # Amount stays at 0 in the structure; actual values computed in calculate_employee_salary()
+                amount = Decimal("0")
             
             if component.code == "BASIC":
                 amount = basic_amount

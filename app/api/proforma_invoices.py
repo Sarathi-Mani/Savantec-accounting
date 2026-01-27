@@ -160,23 +160,16 @@ async def create_proforma_invoice(
     db: Session = Depends(get_db)
 ):
     """Create a new proforma invoice."""
-    print("=" * 80)
-    print("API ENDPOINT: Starting proforma invoice creation")
-    
     company = get_company_or_404(company_id, current_user, db)
     service = ProformaInvoiceService(db)
     
     try:
-        print(f"API: Processing {len(data.items)} items from frontend")
-        
         # Convert items to dict for service
         items_data = []
-        for idx, item in enumerate(data.items):
+        for item in data.items:
             item_dict = item.model_dump()
-            print(f"API: Item {idx} - unit_price: {item_dict.get('unit_price')}, item_code: {item_dict.get('item_code')}")
             items_data.append(item_dict)
         
-        print(f"API: Calling service.create_proforma_invoice")
         invoice = service.create_proforma_invoice(
             company=company,
             customer_id=data.customer_id,
@@ -208,19 +201,9 @@ async def create_proforma_invoice(
             terms_of_delivery=data.terms_of_delivery,
         )
         
-        print(f"API: Proforma invoice created successfully: {invoice.invoice_number}")
-        print(f"API: Proforma invoice has {len(invoice.items)} items")
-        
         # Build items list for response
         items_response = []
-        for idx, item in enumerate(invoice.items):
-            print(f"\nAPI: Processing item {idx} for response:")
-            print(f"  - id: {item.id}")
-            print(f"  - unit_price: {item.unit_price}, type: {type(item.unit_price)}")
-            print(f"  - gst_rate: {item.gst_rate}, type: {type(item.gst_rate)}")
-            print(f"  - total_amount: {item.total_amount}, type: {type(item.total_amount)}")
-            
-            # Ensure all Decimal fields have values
+        for item in invoice.items:
             item_response = ProformaInvoiceItemResponse(
                 id=item.id,
                 product_id=item.product_id,
@@ -239,8 +222,6 @@ async def create_proforma_invoice(
                 total_amount=item.total_amount or Decimal("0"),
             )
             items_response.append(item_response)
-        
-        print(f"\nAPI: Building final response...")
         
         # Build the response with safe defaults
         response = ProformaInvoiceResponse(

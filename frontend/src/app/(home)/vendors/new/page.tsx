@@ -523,9 +523,6 @@ export default function CreateVendorPage() {
         phone: formData.contact || "",
       };
       
-      console.log("=== DEBUG: Vendor API Data Being Sent ===");
-      console.log(JSON.stringify(apiData, null, 2));
-      
       await vendorsApi.create(company.id, apiData);
     
       router.push("/vendors");
