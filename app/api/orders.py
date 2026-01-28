@@ -527,7 +527,7 @@ async def list_sales_orders(
                 cgst_rate=item.cgst_rate,
                 sgst_rate=item.sgst_rate,
                 igst_rate=item.igst_rate,
-                taxable_amount=item.taxable_amount,
+                taxable_amount=item.tax_amount,
                 total_amount=item.total_amount,
                 quantity_pending=item.quantity_pending,
             )
@@ -605,7 +605,7 @@ async def get_sales_order(
             cgst_rate=item.cgst_rate,
             sgst_rate=item.sgst_rate,
             igst_rate=item.igst_rate,
-            taxable_amount=item.taxable_amount,
+            taxable_amount=item.tax_amount,
             total_amount=item.total_amount,
             quantity_pending=item.quantity_pending,
         )
@@ -690,6 +690,7 @@ async def update_sales_order(
             p_and_f_charges=data.p_and_f_charges,
             round_off=data.round_off,
             subtotal=data.subtotal,
+            taxable_amount=item.tax_amount,
             total_tax=data.total_tax,
             total_amount=data.total_amount,
             send_message=data.send_message,

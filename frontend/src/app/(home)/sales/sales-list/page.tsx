@@ -307,7 +307,7 @@ export default function SalesListPage() {
 
   useEffect(() => {
     fetchInvoices();
-  }, [company?.id, page]);
+  }, [company?.id, page, search, statusFilter, customerFilter, fromDate, toDate]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -326,12 +326,13 @@ export default function SalesListPage() {
 
   // Export functions
   const copyToClipboard = async () => {
+    const filtered = data;
     const headers = [
       "Sales Date", "Due Date", "Invoice No.", "Reference No.",
       "Customer Name", "Subtotal", "Total", "Paid", "Status"
     ];
 
-    const rows = data.map(invoice => [
+    const rows = filtered.map(invoice => [
       formatDate(invoice.invoice_date),
       formatDate(invoice.due_date),
       invoice.invoice_number,
@@ -350,7 +351,8 @@ export default function SalesListPage() {
   };
 
   const exportExcel = () => {
-    const exportData = data.map(invoice => ({
+    const filtered = data;
+    const exportData = filtered.map(invoice => ({
       "Sales Date": formatDate(invoice.invoice_date),
       "Due Date": formatDate(invoice.due_date),
       "Invoice Number": invoice.invoice_number,
@@ -374,11 +376,12 @@ export default function SalesListPage() {
   };
 
   const exportPDF = () => {
+    const filtered = data;
     const doc = new jsPDF();
 
     autoTable(doc, {
       head: [["Sales Date", "Due Date", "Invoice No.", "Customer Name", "Total", "Paid", "Status"]],
-      body: data.map(invoice => [
+      body: filtered.map(invoice => [
         formatDate(invoice.invoice_date),
         formatDate(invoice.due_date),
         invoice.invoice_number,
@@ -393,7 +396,8 @@ export default function SalesListPage() {
   };
 
   const exportCSV = () => {
-    const exportData = data.map(invoice => ({
+    const filtered = data;
+    const exportData = filtered.map(invoice => ({
       "Sales Date": formatDate(invoice.invoice_date),
       "Due Date": formatDate(invoice.due_date),
       "Invoice Number": invoice.invoice_number,
@@ -512,7 +516,6 @@ export default function SalesListPage() {
     setFromDate("");
     setToDate("");
     setPage(1);
-    fetchInvoices();
   };
 
   const getDaysOverdue = (dueDate?: string): number => {
@@ -612,7 +615,7 @@ export default function SalesListPage() {
 
       {/* Summary Cards */}
       <div className="px-6 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
           {/* Total Invoices */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
@@ -841,14 +844,7 @@ export default function SalesListPage() {
             </div>
 
             <button
-              onClick={() => {
-                setStatusFilter("");
-                setCustomerFilter("");
-                setFromDate("");
-                setToDate("");
-                setPage(1);
-                handleSearch();
-              }}
+              onClick={clearFilters}
               className="text-sm text-blue-600 hover:underline dark:text-blue-400"
             >
               Clear filters
@@ -860,10 +856,10 @@ export default function SalesListPage() {
       {/* Table */}
       <div className="p-6">
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="overflow-x-auto">
-            <div className="min-w-max w-full"> {/* Add this wrapper div */}
-              <table className="w-full table-auto">
-                <thead className="bg-gray-50 dark:bg-gray-700/50">
+          <div className="w-full">
+            <table className="w-full table-fixed">
+              <div className="overflow-x-auto">
+                <thead className="bg-gray-200 dark:bg-gray-700/50">
                   <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
                     {visibleColumns.invoiceDate && (
                       <th className="text-left px-6 py-3 whitespace-nowrap">
@@ -1188,11 +1184,39 @@ export default function SalesListPage() {
                     </tr>
                   </tfoot>
                 )}
-              </table>
-            </div>
+              </div>
+            </table>
+
           </div>
         </div>
+
+        {/* Pagination - Added similar to purchase list */}
+        {data.length > 0 && totalRecords > pageSize && (
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Showing {(page - 1) * pageSize + 1} to{" "}
+              {Math.min(page * pageSize, totalRecords)} of {totalRecords} results
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+
+              <button
+                onClick={() => setPage((p) => p + 1)}
+                disabled={page * pageSize >= totalRecords}
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
-      </div>
-      );
+    </div>
+  );
 }

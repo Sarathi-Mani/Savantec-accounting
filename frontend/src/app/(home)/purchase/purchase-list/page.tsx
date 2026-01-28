@@ -623,244 +623,247 @@ export default function PurchaseListPage() {
 
       {/* Table */}
       <div className="p-6">
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="overflow-x-auto max-w-full">
-            <table className="w-full  table-fixed">
-              <thead className="bg-gray-200 dark:bg-gray-700/50">
-                <tr className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="w-full">
+            {/* TABLE */}
+            <table className="w-full table-fixed">
+              <div className="overflow-x-auto">
+                <thead className="bg-gray-200 dark:bg-gray-700/50">
+                  <tr className="text-sm font-semibold text-gray-700 dark:text-gray-300">
 
-                  {visibleColumns.purchaseDate && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Purchase Date
-                    </th>
-                  )}
-                  {visibleColumns.dueDate && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Due Date
-                    </th>
-                  )}
-                  {visibleColumns.purchaseCode && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Purchase Code
-                    </th>
-                  )}
-                  {visibleColumns.purchaseStatus && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Purchase Status
-                    </th>
-                  )}
-                  {visibleColumns.referenceNo && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Reference No
-                    </th>
-                  )}
-                  {visibleColumns.supplierName && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Supplier Name
-                    </th>
-                  )}
-                  {visibleColumns.total && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Total
-                    </th>
-                  )}
-                  {visibleColumns.currencyCode && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Currency Code
-                    </th>
-                  )}
-                  {visibleColumns.paidAmount && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Paid Payment
-                    </th>
-                  )}
-                  {visibleColumns.paymentStatus && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Payment Status
-                    </th>
-                  )}
-                  {visibleColumns.actions && (
-                    <th className="text-right px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Actions
-                    </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-xs text-gray-700 dark:text-gray-300">
-                {paginatedPurchases.length === 0 ? (
-                  <tr>
-                    <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                      <div className="flex flex-col items-center justify-center">
-                        <ShoppingBag className="w-12 h-12 text-gray-400 mb-2" />
-                        <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
-                          No purchases found
-                        </p>
-                        <p className="text-gray-500 dark:text-gray-400">
-                          Try adjusting your filters or add a new purchase
-                        </p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedPurchases.map((purchase) => (
-                    <tr
-                      key={purchase.id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                    >
-                      {visibleColumns.purchaseDate && (
-                        <td className="px-2.5 py-4 text-gray-700 dark:text-gray-300">
-                          {formatDate(purchase.purchaseDate)}
-                        </td>
-                      )}
-                      {visibleColumns.dueDate && (
-                        <td className="px-2.5 py-4">
-                          <div className="flex flex-col gap-1">
-                            <span className="text-gray-700 dark:text-gray-300">
-                              {formatDate(purchase.dueDate)}
-                            </span>
-
-                            {isOverdue(purchase.dueDate) && (
-                              <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
-                                Overdue
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                      )}
-
-                      {visibleColumns.purchaseCode && (
-                        <td className="px-2.5 py-4 font-medium text-gray-900 dark:text-white">
-                          {purchase.purchaseCode}
-                        </td>
-                      )}
-                      {visibleColumns.purchaseStatus && (
-                        <td className="px-2.5 py-4">
-                          {getPurchaseStatusBadge(purchase.purchaseStatus)}
-                        </td>
-                      )}
-                      {visibleColumns.referenceNo && (
-                        <td className="px-2.5 py-4 text-gray-700 dark:text-gray-300">
-                          {purchase.referenceNo}
-                        </td>
-                      )}
-                      {visibleColumns.supplierName && (
-                        <td className="px-2.5 py-4">
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4 text-gray-400" />
-                            <span className="text-gray-700 dark:text-gray-300">
-                              {purchase.supplierName}
-                            </span>
-                          </div>
-                        </td>
-                      )}
-                      {visibleColumns.total && (
-                        <td className="px-2.5 py-4 font-medium text-gray-900 dark:text-white">
-                          ${purchase.total.toLocaleString()}
-                        </td>
-                      )}
-                      {visibleColumns.currencyCode && (
-                        <td className="px-2.5 py-4 text-gray-700 dark:text-gray-300">
-                          {purchase.currencyCode}
-                        </td>
-                      )}
-                      {visibleColumns.paidAmount && (
-                        <td className="px-2.5 py-4 font-medium text-gray-900 dark:text-white">
-                          ${purchase.paidAmount.toLocaleString()}
-                        </td>
-                      )}
-                      {visibleColumns.paymentStatus && (
-                        <td className="px-2.5 py-4">
-                          {getPaymentStatusBadge(purchase.paymentStatus)}
-                        </td>
-                      )}
-                      {visibleColumns.actions && (
-                        <td className="px-6 py-4 text-right">
-                          <div className="relative action-dropdown-container inline-block">
-                            <button
-                              onClick={() =>
-                                setActiveActionMenu(
-                                  activeActionMenu === purchase.id ? null : purchase.id
-                                )
-                              }
-                              className="p-2 rounded-lg text-gray-500 hover:text-gray-700
-        dark:text-gray-400 dark:hover:text-white
-        hover:bg-gray-100 dark:hover:bg-gray-700"
-                            >
-                              <MoreVertical className="w-5 h-5" />
-                            </button>
-
-                            {activeActionMenu === purchase.id && (
-                              <div
-                                className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800
-          border border-gray-200 dark:border-gray-700
-          rounded-lg shadow-lg z-20"
-                              >
-                                <Link
-                                  href={`/purchase/${purchase.id}`}
-                                  onClick={() => setActiveActionMenu(null)}
-                                  className="flex items-center gap-2 px-4 py-2 text-sm
-            text-gray-700 dark:text-gray-300
-            hover:bg-gray-100 dark:hover:bg-gray-700"
-                                >
-                                  <Eye className="w-4 h-4" />
-                                  View
-                                </Link>
-
-                                <Link
-                                  href={`/purchase/edit/${purchase.id}`}
-                                  onClick={() => setActiveActionMenu(null)}
-                                  className="flex items-center gap-2 px-4 py-2 text-sm
-            text-gray-700 dark:text-gray-300
-            hover:bg-gray-100 dark:hover:bg-gray-700"
-                                >
-                                  <Edit className="w-4 h-4" />
-                                  Edit
-                                </Link>
-
-                                <button
-                                  onClick={() => {
-                                    setActiveActionMenu(null);
-                                    // handleDelete(purchase.id);
-                                  }}
-                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm
-            text-red-600 dark:text-red-400
-            hover:bg-red-50 dark:hover:bg-red-900/30"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                  Delete
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                      )}
-
-                    </tr>
-                  ))
-                )}
-              </tbody>
-              {paginatedPurchases.length > 0 && visibleColumns.total && (
-                <tfoot>
-                  <tr className="bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
-                    <td
-                      colSpan={
-                        Object.values(visibleColumns).filter(Boolean).length -
-                        (visibleColumns.total ? 1 : 0) -
-                        (visibleColumns.actions ? 1 : 0)
-                      }
-                      className="px-6 py-4 text-right font-semibold text-gray-900 dark:text-white"
-                    >
-                      Total Amount:
-                    </td>
-                    <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
-                      ${totalAmount.toLocaleString()}
-                    </td>
+                    {visibleColumns.purchaseDate && (
+                      <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                        Purchase Date
+                      </th>
+                    )}
+                    {visibleColumns.dueDate && (
+                      <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                        Due Date
+                      </th>
+                    )}
+                    {visibleColumns.purchaseCode && (
+                      <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                        Purchase Code
+                      </th>
+                    )}
+                    {visibleColumns.purchaseStatus && (
+                      <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                        Purchase Status
+                      </th>
+                    )}
+                    {visibleColumns.referenceNo && (
+                      <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                        Reference No
+                      </th>
+                    )}
+                    {visibleColumns.supplierName && (
+                      <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                        Supplier Name
+                      </th>
+                    )}
+                    {visibleColumns.total && (
+                      <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                        Total
+                      </th>
+                    )}
+                    {visibleColumns.currencyCode && (
+                      <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                        Currency Code
+                      </th>
+                    )}
+                    {visibleColumns.paidAmount && (
+                      <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                        Paid Payment
+                      </th>
+                    )}
+                    {visibleColumns.paymentStatus && (
+                      <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                        Payment Status
+                      </th>
+                    )}
                     {visibleColumns.actions && (
-                      <td></td>
+                      <th className="text-right px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                        Actions
+                      </th>
                     )}
                   </tr>
-                </tfoot>
-              )}
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-xs text-gray-700 dark:text-gray-300">
+                  {paginatedPurchases.length === 0 ? (
+                    <tr>
+                      <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                        <div className="flex flex-col items-center justify-center">
+                          <ShoppingBag className="w-12 h-12 text-gray-400 mb-2" />
+                          <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
+                            No purchases found
+                          </p>
+                          <p className="text-gray-500 dark:text-gray-400">
+                            Try adjusting your filters or add a new purchase
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedPurchases.map((purchase) => (
+                      <tr
+                        key={purchase.id}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                      >
+                        {visibleColumns.purchaseDate && (
+                          <td className="px-2.5 py-4 text-gray-700 dark:text-gray-300">
+                            {formatDate(purchase.purchaseDate)}
+                          </td>
+                        )}
+                        {visibleColumns.dueDate && (
+                          <td className="px-2.5 py-4">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-gray-700 dark:text-gray-300">
+                                {formatDate(purchase.dueDate)}
+                              </span>
+
+                              {isOverdue(purchase.dueDate) && (
+                                <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+                                  Overdue
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        )}
+
+                        {visibleColumns.purchaseCode && (
+                          <td className="px-2.5 py-4 font-medium text-gray-900 dark:text-white">
+                            {purchase.purchaseCode}
+                          </td>
+                        )}
+                        {visibleColumns.purchaseStatus && (
+                          <td className="px-2.5 py-4">
+                            {getPurchaseStatusBadge(purchase.purchaseStatus)}
+                          </td>
+                        )}
+                        {visibleColumns.referenceNo && (
+                          <td className="px-2.5 py-4 text-gray-700 dark:text-gray-300">
+                            {purchase.referenceNo}
+                          </td>
+                        )}
+                        {visibleColumns.supplierName && (
+                          <td className="px-2.5 py-4">
+                            <div className="flex items-center gap-2">
+                              <Users className="w-4 h-4 text-gray-400" />
+                              <span className="text-gray-700 dark:text-gray-300">
+                                {purchase.supplierName}
+                              </span>
+                            </div>
+                          </td>
+                        )}
+                        {visibleColumns.total && (
+                          <td className="px-2.5 py-4 font-medium text-gray-900 dark:text-white">
+                            ${purchase.total.toLocaleString()}
+                          </td>
+                        )}
+                        {visibleColumns.currencyCode && (
+                          <td className="px-2.5 py-4 text-gray-700 dark:text-gray-300">
+                            {purchase.currencyCode}
+                          </td>
+                        )}
+                        {visibleColumns.paidAmount && (
+                          <td className="px-2.5 py-4 font-medium text-gray-900 dark:text-white">
+                            ${purchase.paidAmount.toLocaleString()}
+                          </td>
+                        )}
+                        {visibleColumns.paymentStatus && (
+                          <td className="px-2.5 py-4">
+                            {getPaymentStatusBadge(purchase.paymentStatus)}
+                          </td>
+                        )}
+                        {visibleColumns.actions && (
+                          <td className="px-6 py-4 text-right">
+                            <div className="relative action-dropdown-container inline-block">
+                              <button
+                                onClick={() =>
+                                  setActiveActionMenu(
+                                    activeActionMenu === purchase.id ? null : purchase.id
+                                  )
+                                }
+                                className="p-2 rounded-lg text-gray-500 hover:text-gray-700
+        dark:text-gray-400 dark:hover:text-white
+        hover:bg-gray-100 dark:hover:bg-gray-700"
+                              >
+                                <MoreVertical className="w-5 h-5" />
+                              </button>
+
+                              {activeActionMenu === purchase.id && (
+                                <div
+                                  className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800
+          border border-gray-200 dark:border-gray-700
+          rounded-lg shadow-lg z-20"
+                                >
+                                  <Link
+                                    href={`/purchase/${purchase.id}`}
+                                    onClick={() => setActiveActionMenu(null)}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm
+            text-gray-700 dark:text-gray-300
+            hover:bg-gray-100 dark:hover:bg-gray-700"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                    View
+                                  </Link>
+
+                                  <Link
+                                    href={`/purchase/edit/${purchase.id}`}
+                                    onClick={() => setActiveActionMenu(null)}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm
+            text-gray-700 dark:text-gray-300
+            hover:bg-gray-100 dark:hover:bg-gray-700"
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                    Edit
+                                  </Link>
+
+                                  <button
+                                    onClick={() => {
+                                      setActiveActionMenu(null);
+                                      // handleDelete(purchase.id);
+                                    }}
+                                    className="flex w-full items-center gap-2 px-4 py-2 text-sm
+            text-red-600 dark:text-red-400
+            hover:bg-red-50 dark:hover:bg-red-900/30"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        )}
+
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {paginatedPurchases.length > 0 && visibleColumns.total && (
+                  <tfoot>
+                    <tr className="bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
+                      <td
+                        colSpan={
+                          Object.values(visibleColumns).filter(Boolean).length -
+                          (visibleColumns.total ? 1 : 0) -
+                          (visibleColumns.actions ? 1 : 0)
+                        }
+                        className="px-6 py-4 text-right font-semibold text-gray-900 dark:text-white"
+                      >
+                        Total Amount:
+                      </td>
+                      <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
+                        ${totalAmount.toLocaleString()}
+                      </td>
+                      {visibleColumns.actions && (
+                        <td></td>
+                      )}
+                    </tr>
+                  </tfoot>
+                )}
+              </div>
             </table>
           </div>
         </div>
@@ -876,7 +879,7 @@ export default function PurchaseListPage() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Previous
               </button>
@@ -884,7 +887,7 @@ export default function PurchaseListPage() {
               <button
                 onClick={() => setPage((p) => p + 1)}
                 disabled={page * pageSize >= filteredPurchases.length}
-                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Next
               </button>
