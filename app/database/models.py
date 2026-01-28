@@ -878,6 +878,8 @@ class Product(Base):
     
     id = Column(String(36), primary_key=True, default=generate_uuid)
     name = Column(String(191), nullable=False, index=True)
+    item_code = Column(String(50), unique=True, nullable=True) 
+ 
     item_group = Column(String(200), default="single")
     hsn_code = Column(String(50), nullable=True)
     barcode = Column(String(100), nullable=True, index=True)
