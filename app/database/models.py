@@ -2748,8 +2748,12 @@ class Purchase(Base):
     # Charges and discounts
     freight_charges = Column(Numeric(14, 2), default=0)
     freight_type = Column(String(20), default="fixed")  # fixed or percentage
+    freight_base = Column(Numeric(15, 2), default=0)  # Base amount before tax
+    freight_tax = Column(Numeric(15, 2), default=0)   # Tax amount
     packing_forwarding_charges = Column(Numeric(14, 2), default=0)
     pf_type = Column(String(20), default="fixed")  # fixed or percentage
+    pf_base = Column(Numeric(15, 2), default=0)       # Base amount before tax
+    pf_tax = Column(Numeric(15, 2), default=0)  
     discount_on_all = Column(Numeric(14, 2), default=0)
     discount_type = Column(String(20), default="percentage")  # percentage or fixed
     round_off = Column(Numeric(14, 2), default=0)
@@ -2831,7 +2835,7 @@ class PurchaseItem(Base):
     description = Column(String(500), nullable=False)
     item_code = Column(String(100))
     hsn_code = Column(String(8))
-    
+    currency = Column(String(10), default="INR")
     # Quantity and pricing
     quantity = Column(Numeric(10, 3), nullable=False, default=1)
     unit = Column(String(20), default="unit")
@@ -2887,7 +2891,7 @@ class PurchaseImportItem(Base):
     quantity = Column(Numeric(10, 3), nullable=False, default=1)
     rate = Column(Numeric(12, 2), nullable=False, default=0)
     per = Column(String(20), default="unit")
-    
+    currency = Column(String(10), default="INR")
     # Discount
     discount_percent = Column(Numeric(5, 2), default=0)
     

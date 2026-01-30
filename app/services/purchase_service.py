@@ -41,14 +41,29 @@ class PurchaseService:
         return f"PUR-{year}{month:02d}-{count + 1:03d}"
     
     def _calculate_item_totals(self, item: dict) -> Dict[str, Decimal]:
-        """Calculate totals for a regular purchase item."""
+        """Calculate totals for a regular purchase item with currency conversion."""
+        print(f"DEBUG ITEM DATA: {item}")
         quantity = Decimal(str(item.get("quantity", 1)))
         purchase_price = Decimal(str(item.get("purchase_price", 0)))
         discount_percent = Decimal(str(item.get("discount_percent", 0)))
         gst_rate = Decimal(str(item.get("gst_rate", 18)))
         
-        # Calculate item total
-        item_total = self._round_amount(quantity * purchase_price)
+        currency = item.get("currency", "INR")
+        exchange_rate = Decimal(str(item.get("exchange_rate", 1.0)))
+        print(f"DEBUG CURRENCY: {currency}, EXCHANGE_RATE: {exchange_rate}")
+        # Convert to INR if needed
+        if currency != "INR":
+            price_inr = purchase_price * exchange_rate
+            print(f"  Currency Conversion: {currency} {purchase_price} × {exchange_rate} = ₹{price_inr:.2f}")
+            effective_price = price_inr
+        else:
+            effective_price = purchase_price
+        
+        # Calculate item total in INR
+        item_total = self._round_amount(quantity * effective_price)
+        
+        if currency != "INR":
+            print(f"  Item Total in INR: {quantity} × ₹{effective_price:.2f} = ₹{item_total:.2f}")
         
         # Calculate discount
         discount_amount = self._round_amount(item_total * discount_percent / 100)
@@ -66,6 +81,12 @@ class PurchaseService:
         # Calculate total amount
         total_amount = taxable_amount + total_tax
         
+        # Log the calculation
+        if currency != "INR":
+            print(f"  Taxable Amount (INR): ₹{taxable_amount:.2f}")
+            print(f"  Tax Amount (INR): ₹{total_tax:.2f}")
+            print(f"  Total Amount (INR): ₹{total_amount:.2f}")
+        
         return {
             "item_total": item_total,
             "discount_amount": discount_amount,
@@ -75,9 +96,12 @@ class PurchaseService:
             "cgst_amount": cgst_amount,
             "sgst_amount": sgst_amount,
             "total_tax": total_tax,
-            "total_amount": total_amount
+            "total_amount": total_amount,
+            "currency": currency,
+            "exchange_rate": exchange_rate,
+            "price_inr": effective_price
         }
-    
+        
     def create_purchase(
         self,
         company_id: str,
@@ -229,7 +253,10 @@ class PurchaseService:
                         print(f"❌ Product {product_id} not found")
                         raise ValueError(f"Product {product_id} not found")
                     print(f"     Product: {product.name} (ID: {product.id})")
-                
+                print(f"DEBUG: Processing item #{idx} data:")
+                print(f"  Full item_data: {item_data}")
+                print(f"  Currency: {item_data.get('currency')}")
+                print(f"  Exchange rate: {item_data.get('exchange_rate')}")
                 # Calculate item totals
                 totals = self._calculate_item_totals(item_data)
                 print(f"     Quantity: {item_data.get('quantity', 1)}")
@@ -238,7 +265,8 @@ class PurchaseService:
                 print(f"     Taxable Amount: {totals['taxable_amount']}")
                 print(f"     Tax Amount: {totals['total_tax']}")
                 print(f"     Total Amount: {totals['total_amount']}")
-                
+                print(f"     Currency: {item_data.get('currency', 'INR')}")
+    
                 # Create purchase item
                 purchase_item = PurchaseItem(
                     id=generate_uuid(),
@@ -261,6 +289,8 @@ class PurchaseService:
                     igst_amount=Decimal("0"),
                     tax_amount=totals["total_tax"],
                     unit_cost=Decimal(str(item_data.get("purchase_price", 0))),
+                    currency=item_data.get("currency", "INR"),
+
                     total_amount=totals["total_amount"]
                 )
                 self.db.add(purchase_item)
@@ -305,6 +335,7 @@ class PurchaseService:
                 print(f"     Name: {import_item_data.get('name', '')}")
                 print(f"     Quantity: {quantity}")
                 print(f"     Rate: {rate}")
+                print(f"     Currency: {import_item_data.get('currency', 'INR')}")
                 print(f"     Discount: {discount_percent}%")
                 print(f"     Amount: {amount}")
                 
@@ -314,6 +345,7 @@ class PurchaseService:
                     name=import_item_data.get("name", ""),
                     quantity=quantity,
                     rate=rate,
+                    currency=import_item_data.get("currency", "INR"),
                     per=import_item_data.get("per", "unit"),
                     discount_percent=discount_percent,
                     amount=amount
@@ -373,7 +405,43 @@ class PurchaseService:
         print(f"   P&F Charges: {pf_charges}")
         print(f"   Discount on All: {discount_on_all} ({discount_type})")
         print(f"   Round Off: {round_off}")
-        
+        freight_type = additional_data.get("freight_type", "fixed")
+        pf_type = additional_data.get("pf_type", "fixed")
+        print(f"   Freight Charges: {freight_charges} (type: {freight_type})")
+        print(f"   P&F Charges: {pf_charges} (type: {pf_type})")
+        print(f"   Discount on All: {discount_on_all} ({discount_type})")
+        print(f"   Round Off: {round_off}")
+
+
+        freight_tax = Decimal("0")
+        if freight_type and freight_type.startswith('tax'):
+           try:
+              # Extract tax rate from "tax12", "tax18", etc.
+              tax_rate_str = freight_type.replace('tax', '')
+              tax_rate = Decimal(tax_rate_str)
+              freight_tax = self._round_amount(freight_charges * tax_rate / 100)
+              print(f"   Freight Tax ({tax_rate}%): {freight_tax}")
+              total_tax += freight_tax  # Add to total tax
+           except (ValueError, AttributeError) as e:
+               print(f"   Error parsing freight tax rate: {e}")
+
+        # Calculate tax for P&F if TAX option is selected
+        pf_tax = Decimal("0") 
+        if pf_type and pf_type.startswith('tax'):
+           try:
+             # Extract tax rate from "tax12", "tax18", etc.
+             tax_rate_str = pf_type.replace('tax', '')
+             tax_rate = Decimal(tax_rate_str)
+             pf_tax = self._round_amount(pf_charges * tax_rate / 100)
+             print(f"   P&F Tax ({tax_rate}%): {pf_tax}")
+             total_tax += pf_tax  # Add to total tax
+           except (ValueError, AttributeError) as e:
+              print(f"   Error parsing P&F tax rate: {e}")
+    
+        # Calculate final charges (base + tax)
+        final_freight_charges = freight_charges + freight_tax
+        final_pf_charges = pf_charges + pf_tax
+
         # Calculate base amount based on purchase type
         if purchase_type_enum == PurchaseType.PURCHASE_EXPENSES:
             base_amount = expense_total
@@ -395,18 +463,18 @@ class PurchaseService:
         
         # Calculate final totals
         final_subtotal = base_amount
-        final_total_tax = total_tax  # Tax only applies to regular items
+        final_total_tax = total_tax + freight_tax + pf_tax  # Tax only applies to regular items
         
         # Step-by-step calculation
-        total_after_tax = final_subtotal + final_total_tax
-        total_after_charges = total_after_tax + freight_charges + pf_charges
+        total_after_item_tax = final_subtotal + total_tax  # Only item tax
+        total_after_charges = total_after_item_tax + final_freight_charges + final_pf_charges
         total_after_discount = total_after_charges - discount_all_amount
         grand_total = total_after_discount + round_off
         
         print("\n   📊 FINAL CALCULATION:")
         print(f"     1. Subtotal: {final_subtotal}")
         print(f"     2. Add Tax: +{final_total_tax}")
-        print(f"        → After Tax: {total_after_tax}")
+        print(f"        → After Tax: {total_after_item_tax}")
         print(f"     3. Add Charges: +{freight_charges} (freight) + {pf_charges} (P&F)")
         print(f"        → After Charges: {total_after_charges}")
         print(f"     4. Apply Discount: -{discount_all_amount}")
@@ -422,8 +490,14 @@ class PurchaseService:
         purchase.subtotal = final_subtotal
         purchase.total_tax = final_total_tax
         purchase.discount_amount = total_discount + discount_all_amount
-        purchase.freight_charges = freight_charges
-        purchase.packing_forwarding_charges = pf_charges
+        purchase.freight_charges = final_freight_charges 
+        purchase.freight_type = freight_type
+        purchase.freight_base = freight_charges  # Store base amount
+        purchase.freight_tax = freight_tax  # Store tax amount
+        purchase.packing_forwarding_charges = final_pf_charges
+        purchase.pf_type = pf_type
+        purchase.pf_base = pf_charges  # Store base amount
+        purchase.pf_tax = pf_tax  # Store tax amount
         purchase.discount_on_all = discount_on_all
         purchase.discount_type = discount_type
         purchase.round_off = round_off

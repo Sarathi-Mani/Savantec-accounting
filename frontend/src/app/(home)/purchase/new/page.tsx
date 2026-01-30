@@ -8,7 +8,7 @@ import { vendorsApi, productsApi, purchasesApi } from "@/services/api";
 import Select from 'react-select';
 import { useRef } from "react";
 
-// Reusable SelectField Component
+// Reusable SelectField Component (unchanged)
 function SelectField({
     label,
     name,
@@ -90,17 +90,19 @@ function SelectField({
     );
 }
 
-// Product Select Field Component
+// Updated Product Select Field Component with better auto-fill
 function ProductSelectField({
     value,
     onChange,
     products,
     placeholder = "Search product",
+    onProductSelect,
 }: {
     value: number | string;
     onChange: (product: any | null) => void;
     products: any[];
     placeholder?: string;
+    onProductSelect?: (product: any) => void;
 }) {
     const selectRef = useRef<any>(null);
 
@@ -117,9 +119,12 @@ function ProductSelectField({
             value={options.find(o => String(o.value) === String(value)) || null}
             getOptionValue={(option) => String(option.value)}
             getOptionLabel={(option) => option.label}
-            onChange={(selected: any) =>
-                onChange(selected ? selected.product : null)
-            }
+            onChange={(selected: any) => {
+                onChange(selected ? selected.product : null);
+                if (selected?.product && onProductSelect) {
+                    onProductSelect(selected.product);
+                }
+            }}
             placeholder={placeholder}
             isClearable
             openMenuOnFocus
@@ -134,6 +139,9 @@ function ProductSelectField({
                     const inputValue = selectRef.current?.select?.state?.inputValue;
                     if (menuOptions?.length && inputValue) {
                         onChange(menuOptions[0].product);
+                        if (menuOptions[0].product && onProductSelect) {
+                            onProductSelect(menuOptions[0].product);
+                        }
                         selectRef.current.blur();
                     }
                 }
@@ -159,6 +167,111 @@ function ProductSelectField({
     );
 }
 
+// Currency Select Component with Add New Option (unchanged)
+function CurrencySelect({
+    value,
+    onChange,
+    currencies,
+    onAddNewCurrency,
+    itemPrice,
+}: {
+    value: string;
+    onChange: (currency: string) => void;
+    currencies: { code: string; name: string; symbol: string; exchangeRate: number }[];
+    onAddNewCurrency: () => void;
+    itemPrice?: number;
+}) {
+    const [isOpen, setIsOpen] = useState(false);
+    const selectRef = useRef<HTMLDivElement>(null);
+
+    // FIXED: Remove the duplicate variable declaration
+    const selectedCurrency = currencies.find(c => c.code === value) || currencies[0];
+    
+    // Calculate INR value if item has price and currency is not INR
+    const inrValue = itemPrice && selectedCurrency.code !== "INR" 
+        ? itemPrice * selectedCurrency.exchangeRate 
+        : itemPrice;
+    
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (selectRef.current && !selectRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    // FIXED: Removed the duplicate selectedCurrency declaration here
+    
+    return (
+        <div className="relative" ref={selectRef}>
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex h-full w-20 items-center justify-between rounded border border-stroke bg-white px-2 py-1.5 text-sm hover:bg-gray-50 dark:border-dark-3 dark:bg-gray-dark dark:hover:bg-dark-3"
+            >
+                <span className="font-medium">{selectedCurrency?.code || "INR"}</span>
+                <svg className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+            </button>
+
+            {isOpen && (
+                <div className="absolute top-full left-0 z-50 mt-1 w-48 rounded-lg border border-stroke bg-white shadow-lg dark:border-dark-3 dark:bg-gray-dark">
+                    <div className="max-h-60 overflow-y-auto">
+                        {currencies.map((currency) => (
+                            <button
+                                key={currency.code}
+                                type="button"
+                                onClick={() => {
+                                    onChange(currency.code);
+                                    setIsOpen(false);
+                                }}
+                                className={`flex w-full items-center justify-between px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-dark-3 ${value === currency.code ? 'bg-primary/10 text-primary' : ''}`}
+                            >
+                                <div>
+                                    <div className="font-medium">{currency.code}</div>
+                                    <div className="text-xs text-dark-6">
+                                        {currency.name} 
+                                        {currency.code !== "INR" && (
+                                            <div>1 {currency.code} = ₹{currency.exchangeRate}</div>
+                                        )}
+                                    </div>
+                                </div>
+                                <span className="font-medium">{currency.symbol}</span>
+                            </button>
+                        ))}
+                        
+                        {/* Add New Currency Option */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                onAddNewCurrency();
+                                setIsOpen(false);
+                            }}
+                            className="flex w-full items-center gap-2 border-t border-stroke px-3 py-2 text-left text-primary hover:bg-gray-100 dark:border-dark-3 dark:hover:bg-dark-3"
+                        >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                            <span>Add New Currency</span>
+                        </button>
+                    </div>
+                </div>
+            )}
+            
+            {/* Show conversion tooltip when item has price */}
+            {itemPrice && selectedCurrency.code !== "INR" && inrValue && (
+                <div className="absolute -top-8 left-0 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                    ₹{inrValue.toFixed(2)} INR
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function AddPurchasePage() {
     const router = useRouter();
     const { company, user } = useAuth();
@@ -167,20 +280,20 @@ export default function AddPurchasePage() {
     const [showPreviousPayments, setShowPreviousPayments] = useState(false);
     const [nextPurchaseNumber, setNextPurchaseNumber] = useState("");
     const [loadingPurchaseNumber, setLoadingPurchaseNumber] = useState(false);
-
     const [productSearch, setProductSearch] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
-
-    // Add new state for purchase type
-    const [purchaseType, setPurchaseType] = useState("purchase"); // purchase, purchase-import, purchase-expenses
     
-    // State for import items
+    // State for purchase type
+    const [purchaseType, setPurchaseType] = useState("purchase");
+    
+    // State for import items with currency
     const [importItems, setImportItems] = useState([
         {
             id: 1,
             name: "",
             quantity: 1,
             rate: 0,
+            currency: "INR", // Default currency
             per: "unit",
             discount_percent: 0,
             amount: 0,
@@ -197,6 +310,28 @@ export default function AddPurchasePage() {
             amount: 0,
         },
     ]);
+    
+    // State for currencies
+ const [currencies, setCurrencies] = useState([
+    { code: "INR", name: "Indian Rupee", symbol: "₹", exchangeRate: 1 },
+    { code: "USD", name: "US Dollar", symbol: "$", exchangeRate: 83.5 },
+    { code: "EUR", name: "Euro", symbol: "€", exchangeRate: 90.2 },
+    { code: "GBP", name: "British Pound", symbol: "£", exchangeRate: 106.3 },
+    { code: "JPY", name: "Japanese Yen", symbol: "¥", exchangeRate: 0.56 },
+    { code: "CAD", name: "Canadian Dollar", symbol: "CA$", exchangeRate: 61.8 },
+    { code: "AUD", name: "Australian Dollar", symbol: "A$", exchangeRate: 54.9 },
+    { code: "CNY", name: "Chinese Yuan", symbol: "¥", exchangeRate: 11.6 },
+    { code: "SGD", name: "Singapore Dollar", symbol: "S$", exchangeRate: 62.1 },
+    { code: "AED", name: "UAE Dirham", symbol: "د.إ", exchangeRate: 22.7 },
+]);
+    
+    const [showAddCurrencyModal, setShowAddCurrencyModal] = useState(false);
+    const [newCurrency, setNewCurrency] = useState({
+        code: "",
+        name: "",
+        symbol: "",
+        exchangeRate: 1,
+    });
 
     // Payment state
     const [paymentData, setPaymentData] = useState({
@@ -274,6 +409,7 @@ export default function AddPurchasePage() {
             tax_amount: 0,
             unit_cost: 0,
             total_amount: 0,
+             currency: "INR", 
         },
     ]);
 
@@ -303,121 +439,224 @@ export default function AddPurchasePage() {
         }
     };
 
-    const loadSuppliers = async () => {
-        try {
-            setLoading(prev => ({ ...prev, suppliers: true }));
-            const response = await vendorsApi.list(company!.id, {
-                page_size: 100,
-                search: "",
-            });
+  const loadSuppliers = async () => {
+    try {
+        setLoading(prev => ({ ...prev, suppliers: true }));
+        const response = await vendorsApi.list(company!.id, {
+            page_size: 100,
+            search: "",
+        });
+        
+        console.log("Full vendors API response:", response);
+        console.log("Response type:", typeof response);
+        
+        // Check different possible structures - use type assertion
+        let vendorsArray: any[] = [];
+        
+        // If response is directly an array
+        if (Array.isArray(response)) {
+            vendorsArray = response;
+        } 
+        // If response is an object with various properties
+        else if (response && typeof response === 'object') {
+            // Type cast to any to avoid TypeScript errors
+            const resp = response as any;
             
-            console.log("Full vendors API response:", response);
-            
-            // Check different possible structures
-            let vendorsArray = [];
-            
-            if (Array.isArray(response)) {
-                vendorsArray = response;
-            } else if (response && Array.isArray(response.data)) {
-                vendorsArray = response.data;
-            } else if (response && response.data && Array.isArray(response.data.vendors)) {
-                vendorsArray = response.data.vendors;
-            } else if (response && response.vendors) {
-                vendorsArray = response.vendors;
-            } else if (response && response.customers) {
-                vendorsArray = response.customers;
+            // Try different possible property names
+            if (Array.isArray(resp.vendors)) {
+                vendorsArray = resp.vendors;
+            } else if (Array.isArray(resp.data)) {
+                vendorsArray = resp.data;
+            } else if (Array.isArray(resp.items)) {
+                vendorsArray = resp.items;
+            } else if (Array.isArray(resp.customers)) {
+                vendorsArray = resp.customers;
+            } else if (Array.isArray(resp.results)) {
+                vendorsArray = resp.results;
             }
-            
-            console.log("Vendors array:", vendorsArray);
-            setSuppliers(vendorsArray);
-            
-        } catch (error) {
-            console.error("Failed to load suppliers:", error);
-            setSuppliers([]);
-        } finally {
-            setLoading(prev => ({ ...prev, suppliers: false }));
         }
+        
+        console.log("Vendors array:", vendorsArray);
+        setSuppliers(vendorsArray);
+        
+    } catch (error) {
+        console.error("Failed to load suppliers:", error);
+        setSuppliers([]);
+    } finally {
+        setLoading(prev => ({ ...prev, suppliers: false }));
+    }
+};
+   const loadProducts = async () => {
+    try {
+        setLoading(prev => ({ ...prev, products: true }));
+        const response = await productsApi.list(company!.id, {
+            page_size: 100,
+            search: "",
+        });
+        console.log("Products API response:", response);
+        
+        // Check different possible structures
+        let productsArray: any[] = [];
+        
+        if (Array.isArray(response)) {
+            productsArray = response;
+        } else if (response && typeof response === 'object') {
+            // Type cast to any
+            const resp = response as any;
+            
+            if (Array.isArray(resp.products)) {
+                productsArray = resp.products;
+            } else if (Array.isArray(resp.data)) {
+                productsArray = resp.data;
+            } else if (Array.isArray(resp.items)) {
+                productsArray = resp.items;
+            } else if (Array.isArray(resp.results)) {
+                productsArray = resp.results;
+            }
+        }
+        
+        console.log("Products array loaded:", productsArray.length);
+        setProducts(productsArray);
+        
+    } catch (error) {
+        console.error("Failed to load products:", error);
+        setProducts([]);
+    } finally {
+        setLoading(prev => ({ ...prev, products: false }));
+    }
+};
+
+    // Add new currency
+    const handleAddNewCurrency = () => {
+        setShowAddCurrencyModal(true);
     };
 
-    const loadProducts = async () => {
-        try {
-            setLoading(prev => ({ ...prev, products: true }));
-            const response = await productsApi.list(company!.id, {
-                page_size: 100,
-                search: "",
+    const handleSaveNewCurrency = () => {
+        if (newCurrency.code && newCurrency.name && newCurrency.symbol) {
+            // Check if currency already exists
+            if (currencies.some(c => c.code === newCurrency.code.toUpperCase())) {
+                alert(`Currency ${newCurrency.code.toUpperCase()} already exists!`);
+                return;
+            }
+
+            const currencyToAdd = {
+                code: newCurrency.code.toUpperCase(),
+                name: newCurrency.name,
+                symbol: newCurrency.symbol,
+                exchangeRate: parseFloat(newCurrency.exchangeRate.toString()) || 1,
+            };
+
+            setCurrencies(prev => [...prev, currencyToAdd]);
+            
+            // Reset form
+            setNewCurrency({
+                code: "",
+                name: "",
+                symbol: "",
+                exchangeRate: 1,
             });
-            setProducts(response.products || []);
-        } catch (error) {
-            console.error("Failed to load products:", error);
-        } finally {
-            setLoading(prev => ({ ...prev, products: false }));
+            
+            setShowAddCurrencyModal(false);
+            alert(`Currency ${currencyToAdd.code} added successfully!`);
+        } else {
+            alert("Please fill all required fields (Code, Name, Symbol)");
         }
     };
 
     // Calculate totals based on purchase type
-    const calculateTotals = () => {
-        let subtotal = 0;
-        let totalTax = 0;
-        let totalItemDiscount = 0;
+const calculateTotals = () => {
+    let subtotal = 0;
+    let totalTax = 0;
+    let totalItemDiscount = 0;
 
-        // Calculate from regular items (always included)
-        items.forEach(item => {
-            const itemTotal = item.quantity * item.purchase_price;
+    // Calculate from regular items with currency conversion
+    items.forEach(item => {
+        // Get currency exchange rate
+        const currency = currencies.find(c => c.code === item.currency) || currencies[0];
+        const exchangeRate = currency.exchangeRate || 1;
+        
+        // Convert to INR if needed
+        const priceInINR = item.purchase_price * exchangeRate;
+        const itemTotal = item.quantity * priceInINR;
+        const discount = item.discount_percent > 0 ?
+            itemTotal * (item.discount_percent / 100) : 0;
+        const taxable = itemTotal - discount;
+        const tax = taxable * (item.gst_rate / 100);
+
+        subtotal += taxable;
+        totalTax += tax;
+        totalItemDiscount += discount;
+        
+        // Log conversion for debugging
+        if (item.currency !== "INR") {
+            console.log(`Item ${item.description}: ${item.currency} ${item.purchase_price} = ₹${priceInINR.toFixed(2)}`);
+        }
+    });
+
+    // Add totals from purchase type specific items with currency conversion
+    if (purchaseType === "purchase" || purchaseType === "purchase-import") {
+        importItems.forEach(item => {
+            const currency = currencies.find(c => c.code === item.currency) || currencies[0];
+            const exchangeRate = currency.exchangeRate || 1;
+            const priceInINR = item.rate * exchangeRate;
+            const itemTotal = item.quantity * priceInINR;
             const discount = item.discount_percent > 0 ?
                 itemTotal * (item.discount_percent / 100) : 0;
-            const taxable = itemTotal - discount;
-            const tax = taxable * (item.gst_rate / 100);
-
-            subtotal += taxable;
-            totalTax += tax;
+            subtotal += itemTotal - discount;
             totalItemDiscount += discount;
         });
+    } else if (purchaseType === "purchase-expenses") {
+        expenseItems.forEach(item => {
+            subtotal += item.amount; // Assuming expense items are already in INR
+        });
+    }
 
-        // Add totals from purchase type specific items
- if (purchaseType === "purchase" || purchaseType === "purchase-import") {
-            importItems.forEach(item => {
-                const itemTotal = item.quantity * item.rate;
-                const discount = item.discount_percent > 0 ?
-                    itemTotal * (item.discount_percent / 100) : 0;
-                subtotal += itemTotal - discount;
-                totalItemDiscount += discount;
-            });
-        } else if (purchaseType === "purchase-expenses") {
-            expenseItems.forEach(item => {
-                subtotal += item.amount;
-            });
-        }
+    // Calculate additional charges and discounts (all in INR)
+    let freightCharges = formData.freight_charges || 0;
+    let pfCharges = formData.pf_charges || 0;
+    const discountOnAll = formData.discount_on_all || 0;
 
-        // Calculate additional charges and discounts
-        const freightCharges = formData.freight_charges || 0;
-        const pfCharges = formData.pf_charges || 0;
-        const discountOnAll = formData.discount_on_all || 0;
+    // Calculate tax for freight if TAX option is selected
+    if (formData.freight_type.startsWith('tax')) {
+        const taxRate = parseFloat(formData.freight_type.replace('tax', ''));
+        const freightTax = freightCharges * (taxRate / 100);
+        totalTax += freightTax;
+        freightCharges += freightTax;
+    }
 
-        // Calculate discount on all based on type
-        const discountAllAmount = formData.discount_type === 'percentage'
-            ? subtotal * (discountOnAll / 100)
-            : discountOnAll;
+    // Calculate tax for P&F if TAX option is selected
+    if (formData.pf_type.startsWith('tax')) {
+        const taxRate = parseFloat(formData.pf_type.replace('tax', ''));
+        const pfTax = pfCharges * (taxRate / 100);
+        totalTax += pfTax;
+        pfCharges += pfTax;
+    }
 
-        // Calculate totals step by step
-        const totalBeforeTax = subtotal;
-        const totalAfterTax = totalBeforeTax + totalTax;
-        const totalAfterCharges = totalAfterTax + freightCharges + pfCharges;
-        const totalAfterDiscountAll = totalAfterCharges - discountAllAmount;
-        const grandTotal = totalAfterDiscountAll + (formData.round_off || 0);
+    // Calculate discount on all based on type
+    const discountAllAmount = formData.discount_type === 'percentage'
+        ? subtotal * (discountOnAll / 100)
+        : discountOnAll;
 
-        return {
-            subtotal: Number(totalBeforeTax.toFixed(2)),
-            totalTax: Number(totalTax.toFixed(2)),
-            itemDiscount: Number(totalItemDiscount.toFixed(2)),
-            freight: Number(freightCharges.toFixed(2)),
-            pf: Number(pfCharges.toFixed(2)),
-            discountAll: Number(discountAllAmount.toFixed(2)),
-            roundOff: Number(formData.round_off || 0),
-            grandTotal: Number(grandTotal.toFixed(2)),
-            totalAfterCharges: Number(totalAfterCharges.toFixed(2)),
-            totalAfterDiscountAll: Number(totalAfterDiscountAll.toFixed(2)),
-        };
+    // Calculate totals step by step
+    const totalBeforeTax = subtotal;
+    const totalAfterTax = totalBeforeTax + totalTax;
+    const totalAfterCharges = totalAfterTax + freightCharges + pfCharges;
+    const totalAfterDiscountAll = totalAfterCharges - discountAllAmount;
+    const grandTotal = totalAfterDiscountAll + (formData.round_off || 0);
+
+    return {
+        subtotal: Number(totalBeforeTax.toFixed(2)),
+        totalTax: Number(totalTax.toFixed(2)),
+        itemDiscount: Number(totalItemDiscount.toFixed(2)),
+        freight: Number(freightCharges.toFixed(2)),
+        pf: Number(pfCharges.toFixed(2)),
+        discountAll: Number(discountAllAmount.toFixed(2)),
+        roundOff: Number(formData.round_off || 0),
+        grandTotal: Number(grandTotal.toFixed(2)),
+        totalAfterCharges: Number(totalAfterCharges.toFixed(2)),
+        totalAfterDiscountAll: Number(totalAfterDiscountAll.toFixed(2)),
     };
+};
 
     const totals = calculateTotals();
 
@@ -450,6 +689,7 @@ export default function AddPurchasePage() {
                 name: "",
                 quantity: 1,
                 rate: 0,
+                currency: "INR",
                 per: "unit",
                 discount_percent: 0,
                 amount: 0,
@@ -497,287 +737,403 @@ export default function AddPurchasePage() {
         setExpenseItems(expenseItems.filter(item => item.id !== id));
     };
 
-const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!company?.id) return;
-
-    setIsSubmitting(true);
-    
-    try {
-        console.log("🚀 ========== STARTING PURCHASE SUBMISSION ==========");
-        console.log("📋 Purchase Type Selected:", purchaseType);
-        console.log("🏢 Company ID:", company.id);
-        console.log("👥 Supplier ID:", formData.supplier_id);
-        
-        // Validate supplier
-        if (!formData.supplier_id) {
-            alert("Please select a supplier");
-            setIsSubmitting(false);
-            return;
-        }
-
-        // Validate items based on purchase type
-        if (purchaseType === "purchase-expenses") {
-            // For expense purchases, only expense items are allowed
-            if (expenseItems.length === 0) {
-                alert("Please add at least one expense item");
-                setIsSubmitting(false);
-                return;
-            }
-            // Don't validate regular items for expense purchases
-        } else if (purchaseType === "purchase" || purchaseType === "purchase-import") {
-            // For regular and import purchases, validate regular items
-            if (items.length === 0) {
-                alert("Please add at least one item");
-                setIsSubmitting(false);
-                return;
-            }
-        }
-
-        // DO NOT NORMALIZE HERE - Send as is to backend
-        // The backend will handle the normalization
-        console.log("🔄 Purchase type (as is):", purchaseType);
-
-        // Prepare data based on purchase type
-        let purchaseData: any = {
-            vendor_id: formData.supplier_id,
-            vendor_invoice_number: formData.vendor_invoice_number || "",
-            vendor_invoice_date: formData.vendor_invoice_date || undefined,
-            purchase_date: formData.purchase_date,
-            due_date: formData.due_date || undefined,
-            payment_type: formData.payment_type || "",
-            notes: formData.notes || "",
-            terms: formData.terms || "",
-            purchase_type: purchaseType, // Send as is (with hyphen)
-            
-            // Financial data
-            round_off: Number(formData.round_off || 0),
-            subtotal: Number(totals.subtotal || 0),
-            discount_amount: Number(totals.discountAll || 0),
-            total_tax: Number(totals.totalTax || 0),
-            total_amount: Number(totals.grandTotal || 0),
-
-            // Charges
-            freight_charges: Number(formData.freight_charges || 0),
-            freight_type: formData.freight_type || "fixed",
-            packing_forwarding_charges: Number(formData.pf_charges || 0),
-            pf_type: formData.pf_type || "fixed",
-            discount_on_all: Number(formData.discount_on_all || 0),
-            discount_type: formData.discount_type || "percentage",
-
-            // Contact info
-            contact_person: formData.contact_person || "",
-            contact_phone: formData.contact_phone || "",
-            contact_email: formData.contact_email || "",
-            shipping_address: formData.shipping_address || "",
-            billing_address: formData.billing_address || "",
-
-            // Payment as nested object
-            ...(paymentData.amount > 0 ? {
-                payment: {
-                    amount: Number(paymentData.amount),
-                    payment_type: paymentData.paymentType,
-                    account: paymentData.account,
-                    payment_note: paymentData.paymentNote,
-                }
-            } : {}),
-        };
-
-        // Include regular items ONLY for purchase and purchase-import types
-        if (purchaseType === "purchase" || purchaseType === "purchase-import") {
-            const preparedItems = items.map((item, index) => {
-                const itemData = {
-                    product_id: item.product_id || undefined,
-                    description: item.description || `Item ${index + 1}`,
-                    hsn_code: item.hsn_code || "",
-                    quantity: Number(item.quantity) || 1,
-                    unit: item.unit || "unit",
-                    purchase_price: Number(item.purchase_price) || 0.01,
-                    item_code: item.item_code || "",
-                    discount_percent: Number(item.discount_percent || 0),
-                    discount_amount: Number(item.discount_amount || 0),
-                    gst_rate: Number(item.gst_rate || 0),
-                    tax_amount: Number(item.tax_amount || 0),
-                    unit_cost: Number(item.unit_cost || item.purchase_price || 0.01),
-                    total_amount: Number(item.total_amount || 0),
-                };
-
-                console.log(`📦 Regular Item ${index + 1}:`, {
-                    product_id: itemData.product_id,
-                    description: itemData.description.substring(0, 50),
-                    quantity: itemData.quantity,
-                    price: itemData.purchase_price,
-                    total: itemData.total_amount
-                });
-
-                return itemData;
-            });
-            
-            purchaseData.items = preparedItems;
-            console.log(`📊 Total regular items: ${preparedItems.length}`);
-        } else if (purchaseType === "purchase-expenses") {
-            // For expense purchases, don't include regular items at all
-            console.log("💰 Expense purchase - NOT including regular items");
-            // DO NOT include items array at all
-        }
-
-        // Add import items for purchase and purchase-import types
-        if ((purchaseType === "purchase" || purchaseType === "purchase-import") && importItems.length > 0) {
-            const preparedImportItems = importItems.map((item, index) => {
-                const importItemData = {
-                    name: item.name || `Import Item ${index + 1}`,
-                    quantity: Number(item.quantity) || 1,
-                    rate: Number(item.rate) || 0,
-                    per: item.per || "unit",
-                    discount_percent: Number(item.discount_percent || 0),
-                    amount: Number(item.amount) || 0,
-                };
-
-                console.log(`📦 Import Item ${index + 1}:`, {
-                    name: importItemData.name,
-                    quantity: importItemData.quantity,
-                    rate: importItemData.rate,
-                    amount: importItemData.amount
-                });
-
-                return importItemData;
-            });
-            
-            purchaseData.import_items = preparedImportItems;
-            console.log(`📊 Total import items: ${preparedImportItems.length}`);
-        }
-        
-        // Add expense items ONLY for expense purchases
-        if (purchaseType === "purchase-expenses" && expenseItems.length > 0) {
-            const preparedExpenseItems = expenseItems.map((item, index) => {
-                const expenseItemData = {
-                    particulars: item.particulars || `Expense ${index + 1}`,
-                    rate: Number(item.rate) || 0,
-                    per: item.per || "unit",
-                    amount: Number(item.amount) || 0,
-                };
-
-                console.log(`💰 Expense Item ${index + 1}:`, {
-                    particulars: expenseItemData.particulars,
-                    rate: expenseItemData.rate,
-                    amount: expenseItemData.amount
-                });
-
-                return expenseItemData;
-            });
-            
-            purchaseData.expense_items = preparedExpenseItems;
-            console.log(`📊 Total expense items: ${preparedExpenseItems.length}`);
-        }
-
-        // Remove empty arrays to avoid validation errors
-        if (!purchaseData.items || purchaseData.items.length === 0) {
-            delete purchaseData.items;
-        }
-        if (!purchaseData.import_items || purchaseData.import_items.length === 0) {
-            delete purchaseData.import_items;
-        }
-        if (!purchaseData.expense_items || purchaseData.expense_items.length === 0) {
-            delete purchaseData.expense_items;
-        }
-
-        // Log final payload
-        console.log("📤 FINAL PAYLOAD TO BE SENT:");
-        console.log("Purchase Type:", purchaseData.purchase_type);
-        console.log("Vendor ID:", purchaseData.vendor_id);
-        console.log("Items:", purchaseData.items ? purchaseData.items.length : 0);
-        console.log("Import items:", purchaseData.import_items ? purchaseData.import_items.length : 0);
-        console.log("Expense items:", purchaseData.expense_items ? purchaseData.expense_items.length : 0);
-        
-        // Log the full payload for debugging
-        console.log("📄 Full payload:", JSON.stringify(purchaseData, null, 2));
-
-        // Call the API
-        console.log("⏳ Calling API...");
-        const response = await purchasesApi.create(company.id, purchaseData);
-        
-        console.log('✅ Purchase created successfully! Response:', response);
-        alert(`Purchase ${response.purchase_number} saved successfully!`);
-        router.push(`/purchase/purchase-list`);
-
-    } catch (error: any) {
-        console.error("❌ ========== PURCHASE CREATION FAILED ==========");
-        console.error("Error object:", error);
-        
-        if (error.response) {
-            console.error("Status:", error.response.status);
-            console.error("Data:", error.response.data);
-            
-            // Extract detailed error message
-            let errorMessage = "Failed to create purchase: ";
-            
-            if (error.response.data && typeof error.response.data === 'object') {
-                if (error.response.data.detail) {
-                    // Handle array of errors
-                    if (Array.isArray(error.response.data.detail)) {
-                        errorMessage = error.response.data.detail.map((err: any) => 
-                            `${err.loc ? err.loc.join('.') + ': ' : ''}${err.msg}`
-                        ).join('\n');
-                    } else {
-                        errorMessage += JSON.stringify(error.response.data.detail);
-                    }
-                } else {
-                    errorMessage += JSON.stringify(error.response.data);
-                }
-            }
-            
-            alert(errorMessage);
-            
-        } else if (error.request) {
-            alert("No response from server. Please check your network connection.");
-        } else {
-            alert(`Error: ${error.message}`);
-        }
-        
-    } finally {
-        setIsSubmitting(false);
-        console.log("🏁 Submission process completed");
-    }
-};
-
-    // Update item calculation
-    const updateItem = (id: number, field: string, value: any) => {
-        setItems(prevItems => {
-            return prevItems.map(item => {
-                if (item.id === id) {
-                    const updated = { ...item, [field]: value };
-
-                    // Auto-fill product details when product is selected
-                    if (field === 'product_id' && value) {
-                        const selectedProduct = products.find(p => p.id === value);
-                        if (selectedProduct) {
-                            updated.description = selectedProduct.name;
-                            updated.purchase_price = selectedProduct.cost_price || selectedProduct.purchase_price || 0;
-                            updated.gst_rate = parseFloat(selectedProduct.gst_rate) || 18;
-                            updated.hsn_code = selectedProduct.hsn_code || selectedProduct.hsn || "";
-                        }
-                    }
-
-                    // Recalculate item totals
-                    const itemTotal = updated.quantity * updated.purchase_price;
-                    const discount = updated.discount_percent > 0 ?
-                        itemTotal * (updated.discount_percent / 100) : 0;
-                    const taxable = itemTotal - discount;
-                    const tax = taxable * (updated.gst_rate / 100);
-
-                    updated.discount_amount = discount;
-                    updated.tax_amount = tax;
-                    updated.unit_cost = updated.purchase_price;
-                    updated.total_amount = taxable + tax;
-
-                    return updated;
-                }
-                return item;
-            });
-        });
+    // Handle import item currency change
+    const handleImportItemCurrencyChange = (id: number, currencyCode: string) => {
+        setImportItems(prevItems => 
+            prevItems.map(item => 
+                item.id === id ? { ...item, currency: currencyCode } : item
+            )
+        );
     };
 
-    // Update form data handler
+    // Handle submit
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!company?.id) return;
+
+        setIsSubmitting(true);
+        
+        try {
+            console.log("🚀 ========== STARTING PURCHASE SUBMISSION ==========");
+            console.log("📋 Purchase Type Selected:", purchaseType);
+            console.log("🏢 Company ID:", company.id);
+            console.log("👥 Supplier ID:", formData.supplier_id);
+            
+            // Validate supplier
+            if (!formData.supplier_id) {
+                alert("Please select a supplier");
+                setIsSubmitting(false);
+                return;
+            }
+
+            // Validate items based on purchase type
+            if (purchaseType === "purchase-expenses") {
+                // For expense purchases, only expense items are allowed
+                if (expenseItems.length === 0) {
+                    alert("Please add at least one expense item");
+                    setIsSubmitting(false);
+                    return;
+                }
+                // Don't validate regular items for expense purchases
+            } else if (purchaseType === "purchase" || purchaseType === "purchase-import") {
+                // For regular and import purchases, validate regular items
+                if (items.length === 0) {
+                    alert("Please add at least one item");
+                    setIsSubmitting(false);
+                    return;
+                }
+            }
+
+            console.log("🔄 Purchase type (as is):", purchaseType);
+
+            // Prepare data based on purchase type
+            let purchaseData: any = {
+                vendor_id: formData.supplier_id,
+                vendor_invoice_number: formData.vendor_invoice_number || "",
+                vendor_invoice_date: formData.vendor_invoice_date || undefined,
+                purchase_date: formData.purchase_date,
+                due_date: formData.due_date || undefined,
+                payment_type: formData.payment_type || "",
+                notes: formData.notes || "",
+                terms: formData.terms || "",
+                purchase_type: purchaseType,
+                
+                // Financial data
+                round_off: Number(formData.round_off || 0),
+                subtotal: Number(totals.subtotal || 0),
+                discount_amount: Number(totals.discountAll || 0),
+                total_tax: Number(totals.totalTax || 0),
+                total_amount: Number(totals.grandTotal || 0),
+
+                // Charges
+                freight_charges: Number(formData.freight_charges || 0),
+                freight_type: formData.freight_type || "fixed",
+                packing_forwarding_charges: Number(formData.pf_charges || 0),
+                pf_type: formData.pf_type || "fixed",
+                discount_on_all: Number(formData.discount_on_all || 0),
+                discount_type: formData.discount_type || "percentage",
+
+                // Contact info
+                contact_person: formData.contact_person || "",
+                contact_phone: formData.contact_phone || "",
+                contact_email: formData.contact_email || "",
+                shipping_address: formData.shipping_address || "",
+                billing_address: formData.billing_address || "",
+
+                // Payment as nested object
+                ...(paymentData.amount > 0 ? {
+                    payment: {
+                        amount: Number(paymentData.amount),
+                        payment_type: paymentData.paymentType,
+                        account: paymentData.account,
+                        payment_note: paymentData.paymentNote,
+                    }
+                } : {}),
+            };
+
+            // Include regular items ONLY for purchase and purchase-import types
+         if (purchaseType === "purchase" || purchaseType === "purchase-import") {
+   const preparedItems = items.map((item, index) => {
+    const currency = currencies.find(c => c.code === item.currency) || currencies[0];
+    const exchangeRate = currency.exchangeRate || 1;
+    
+    const itemData: any = {
+        product_id: item.product_id || undefined,
+        description: item.description || `Item ${index + 1}`,
+        hsn_code: item.hsn_code || "",
+        quantity: Number(item.quantity) || 1,
+        unit: item.unit || "unit",
+        purchase_price: Number(item.purchase_price) || 0.01,
+        item_code: item.item_code || "",
+        discount_percent: Number(item.discount_percent || 0),
+        discount_amount: Number(item.discount_amount || 0),
+        gst_rate: Number(item.gst_rate || 0),
+        tax_amount: Number(item.tax_amount || 0),
+        unit_cost: Number(item.unit_cost || item.purchase_price || 0.01),
+        total_amount: Number(item.total_amount || 0),
+          };
+    
+    // Add currency only for purchase-import type
+    if (purchaseType === "purchase-import") {
+        itemData.currency = item.currency || "INR";
+        itemData.exchange_rate = exchangeRate; // Send exchange rate used
+    }
+
+      console.log(`📦 Regular Item ${index + 1}:`, {
+        product_id: itemData.product_id,
+        description: itemData.description.substring(0, 50),
+        quantity: itemData.quantity,
+        price: itemData.purchase_price,
+        currency: itemData.currency || "INR",
+        exchange_rate: itemData.exchange_rate || 1,
+        // REMOVE: price_inr: itemData.purchase_price_inr,
+        total: itemData.total_amount,
+        // REMOVE: total_inr: itemData.total_amount_inr
+    });
+
+
+    return itemData;
+});
+    
+    purchaseData.items = preparedItems;
+    console.log(`📊 Total regular items: ${preparedItems.length}`);
+}
+ else if (purchaseType === "purchase-expenses") {
+                console.log("💰 Expense purchase - NOT including regular items");
+            }
+
+            // Add import items for purchase and purchase-import types with currency
+            if ((purchaseType === "purchase" || purchaseType === "purchase-import") && importItems.length > 0) {
+                const preparedImportItems = importItems.map((item, index) => {
+                    const importItemData = {
+                        name: item.name || `Import Item ${index + 1}`,
+                        quantity: Number(item.quantity) || 1,
+                        rate: Number(item.rate) || 0,
+                        currency: item.currency || "INR", // Include currency
+                        per: item.per || "unit",
+                        discount_percent: Number(item.discount_percent || 0),
+                        amount: Number(item.amount) || 0,
+                    };
+
+                    console.log(`📦 Import Item ${index + 1}:`, {
+                        name: importItemData.name,
+                        quantity: importItemData.quantity,
+                        rate: importItemData.rate,
+                        currency: importItemData.currency,
+                        amount: importItemData.amount
+                    });
+
+                    return importItemData;
+                });
+                
+                purchaseData.import_items = preparedImportItems;
+                console.log(`📊 Total import items: ${preparedImportItems.length}`);
+            }
+            
+            // Add expense items ONLY for expense purchases
+            if (purchaseType === "purchase-expenses" && expenseItems.length > 0) {
+                const preparedExpenseItems = expenseItems.map((item, index) => {
+                    const expenseItemData = {
+                        particulars: item.particulars || `Expense ${index + 1}`,
+                        rate: Number(item.rate) || 0,
+                        per: item.per || "unit",
+                        amount: Number(item.amount) || 0,
+                    };
+
+                    console.log(`💰 Expense Item ${index + 1}:`, {
+                        particulars: expenseItemData.particulars,
+                        rate: expenseItemData.rate,
+                        amount: expenseItemData.amount
+                    });
+
+                    return expenseItemData;
+                });
+                
+                purchaseData.expense_items = preparedExpenseItems;
+                console.log(`📊 Total expense items: ${preparedExpenseItems.length}`);
+            }
+
+            // Remove empty arrays to avoid validation errors
+            if (!purchaseData.items || purchaseData.items.length === 0) {
+                delete purchaseData.items;
+            }
+            if (!purchaseData.import_items || purchaseData.import_items.length === 0) {
+                delete purchaseData.import_items;
+            }
+            if (!purchaseData.expense_items || purchaseData.expense_items.length === 0) {
+                delete purchaseData.expense_items;
+            }
+
+            // Log final payload
+            console.log("📤 FINAL PAYLOAD TO BE SENT:");
+            console.log("Purchase Type:", purchaseData.purchase_type);
+            console.log("Vendor ID:", purchaseData.vendor_id);
+            console.log("Items:", purchaseData.items ? purchaseData.items.length : 0);
+            console.log("Import items:", purchaseData.import_items ? purchaseData.import_items.length : 0);
+            console.log("Expense items:", purchaseData.expense_items ? purchaseData.expense_items.length : 0);
+            
+            // Log the full payload for debugging
+            console.log("📄 Full payload:", JSON.stringify(purchaseData, null, 2));
+
+            // Call the API
+            console.log("⏳ Calling API...");
+            const response = await purchasesApi.create(company.id, purchaseData);
+            
+            console.log('✅ Purchase created successfully! Response:', response);
+            const respData = response as any;
+const purchaseNumber = respData.purchase_number || respData.data?.purchase_number || 
+                      respData.invoice_number || respData.data?.invoice_number ||
+                      `PUR-${Date.now()}`;
+            alert(`Purchase ${purchaseNumber} saved successfully!`);
+            router.push(`/purchase/purchase-list`);
+
+        } catch (error: any) {
+            console.error("❌ ========== PURCHASE CREATION FAILED ==========");
+            console.error("Error object:", error);
+            
+            if (error.response) {
+                console.error("Status:", error.response.status);
+                console.error("Data:", error.response.data);
+                
+                // Extract detailed error message
+                let errorMessage = "Failed to create purchase: ";
+                
+                if (error.response.data && typeof error.response.data === 'object') {
+                    if (error.response.data.detail) {
+                        // Handle array of errors
+                        if (Array.isArray(error.response.data.detail)) {
+                            errorMessage = error.response.data.detail.map((err: any) => 
+                                `${err.loc ? err.loc.join('.') + ': ' : ''}${err.msg}`
+                            ).join('\n');
+                        } else {
+                            errorMessage += JSON.stringify(error.response.data.detail);
+                        }
+                    } else {
+                        errorMessage += JSON.stringify(error.response.data);
+                    }
+                }
+                
+                alert(errorMessage);
+                
+            } else if (error.request) {
+                alert("No response from server. Please check your network connection.");
+            } else {
+                alert(`Error: ${error.message}`);
+            }
+            
+        } finally {
+            setIsSubmitting(false);
+            console.log("🏁 Submission process completed");
+        }
+    };
+
+ const handleProductSelect = (itemId: number, product: any) => {
+    console.log("Handling product select for item:", itemId, "Product:", product);
+    
+    setItems(prevItems => 
+        prevItems.map(item => {
+            if (item.id === itemId) {
+                // Extract product data with fallbacks
+                const purchasePrice = product.unit_price || product.purchase_price || product.price || 0;
+                const gstRate = parseFloat(product.gst_rate) || parseFloat(product.gst) || 18;
+                const hsnCode = product.hsn_code || product.hsn || product.hsn_no || "";
+                const quantity = item.quantity || 1;
+                
+                // Preserve existing currency or use product's currency
+                const productCurrency = item.currency || product.currency || "INR";
+                
+                // Calculate totals in original currency first
+                const itemTotal = quantity * purchasePrice;
+                const discount = item.discount_percent > 0 ? 
+                    itemTotal * (item.discount_percent / 100) : 0;
+                const taxable = itemTotal - discount;
+                const tax = taxable * (gstRate / 100);
+                
+                console.log("Auto-filling item with:", {
+                    purchasePrice,
+                    gstRate,
+                    hsnCode,
+                    quantity,
+                    itemTotal,
+                    discount,
+                    tax,
+                    total: taxable + tax,
+                    currency: productCurrency
+                });
+                
+                return {
+                    ...item,
+                    product_id: product.id,
+                    description: product.name || product.description || "",
+                    hsn_code: hsnCode,
+                    purchase_price: purchasePrice,
+                    gst_rate: gstRate,
+                    cgst_rate: gstRate / 2,
+                    sgst_rate: gstRate / 2,
+                    discount_amount: discount,
+                    tax_amount: tax,
+                    unit_cost: purchasePrice,
+                    currency: productCurrency,
+                    total_amount: taxable + tax,
+                };
+            }
+            return item;
+        })
+    );
+};
+
+const updateItem = (id: number, field: string, value: any) => {
+    setItems(prevItems => {
+        return prevItems.map(item => {
+            if (item.id === id) {
+                const updated = { ...item, [field]: value };
+
+                // Recalculate item totals whenever relevant fields change
+                const itemTotal = updated.quantity * updated.purchase_price;
+                const discount = updated.discount_percent > 0 ?
+                    itemTotal * (updated.discount_percent / 100) : 0;
+                const taxable = itemTotal - discount;
+                const tax = taxable * (updated.gst_rate / 100);
+
+                updated.discount_amount = discount;
+                updated.tax_amount = tax;
+                updated.unit_cost = updated.purchase_price;
+                updated.total_amount = taxable + tax;
+
+                // Update CGST/SGST rates based on GST rate
+                updated.cgst_rate = updated.gst_rate / 2;
+                updated.sgst_rate = updated.gst_rate / 2;
+
+                // REMOVED: Don't set currency to INR here
+                // if (!updated.currency) {
+                //     updated.currency = "INR";
+                // }
+
+                console.log("Updated item calculation:", {
+                    id,
+                    field,
+                    value,
+                    itemTotal,
+                    discount,
+                    tax,
+                    total: updated.total_amount,
+                    currency: updated.currency // This will now show the actual currency
+                });
+
+                return updated;
+            }
+            return item;
+        });
+    });
+};
+
+
+
+// Add this useEffect after your other useEffects
+useEffect(() => {
+    if (purchaseType === "purchase-import") {
+        setItems(prevItems => 
+            prevItems.map(item => ({
+                ...item,
+                currency: item.currency || "INR" // Initialize only if not set
+            }))
+        );
+    } else {
+        // For other purchase types, remove currency from items using type assertion
+        setItems(prevItems => 
+            prevItems.map(item => {
+                // Create a new object without the currency property
+                const { currency, ...rest } = item;
+                // Type assertion to handle the missing currency property
+                return rest as any;
+            })
+        );
+    }
+}, [purchaseType]);
+
+
+
+// Update form data handler
     const handleFormChange = (field: string, value: any) => {
         setFormData(prev => ({
             ...prev,
@@ -794,46 +1150,90 @@ const handleSubmit = async (e: React.FormEvent) => {
         }
 
         const results = products.filter(p =>
-            p.name.toLowerCase().includes(value.toLowerCase()) ||
-            p.sku?.toLowerCase().includes(value.toLowerCase())
+            p.name?.toLowerCase().includes(value.toLowerCase()) ||
+            p.sku?.toLowerCase().includes(value.toLowerCase()) ||
+            p.item_code?.toLowerCase().includes(value.toLowerCase())
         );
 
         setSearchResults(results);
     };
 
-    const handleSearchSelect = (product: any) => {
-        addItem({
-            product_id: product.id,
-            description: product.description || "",
-            quantity: 1,
-            purchase_price: product.cost_price || product.purchase_price || 0,
-            discount_percent: 0,
-            gst_rate: product.gst_rate || 0,
-        });
-
-        setProductSearch("");
-        setSearchResults([]);
+  const handleSearchSelect = (product: any) => {
+    console.log("Search select product:", product);
+    
+    const purchasePrice = product.cost_price || product.purchase_price || product.price || 0;
+    const gstRate = parseFloat(product.gst_rate) || parseFloat(product.gst) || 18;
+    const hsnCode = product.hsn_code || product.hsn || product.hsn_no || "";
+    const itemCode = product.item_code || product.sku || product.code || "";
+    const productCurrency = product.currency || "INR"; // Get currency from product
+    
+    const newItem = {
+        id: Date.now(),
+        product_id: product.id,
+        description: product.name || product.description || "",
+        item_code: itemCode,
+        hsn_code: hsnCode,
+        quantity: 1,
+        unit: "unit",
+        purchase_price: purchasePrice,
+        discount_percent: 0,
+        discount_amount: 0,
+        gst_rate: gstRate,
+        cgst_rate: gstRate / 2,
+        sgst_rate: gstRate / 2,
+        igst_rate: 0,
+        tax_amount: 0,
+        unit_cost: purchasePrice,
+        total_amount: purchasePrice,
+        currency: productCurrency, // Use product's currency
     };
+    
+    // Calculate initial totals
+    const itemTotal = newItem.quantity * newItem.purchase_price;
+    const discount = newItem.discount_percent > 0 ?
+        itemTotal * (newItem.discount_percent / 100) : 0;
+    const taxable = itemTotal - discount;
+    const tax = taxable * (newItem.gst_rate / 100);
+    
+    newItem.discount_amount = discount;
+    newItem.tax_amount = tax;
+    newItem.total_amount = taxable + tax;
 
-    const addItem = (prefill: any = {}) => {
-        setItems(prev => [
-            ...prev,
-            {
-                id: Date.now(),
-                product_id: "",
-                description: "",
-                quantity: 1,
-                purchase_price: 0,
-                discount_percent: 0,
-                gst_rate: 0,
-                tax_amount: 0,
-                unit_cost: 0,
-                total_amount: 0,
-                ...prefill,
-            },
-        ]);
+    console.log("Adding new item:", newItem);
+    setItems(prev => [...prev, newItem]);
+    setProductSearch("");
+    setSearchResults([]);
+};
+  const addItem = (prefill: any = {}) => {
+    const newItem: any = {
+        id: Date.now(),
+        product_id: "",
+        description: "",
+        item_code: "",
+        hsn_code: "",
+        quantity: 1,
+        unit: "unit",
+        purchase_price: 0,
+        discount_percent: 0,
+        discount_amount: 0,
+        gst_rate: 18,
+        cgst_rate: 9,
+        sgst_rate: 9,
+        igst_rate: 0,
+        tax_amount: 0,
+        unit_cost: 0,
+        total_amount: 0,
+        ...prefill,
     };
-
+    
+    // Only add currency field for purchase-import type
+    if (purchaseType === "purchase-import") {
+        newItem.currency = prefill.currency || "INR";
+    }
+    
+    console.log("Adding new item:", newItem);
+    setItems(prev => [...prev, newItem]);
+};
     const removeItem = (id: number) => {
         setItems(items.filter(item => item.id !== id));
     };
@@ -916,6 +1316,103 @@ const handleSubmit = async (e: React.FormEvent) => {
                 <h1 className="text-2xl font-bold text-dark dark:text-white">Purchase – Add / Update Purchase</h1>
                 <p className="text-dark-6">Create new purchase invoice with supplier details and items</p>
             </div>
+
+            {/* Add Currency Modal */}
+            {showAddCurrencyModal && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+                    <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg dark:bg-gray-dark">
+                        <div className="mb-4 flex items-center justify-between">
+                            <h3 className="text-lg font-semibold text-dark dark:text-white">Add New Currency</h3>
+                            <button
+                                type="button"
+                                onClick={() => setShowAddCurrencyModal(false)}
+                                className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
+                            >
+                                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                    Currency Code <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={newCurrency.code}
+                                    onChange={(e) => setNewCurrency(prev => ({ ...prev, code: e.target.value.toUpperCase() }))}
+                                    placeholder="e.g., USD, EUR, GBP"
+                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                    maxLength={3}
+                                />
+                                <p className="mt-1 text-xs text-dark-6">3-letter currency code (ISO 4217)</p>
+                            </div>
+                            
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                    Currency Name <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={newCurrency.name}
+                                    onChange={(e) => setNewCurrency(prev => ({ ...prev, name: e.target.value }))}
+                                    placeholder="e.g., US Dollar, Euro, British Pound"
+                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                />
+                            </div>
+                            
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                    Currency Symbol <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={newCurrency.symbol}
+                                    onChange={(e) => setNewCurrency(prev => ({ ...prev, symbol: e.target.value }))}
+                                    placeholder="e.g., $, €, £"
+                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                    maxLength={5}
+                                />
+                            </div>
+                            
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                    Exchange Rate (to INR)
+                                </label>
+                                <input
+                                    type="number"
+                                    value={newCurrency.exchangeRate}
+                                    onChange={(e) => setNewCurrency(prev => ({ ...prev, exchangeRate: parseFloat(e.target.value) || 1 }))}
+                                    placeholder="1.0"
+                                    step="0.0001"
+                                    min="0.0001"
+                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                />
+                                <p className="mt-1 text-xs text-dark-6">1 {newCurrency.code || "XXX"} = {newCurrency.exchangeRate} INR</p>
+                            </div>
+                        </div>
+                        
+                        <div className="mt-6 flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setShowAddCurrencyModal(false)}
+                                className="rounded-lg border border-stroke px-4 py-2.5 text-dark hover:bg-gray-50 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveNewCurrency}
+                                className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
+                            >
+                                Add Currency
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <form onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -1072,213 +1569,54 @@ const handleSubmit = async (e: React.FormEvent) => {
                             </div>
                         </div>
 
-                        {/* SECTION 2: Regular Purchase Items (ALWAYS VISIBLE) */}
+                        {/* SECTION 2: Regular Purchase Items (VISIBLE for purchase and purchase-import) */}
                         {purchaseType !== "purchase-expenses" && (
-                        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                            <div className="mb-4 flex items-center justify-between">
-                                <h2 className="text-lg font-semibold text-dark dark:text-white">Purchase Items</h2>
-                                <div className="flex gap-2">
-                                    <div className="text-dark-6">
-                                        Total Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
-                                    </div>
-                                    <div className="text-dark-6">
-                                        Items: {items.length}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Item Search */}
-                            <div className="mb-4 flex gap-2">
-                                <div className="relative flex-1">
-                                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                                        <svg className="h-5 w-5 text-dark-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                        </svg>
-                                    </div>
-                                    <input
-                                        type="text"
-                                        value={productSearch}
-                                        onChange={(e) => handleProductSearch(e.target.value)}
-                                        placeholder="Item name / Barcode / Itemcode / Description"
-                                        className="w-full rounded-lg border py-2.5 pl-10 pr-4"
-                                    />
-                                    {searchResults.length > 0 && (
-                                        <div className="absolute z-50 mt-1 w-full rounded-lg border bg-white shadow">
-                                            {searchResults.map(product => (
-                                                <div
-                                                    key={product.id}
-                                                    onClick={() => handleSearchSelect(product)}
-                                                    className="cursor-pointer px-4 py-2 hover:bg-gray-100"
-                                                >
-                                                    {product.name} {product.sku && `(${product.sku})`}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={addItem}
-                                    className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
-                                >
-                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                    </svg>
-                                </button>
-                            </div>
-
-                            {/* Items Table */}
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="border-b border-stroke dark:border-dark-3">
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Name</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Code</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">HSN</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Purchase Price</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Discount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax Amount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit Cost</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Total Amount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {items.map((item) => (
-                                            <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                                                <td className="px-4 py-3 min-w-[200px]">
-                                                    <ProductSelectField
-                                                        value={item.product_id}
-                                                        products={products}
-                                                        onChange={(product) => {
-                                                            if (!product) return;
-                                                            setItems(prev =>
-                                                                prev.map(i => {
-                                                                    if (i.id !== item.id) return i;
-                                                                    const purchasePrice = product.cost_price || product.purchase_price || 0;
-                                                                    const gstRate = Number(product.gst_rate) || i.gst_rate || 18;
-                                                                    const qty = i.quantity || 1;
-                                                                    const taxable = qty * purchasePrice;
-                                                                    const tax = taxable * (gstRate / 100);
-                                                                    return {
-                                                                        ...i,
-                                                                        product_id: product.id,
-                                                                        item_code: i.item_code || "",
-                                                                        description: product.name,
-                                                                        hsn_code: product.hsn_code || product.hsn || "",
-                                                                        purchase_price: purchasePrice,
-                                                                        gst_rate: gstRate,
-                                                                        discount_amount: 0,
-                                                                        tax_amount: tax,
-                                                                        unit_cost: purchasePrice,
-                                                                        total_amount: taxable + tax,
-                                                                    };
-                                                                })
-                                                            );
-                                                        }}
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="text"
-                                                        value={item.item_code}
-                                                        onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}
-                                                        className="w-full min-w-[120px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        placeholder="Enter item code"
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="text"
-                                                        value={item.hsn_code}
-                                                        onChange={(e) => updateItem(item.id, 'hsn_code', e.target.value)}
-                                                        className="w-full min-w-[100px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        placeholder="HSN"
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="text"
-                                                        value={item.description}
-                                                        onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                                                        className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        placeholder="Description"
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="number"
-                                                        value={item.quantity}
-                                                        onChange={(e) => updateItem(item.id, 'quantity', parseFloat(e.target.value))}
-                                                        className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        min="1"
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="number"
-                                                        value={item.purchase_price}
-                                                        onChange={(e) => updateItem(item.id, 'purchase_price', parseFloat(e.target.value))}
-                                                        className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        min="0"
-                                                        step="0.01"
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <div className="flex gap-1">
-                                                        <input
-                                                            type="number"
-                                                            value={item.discount_percent}
-                                                            onChange={(e) => updateItem(item.id, 'discount_percent', parseFloat(e.target.value))}
-                                                            className="w-16 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                            min="0"
-                                                            step="0.01"
-                                                        />
-                                                        <span className="flex items-center px-1 py-1.5 text-xs">%</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span className="font-medium">
-                                                        ₹{(item.tax_amount || 0).toFixed(2)}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span className="font-medium">
-                                                        ₹{(item.unit_cost || item.purchase_price).toFixed(2)}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3 font-medium">
-                                                    ₹{item.total_amount.toFixed(2)}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeItem(item.id)}
-                                                        className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                                    >
-                                                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                        </svg>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-)}
-                        {/* SECTION 3: Purchase Type Specific Items */}
-                        {/* Import Items Section */}
-                       {(purchaseType === "purchase" || purchaseType === "purchase-import") && (      <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+                            <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                                 <div className="mb-4 flex items-center justify-between">
-                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Import Items</h2>
+                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Purchase Items</h2>
+                                    <div className="flex gap-2">
+                                        <div className="text-dark-6">
+                                            Total Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
+                                        </div>
+                                        <div className="text-dark-6">
+                                            Items: {items.length}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Item Search */}
+                                <div className="mb-4 flex gap-2">
+                                    <div className="relative flex-1">
+                                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                            <svg className="h-5 w-5 text-dark-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                            </svg>
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={productSearch}
+                                            onChange={(e) => handleProductSearch(e.target.value)}
+                                            placeholder="Item name / Barcode / Itemcode / Description"
+                                            className="w-full rounded-lg border py-2.5 pl-10 pr-4"
+                                        />
+                                        {searchResults.length > 0 && (
+                                            <div className="absolute z-50 mt-1 w-full rounded-lg border bg-white shadow">
+                                                {searchResults.map(product => (
+                                                    <div
+                                                        key={product.id}
+                                                        onClick={() => handleSearchSelect(product)}
+                                                        className="cursor-pointer px-4 py-2 hover:bg-gray-100"
+                                                    >
+                                                        {product.name} {product.sku && `(${product.sku})`}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                     <button
                                         type="button"
-                                        onClick={addImportItem}
-                                        className="rounded-lg bg-primary px-4 py-2 text-white hover:bg-opacity-90"
+                                        onClick={addItem}
+                                        className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
                                     >
                                         <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1286,211 +1624,190 @@ const handleSubmit = async (e: React.FormEvent) => {
                                     </button>
                                 </div>
 
+                                {/* Items Table - Different columns based on purchase type */}
                                 <div className="overflow-x-auto">
                                     <table className="w-full">
                                         <thead>
                                             <tr className="border-b border-stroke dark:border-dark-3">
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">#</th>
                                                 <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Name</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Code</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">HSN</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
                                                 <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Rate</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Per</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Disc %</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Amount</th>
+                                              <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">
+    <div className="flex items-center gap-1">
+        <span>Purchase Price</span>
+        {purchaseType === "purchase-import" && (
+            <span className="text-xs text-dark-6">(with currency)</span>
+        )}
+    </div>
+</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Discount</th>
+                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax Amount</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax %</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Total Amount</th>
                                                 <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {importItems.map((item, index) => (
+                                            {items.map((item) => (
                                                 <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                                                    <td className="px-4 py-3">{index + 1}</td>
+                                                    <td className="px-4 py-3 min-w-[200px]">
+                                                        <ProductSelectField
+                                                            value={item.product_id}
+                                                            products={products}
+                                                            onChange={(product) => {
+                                                                console.log("Product selected in dropdown:", product);
+                                                                if (product) {
+                                                                    handleProductSelect(item.id, product);
+                                                                }
+                                                            }}
+                                                            placeholder="Select Product"
+                                                            onProductSelect={(product) => {
+                                                                console.log("onProductSelect triggered:", product);
+                                                                handleProductSelect(item.id, product);
+                                                            }}
+                                                        />
+                                                    </td>
                                                     <td className="px-4 py-3">
                                                         <input
                                                             type="text"
-                                                            value={item.name}
-                                                            onChange={(e) => updateImportItem(item.id, 'name', e.target.value)}
-                                                            className="w-full min-w-[200px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                            placeholder="Enter item name"
+                                                            value={item.item_code}
+                                                            onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}
+                                                            className="w-full min-w-[120px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            placeholder="Item code"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="text"
+                                                            value={item.hsn_code}
+                                                            onChange={(e) => updateItem(item.id, 'hsn_code', e.target.value)}
+                                                            className="w-full min-w-[100px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            placeholder="HSN"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="text"
+                                                            value={item.description}
+                                                            onChange={(e) => updateItem(item.id, 'description', e.target.value)}
+                                                            className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            placeholder="Description"
                                                         />
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <input
                                                             type="number"
                                                             value={item.quantity}
-                                                            onChange={(e) => updateImportItem(item.id, 'quantity', parseFloat(e.target.value))}
+                                                            onChange={(e) => updateItem(item.id, 'quantity', parseFloat(e.target.value))}
                                                             className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                            min="0"
-                                                            step="0.001"
+                                                            min="1"
                                                         />
                                                     </td>
                                                     <td className="px-4 py-3">
-                                                        <input
-                                                            type="number"
-                                                            value={item.rate}
-                                                            onChange={(e) => updateImportItem(item.id, 'rate', parseFloat(e.target.value))}
-                                                            className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                            min="0"
-                                                            step="0.01"
-                                                        />
+    <div className="flex gap-2">
+        <div className="flex-1">
+            <input
+                type="number"
+                value={item.purchase_price}
+                onChange={(e) => updateItem(item.id, 'purchase_price', parseFloat(e.target.value))}
+                className="w-full rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                min="0"
+                step="0.01"
+            />
+            {/* Show INR conversion below */}
+            {item.currency !== "INR" && (
+                <div className="text-xs text-gray-500 mt-1">
+                    ₹{(item.purchase_price * (currencies.find(c => c.code === item.currency)?.exchangeRate || 1)).toFixed(2)} INR
+                </div>
+            )}
+        </div>
+        {purchaseType === "purchase-import" && (
+            <CurrencySelect
+                value={item.currency || "INR"}
+                onChange={(currency) => {
+                    updateItem(item.id, 'currency', currency);
+                }}
+                currencies={currencies}
+                onAddNewCurrency={handleAddNewCurrency}
+                itemPrice={item.purchase_price} // Pass price for conversion display
+            />
+        )}
+    </div>
+</td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex gap-1">
+                                                            <input
+                                                                type="number"
+                                                                value={item.discount_percent}
+                                                                onChange={(e) => updateItem(item.id, 'discount_percent', parseFloat(e.target.value))}
+                                                                className="w-16 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                                min="0"
+                                                                step="0.01"
+                                                            />
+                                                            <span className="flex items-center px-1 py-1.5 text-xs">%</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="font-medium">
+                                                            ₹{(item.tax_amount || 0).toFixed(2)}
+                                                        </span>
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <select
-                                                            value={item.per}
-                                                            onChange={(e) => updateImportItem(item.id, 'per', e.target.value)}
+                                                            value={item.gst_rate}
+                                                            onChange={(e) => updateItem(item.id, 'gst_rate', parseFloat(e.target.value))}
                                                             className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
                                                         >
-                                                            <option value="unit">Unit</option>
-                                                            <option value="kg">Kg</option>
-                                                            <option value="liter">Liter</option>
-                                                            <option value="meter">Meter</option>
-                                                            <option value="box">Box</option>
+                                                            <option value="0">0%</option>
+                                                            <option value="5">5%</option>
+                                                            <option value="12">12%</option>
+                                                            <option value="18">18%</option>
+                                                            <option value="28">28%</option>
                                                         </select>
                                                     </td>
+                                                  <td className="px-4 py-3 font-medium">
+    <div>
+        {/* Show in original currency if not INR */}
+        {item.currency !== "INR" && (
+            <div className="text-sm text-gray-600">
+                {currencies.find(c => c.code === item.currency)?.symbol || ""}
+                {item.total_amount.toFixed(2)} {item.currency}
+            </div>
+        )}
+        {/* Always show INR value */}
+        <div>
+            ₹{(
+                item.total_amount * 
+                (currencies.find(c => c.code === item.currency)?.exchangeRate || 1)
+            ).toFixed(2)}
+        </div>
+    </div>
+</td>
                                                     <td className="px-4 py-3">
-                                                        <input
-                                                            type="number"
-                                                            value={item.discount_percent}
-                                                            onChange={(e) => updateImportItem(item.id, 'discount_percent', parseFloat(e.target.value))}
-                                                            className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                            min="0"
-                                                            max="100"
-                                                            step="0.01"
-                                                        />
-                                                    </td>
-                                                    <td className="px-4 py-3 font-medium">
-                                                        ₹{item.amount.toFixed(2)}
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        {importItems.length > 1 && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => removeImportItem(item.id)}
-                                                                className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                                            >
-                                                                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                                </svg>
-                                                            </button>
-                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeItem(item.id)}
+                                                            className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                        >
+                                                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                            </svg>
+                                                        </button>
                                                     </td>
                                                 </tr>
                                             ))}
                                         </tbody>
-                                        <tfoot>
-                                            <tr>
-                                                <td colSpan={6} className="px-4 py-3 text-right font-semibold">
-                                                    Total:
-                                                </td>
-                                                <td className="px-4 py-3 font-bold text-primary">
-                                                    ₹{importItems.reduce((sum, item) => sum + item.amount, 0).toFixed(2)}
-                                                </td>
-                                                <td></td>
-                                            </tr>
-                                        </tfoot>
                                     </table>
                                 </div>
                             </div>
                         )}
 
-                        {/* Expense Items Section */}
-                        {purchaseType === "purchase-expenses" && (
-                            <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                                <div className="mb-4 flex items-center justify-between">
-                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Expense Items</h2>
-                                    <button
-                                        type="button"
-                                        onClick={addExpenseItem}
-                                        className="rounded-lg bg-primary px-4 py-2 text-white hover:bg-opacity-90"
-                                    >
-                                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                        </svg>
-                                    </button>
-                                </div>
+                        {/* The rest of your form remains the same... */}
+                   
 
-                                <div className="overflow-x-auto">
-                                    <table className="w-full">
-                                        <thead>
-                                            <tr className="border-b border-stroke dark:border-dark-3">
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">#</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Particulars</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Rate</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Per</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Amount</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {expenseItems.map((item, index) => (
-                                                <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                                                    <td className="px-4 py-3">{index + 1}</td>
-                                                    <td className="px-4 py-3">
-                                                        <input
-                                                            type="text"
-                                                            value={item.particulars}
-                                                            onChange={(e) => updateExpenseItem(item.id, 'particulars', e.target.value)}
-                                                            className="w-full min-w-[250px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                            placeholder="Enter expense particulars"
-                                                        />
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <input
-                                                            type="number"
-                                                            value={item.rate}
-                                                            onChange={(e) => updateExpenseItem(item.id, 'rate', parseFloat(e.target.value))}
-                                                            className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                            min="0"
-                                                            step="0.01"
-                                                        />
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <select
-                                                            value={item.per}
-                                                            onChange={(e) => updateExpenseItem(item.id, 'per', e.target.value)}
-                                                            className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        >
-                                                            <option value="unit">Unit</option>
-                                                            <option value="kg">Kg</option>
-                                                            <option value="liter">Liter</option>
-                                                            <option value="meter">Meter</option>
-                                                            <option value="box">Box</option>
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-4 py-3 font-medium">
-                                                        ₹{item.amount.toFixed(2)}
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        {expenseItems.length > 1 && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => removeExpenseItem(item.id)}
-                                                                className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                                            >
-                                                                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                                </svg>
-                                                            </button>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                        <tfoot>
-                                            <tr>
-                                                <td colSpan={4} className="px-4 py-3 text-right font-semibold">
-                                                    Total:
-                                                </td>
-                                                <td className="px-4 py-3 font-bold text-primary">
-                                                    ₹{expenseItems.reduce((sum, item) => sum + item.amount, 0).toFixed(2)}
-                                                </td>
-                                                <td></td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
+                        {/* The rest of your form remains the same... */}
                         {/* SECTION 4: Charges & Summary */}
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                             {/* Left side - Charges & Discounts */}
@@ -1498,46 +1815,54 @@ const handleSubmit = async (e: React.FormEvent) => {
                                 <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                                     <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Charges & Discounts</h2>
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={formData.freight_charges}
-                                                    onChange={(e) => setFormData({ ...formData, freight_charges: parseFloat(e.target.value) })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                />
-                                                <select
-                                                    value={formData.freight_type}
-                                                    onChange={(e) => setFormData({ ...formData, freight_type: e.target.value })}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="fixed">Fixed</option>
-                                                    <option value="percentage">%</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={formData.pf_charges}
-                                                    onChange={(e) => setFormData({ ...formData, pf_charges: parseFloat(e.target.value) })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                />
-                                                <select
-                                                    value={formData.pf_type}
-                                                    onChange={(e) => setFormData({ ...formData, pf_type: e.target.value })}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="fixed">Fixed</option>
-                                                    <option value="percentage">%</option>
-                                                </select>
-                                            </div>
-                                        </div>
+                                       {/* Freight Charges */}
+<div>
+    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
+    <div className="flex gap-2">
+        <input
+            type="number"
+            value={formData.freight_charges}
+            onChange={(e) => setFormData({ ...formData, freight_charges: parseFloat(e.target.value) })}
+            className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+            min="0"
+        />
+        <select
+            value={formData.freight_type}
+            onChange={(e) => setFormData({ ...formData, freight_type: e.target.value })}
+            className="w-32 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+        >
+            <option value="fixed">Fixed</option>
+            <option value="tax18">TAX @ 18%</option>
+            <option value="tax5">TAX @ 5%</option>
+            <option value="tax28">TAX @ 28%</option>
+            <option value="tax12">TAX @ 12%</option>
+        </select>
+    </div>
+</div>
+                                   {/* P & F Charges */}
+<div>
+    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
+    <div className="flex gap-2">
+        <input
+            type="number"
+            value={formData.pf_charges}
+            onChange={(e) => setFormData({ ...formData, pf_charges: parseFloat(e.target.value) })}
+            className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+            min="0"
+        />
+        <select
+            value={formData.pf_type}
+            onChange={(e) => setFormData({ ...formData, pf_type: e.target.value })}
+            className="w-32 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+        >
+            <option value="fixed">Fixed</option>
+            <option value="tax18">TAX @ 18%</option>
+            <option value="tax5">TAX @ 5%</option>
+            <option value="tax28">TAX @ 28%</option>
+            <option value="tax12">TAX @ 12%</option>
+        </select>
+    </div>
+</div>
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount on All</label>
                                             <div className="flex gap-2">
@@ -1671,6 +1996,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                             </div>
                         </div>
 
+                       
                         {/* SECTION 5: Previous Payments Information */}
                         <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
                             <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">

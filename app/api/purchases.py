@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime
 from decimal import Decimal
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.database.connection import get_db
 from app.database.models import User, Company, PurchaseType, PurchaseInvoiceStatus
@@ -38,18 +38,28 @@ class PurchaseItemCreate(BaseModel):
     hsn_code: Optional[str] = Field(None, max_length=8)
     quantity: float = Field(1.0, gt=0)
     unit: str = Field("unit", max_length=20)
+    currency: Optional[str] = Field("INR", max_length=10)
+    exchange_rate: Optional[float] = Field(1.0, gt=0) 
     purchase_price: float = Field(0.0, ge=0)
     discount_percent: float = Field(0.0, ge=0, le=100)
     gst_rate: float = Field(18.0, ge=0, le=100)
 
-    @validator('quantity', 'purchase_price', 'discount_percent', 'gst_rate')
-    def validate_numeric(cls, v):
+    @field_validator('quantity', 'purchase_price', 'discount_percent', 'gst_rate')
+    @classmethod
+    def validate_numeric(cls, v: float) -> float:
         """Ensure numeric values are valid."""
         if v < 0:
             raise ValueError("Value must be non-negative")
         return v
-
-
+    
+    @field_validator('exchange_rate')
+    @classmethod
+    def validate_exchange_rate(cls, v: float) -> float:
+        """Validate exchange rate."""
+        if v <= 0:
+            raise ValueError("Exchange rate must be greater than 0")
+        return v
+        
 class PurchaseImportItemCreate(BaseModel):
     """Schema for creating import items."""
     name: str = Field(..., max_length=500)
@@ -57,6 +67,8 @@ class PurchaseImportItemCreate(BaseModel):
     rate: float = Field(0.0, ge=0)
     per: str = Field("unit", max_length=20)
     discount_percent: float = Field(0.0, ge=0, le=100)
+    currency: Optional[str] = Field("INR", max_length=10)
+
 
 
 class PurchaseExpenseItemCreate(BaseModel):
@@ -115,51 +127,41 @@ class PurchaseCreate(BaseModel):
     # Payment
     payment: Optional[PurchasePaymentCreate] = None
     
-    @validator('purchase_type')
-    def validate_purchase_type(cls, v):
+    @field_validator('purchase_type')
+    @classmethod
+    def validate_purchase_type(cls, v: str) -> str:
         """Validate purchase type."""
         valid_types = ["purchase", "purchase-import", "purchase-expenses"]
         if v not in valid_types:
             raise ValueError(f"Purchase type must be one of {valid_types}")
         return v
     
-    @validator('items')
-    def validate_items(cls, v, values):
-        """Validate items based on purchase type."""
-        purchase_type = values.get('purchase_type', 'purchase')
+    # KEEP ONLY THIS VALIDATOR - REMOVE THE OLD ONES ABOVE!
+    @model_validator(mode='after')
+    def validate_all_items(self) -> 'PurchaseCreate':
+        """Validate all items based on purchase type."""
+        purchase_type = self.purchase_type
         
-        if purchase_type == "purchase-expenses" and v:
+        # Validate regular items
+        if purchase_type == "purchase-expenses" and self.items:
             raise ValueError("Regular items not allowed for purchase-expenses type")
         
-        if purchase_type in ["purchase", "purchase-import"] and not v:
+        if purchase_type in ["purchase", "purchase-import"] and not self.items:
             raise ValueError("Regular items are required for purchase and purchase-import types")
         
-        return v
-    
-    @validator('import_items')
-    def validate_import_items(cls, v, values):
-        """Validate import items."""
-        purchase_type = values.get('purchase_type', 'purchase')
-        
-        if purchase_type == "purchase-expenses" and v:
+        # Validate import items
+        if purchase_type == "purchase-expenses" and self.import_items:
             raise ValueError("Import items not allowed for purchase-expenses type")
         
-        return v
-    
-    @validator('expense_items')
-    def validate_expense_items(cls, v, values):
-        """Validate expense items."""
-        purchase_type = values.get('purchase_type', 'purchase')
-        
-        if purchase_type != "purchase-expenses" and v:
+        # Validate expense items
+        if purchase_type != "purchase-expenses" and self.expense_items:
             raise ValueError("Expense items only allowed for purchase-expenses type")
         
-        if purchase_type == "purchase-expenses" and (not v or len(v) == 0):
+        if purchase_type == "purchase-expenses" and (not self.expense_items or len(self.expense_items) == 0):
             raise ValueError("Expense items are required for purchase-expenses type")
         
-        return v
-
-
+        return self
+    
 class PurchaseItemResponse(BaseModel):
     """Schema for purchase item response."""
     id: str
@@ -180,6 +182,8 @@ class PurchaseItemResponse(BaseModel):
     tax_amount: float
     unit_cost: float
     total_amount: float
+    currency: str = "INR"
+    exchange_rate: float = 1.0
     created_at: datetime
 
     class Config:
@@ -880,6 +884,7 @@ def _build_purchase_response(purchase) -> PurchaseResponse:
                 igst_rate=float(item.igst_rate),
                 tax_amount=float(item.tax_amount),
                 unit_cost=float(item.unit_cost),
+                currency=item.currency or "INR",
                 total_amount=float(item.total_amount),
                 created_at=item.created_at,
             )
