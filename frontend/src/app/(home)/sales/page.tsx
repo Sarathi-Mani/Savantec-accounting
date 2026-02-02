@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { dashboardApi, invoicesApi } from "@/services/api";
+import { dashboardApi, invoicesApi, ordersApi } from "@/services/api";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
@@ -17,7 +17,25 @@ import {
   Calendar,
   BarChart3,
   RefreshCw,
+  Package,
+  TrendingDown,
+  Clock,
 } from "lucide-react";
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
 interface DashboardData {
   today_sales: number;
@@ -62,6 +80,47 @@ interface SalesSummary {
   total_igst: number;
 }
 
+interface TimeRangeData {
+  sales_data: Array<{
+    date: string;
+    amount: number;
+    invoices: number;
+  }>;
+  summary: {
+    total_sales: number;
+    total_invoices: number;
+    avg_order_value: number;
+    best_day: string;
+    best_day_amount: number;
+    total_paid: number;
+    total_pending: number;
+    total_cgst: number;
+    total_sgst: number;
+    total_igst: number;
+  };
+  status_distribution: Array<{
+    status: string;
+    count: number;
+    amount: number;
+  }>;
+  top_products: Array<{
+    name: string;
+    quantity: number;
+    revenue: number;
+  }>;
+}
+
+interface TimeRangeMetrics {
+  total_sales: number;
+  total_invoices: number;
+  total_paid: number;
+  total_pending: number;
+  total_cgst: number;
+  total_sgst: number;
+  total_igst: number;
+  avg_order_value: number;
+}
+
 export default function SalesDashboardPage() {
   const router = useRouter();
   const { company } = useAuth();
@@ -69,7 +128,18 @@ export default function SalesDashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
+  const [timeRangeData, setTimeRangeData] = useState<TimeRangeData | null>(null);
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month' | 'year'>('month');
+  const [timeRangeMetrics, setTimeRangeMetrics] = useState<TimeRangeMetrics>({
+    total_sales: 0,
+    total_invoices: 0,
+    total_paid: 0,
+    total_pending: 0,
+    total_cgst: 0,
+    total_sgst: 0,
+    total_igst: 0,
+    avg_order_value: 0,
+  });
 
   // Format currency (handles NaN, null, undefined)
   const formatCurrency = (amount: number | undefined | null): string => {
@@ -83,6 +153,14 @@ export default function SalesDashboardPage() {
     }).format(n);
   };
 
+  // Format short currency for charts
+  const formatShortCurrency = (amount: number): string => {
+    if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(1)}Cr`;
+    if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)}L`;
+    if (amount >= 1000) return `₹${(amount / 1000).toFixed(1)}K`;
+    return `₹${amount}`;
+  };
+
   // Format date
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
@@ -92,16 +170,121 @@ export default function SalesDashboardPage() {
     });
   };
 
+  // Format chart date
+  const formatChartDate = (dateString: string, range: string): string => {
+    const date = new Date(dateString);
+    if (range === 'today') {
+      return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    } else if (range === 'week') {
+      return date.toLocaleDateString('en-IN', { weekday: 'short' });
+    } else if (range === 'month') {
+      return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+    } else {
+      return date.toLocaleDateString('en-IN', { month: 'short' });
+    }
+  };
+
   // Get status badge color
   const getStatusColor = (status: string) => {
-    switch (status) {
+    switch (status?.toLowerCase()) {
       case 'paid': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
       case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
       case 'draft': return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
       case 'partially_paid': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
       case 'cancelled': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+      case 'confirmed': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
+      case 'completed': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400';
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
     }
+  };
+
+  // Get status display name
+  const getStatusDisplayName = (status: string): string => {
+    const statusMap: Record<string, string> = {
+      'paid': 'Paid',
+      'pending': 'Pending',
+      'draft': 'Draft',
+      'partially_paid': 'Partially Paid',
+      'cancelled': 'Cancelled',
+      'confirmed': 'Confirmed',
+      'completed': 'Completed',
+      'overdue': 'Overdue'
+    };
+    return statusMap[status?.toLowerCase()] || status;
+  };
+
+  // Get time range display name
+  const getTimeRangeDisplayName = (range: string): string => {
+    const rangeMap: Record<string, string> = {
+      'today': 'Today',
+      'week': 'This Week',
+      'month': 'This Month',
+      'year': 'This Year'
+    };
+    return rangeMap[range] || range;
+  };
+
+  // Calculate metrics for a specific time range
+  const calculateTimeRangeMetrics = (invoices: any[], range: 'today' | 'week' | 'month' | 'year') => {
+    const now = new Date();
+    let startDate = new Date();
+    
+    // Set start date based on range
+    switch (range) {
+      case 'today':
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      case 'week':
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case 'month':
+        startDate.setDate(1);
+        break;
+      case 'year':
+        startDate.setFullYear(now.getFullYear(), 0, 1);
+        break;
+    }
+
+    let totalSales = 0;
+    let totalInvoices = 0;
+    let totalPaid = 0;
+    let totalPending = 0;
+    let totalCgst = 0;
+    let totalSgst = 0;
+    let totalIgst = 0;
+
+    invoices.forEach(invoice => {
+      const invoiceDate = new Date(invoice.invoice_date);
+      
+      // Check if invoice is within the time range
+      if (invoiceDate >= startDate && invoiceDate <= now) {
+        const amt = Number(invoice.total_amount) || 0;
+        const paid = Number(invoice.amount_paid) || 0;
+        const due = Number(invoice.balance_due) || 0;
+        const cgst = Number(invoice.cgst_amount) || 0;
+        const sgst = Number(invoice.sgst_amount) || 0;
+        const igst = Number(invoice.igst_amount) || 0;
+
+        totalSales += amt;
+        totalPaid += paid;
+        totalPending += due;
+        totalCgst += cgst;
+        totalSgst += sgst;
+        totalIgst += igst;
+        totalInvoices++;
+      }
+    });
+
+    return {
+      total_sales: totalSales,
+      total_invoices: totalInvoices,
+      total_paid: totalPaid,
+      total_pending: totalPending,
+      total_cgst: totalCgst,
+      total_sgst: totalSgst,
+      total_igst: totalIgst,
+      avg_order_value: totalInvoices > 0 ? totalSales / totalInvoices : 0
+    };
   };
 
   // Fetch dashboard data
@@ -111,14 +294,14 @@ export default function SalesDashboardPage() {
     try {
       setLoading(true);
       
-      // Fetch dashboard summary
-      const dashboardResponse = await dashboardApi.getSummary(company.id);
+      // Fetch dashboard summary from invoice API
+      const dashboardResponse = await invoicesApi.getDashboardSummary(company.id);
       setDashboardData(dashboardResponse as any);
 
-      // Fetch invoice summary using invoices API
+      // Fetch invoices for detailed summary
       const invoiceResponse = await invoicesApi.list(company.id, {
         page: 1,
-        page_size: 1000, // Get all invoices for summary
+        page_size: 1000,
       });
 
       // Calculate sales summary from invoice data
@@ -143,7 +326,6 @@ export default function SalesDashboardPage() {
         const isCurrentMonth = invoiceDate.getMonth() === currentMonth && 
                                invoiceDate.getFullYear() === currentYear;
         
-        // Coerce to number to avoid string concat and NaN
         const amt = Number(invoice.total_amount) || 0;
         const paid = Number(invoice.amount_paid) || 0;
         const due = Number(invoice.balance_due) || 0;
@@ -163,7 +345,7 @@ export default function SalesDashboardPage() {
           currentMonthInvoices++;
         }
 
-        // Check if overdue (assuming pending/partially_paid invoices with due_date in past)
+        // Check if overdue
         if (invoice.due_date && 
             ['pending', 'partially_paid'].includes(invoice.status) &&
             new Date(invoice.due_date) < now) {
@@ -173,7 +355,7 @@ export default function SalesDashboardPage() {
       });
 
       setSalesSummary({
-        total_invoices: invoiceResponse.total_invoices ?? invoices.length,
+        total_invoices: invoiceResponse.total_invoices || invoices.length,
         total_revenue: Number.isFinite(totalRevenue) ? totalRevenue : 0,
         total_paid: Number.isFinite(totalPaid) ? totalPaid : 0,
         total_pending: Number.isFinite(totalPending) ? totalPending : 0,
@@ -186,6 +368,10 @@ export default function SalesDashboardPage() {
         total_igst: Number.isFinite(totalIgst) ? totalIgst : 0,
       });
 
+      // Calculate time range metrics for current selection
+      const metrics = calculateTimeRangeMetrics(invoices, timeRange);
+      setTimeRangeMetrics(metrics);
+
     } catch (error) {
       console.error("Failed to fetch dashboard data:", error);
     } finally {
@@ -194,16 +380,191 @@ export default function SalesDashboardPage() {
     }
   };
 
+  // Fetch time range specific data
+  const fetchTimeRangeData = async (range: 'today' | 'week' | 'month' | 'year') => {
+    if (!company?.id) return;
+
+    try {
+      // Calculate date range
+      const now = new Date();
+      let startDate = new Date();
+      
+      switch (range) {
+        case 'today':
+          startDate.setHours(0, 0, 0, 0);
+          break;
+        case 'week':
+          startDate.setDate(now.getDate() - 7);
+          break;
+        case 'month':
+          startDate.setDate(1);
+          break;
+        case 'year':
+          startDate.setFullYear(now.getFullYear(), 0, 1);
+          break;
+      }
+
+      // Fetch invoices for the time range
+      const invoiceResponse = await invoicesApi.list(company.id, {
+        page: 1,
+        page_size: 1000,
+        from_date: startDate.toISOString().split('T')[0],
+        to_date: now.toISOString().split('T')[0],
+      });
+
+      const invoices = invoiceResponse.invoices || [];
+      
+      // Process sales data for charts
+      const salesByDate = new Map<string, { amount: number; invoices: number }>();
+      const statusDistribution = new Map<string, { count: number; amount: number }>();
+      const productMap = new Map<string, { name: string; quantity: number; revenue: number }>();
+
+      let totalSales = 0;
+      let totalInvoices = 0;
+      let totalPaid = 0;
+      let totalPending = 0;
+      let totalCgst = 0;
+      let totalSgst = 0;
+      let totalIgst = 0;
+      let bestDay = '';
+      let bestDayAmount = 0;
+
+      invoices.forEach(invoice => {
+        const invoiceDate = new Date(invoice.invoice_date);
+        const dateKey = invoiceDate.toISOString().split('T')[0];
+        const amount = Number(invoice.total_amount) || 0;
+        const paid = Number(invoice.amount_paid) || 0;
+        const due = Number(invoice.balance_due) || 0;
+        const cgst = Number(invoice.cgst_amount) || 0;
+        const sgst = Number(invoice.sgst_amount) || 0;
+        const igst = Number(invoice.igst_amount) || 0;
+        
+        // Update sales by date
+        if (!salesByDate.has(dateKey)) {
+          salesByDate.set(dateKey, { amount: 0, invoices: 0 });
+        }
+        const dateData = salesByDate.get(dateKey)!;
+        dateData.amount += amount;
+        dateData.invoices += 1;
+        
+        // Update best day
+        if (dateData.amount > bestDayAmount) {
+          bestDayAmount = dateData.amount;
+          bestDay = dateKey;
+        }
+        
+        // Update totals
+        totalSales += amount;
+        totalInvoices += 1;
+        totalPaid += paid;
+        totalPending += due;
+        totalCgst += cgst;
+        totalSgst += sgst;
+        totalIgst += igst;
+        
+        // Update status distribution
+        const status = invoice.status;
+        if (!statusDistribution.has(status)) {
+          statusDistribution.set(status, { count: 0, amount: 0 });
+        }
+        const statusData = statusDistribution.get(status)!;
+        statusData.count += 1;
+        statusData.amount += amount;
+        
+        // Process items for product analysis (if available)
+        if (invoice.items && Array.isArray(invoice.items)) {
+          invoice.items.forEach((item: any) => {
+            const productName = item.product_name || item.description || 'Unknown Product';
+            if (!productMap.has(productName)) {
+              productMap.set(productName, { 
+                name: productName, 
+                quantity: 0, 
+                revenue: 0 
+              });
+            }
+            const productData = productMap.get(productName)!;
+            productData.quantity += Number(item.quantity) || 0;
+            productData.revenue += Number(item.total_amount) || Number(item.quantity) * Number(item.rate) || 0;
+          });
+        }
+      });
+
+      // Convert sales data to array for chart
+      const salesData = Array.from(salesByDate.entries())
+        .map(([date, data]) => ({
+          date,
+          amount: data.amount,
+          invoices: data.invoices,
+          formattedDate: formatChartDate(date, range)
+        }))
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // Convert status distribution to array
+      const statusData = Array.from(statusDistribution.entries())
+        .map(([status, data]) => ({
+          status: getStatusDisplayName(status),
+          count: data.count,
+          amount: data.amount
+        }));
+
+      // Get top 5 products by revenue
+      const topProducts = Array.from(productMap.values())
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 5);
+
+      setTimeRangeData({
+        sales_data: salesData,
+        summary: {
+          total_sales: totalSales,
+          total_invoices: totalInvoices,
+          avg_order_value: totalInvoices > 0 ? totalSales / totalInvoices : 0,
+          best_day: bestDay ? formatChartDate(bestDay, range) : 'N/A',
+          best_day_amount: bestDayAmount,
+          total_paid: totalPaid,
+          total_pending: totalPending,
+          total_cgst: totalCgst,
+          total_sgst: totalSgst,
+          total_igst: totalIgst
+        },
+        status_distribution: statusData,
+        top_products: topProducts
+      });
+
+      // Update time range metrics
+      setTimeRangeMetrics({
+        total_sales: totalSales,
+        total_invoices: totalInvoices,
+        total_paid: totalPaid,
+        total_pending: totalPending,
+        total_cgst: totalCgst,
+        total_sgst: totalSgst,
+        total_igst: totalIgst,
+        avg_order_value: totalInvoices > 0 ? totalSales / totalInvoices : 0
+      });
+
+    } catch (error) {
+      console.error("Failed to fetch time range data:", error);
+    }
+  };
+
   // Handle refresh
   const handleRefresh = () => {
     setRefreshing(true);
     fetchDashboardData();
+    fetchTimeRangeData(timeRange);
+  };
+
+  // Handle time range change
+  const handleTimeRangeChange = (range: 'today' | 'week' | 'month' | 'year') => {
+    setTimeRange(range);
+    fetchTimeRangeData(range);
   };
 
   // Initial data fetch
   useEffect(() => {
     if (company?.id) {
       fetchDashboardData();
+      fetchTimeRangeData(timeRange);
     }
   }, [company?.id]);
 
@@ -234,14 +595,14 @@ export default function SalesDashboardPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <button
+            {/* <button
               onClick={handleRefresh}
               disabled={refreshing}
               className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               Refresh
-            </button>
+            </button> */}
             <button
               onClick={() => router.push('/sales/new')}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition"
@@ -255,44 +616,61 @@ export default function SalesDashboardPage() {
 
       {/* Time Range Selector */}
       <div className="px-6 py-4">
-        <div className="flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-gray-500" />
-          <div className="flex bg-white dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-700 p-1">
-            {['today', 'week', 'month', 'year'].map((range) => (
-              <button
-                key={range}
-                onClick={() => setTimeRange(range as any)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors capitalize ${
-                  timeRange === range
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
-              >
-                {range}
-              </button>
-            ))}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-gray-500" />
+            <span className="text-sm text-gray-600 dark:text-gray-400">
+              Showing data for: <span className="font-medium">{getTimeRangeDisplayName(timeRange)}</span>
+            </span>
           </div>
+          <div className="text-sm text-gray-500">
+            {timeRangeMetrics.total_invoices} invoices in selected period
+          </div>
+        </div>
+        <div className="flex bg-white dark:bg-gray-800 rounded-lg border border-gray-300 dark:border-gray-700 p-1">
+          {['today', 'week', 'month', 'year'].map((range) => (
+            <button
+              key={range}
+              onClick={() => handleTimeRangeChange(range as any)}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors capitalize ${
+                timeRange === range
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              {range}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Key Metrics */}
+      {/* Key Metrics - NOW TIME RANGE BASED */}
       <div className="px-6 py-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Total Revenue */}
+          {/* Total Revenue for Time Range */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Total Revenue</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <DollarSign className="w-4 h-4 text-blue-500" />
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Total Sales ({timeRange})
+                  </p>
+                </div>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white mt-2">
-                  {formatCurrency(salesSummary?.total_revenue || 0)}
+                  {formatCurrency(timeRangeMetrics.total_sales)}
                 </p>
                 <div className="flex items-center gap-1 mt-2">
-                  <TrendingUp className="w-4 h-4 text-green-500" />
-                  <span className="text-sm text-green-600">
-                    {typeof salesSummary?.current_month_revenue === 'number' && Number.isFinite(salesSummary.current_month_revenue)
-                      ? `₹${Math.round(salesSummary.current_month_revenue).toLocaleString()} this month`
-                      : 'Loading...'}
-                  </span>
+                  {timeRangeMetrics.total_sales > 0 ? (
+                    <>
+                      <TrendingUp className="w-4 h-4 text-green-500" />
+                      <span className="text-sm text-green-600">
+                        {timeRangeMetrics.avg_order_value > 0 && formatCurrency(timeRangeMetrics.avg_order_value)} avg order
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-sm text-gray-500">No sales in this period</span>
+                  )}
                 </div>
               </div>
               <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
@@ -301,18 +679,27 @@ export default function SalesDashboardPage() {
             </div>
           </div>
 
-          {/* Total Paid */}
+          {/* Total Paid for Time Range */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Total Paid</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <CreditCard className="w-4 h-4 text-green-500" />
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Amount Paid ({timeRange})
+                  </p>
+                </div>
                 <p className="text-2xl font-bold text-green-600 dark:text-green-400 mt-2">
-                  {formatCurrency(salesSummary?.total_paid || 0)}
+                  {formatCurrency(timeRangeMetrics.total_paid)}
                 </p>
-                <div className="mt-2 text-sm text-gray-500">
-                  {typeof salesSummary?.total_revenue === 'number' && salesSummary.total_revenue > 0 && Number.isFinite(salesSummary.total_paid)
-                    ? `${Math.round((salesSummary.total_paid / salesSummary.total_revenue) * 100)}% of total`
-                    : 'Loading...'}
+                <div className="mt-2">
+                  {timeRangeMetrics.total_sales > 0 ? (
+                    <div className="text-sm text-gray-500">
+                      {Math.round((timeRangeMetrics.total_paid / timeRangeMetrics.total_sales) * 100)}% of period sales
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">No payments in this period</div>
+                  )}
                 </div>
               </div>
               <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
@@ -321,39 +708,57 @@ export default function SalesDashboardPage() {
             </div>
           </div>
 
-          {/* Pending Payments */}
+          {/* Pending Payments for Time Range */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Pending Payments</p>
-                <p className="text-2xl font-bold text-red-600 dark:text-red-400 mt-2">
-                  {formatCurrency(salesSummary?.total_pending || 0)}
+                <div className="flex items-center gap-2 mb-1">
+                  <Clock className="w-4 h-4 text-yellow-500" />
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Pending ({timeRange})
+                  </p>
+                </div>
+                <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400 mt-2">
+                  {formatCurrency(timeRangeMetrics.total_pending)}
                 </p>
                 <div className="flex items-center gap-1 mt-2">
-                  <AlertCircle className="w-4 h-4 text-red-500" />
-                  <span className="text-sm text-red-600">
-                    {salesSummary?.overdue_count ? `${salesSummary.overdue_count} overdue` : 'No overdue'}
+                  <AlertCircle className="w-4 h-4 text-yellow-500" />
+                  <span className="text-sm text-yellow-600">
+                    {timeRangeMetrics.total_sales > 0 
+                      ? `${Math.round((timeRangeMetrics.total_pending / timeRangeMetrics.total_sales) * 100)}% of period sales`
+                      : 'No pending amount'}
                   </span>
                 </div>
               </div>
-              <div className="w-12 h-12 rounded-lg bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
-                <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+              <div className="w-12 h-12 rounded-lg bg-yellow-100 dark:bg-yellow-900/20 flex items-center justify-center">
+                <Clock className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
               </div>
             </div>
           </div>
 
-          {/* Total Invoices */}
+          {/* Total Invoices for Time Range */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Total Invoices</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <FileText className="w-4 h-4 text-purple-500" />
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Invoices ({timeRange})
+                  </p>
+                </div>
                 <p className="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-2">
-                  {salesSummary?.total_invoices?.toLocaleString() || 0}
+                  {timeRangeMetrics.total_invoices}
                 </p>
-                <div className="mt-2 text-sm text-gray-500">
-                  {salesSummary?.current_month_invoices ? 
-                    `${salesSummary.current_month_invoices} this month` : 
-                    'Loading...'}
+                <div className="mt-2">
+                  {timeRangeMetrics.total_invoices > 0 ? (
+                    <div className="text-sm text-gray-500">
+                      {Math.round(timeRangeMetrics.avg_order_value) > 0 && 
+                        `${formatCurrency(timeRangeMetrics.avg_order_value)} avg value`
+                      }
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">No invoices in this period</div>
+                  )}
                 </div>
               </div>
               <div className="w-12 h-12 rounded-lg bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
@@ -364,32 +769,334 @@ export default function SalesDashboardPage() {
         </div>
       </div>
 
-      {/* GST Summary */}
+      {/* Charts Section */}
+      <div className="px-6 py-4 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Sales Trend Chart */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Sales Trend ({getTimeRangeDisplayName(timeRange)})
+            </h2>
+            <BarChart3 className="w-5 h-5 text-gray-500" />
+          </div>
+          <div className="h-64">
+            {timeRangeData?.sales_data && timeRangeData.sales_data.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={timeRangeData.sales_data}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis 
+                    dataKey="formattedDate" 
+                    stroke="#9CA3AF"
+                    fontSize={12}
+                  />
+                  <YAxis 
+                    stroke="#9CA3AF"
+                    fontSize={12}
+                    tickFormatter={(value) => formatShortCurrency(value)}
+                  />
+                  <Tooltip 
+                    formatter={(value: number) => [formatCurrency(value), 'Amount']}
+                    labelFormatter={(label) => `Date: ${label}`}
+                    contentStyle={{
+                      backgroundColor: '#1F2937',
+                      borderColor: '#374151',
+                      borderRadius: '0.5rem',
+                      color: 'white'
+                    }}
+                  />
+                  <Legend />
+                  <Line 
+                    type="monotone" 
+                    dataKey="amount" 
+                    name="Sales Amount"
+                    stroke="#3B82F6" 
+                    strokeWidth={2}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="invoices" 
+                    name="Invoices"
+                    stroke="#10B981" 
+                    strokeWidth={2}
+                    dot={{ r: 4 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <BarChart3 className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-500 dark:text-gray-400">No sales data for selected period</p>
+                </div>
+              </div>
+            )}
+          </div>
+          {timeRangeData?.summary && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+              <div className="text-center">
+                <p className="text-sm text-gray-500">Total Sales</p>
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {formatCurrency(timeRangeData.summary.total_sales)}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-gray-500">Total Invoices</p>
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {timeRangeData.summary.total_invoices}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-gray-500">Avg Order Value</p>
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {formatCurrency(timeRangeData.summary.avg_order_value)}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-gray-500">Best Day</p>
+                <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {timeRangeData.summary.best_day}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Status Distribution Chart */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Status Distribution</h2>
+            <FileText className="w-5 h-5 text-gray-500" />
+          </div>
+          <div className="h-64">
+            {timeRangeData?.status_distribution && timeRangeData.status_distribution.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={timeRangeData.status_distribution}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ status, percent }) => `${status}: ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="count"
+                  >
+                    {timeRangeData.status_distribution.map((entry, index) => {
+                      const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
+                      return <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />;
+                    })}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(value: number, name: string, props: any) => [
+                      `${value} invoices (${formatCurrency(props.payload.amount)})`,
+                      props.payload.status
+                    ]}
+                    contentStyle={{
+                      backgroundColor: '#1F2937',
+                      borderColor: '#374151',
+                      borderRadius: '0.5rem',
+                      color: 'white'
+                    }}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <FileText className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-500 dark:text-gray-400">No status data available</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* GST Summary - NOW TIME RANGE BASED */}
       <div className="px-6 py-4">
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">GST Summary</h2>
-            <BarChart3 className="w-5 h-5 text-gray-500" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              GST Summary ({getTimeRangeDisplayName(timeRange)})
+            </h2>
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-gray-500" />
+              <span className="text-sm text-gray-500">
+                Total GST: {formatCurrency(
+                  timeRangeMetrics.total_cgst + 
+                  timeRangeMetrics.total_sgst + 
+                  timeRangeMetrics.total_igst
+                )}
+              </span>
+            </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-lg">
-              <p className="text-sm text-blue-600 dark:text-blue-400">CGST</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-blue-600 dark:text-blue-400">CGST</p>
+                <div className="text-xs px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-300">
+                  {timeRangeMetrics.total_sales > 0 
+                    ? `${Math.round((timeRangeMetrics.total_cgst / timeRangeMetrics.total_sales) * 10000) / 100}%`
+                    : '0%'}
+                </div>
+              </div>
               <p className="text-xl font-bold text-blue-700 dark:text-blue-300 mt-1">
-                {formatCurrency(salesSummary?.total_cgst || 0)}
+                {formatCurrency(timeRangeMetrics.total_cgst)}
               </p>
+              <div className="mt-2 h-2 bg-blue-100 dark:bg-blue-800 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-blue-500 rounded-full"
+                  style={{
+                    width: timeRangeMetrics.total_sales > 0 
+                      ? `${(timeRangeMetrics.total_cgst / timeRangeMetrics.total_sales) * 100}%`
+                      : '0%'
+                  }}
+                ></div>
+              </div>
             </div>
             <div className="bg-green-50 dark:bg-green-900/10 p-4 rounded-lg">
-              <p className="text-sm text-green-600 dark:text-green-400">SGST</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-green-600 dark:text-green-400">SGST</p>
+                <div className="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300">
+                  {timeRangeMetrics.total_sales > 0 
+                    ? `${Math.round((timeRangeMetrics.total_sgst / timeRangeMetrics.total_sales) * 10000) / 100}%`
+                    : '0%'}
+                </div>
+              </div>
               <p className="text-xl font-bold text-green-700 dark:text-green-300 mt-1">
-                {formatCurrency(salesSummary?.total_sgst || 0)}
+                {formatCurrency(timeRangeMetrics.total_sgst)}
               </p>
+              <div className="mt-2 h-2 bg-green-100 dark:bg-green-800 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-green-500 rounded-full"
+                  style={{
+                    width: timeRangeMetrics.total_sales > 0 
+                      ? `${(timeRangeMetrics.total_sgst / timeRangeMetrics.total_sales) * 100}%`
+                      : '0%'
+                  }}
+                ></div>
+              </div>
             </div>
             <div className="bg-purple-50 dark:bg-purple-900/10 p-4 rounded-lg">
-              <p className="text-sm text-purple-600 dark:text-purple-400">IGST</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-purple-600 dark:text-purple-400">IGST</p>
+                <div className="text-xs px-2 py-1 rounded-full bg-purple-100 dark:bg-purple-800 text-purple-700 dark:text-purple-300">
+                  {timeRangeMetrics.total_sales > 0 
+                    ? `${Math.round((timeRangeMetrics.total_igst / timeRangeMetrics.total_sales) * 10000) / 100}%`
+                    : '0%'}
+                </div>
+              </div>
               <p className="text-xl font-bold text-purple-700 dark:text-purple-300 mt-1">
-                {formatCurrency(salesSummary?.total_igst || 0)}
+                {formatCurrency(timeRangeMetrics.total_igst)}
               </p>
+              <div className="mt-2 h-2 bg-purple-100 dark:bg-purple-800 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-purple-500 rounded-full"
+                  style={{
+                    width: timeRangeMetrics.total_sales > 0 
+                      ? `${(timeRangeMetrics.total_igst / timeRangeMetrics.total_sales) * 100}%`
+                      : '0%'
+                  }}
+                ></div>
+              </div>
             </div>
+          </div>
+          
+          {/* GST Summary for Overall (All Time) */}
+          {salesSummary && (
+            <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Overall GST Summary (All Time)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-blue-50 dark:bg-blue-900/5 p-3 rounded-lg">
+                  <p className="text-xs text-blue-600 dark:text-blue-400">Total CGST</p>
+                  <p className="text-lg font-semibold text-blue-700 dark:text-blue-300">
+                    {formatCurrency(salesSummary.total_cgst)}
+                  </p>
+                </div>
+                <div className="bg-green-50 dark:bg-green-900/5 p-3 rounded-lg">
+                  <p className="text-xs text-green-600 dark:text-green-400">Total SGST</p>
+                  <p className="text-lg font-semibold text-green-700 dark:text-green-300">
+                    {formatCurrency(salesSummary.total_sgst)}
+                  </p>
+                </div>
+                <div className="bg-purple-50 dark:bg-purple-900/5 p-3 rounded-lg">
+                  <p className="text-xs text-purple-600 dark:text-purple-400">Total IGST</p>
+                  <p className="text-lg font-semibold text-purple-700 dark:text-purple-300">
+                    {formatCurrency(salesSummary.total_igst)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Top Products Chart */}
+      <div className="px-6 py-4">
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Top Products ({getTimeRangeDisplayName(timeRange)})
+            </h2>
+            <Package className="w-5 h-5 text-gray-500" />
+          </div>
+          <div className="h-64">
+            {timeRangeData?.top_products && timeRangeData.top_products.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={timeRangeData.top_products}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis 
+                    dataKey="name" 
+                    stroke="#9CA3AF"
+                    fontSize={12}
+                    angle={-45}
+                    textAnchor="end"
+                    height={60}
+                  />
+                  <YAxis 
+                    stroke="#9CA3AF"
+                    fontSize={12}
+                    tickFormatter={(value) => formatShortCurrency(value)}
+                  />
+                  <Tooltip 
+                    formatter={(value: number, name: string) => {
+                      if (name === 'revenue') return [formatCurrency(value), 'Revenue'];
+                      if (name === 'quantity') return [value, 'Quantity'];
+                      return [value, name];
+                    }}
+                    contentStyle={{
+                      backgroundColor: '#1F2937',
+                      borderColor: '#374151',
+                      borderRadius: '0.5rem',
+                      color: 'white'
+                    }}
+                  />
+                  <Legend />
+                  <Bar 
+                    dataKey="revenue" 
+                    name="Revenue" 
+                    fill="#3B82F6" 
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar 
+                    dataKey="quantity" 
+                    name="Quantity" 
+                    fill="#10B981" 
+                    radius={[4, 4, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <Package className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-500 dark:text-gray-400">No product data available</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -426,9 +1133,7 @@ export default function SalesDashboardPage() {
                           {invoice.invoice_number}
                         </Link>
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(invoice.status)}`}>
-                          {invoice.status === 'partially_paid' ? 'Partially Paid' : 
-                           invoice.status === 'pending' ? 'Pending' : 
-                           invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                          {getStatusDisplayName(invoice.status)}
                         </span>
                       </div>
                       <div className="mt-1 text-sm text-gray-500">
@@ -510,7 +1215,9 @@ export default function SalesDashboardPage() {
                         <div 
                           className="h-full bg-green-500 rounded-full"
                           style={{
-                            width: `${(customer.total_amount / (dashboardData.top_customers[0]?.total_amount || 1)) * 100}%`
+                            width: dashboardData.top_customers[0]?.total_amount
+                              ? `${(customer.total_amount / dashboardData.top_customers[0].total_amount) * 100}%`
+                              : '0%'
                           }}
                         ></div>
                       </div>

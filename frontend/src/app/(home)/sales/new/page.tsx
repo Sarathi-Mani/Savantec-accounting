@@ -183,7 +183,7 @@ export default function AddSalesPage() {
     const [showPreviousPayments, setShowPreviousPayments] = useState(false);
     const [showOtherFields, setShowOtherFields] = useState(false);
     const [nextInvoiceNumber, setNextInvoiceNumber] = useState("");
-const [loadingInvoiceNumber, setLoadingInvoiceNumber] = useState(false);
+    const [loadingInvoiceNumber, setLoadingInvoiceNumber] = useState(false);
 
     const [productSearch, setProductSearch] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -208,7 +208,7 @@ const [loadingInvoiceNumber, setLoadingInvoiceNumber] = useState(false);
         salesmen: false,
     });
 
-    
+
 
     // Indian states data (you can also fetch from your GST API)
     const INDIAN_STATES = [
@@ -258,9 +258,9 @@ const [loadingInvoiceNumber, setLoadingInvoiceNumber] = useState(false);
         customer_id: "",
         invoice_date: new Date().toISOString().split('T')[0],
         due_date: "",
-         roundOff: 0,
+        roundOff: 0,
         invoice_type: "b2b",
-         voucher_type: "sales", // Default to B2B as per your InvoiceType enum
+        voucher_type: "sales", // Default to B2B as per your InvoiceType enum
 
         // GST details
         place_of_supply: "",
@@ -293,9 +293,9 @@ const [loadingInvoiceNumber, setLoadingInvoiceNumber] = useState(false);
         address: "",
         referenceNo: "",
         freightCharges: 0,
-        freightType: "fixed",
+        freightType: "tax@18%",
         pfCharges: 0,
-        pfType: "fixed",
+        pfType: "tax@18%",
         couponCode: "",
         couponType: "",
         couponValue: 0,
@@ -349,35 +349,50 @@ const [loadingInvoiceNumber, setLoadingInvoiceNumber] = useState(false);
         }
     }, [company?.id]);
 
-useEffect(() => {
-    const loadNextInvoiceNumber = async () => {
-        if (!company?.id) return;
-        
-        try {
-            setLoadingInvoiceNumber(true);
-            // Call your API to get next invoice number
-            const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/next-invoice-number`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                },
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                setNextInvoiceNumber(data.invoice_number || "");
+    useEffect(() => {
+        const loadNextInvoiceNumber = async (voucherType = "sales") => {
+            if (!company?.id) return;
+
+            try {
+                setLoadingInvoiceNumber(true);
+                const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+
+                // Backend API call
+                const response = await fetch(
+                    `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/next-invoice-number?voucher_type=${voucherType}`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json',
+                        },
+                    }
+                );
+
+                if (response.ok) {
+                    const data = await response.json();
+                    let invoiceNumber = data.invoice_number || "";
+
+                    // TEMPORARY FIX: If backend doesn't return correct format for service
+                    if (voucherType === "service" && !invoiceNumber.includes("SER")) {
+                        // Extract number from INV-00189 format
+                        const match = invoiceNumber.match(/\d+$/);
+                        if (match) {
+                            invoiceNumber = `INV-SER-${match[0]}`;
+                        }
+                    }
+
+                    setNextInvoiceNumber(invoiceNumber);
+                }
+            } catch (error) {
+                console.error("Failed to load next invoice number:", error);
+            } finally {
+                setLoadingInvoiceNumber(false);
             }
-        } catch (error) {
-            console.error("Failed to load next invoice number:", error);
-        } finally {
-            setLoadingInvoiceNumber(false);
-        }
-    };
-    
-    loadNextInvoiceNumber();
-}, [company?.id]);
- 
+        };
+
+        loadNextInvoiceNumber(formData.voucher_type);
+    }, [company?.id, formData.voucher_type]);
+
     const loadCustomers = async () => {
         try {
             setLoading(prev => ({ ...prev, customers: true }));
@@ -408,362 +423,393 @@ useEffect(() => {
         }
     };
 
-   const loadSalesmen = async () => {
-  try {
-    setLoading(prev => ({ ...prev, salesmen: true }));
-    
-    // Check if we have a token
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-    if (!token || !company?.id) {
-      console.error("No access token or company ID found");
-      return;
-    }
+    const loadSalesmen = async () => {
+        try {
+            setLoading(prev => ({ ...prev, salesmen: true }));
 
-    // Try to fetch sales engineers from the correct endpoint
-    try {
-      const salesEngineersUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/sales-engineers`;
-      
-      console.log("Fetching sales engineers from:", salesEngineersUrl);
-      
-      const response = await fetch(salesEngineersUrl, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+            // Check if we have a token
+            const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+            if (!token || !company?.id) {
+                console.error("No access token or company ID found");
+                return;
+            }
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+            // Try to fetch sales engineers from the correct endpoint
+            try {
+                const salesEngineersUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/sales-engineers`;
 
-      const data = await response.json();
-      console.log("Sales engineers API response:", data);
+                console.log("Fetching sales engineers from:", salesEngineersUrl);
 
-      // Process the data correctly
-      if (data && Array.isArray(data)) {
-        // Format the data to match your frontend structure
-        const formattedSalesmen = data.map(engineer => ({
-          id: engineer.id,
-          name: engineer.full_name || engineer.name || 'Unnamed Engineer',
-          email: engineer.email || '',
-          phone: engineer.phone || '',
-          designation: engineer.designation_name || engineer.designation || 'Sales Engineer',
-          employee_code: engineer.employee_code || ''
-        }));
+                const response = await fetch(salesEngineersUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                });
 
-        setSalesmen(formattedSalesmen);
-        console.log(`Loaded ${formattedSalesmen.length} sales engineers`);
-      } else {
-        console.warn("No sales engineers found or invalid data format");
-        setSalesmen([]);
-      }
-    } catch (error: any) {
-      console.error("Failed to fetch sales engineers:", error);
-      
-      // Fallback: Try to get from employees API and filter
-      try {
-        const employees = await employeesApi.list(company.id);
-        console.log("Employees API response for fallback:", employees);
-        
-        // Filter employees who are sales people
-        const salesEmployees = employees.filter(emp => {
-          const designation = emp.designation ||  emp.employee_type || '';
-          const role = emp.designation || '';
-          return designation.toLowerCase().includes('sales') || 
-                 role.toLowerCase().includes('sales') ||
-                 emp.employee_type?.toLowerCase().includes('sales');
-        });
-        
-        const formattedSalesmen = salesEmployees.map(emp => ({
-          id: emp.id,
-          name: emp.full_name  || 'Unnamed Engineer',
-          email: emp.email || '',
-          phone: emp.phone || '',
-          designation: emp.designation || emp.employee_type || 'Sales Engineer',
-          employee_code: emp.employee_code || ''
-        }));
-        
-        setSalesmen(formattedSalesmen);
-        console.log(`Using ${formattedSalesmen.length} filtered employees as salesmen`);
-      } catch (fallbackError) {
-        console.error("Also failed to load employees:", fallbackError);
-        setSalesmen([]);
-      }
-    }
-  } catch (error: any) {
-    console.error("Failed to load salesmen:", error);
-    setSalesmen([]);
-  } finally {
-    setLoading(prev => ({ ...prev, salesmen: false }));
-  }
-};
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
 
-  
-const calculateTotals = () => {
-    let subtotal = 0;
-    let totalTax = 0;
-    let cgstTotal = 0;
-    let sgstTotal = 0;
-    let igstTotal = 0;
-    let totalItemDiscount = 0;
+                const data = await response.json();
+                console.log("Sales engineers API response:", data);
 
-    // Calculate totals WITHOUT updating items state
-    items.forEach(item => {
-        // Calculate item total before discount
-        const itemTotal = item.quantity * item.unit_price;
-        
-        // Calculate discount amount
-        const discount = item.discount_percent > 0 ?
-            itemTotal * (item.discount_percent / 100) : 0;
-        
-        // Taxable amount (after discount)
-        const taxable = itemTotal - discount;
-        
-        // Calculate tax based on GST rate
-        const tax = taxable * (item.gst_rate / 100);
+                // Process the data correctly
+                if (data && Array.isArray(data)) {
+                    // Format the data to match your frontend structure
+                    const formattedSalesmen = data.map(engineer => ({
+                        id: engineer.id,
+                        name: engineer.full_name || engineer.name || 'Unnamed Engineer',
+                        email: engineer.email || '',
+                        phone: engineer.phone || '',
+                        designation: engineer.designation_name || engineer.designation || 'Sales Engineer',
+                        employee_code: engineer.employee_code || ''
+                    }));
 
-        // For intra-state (CGST+SGST)
-        if (formData.place_of_supply === company?.state_code) {
-            cgstTotal += tax / 2;
-            sgstTotal += tax / 2;
-        } else {
-            // For inter-state (IGST)
-            igstTotal += tax;
+                    setSalesmen(formattedSalesmen);
+                    console.log(`Loaded ${formattedSalesmen.length} sales engineers`);
+                } else {
+                    console.warn("No sales engineers found or invalid data format");
+                    setSalesmen([]);
+                }
+            } catch (error: any) {
+                console.error("Failed to fetch sales engineers:", error);
+
+                // Fallback: Try to get from employees API and filter
+                try {
+                    const employees = await employeesApi.list(company.id);
+                    console.log("Employees API response for fallback:", employees);
+
+                    // Filter employees who are sales people
+                    const salesEmployees = employees.filter(emp => {
+                        // Safely get designation as string
+                        const designation = emp.designation ?
+                            (typeof emp.designation === 'string' ? emp.designation :
+                                typeof emp.designation === 'object' ? (emp.designation as any).toString() : '') :
+                            '';
+
+                        // Safely get employee_type as string
+                        const employeeType = emp.employee_type ?
+                            (typeof emp.employee_type === 'string' ? emp.employee_type :
+                                typeof emp.employee_type === 'object' ? (emp.employee_type as any).toString() : '') :
+                            '';
+
+                        const designationStr = designation.toLowerCase();
+                        const employeeTypeStr = employeeType.toLowerCase();
+
+                        return designationStr.includes('sales') ||
+                            employeeTypeStr.includes('sales');
+                    });
+
+                    const formattedSalesmen = salesEmployees.map(emp => ({
+                        id: emp.id,
+                        name: emp.full_name || 'Unnamed Engineer',
+                        email: emp.email || '',
+                        phone: emp.phone || '',
+                        designation: emp.designation || emp.employee_type || 'Sales Engineer',
+                        employee_code: emp.employee_code || ''
+                    }));
+
+                    setSalesmen(formattedSalesmen);
+                    console.log(`Using ${formattedSalesmen.length} filtered employees as salesmen`);
+                } catch (fallbackError) {
+                    console.error("Also failed to load employees:", fallbackError);
+                    setSalesmen([]);
+                }
+            }
+        } catch (error: any) {
+            console.error("Failed to load salesmen:", error);
+            setSalesmen([]);
+        } finally {
+            setLoading(prev => ({ ...prev, salesmen: false }));
         }
-
-        subtotal += taxable;
-        totalTax += tax;
-        totalItemDiscount += discount;
-    });
-
-    // Calculate additional charges and discounts
-    const freightCharges = formData.freightCharges || 0;
-    const pfCharges = formData.pfCharges || 0;
-    const couponValue = formData.couponValue || 0;
-    const discountOnAll = formData.discountOnAll || 0;
-
-    // Calculate discount on all based on type
-    const discountAllAmount = formData.discountType === 'percentage'
-        ? subtotal * (discountOnAll / 100)
-        : discountOnAll;
-
-    // Calculate totals step by step
-    const totalBeforeTax = subtotal;
-    const totalAfterTax = totalBeforeTax + totalTax;
-    const totalAfterCharges = totalAfterTax + freightCharges + pfCharges;
-    const totalAfterCoupon = totalAfterCharges - couponValue;
-    const totalAfterDiscountAll = totalAfterCoupon - discountAllAmount;
-    const grandTotal = totalAfterDiscountAll + (formData.roundOff || 0);
-
-    return {
-        subtotal: Number(totalBeforeTax.toFixed(2)),
-        totalTax: Number(totalTax.toFixed(2)),
-        cgstTotal: Number(cgstTotal.toFixed(2)),
-        sgstTotal: Number(sgstTotal.toFixed(2)),
-        igstTotal: Number(igstTotal.toFixed(2)),
-        itemDiscount: Number(totalItemDiscount.toFixed(2)),
-        totalBeforeCharges: Number(totalAfterTax.toFixed(2)),
-        freight: Number(freightCharges.toFixed(2)),
-        pf: Number(pfCharges.toFixed(2)),
-        couponDiscount: Number(couponValue.toFixed(2)),
-        discountAll: Number(discountAllAmount.toFixed(2)),
-        roundOff: Number(formData.roundOff || 0),
-        roundOffDirection: formData.roundOff >= 0 ? 'positive' : 'negative',
-        grandTotal: Number(grandTotal.toFixed(2)),
-        totalAfterCharges: Number(totalAfterCharges.toFixed(2)),
-        totalAfterCoupon: Number(totalAfterCoupon.toFixed(2)),
-        totalAfterDiscountAll: Number(totalAfterDiscountAll.toFixed(2)),
     };
-};
 
-// Calculate totals once
-const totals = calculateTotals();
 
-const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!company?.id) return;
+    const calculateTotals = () => {
+        let subtotal = 0;
+        let totalTax = 0;
+        let cgstTotal = 0;
+        let sgstTotal = 0;
+        let igstTotal = 0;
+        let totalItemDiscount = 0;
 
-    setIsSubmitting(true);
-    try {
-        // Get selected customer for denormalized data
-        const selectedCustomer = customers.find(c => c.id === formData.customer_id);
-        
-        // Prepare items with proper structure
-        const preparedItems = items.map(item => ({
-            product_id: item.product_id || undefined,
-            description: item.description || "",
-            hsn_code: item.hsn_code || "",
-            quantity: Number(item.quantity),
-            unit: item.unit || "unit",
-            unit_price: Number(item.unit_price),
-            item_code: item.item_code || "",
-            discount_percent: Number(item.discount_percent || 0),
-            discount_amount: Number(item.discount_amount || 0),
-            gst_rate: Number(item.gst_rate || 0),
-            cgst_rate: Number(item.cgst_rate || 0),
-            sgst_rate: Number(item.sgst_rate || 0),
-            igst_rate: Number(item.igst_rate || 0),
-            taxable_amount: Number(item.taxable_amount || (item.quantity * item.unit_price - item.discount_amount)),
-            total_amount: Number(item.total_amount || ((item.quantity * item.unit_price - item.discount_amount) * (1 + (item.gst_rate || 0)/100))),
-        }));
+        // Calculate totals WITHOUT updating items state
+        items.forEach(item => {
+            // Calculate item total before discount
+            const itemTotal = item.quantity * item.unit_price;
 
-        // Prepare invoice data with ALL required fields
-        const invoiceData = {
-            // Required fields
-            customer_id: formData.customer_id,
-            voucher_type: formData.voucher_type || "sales",
-            invoice_date: new Date(formData.invoice_date).toISOString(),
-            invoice_type: formData.invoice_type || "b2b",
-            invoice_number: nextInvoiceNumber,
-            
-            // GST Details
-            place_of_supply: formData.place_of_supply || company?.state_code || "",
-            place_of_supply_name: INDIAN_STATES.find(s => s.code === formData.place_of_supply)?.name || company?.state || "",
-            is_reverse_charge: formData.is_reverse_charge || false,
-            
-            // Financial data
-            round_off: Number(formData.roundOff || 0),
-            subtotal: Number(totals.subtotal || 0),
-            discount_amount: Number(totals.discountAll || 0),
-            cgst_amount: Number(totals.cgstTotal || 0),
-            sgst_rate: Number(totals.sgstTotal || 0),
-            igst_amount: Number(totals.igstTotal || 0),
-            total_tax: Number(totals.totalTax || 0),
-            total_amount: Number(totals.grandTotal || 0),
-            
-            // Dates
-            due_date: formData.due_date ? new Date(formData.due_date).toISOString() : null,
-            
-            // Sales pipeline
-            sales_person_id: formData.sales_person_id || null,
-            contact_id: formData.contact_id || null,
-            
-            // Shipping Address
-            shipping_address: formData.address || "",
-            shipping_city: formData.city || "",
-            shipping_state: formData.place_of_supply_name || INDIAN_STATES.find(s => s.code === formData.place_of_supply)?.name || "",
-            shipping_country: formData.country || "India",
-            shipping_zip: formData.postcode || "",
-            
-            // Additional charges
-            freight_charges: Number(formData.freightCharges || 0),
-            packing_forwarding_charges: Number(formData.pfCharges || 0),
-            coupon_code: formData.couponCode || "",
-            coupon_value: Number(formData.couponValue || 0),
-            discount_on_all: Number(formData.discountOnAll || 0),
-            discount_type: formData.discountType || "percentage",
-            
-            // References and notes
-            reference_no: formData.referenceNo || "",
-            delivery_note: formData.deliveryNote || "",
-            payment_terms: formData.paymentTerms || "",
-            supplier_ref: formData.supplierRef || "",
-            other_references: formData.otherReferences || "",
-            buyer_order_no: formData.buyerOrderNo || "",
-            buyer_order_date: formData.buyerOrderDate || null,
-            despatch_doc_no: formData.despatchDocNo || "",
-            delivery_note_date: formData.deliveryNoteDate || null,
-            despatched_through: formData.despatchedThrough || "",
-            destination: formData.destination || "",
-            terms_of_delivery: formData.termsOfDelivery || "",
-            
-            // Notes and terms
-            notes: formData.notes || "",
-            terms: formData.terms || "",
-            
-            // Items
-            items: preparedItems,
-            
-            // Denormalized customer info
-            ...(selectedCustomer ? {
-                customer_name: selectedCustomer.name || "",
-                customer_gstin: selectedCustomer.gstin || selectedCustomer.tax_number || "",
-                customer_phone: selectedCustomer.phone || selectedCustomer.contact || "",
-                customer_state: selectedCustomer.billing_state || selectedCustomer.state || "",
-                customer_state_code: selectedCustomer.billing_state_code || selectedCustomer.state_code || "",
-            } : {}),
-            
-            // Payment data
-            ...(paymentData.amount > 0 ? {
-                payment_amount: Number(paymentData.amount),
-                payment_type: paymentData.paymentType,
-                payment_account: paymentData.account,
-                payment_note: paymentData.paymentNote,
-                adjust_advance_payment: paymentData.adjustAdvancePayment,
-            } : {}),
+            // Calculate discount amount
+            const discount = item.discount_percent > 0 ?
+                itemTotal * (item.discount_percent / 100) : 0;
+
+            // Taxable amount (after discount)
+            const taxable = itemTotal - discount;
+
+            // Calculate tax based on GST rate
+            const tax = taxable * (item.gst_rate / 100);
+
+            // For intra-state (CGST+SGST)
+            if (formData.place_of_supply === company?.state_code) {
+                cgstTotal += tax / 2;
+                sgstTotal += tax / 2;
+            } else {
+                // For inter-state (IGST)
+                igstTotal += tax;
+            }
+
+            subtotal += taxable;
+            totalTax += tax;
+            totalItemDiscount += discount;
+        });
+
+        // Calculate additional charges with tax
+        const freightBase = formData.freightCharges || 0;
+        const pfBase = formData.pfCharges || 0;
+        const couponValue = formData.couponValue || 0;
+        const discountOnAll = formData.discountOnAll || 0;
+
+        // Function to apply tax based on selected type
+        const calculateWithTax = (baseAmount: number, taxType: string) => {
+            if (taxType === 'fixed' || taxType === 'percentage') {
+                return baseAmount;
+            }
+
+            // Extract tax percentage from string like "tax@18%"
+            const match = taxType.match(/tax@(\d+)%/);
+            if (match) {
+                const taxRate = parseInt(match[1]);
+                return baseAmount * (1 + taxRate / 100);
+            }
+
+            return baseAmount;
         };
 
-        console.log("Invoice data being sent:", JSON.stringify(invoiceData, null, 2));
+        // Calculate charges with tax
+        const freightCharges = calculateWithTax(freightBase, formData.freightType);
+        const pfCharges = calculateWithTax(pfBase, formData.pfType);
 
-        // Call the API
-        const response = await invoicesApi.create(company.id, invoiceData);
+        // Calculate discount on all based on type
+        const discountAllAmount = formData.discountType === 'percentage'
+            ? subtotal * (discountOnAll / 100)
+            : discountOnAll;
 
-        console.log('Sale created successfully:', response);
-        router.push(`/sales/sales-list`);
+        // Calculate totals step by step
+        const totalBeforeTax = subtotal;
+        const totalAfterTax = totalBeforeTax + totalTax;
+        const totalAfterCharges = totalAfterTax + freightCharges + pfCharges;
+        const totalAfterCoupon = totalAfterCharges - couponValue;
+        const totalAfterDiscountAll = totalAfterCoupon - discountAllAmount;
+        const grandTotal = totalAfterDiscountAll + (formData.roundOff || 0);
 
-    } catch (error: any) {
-        console.error("Error creating invoice:", error);
-        
-        // Log detailed error information
-        if (error.response) {
-            console.error("Response error:", error.response.data);
-            console.error("Response status:", error.response.status);
-        }
-        
-        alert(`Failed to create invoice: ${error.message || "Unknown error"}`);
-    } finally {
-        setIsSubmitting(false);
-    }
-};
+        return {
+            subtotal: Number(totalBeforeTax.toFixed(2)),
+            totalTax: Number(totalTax.toFixed(2)),
+            cgstTotal: Number(cgstTotal.toFixed(2)),
+            sgstTotal: Number(sgstTotal.toFixed(2)),
+            igstTotal: Number(igstTotal.toFixed(2)),
+            itemDiscount: Number(totalItemDiscount.toFixed(2)),
+            totalBeforeCharges: Number(totalAfterTax.toFixed(2)),
+            freight: Number(freightCharges.toFixed(2)),
+            pf: Number(pfCharges.toFixed(2)),
+            couponDiscount: Number(couponValue.toFixed(2)),
+            discountAll: Number(discountAllAmount.toFixed(2)),
+            roundOff: Number(formData.roundOff || 0),
+            roundOffDirection: formData.roundOff >= 0 ? 'positive' : 'negative',
+            grandTotal: Number(grandTotal.toFixed(2)),
+            totalAfterCharges: Number(totalAfterCharges.toFixed(2)),
+            totalAfterCoupon: Number(totalAfterCoupon.toFixed(2)),
+            totalAfterDiscountAll: Number(totalAfterDiscountAll.toFixed(2)),
+        };
+    };
+    // Calculate totals once
+    const totals = calculateTotals();
 
-  // Update item calculation
-const updateItem = (id: number, field: string, value: any) => {
-    setItems(prevItems => {
-        return prevItems.map(item => {
-            if (item.id === id) {
-                const updated = { ...item, [field]: value };
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!company?.id) return;
 
-                // Auto-fill product details when product is selected
-                if (field === 'product_id' && value) {
-                    const selectedProduct = products.find(p => p.id === value);
-                    if (selectedProduct) {
-                        updated.description = selectedProduct.name;
-                        updated.unit_price = selectedProduct.unit_price || 0;
-                        updated.gst_rate = parseFloat(selectedProduct.gst_rate) || 18;
-                        updated.hsn_code = selectedProduct.hsn_code || selectedProduct.hsn;
-                    }
-                }
+        setIsSubmitting(true);
+        try {
+            // Get selected customer for denormalized data
+            const selectedCustomer = customers.find(c => c.id === formData.customer_id);
 
-                // Recalculate item totals
-                const itemTotal = updated.quantity * updated.unit_price;
-                const discount = updated.discount_percent > 0 ?
-                    itemTotal * (updated.discount_percent / 100) : 0;
-                const taxable = itemTotal - discount;
-                const tax = taxable * (updated.gst_rate / 100);
+            // Prepare items with proper structure
+            const preparedItems = items.map(item => ({
+                product_id: item.product_id || undefined,
+                description: item.description || "",
+                hsn_code: item.hsn_code || "",
+                quantity: Number(item.quantity),
+                unit: item.unit || "unit",
+                unit_price: Number(item.unit_price),
+                item_code: item.item_code || "",
+                discount_percent: Number(item.discount_percent || 0),
+                discount_amount: Number(item.discount_amount || 0),
+                gst_rate: Number(item.gst_rate || 0),
+                cgst_rate: Number(item.cgst_rate || 0),
+                sgst_rate: Number(item.sgst_rate || 0),
+                igst_rate: Number(item.igst_rate || 0),
+                taxable_amount: Number(item.taxable_amount || (item.quantity * item.unit_price - item.discount_amount)),
+                total_amount: Number(item.total_amount || ((item.quantity * item.unit_price - item.discount_amount) * (1 + (item.gst_rate || 0) / 100))),
+            }));
 
-                updated.discount_amount = discount;
-                updated.taxable_amount = taxable;
-                updated.total_amount = taxable + tax;
+            // Prepare invoice data with ALL required fields
+            const invoiceData = {
+                // Required fields
+                customer_id: formData.customer_id,
+                voucher_type: formData.voucher_type || "sales",
+                invoice_date: new Date(formData.invoice_date).toISOString(),
+                invoice_type: formData.invoice_type || "b2b",
+                invoice_number: nextInvoiceNumber,
 
-                // Set CGST/SGST/IGST rates
-                if (formData.place_of_supply === company?.state_code) {
-                    // Intra-state
-                    updated.cgst_rate = updated.gst_rate / 2;
-                    updated.sgst_rate = updated.gst_rate / 2;
-                    updated.igst_rate = 0;
-                } else {
-                    // Inter-state
-                    updated.cgst_rate = 0;
-                    updated.sgst_rate = 0;
-                    updated.igst_rate = updated.gst_rate;
-                }
+                // GST Details
+                place_of_supply: formData.place_of_supply || company?.state_code || "",
+                place_of_supply_name: INDIAN_STATES.find(s => s.code === formData.place_of_supply)?.name || company?.state || "",
+                is_reverse_charge: formData.is_reverse_charge || false,
 
-                return updated;
+                // Financial data
+                round_off: Number(formData.roundOff || 0),
+                subtotal: Number(totals.subtotal || 0),
+                discount_amount: Number(totals.discountAll || 0),
+                cgst_amount: Number(totals.cgstTotal || 0),
+                sgst_rate: Number(totals.sgstTotal || 0),
+                igst_amount: Number(totals.igstTotal || 0),
+                total_tax: Number(totals.totalTax || 0),
+                total_amount: Number(totals.grandTotal || 0),
+
+                // Dates
+                due_date: formData.due_date ? new Date(formData.due_date).toISOString() : null,
+
+                // Sales pipeline
+                sales_person_id: formData.sales_person_id || null,
+                contact_id: formData.contact_id || null,
+
+                // Shipping Address
+                shipping_address: formData.address || "",
+                shipping_city: formData.city || "",
+                shipping_state: formData.place_of_supply_name || INDIAN_STATES.find(s => s.code === formData.place_of_supply)?.name || "",
+                shipping_country: formData.country || "India",
+                shipping_zip: formData.postcode || "",
+
+                // Additional charges
+                freight_charges: Number(formData.freightCharges || 0),
+                packing_forwarding_charges: Number(formData.pfCharges || 0),
+                coupon_code: formData.couponCode || "",
+                coupon_value: Number(formData.couponValue || 0),
+                discount_on_all: Number(formData.discountOnAll || 0),
+                discount_type: formData.discountType || "percentage",
+
+                // References and notes
+                reference_no: formData.referenceNo || "",
+                delivery_note: formData.deliveryNote || "",
+                payment_terms: formData.paymentTerms || "",
+                supplier_ref: formData.supplierRef || "",
+                other_references: formData.otherReferences || "",
+                buyer_order_no: formData.buyerOrderNo || "",
+                buyer_order_date: formData.buyerOrderDate || null,
+                despatch_doc_no: formData.despatchDocNo || "",
+                delivery_note_date: formData.deliveryNoteDate || null,
+                despatched_through: formData.despatchedThrough || "",
+                destination: formData.destination || "",
+                terms_of_delivery: formData.termsOfDelivery || "",
+
+                // Notes and terms
+                notes: formData.notes || "",
+                terms: formData.terms || "",
+
+                // Items
+                items: preparedItems,
+
+                // Denormalized customer info
+                ...(selectedCustomer ? {
+                    customer_name: selectedCustomer.name || "",
+                    customer_gstin: selectedCustomer.gstin || selectedCustomer.tax_number || "",
+                    customer_phone: selectedCustomer.phone || selectedCustomer.contact || "",
+                    customer_state: selectedCustomer.billing_state || selectedCustomer.state || "",
+                    customer_state_code: selectedCustomer.billing_state_code || selectedCustomer.state_code || "",
+                } : {}),
+
+                // Payment data
+                ...(paymentData.amount > 0 ? {
+                    payment_amount: Number(paymentData.amount),
+                    payment_type: paymentData.paymentType,
+                    payment_account: paymentData.account,
+                    payment_note: paymentData.paymentNote,
+                    adjust_advance_payment: paymentData.adjustAdvancePayment,
+                } : {}),
+            };
+
+            console.log("Invoice data being sent:", JSON.stringify(invoiceData, null, 2));
+
+            // Call the API
+            const response = await invoicesApi.create(company.id, invoiceData);
+
+            console.log('Sale created successfully:', response);
+            router.push(`/sales/sales-list`);
+
+        } catch (error: any) {
+            console.error("Error creating invoice:", error);
+
+            // Log detailed error information
+            if (error.response) {
+                console.error("Response error:", error.response.data);
+                console.error("Response status:", error.response.status);
             }
-            return item;
+
+            alert(`Failed to create invoice: ${error.message || "Unknown error"}`);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // Update item calculation
+    const updateItem = (id: number, field: string, value: any) => {
+        setItems(prevItems => {
+            return prevItems.map(item => {
+                if (item.id === id) {
+                    const updated = { ...item, [field]: value };
+
+                    // Auto-fill product details when product is selected
+                    if (field === 'product_id' && value) {
+                        const selectedProduct = products.find(p => p.id === value);
+                        if (selectedProduct) {
+                            updated.description = selectedProduct.name;
+                            updated.unit_price = selectedProduct.unit_price || 0;
+                            updated.gst_rate = parseFloat(selectedProduct.gst_rate) || 18;
+                            updated.hsn_code = selectedProduct.hsn_code || selectedProduct.hsn;
+                        }
+                    }
+
+                    // Recalculate item totals
+                    const itemTotal = updated.quantity * updated.unit_price;
+                    const discount = updated.discount_percent > 0 ?
+                        itemTotal * (updated.discount_percent / 100) : 0;
+                    const taxable = itemTotal - discount;
+                    const tax = taxable * (updated.gst_rate / 100);
+
+                    updated.discount_amount = discount;
+                    updated.taxable_amount = taxable;
+                    updated.total_amount = taxable + tax;
+
+                    // Set CGST/SGST/IGST rates
+                    if (formData.place_of_supply === company?.state_code) {
+                        // Intra-state
+                        updated.cgst_rate = updated.gst_rate / 2;
+                        updated.sgst_rate = updated.gst_rate / 2;
+                        updated.igst_rate = 0;
+                    } else {
+                        // Inter-state
+                        updated.cgst_rate = 0;
+                        updated.sgst_rate = 0;
+                        updated.igst_rate = updated.gst_rate;
+                    }
+
+                    return updated;
+                }
+                return item;
+            });
         });
-    });
-};
+    };
 
     // Update form data handler
     const handleFormChange = (field: string, value: any) => {
@@ -771,6 +817,10 @@ const updateItem = (id: number, field: string, value: any) => {
             ...prev,
             [field]: value,
         }));
+
+        if (field === 'voucher_type') {
+            loadNextInvoiceNumber(value);
+        }
 
         // When place of supply changes, update item tax calculations
         if (field === 'place_of_supply') {
@@ -813,10 +863,22 @@ const updateItem = (id: number, field: string, value: any) => {
             return;
         }
 
-        const results = products.filter(p =>
-            p.name.toLowerCase().includes(value.toLowerCase()) ||
-            p.sku?.toLowerCase().includes(value.toLowerCase())
-        );
+        const results = products.filter(p => {
+            // Safely get product name as string
+            const productName = p?.name ?
+                (typeof p.name === 'string' ? p.name :
+                    typeof p.name === 'object' ? (p.name as any).toString() : '') : '';
+
+            // Safely get SKU as string
+            const productSku = p?.sku ?
+                (typeof p.sku === 'string' ? p.sku :
+                    typeof p.sku === 'object' ? (p.sku as any).toString() : '') : '';
+
+            const searchTerm = value.toLowerCase();
+
+            return productName.toLowerCase().includes(searchTerm) ||
+                productSku.toLowerCase().includes(searchTerm);
+        });
 
         setSearchResults(results);
     };
@@ -923,40 +985,40 @@ const updateItem = (id: number, field: string, value: any) => {
                                         placeholder="Select Company"
                                     />
                                 </div>
-                                
-                              <div>
-    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-        Sales Code <span className="text-red-500">*</span>
-    </label>
-    <div className="flex gap-2">
-        <input
-            type="text"
-            value={loadingInvoiceNumber ? "Loading..." : nextInvoiceNumber}
-            className="flex-1 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 outline-none dark:border-dark-3 dark:bg-dark-2"
-            readOnly
-            disabled={loadingInvoiceNumber}
-        />
-    </div>
-    {loadingInvoiceNumber && (
-        <p className="mt-1 text-sm text-gray-500">Loading next invoice number...</p>
-    )}
-</div>
-                    {/* Add this field after the Sales Date field */}
-<div>
-    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-        Voucher Type <span className="text-red-500">*</span>
-    </label>
-    <select
-        value={formData.voucher_type}
-        onChange={(e) => handleFormChange('voucher_type', e.target.value)}
-        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-        required
-    >
-        <option value="sales">Sales</option>
-        <option value="service">Service</option>
-    </select>
-</div>
-            <div>
+
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                        Sales Code <span className="text-red-500">*</span>
+                                    </label>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={loadingInvoiceNumber ? "Loading..." : nextInvoiceNumber}
+                                            className="flex-1 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 outline-none dark:border-dark-3 dark:bg-dark-2"
+                                            readOnly
+                                            disabled={loadingInvoiceNumber}
+                                        />
+                                    </div>
+                                    {loadingInvoiceNumber && (
+                                        <p className="mt-1 text-sm text-gray-500">Loading next invoice number...</p>
+                                    )}
+                                </div>
+                                {/* Add this field after the Sales Date field */}
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                        Voucher Type <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        value={formData.voucher_type}
+                                        onChange={(e) => handleFormChange('voucher_type', e.target.value)}
+                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                        required
+                                    >
+                                        <option value="sales">Sales</option>
+                                        <option value="service">Service</option>
+                                    </select>
+                                </div>
+                                <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                                         Sales Date <span className="text-red-500">*</span>
                                     </label>
@@ -976,8 +1038,8 @@ const updateItem = (id: number, field: string, value: any) => {
                                         onChange={handleFormChange}
                                         options={customers.map(customer => ({
                                             value: customer.id,
-                                              label: `${customer.name} ${customer.email ? `(${customer.email})` : ''} ${customer.mobile ? `(${customer.mobile})` : ''}`
-         }))}
+                                            label: `${customer.name} ${customer.email ? `(${customer.email})` : ''} ${customer.mobile ? `(${customer.mobile})` : ''}`
+                                        }))}
                                         required={true}
                                         placeholder="Select Customer"
                                     />
@@ -1006,113 +1068,113 @@ const updateItem = (id: number, field: string, value: any) => {
                                     />
                                 </div>
                                 <div className="md:col-span-2">
-                          <div>
-  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-    Salesman <span className="text-red-500">*</span>
-  </label>
-  
-  {/* Debug info */}
-  <div className="mb-2 text-xs text-gray-500 dark:text-gray-400">
-    {loading.salesmen ? (
-      <span>Loading salesmen...</span>
-    ) : salesmen.length > 0 ? (
-      <span>✓ {salesmen.length} salesman available</span>
-    ) : (
-      <span className="text-yellow-600">No salesmen found</span>
-    )}
-  </div>
-  
-  <Select
-    options={salesmen
-      .filter(salesman => salesman.name && salesman.name.trim())
-      .map((salesman) => {
-        const label = salesman.designation 
-        ? `${salesman.name} (${salesman.email}) ${salesman.phone ? - salesman.phone : ''}`.trim()
-        : salesman.name;
-    
-        
-        return {
-          value: salesman.id,
-          label: label,
-          salesman: salesman
-        };
-      })}
-    value={salesmen
-      .filter(salesman => salesman.name && salesman.name.trim())
-      .map((salesman) => {
-        const label = salesman.designation 
-          ? `${salesman.name} (${salesman.designation})`
-          : salesman.name;
-        
-        return {
-          value: salesman.id,
-          label: label,
-          salesman: salesman
-        };
-      })
-      .find(opt => opt.value === formData.sales_person_id)}
-    onChange={(option) => {
-      handleFormChange('sales_person_id', option?.value || "");
-      if (option?.salesman) {
-        console.log("Selected sales engineer:", option.salesman);
-      }
-    }}
-    placeholder={loading.salesmen ? "Loading sales engineers..." : "Select Sales Engineer"}
-    className="react-select-container"
-    classNamePrefix="react-select"
-    isLoading={loading.salesmen}
-    isClearable
-    isSearchable
-    noOptionsMessage={() => 
-      loading.salesmen ? "Loading..." : "No sales engineers available"
-    }
-    styles={{
-      control: (base: any, state: any) => ({
-        ...base,
-        minHeight: "42px",
-        borderRadius: "0.5rem",
-        borderWidth: "1px",
-        borderStyle: "solid",
-        borderColor: salesmen.length > 0 ? '#10b981' : '#d1d5db',
-        backgroundColor: state.isFocused ? '#f3f4f6' : base.backgroundColor,
-        '&:hover': {
-          borderColor: salesmen.length > 0 ? '#059669' : '#9ca3af',
-        },
-        boxShadow: state.isFocused
-          ? "0 0 0 2px rgba(99,102,241,0.4)"
-          : "none",
-      }),
-      menu: (base: any) => ({
-        ...base,
-        zIndex: 9999,
-      }),
-      option: (base: any, state: any) => ({
-        ...base,
-        backgroundColor: state.isSelected
-          ? "#6366f1"
-          : state.isFocused
-            ? "#eef2ff"
-            : "white",
-        color: state.isSelected ? "white" : "#111827",
-      }),
-    }}
-  />
-  
-  {!loading.salesmen && salesmen.length === 0 && (
-    <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded">
-      <p className="text-xs text-yellow-700 dark:text-yellow-300">
-        No sales engineers found. Please add sales engineers first in the employee management section.
-      </p>
-      <button
-        type="button"
-        onClick={() => router.push("/employees")}
-        className="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-      >
-        Go to Employees →
-      </button>
-    </div>
-  )}
-</div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Salesman <span className="text-red-500">*</span>
+                                        </label>
+
+                                        {/* Debug info */}
+                                        <div className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                                            {loading.salesmen ? (
+                                                <span>Loading salesmen...</span>
+                                            ) : salesmen.length > 0 ? (
+                                                <span>✓ {salesmen.length} salesman available</span>
+                                            ) : (
+                                                <span className="text-yellow-600">No salesmen found</span>
+                                            )}
+                                        </div>
+
+                                        <Select
+                                            options={salesmen
+                                                .filter(salesman => salesman.name && salesman.name.trim())
+                                                .map((salesman) => {
+                                                    const label = salesman.designation
+                                                        ? `${salesman.name} (${salesman.email}) ${salesman.phone ? - salesman.phone : ''}`.trim()
+                                                        : salesman.name;
+
+
+                                                    return {
+                                                        value: salesman.id,
+                                                        label: label,
+                                                        salesman: salesman
+                                                    };
+                                                })}
+                                            value={salesmen
+                                                .filter(salesman => salesman.name && salesman.name.trim())
+                                                .map((salesman) => {
+                                                    const label = salesman.designation
+                                                        ? `${salesman.name} (${salesman.designation})`
+                                                        : salesman.name;
+
+                                                    return {
+                                                        value: salesman.id,
+                                                        label: label,
+                                                        salesman: salesman
+                                                    };
+                                                })
+                                                .find(opt => opt.value === formData.sales_person_id)}
+                                            onChange={(option) => {
+                                                handleFormChange('sales_person_id', option?.value || "");
+                                                if (option?.salesman) {
+                                                    console.log("Selected sales engineer:", option.salesman);
+                                                }
+                                            }}
+                                            placeholder={loading.salesmen ? "Loading sales engineers..." : "Select Sales Engineer"}
+                                            className="react-select-container"
+                                            classNamePrefix="react-select"
+                                            isLoading={loading.salesmen}
+                                            isClearable
+                                            isSearchable
+                                            noOptionsMessage={() =>
+                                                loading.salesmen ? "Loading..." : "No sales engineers available"
+                                            }
+                                            styles={{
+                                                control: (base: any, state: any) => ({
+                                                    ...base,
+                                                    minHeight: "42px",
+                                                    borderRadius: "0.5rem",
+                                                    borderWidth: "1px",
+                                                    borderStyle: "solid",
+                                                    borderColor: salesmen.length > 0 ? '#10b981' : '#d1d5db',
+                                                    backgroundColor: state.isFocused ? '#f3f4f6' : base.backgroundColor,
+                                                    '&:hover': {
+                                                        borderColor: salesmen.length > 0 ? '#059669' : '#9ca3af',
+                                                    },
+                                                    boxShadow: state.isFocused
+                                                        ? "0 0 0 2px rgba(99,102,241,0.4)"
+                                                        : "none",
+                                                }),
+                                                menu: (base: any) => ({
+                                                    ...base,
+                                                    zIndex: 9999,
+                                                }),
+                                                option: (base: any, state: any) => ({
+                                                    ...base,
+                                                    backgroundColor: state.isSelected
+                                                        ? "#6366f1"
+                                                        : state.isFocused
+                                                            ? "#eef2ff"
+                                                            : "white",
+                                                    color: state.isSelected ? "white" : "#111827",
+                                                }),
+                                            }}
+                                        />
+
+                                        {!loading.salesmen && salesmen.length === 0 && (
+                                            <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded">
+                                                <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                                                    No sales engineers found. Please add sales engineers first in the employee management section.
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => router.push("/employees")}
+                                                    className="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                                >
+                                                    Go to Employees →
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1269,8 +1331,8 @@ const updateItem = (id: number, field: string, value: any) => {
                                     <thead>
                                         <tr className="border-b border-stroke dark:border-dark-3">
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Name</th>
-                                              <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Code</th> 
-        <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">HSN</th>
+                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Code</th>
+                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">HSN</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit Price</th>
@@ -1312,22 +1374,22 @@ const updateItem = (id: number, field: string, value: any) => {
                                                                             product_id: product.id,
                                                                             item_code: i.item_code || "",
                                                                             description: product.name,
-                                                                            
+
                                                                             hsn_code: product.hsn_code || product.hsn || "",
                                                                             unit_price: unitPrice,
                                                                             gst_rate: gstRate,
                                                                             discount_amount: 0,
                                                                             taxable_amount: taxable,
                                                                             total_amount: taxable + tax,
-                                                                           ...(formData.place_of_supply === company?.state_code ? {
-                    cgst_rate: gstRate / 2,
-                    sgst_rate: gstRate / 2,
-                    igst_rate: 0,
-                } : {
-                    cgst_rate: 0,
-                    sgst_rate: 0,
-                    igst_rate: gstRate,
-                }),
+                                                                            ...(formData.place_of_supply === company?.state_code ? {
+                                                                                cgst_rate: gstRate / 2,
+                                                                                sgst_rate: gstRate / 2,
+                                                                                igst_rate: 0,
+                                                                            } : {
+                                                                                cgst_rate: 0,
+                                                                                sgst_rate: 0,
+                                                                                igst_rate: gstRate,
+                                                                            }),
                                                                         };
                                                                     })
                                                                 );
@@ -1335,29 +1397,29 @@ const updateItem = (id: number, field: string, value: any) => {
                                                         />
 
                                                     </td>
-                                                      </td>
+                                                </td>
 
-<td className="px-4 py-3">
-                <input
-                    type="text"
-                    value={item.item_code}
-                    onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}
-                    className="w-full min-w-[120px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                    placeholder="Enter item code"
-                />
-            </td>
-            
-            {/* HSN Code Input (Auto-filled but editable) */}
-            <td className="px-4 py-3">
-                <input
-                    type="text"
-                    value={item.hsn_code}
-                    onChange={(e) => updateItem(item.id, 'hsn_code', e.target.value)}
-                    className="w-full min-w-[100px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                    placeholder="HSN"
-                />
-            </td>
-                                              
+                                                <td className="px-4 py-3">
+                                                    <input
+                                                        type="text"
+                                                        value={item.item_code}
+                                                        onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}
+                                                        className="w-full min-w-[120px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        placeholder="Enter item code"
+                                                    />
+                                                </td>
+
+                                                {/* HSN Code Input (Auto-filled but editable) */}
+                                                <td className="px-4 py-3">
+                                                    <input
+                                                        type="text"
+                                                        value={item.hsn_code}
+                                                        onChange={(e) => updateItem(item.id, 'hsn_code', e.target.value)}
+                                                        className="w-full min-w-[100px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        placeholder="HSN"
+                                                    />
+                                                </td>
+
                                                 <td className="px-4 py-3">
                                                     <input
                                                         type="text"
@@ -1406,16 +1468,16 @@ const updateItem = (id: number, field: string, value: any) => {
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <select
-    value={item.gst_rate}
-    onChange={(e) => updateItem(item.id, 'gst_rate', parseFloat(e.target.value))}
-    className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
->
-    <option value="0">0%</option>
-    <option value="5">5%</option>
-    <option value="12">12%</option>
-    <option value="18">18%</option>
-    <option value="28">28%</option>
-</select>
+                                                        value={item.gst_rate}
+                                                        onChange={(e) => updateItem(item.id, 'gst_rate', parseFloat(e.target.value))}
+                                                        className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    >
+                                                        <option value="0">0%</option>
+                                                        <option value="5">5%</option>
+                                                        <option value="12">12%</option>
+                                                        <option value="18">18%</option>
+                                                        <option value="28">28%</option>
+                                                    </select>
                                                 </td>
                                                 <td className="px-4 py-3 font-medium">
                                                     ₹{item.total_amount.toFixed(2)}
@@ -1445,25 +1507,67 @@ const updateItem = (id: number, field: string, value: any) => {
                                 <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                                     <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Charges & Discounts</h2>
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        {/* In the Charges & Discounts section */}
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
                                             <div className="flex gap-2">
                                                 <input
                                                     type="number"
                                                     value={formData.freightCharges}
-                                                    onChange={(e) => setFormData({ ...formData, freightCharges: parseFloat(e.target.value) })}
+                                                    onChange={(e) => setFormData({ ...formData, freightCharges: parseFloat(e.target.value) || 0 })}
                                                     className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
+                                                    step="0.01"
                                                 />
                                                 <select
                                                     value={formData.freightType}
                                                     onChange={(e) => setFormData({ ...formData, freightType: e.target.value })}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
-                                                    <option value="percentage">%</option>
+                                                    <option value="tax@0%">Tax@0%</option>
+                                                    <option value="tax@5%">Tax@5%</option>
+                                                    <option value="tax@12%">Tax@12%</option>
+                                                    <option value="tax@18%">Tax@18%</option>
+                                                    <option value="tax@28%">Tax@28%</option>
                                                 </select>
                                             </div>
+                                            {formData.freightType.startsWith('tax@') && formData.freightCharges > 0 && (
+                                                <div className="mt-1 text-xs text-dark-6">
+                                                    Base: ₹{formData.freightCharges.toFixed(2)} + {formData.freightType.replace('tax@', '')} tax = ₹{totals.freight.toFixed(2)}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="number"
+                                                    value={formData.pfCharges}
+                                                    onChange={(e) => setFormData({ ...formData, pfCharges: parseFloat(e.target.value) || 0 })}
+                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    min="0"
+                                                    step="0.01"
+                                                />
+                                                <select
+                                                    value={formData.pfType}
+                                                    onChange={(e) => setFormData({ ...formData, pfType: e.target.value })}
+                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                >
+                                                    <option value="fixed">Fixed</option>
+                                                    <option value="tax@0%">Tax@0%</option>
+                                                    <option value="tax@5%">Tax@5%</option>
+                                                    <option value="tax@12%">Tax@12%</option>
+                                                    <option value="tax@18%">Tax@18%</option>
+                                                    <option value="tax@28%">Tax@28%</option>
+                                                </select>
+                                            </div>
+                                            {formData.pfType.startsWith('tax@') && formData.pfCharges > 0 && (
+                                                <div className="mt-1 text-xs text-dark-6">
+                                                    Base: ₹{formData.pfCharges.toFixed(2)} + {formData.pfType.replace('tax@', '')} tax = ₹{totals.pf.toFixed(2)}
+                                                </div>
+                                            )}
                                         </div>
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
@@ -1481,7 +1585,11 @@ const updateItem = (id: number, field: string, value: any) => {
                                                     className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
-                                                    <option value="percentage">%</option>
+                                                    <option value="tax@18%">Tax@18%</option>
+                                                    <option value="tax@0%">Tax@0%</option>
+                                                    <option value="tax@5%">Tax@5%</option>
+                                                    <option value="tax@28%">Tax@28%</option>
+                                                    <option value="tax@12%">Tax@12%</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -1572,84 +1680,84 @@ const updateItem = (id: number, field: string, value: any) => {
                                             <span className="text-dark-6">Discount on All</span>
                                             <span className="font-medium text-red-600">-₹{totals.discountAll.toLocaleString('en-IN')}</span>
                                         </div>
-                             <div className="flex justify-between items-center">
-    <span className="text-dark-6">Round Off</span>
-    
-    <div className="flex items-center gap-2">
-        {/* - Button: Makes amount negative */}
-        <button
-            type="button"
-            onClick={() => {
-                const currentValue = Math.abs(formData.roundOff || 0);
-                // Set to negative version of the absolute value
-                setFormData(prev => ({ 
-                    ...prev, 
-                    roundOff: -currentValue
-                }));
-            }}
-            className="p-2 rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400"
-            title="Make amount negative (subtract from total)"
-        >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-            </svg>
-        </button>
-        
-        {/* Input Field */}
-        <div className="relative">
-            <input
-                type="number"
-                value={Math.abs(formData.roundOff || 0)} // Show absolute value only
-                onChange={(e) => {
-                    const inputValue = parseFloat(e.target.value) || 0;
-                    const currentSign = formData.roundOff >= 0 ? 1 : -1;
-                    // Apply current sign to the new input value
-                    setFormData(prev => ({
-                        ...prev,
-                        roundOff: currentSign * inputValue
-                    }));
-                }}
-                className="w-32 px-10 py-2 text-center border border-stroke dark:border-dark-3 rounded-lg bg-transparent outline-none focus:border-primary"
-                step="0.01"
-                min="0"
-            />
-            {/* Left sign indicator */}
-            <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none">
-                {formData.roundOff >= 0 ? '+' : '-'}
-            </div>
-            {/* Right currency symbol */}
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                ₹
-            </div>
-        </div>
-        
-        {/* + Button: Makes amount positive */}
-        <button
-            type="button"
-            onClick={() => {
-                const currentValue = Math.abs(formData.roundOff || 0);
-                // Set to positive version of the absolute value
-                setFormData(prev => ({ 
-                    ...prev, 
-                    roundOff: currentValue
-                }));
-            }}
-            className="p-2 rounded-lg bg-green-50 hover:bg-green-100 dark:bg-green-900/30 dark:hover:bg-green-900/50 text-green-600 dark:text-green-400"
-            title="Make amount positive (add to total)"
-        >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-        </button>
-        
-        {/* Display with sign */}
-        <div className={`min-w-[100px] px-3 py-2 rounded-lg text-center ${totals.roundOff >= 0 ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-            <span className="font-medium">
-                {totals.roundOff >= 0 ? '+₹' : '-₹'}{Math.abs(totals.roundOff).toFixed(2)}
-            </span>
-        </div>
-    </div>
-</div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-dark-6">Round Off</span>
+
+                                            <div className="flex items-center gap-2">
+                                                {/* - Button: Makes amount negative */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const currentValue = Math.abs(formData.roundOff || 0);
+                                                        // Set to negative version of the absolute value
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            roundOff: -currentValue
+                                                        }));
+                                                    }}
+                                                    className="p-2 rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400"
+                                                    title="Make amount negative (subtract from total)"
+                                                >
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                                                    </svg>
+                                                </button>
+
+                                                {/* Input Field */}
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        value={Math.abs(formData.roundOff || 0)} // Show absolute value only
+                                                        onChange={(e) => {
+                                                            const inputValue = parseFloat(e.target.value) || 0;
+                                                            const currentSign = formData.roundOff >= 0 ? 1 : -1;
+                                                            // Apply current sign to the new input value
+                                                            setFormData(prev => ({
+                                                                ...prev,
+                                                                roundOff: currentSign * inputValue
+                                                            }));
+                                                        }}
+                                                        className="w-32 px-10 py-2 text-center border border-stroke dark:border-dark-3 rounded-lg bg-transparent outline-none focus:border-primary"
+                                                        step="0.01"
+                                                        min="0"
+                                                    />
+                                                    {/* Left sign indicator */}
+                                                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none">
+                                                        {formData.roundOff >= 0 ? '+' : '-'}
+                                                    </div>
+                                                    {/* Right currency symbol */}
+                                                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
+                                                        ₹
+                                                    </div>
+                                                </div>
+
+                                                {/* + Button: Makes amount positive */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const currentValue = Math.abs(formData.roundOff || 0);
+                                                        // Set to positive version of the absolute value
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            roundOff: currentValue
+                                                        }));
+                                                    }}
+                                                    className="p-2 rounded-lg bg-green-50 hover:bg-green-100 dark:bg-green-900/30 dark:hover:bg-green-900/50 text-green-600 dark:text-green-400"
+                                                    title="Make amount positive (add to total)"
+                                                >
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                                    </svg>
+                                                </button>
+
+                                                {/* Display with sign */}
+                                                <div className={`min-w-[100px] px-3 py-2 rounded-lg text-center ${totals.roundOff >= 0 ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                                                    <span className="font-medium">
+                                                        {totals.roundOff >= 0 ? '+₹' : '-₹'}{Math.abs(totals.roundOff).toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
                                         <div className="border-t border-stroke pt-3 dark:border-dark-3">
                                             <div className="flex justify-between">
                                                 <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>

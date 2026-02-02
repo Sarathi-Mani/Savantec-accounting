@@ -285,45 +285,45 @@ export default function AddPurchaseOrderPage() {
         }
     };
 
-const loadSuppliers = async () => {
-    try {
-        setLoading(prev => ({ ...prev, suppliers: true }));
-        const response = await vendorsApi.list(company!.id, {
-            page_size: 100,
-            search: "",
-        });
-        
-        console.log("Full vendors API response:", response);
-        console.log("Response type:", typeof response);
-        console.log("Response keys:", Object.keys(response));
-        
-        // Check different possible structures
-        if (Array.isArray(response)) {
-            console.log("Response is an array:", response);
-            setSuppliers(response);
-        } else if (response && Array.isArray(response.data)) {
-            console.log("Response.data is an array:", response.data);
-            setSuppliers(response.data);
-        } else if (response && response.data && Array.isArray(response.data.vendors)) {
-            console.log("Response.data.vendors:", response.data.vendors);
-            setSuppliers(response.data.vendors);
-        } else if (response && response.vendors) {
-            console.log("Response.vendors:", response.vendors);
-            setSuppliers(response.vendors);
-        } else if (response && response.customers) {
-            console.log("Response.customers (fallback):", response.customers);
-            setSuppliers(response.customers);
-        } else {
-            console.log("No vendors found, setting empty array");
-            setSuppliers([]);
+    const loadSuppliers = async () => {
+        try {
+            setLoading(prev => ({ ...prev, suppliers: true }));
+            const response = await vendorsApi.list(company!.id, {
+                page_size: 100,
+                search: "",
+            });
+
+            console.log("Full vendors API response:", response);
+            console.log("Response type:", typeof response);
+            console.log("Response keys:", Object.keys(response));
+
+            // Check different possible structures
+            if (Array.isArray(response)) {
+                console.log("Response is an array:", response);
+                setSuppliers(response);
+            } else if (response && Array.isArray(response.data)) {
+                console.log("Response.data is an array:", response.data);
+                setSuppliers(response.data);
+            } else if (response && response.data && Array.isArray(response.data.vendors)) {
+                console.log("Response.data.vendors:", response.data.vendors);
+                setSuppliers(response.data.vendors);
+            } else if (response && response.vendors) {
+                console.log("Response.vendors:", response.vendors);
+                setSuppliers(response.vendors);
+            } else if (response && response.customers) {
+                console.log("Response.customers (fallback):", response.customers);
+                setSuppliers(response.customers);
+            } else {
+                console.log("No vendors found, setting empty array");
+                setSuppliers([]);
+            }
+
+        } catch (error) {
+            console.error("Failed to load suppliers:", error);
+        } finally {
+            setLoading(prev => ({ ...prev, suppliers: false }));
         }
-        
-    } catch (error) {
-        console.error("Failed to load suppliers:", error);
-    } finally {
-        setLoading(prev => ({ ...prev, suppliers: false }));
-    }
-};
+    };
     const loadProducts = async () => {
         try {
             setLoading(prev => ({ ...prev, products: true }));
@@ -367,152 +367,149 @@ const loadSuppliers = async () => {
     };
 
     // Calculate totals
-  const calculateTotals = () => {
-    let subtotal = 0;
-    let totalTax = 0;
-    let totalItemDiscount = 0;
+    const calculateTotals = () => {
+        let subtotal = 0;
+        let totalTax = 0;
+        let totalItemDiscount = 0;
 
-    items.forEach(item => {
-        const itemTotal = item.quantity * item.purchase_price;
-        const discount = item.discount_percent > 0 ?
-            itemTotal * (item.discount_percent / 100) : 0;
-        const taxable = itemTotal - discount;
-        const tax = taxable * (item.gst_rate / 100);
+        items.forEach(item => {
+            const itemTotal = item.quantity * item.purchase_price;
+            const discount = item.discount_percent > 0 ?
+                itemTotal * (item.discount_percent / 100) : 0;
+            const taxable = itemTotal - discount;
+            const tax = taxable * (item.gst_rate / 100);
 
-        subtotal += taxable;
-        totalTax += tax;
-        totalItemDiscount += discount;
-        
-        console.log("Item calculation:", {
-            itemTotal,
-            discount,
-            taxable,
-            tax,
-            gst_rate: item.gst_rate
-        });
-    });
-
-    // Calculate additional charges and discounts
-    const freightCharges = formData.freight_charges || 0;
-    const otherCharges = formData.other_charges || 0;
-    const discountOnAll = formData.discount_on_all || 0;
-
-    const discountAllAmount = formData.discount_type === 'percentage'
-        ? subtotal * (discountOnAll / 100)
-        : discountOnAll;
-
-    const totalBeforeTax = subtotal;
-    const totalAfterTax = totalBeforeTax + totalTax;
-    const totalAfterCharges = totalAfterTax + freightCharges + otherCharges;
-    const totalAfterDiscountAll = totalAfterCharges - discountAllAmount;
-    const grandTotal = totalAfterDiscountAll + (formData.round_off || 0);
-
-    console.log("Final totals calculation:", {
-        subtotal,
-        totalTax,
-        totalItemDiscount,
-        freightCharges,
-        otherCharges,
-        discountAllAmount,
-        roundOff: formData.round_off,
-        grandTotal
-    });
-
-    return {
-        subtotal: Number(totalBeforeTax.toFixed(2)),
-        totalTax: Number(totalTax.toFixed(2)),
-        itemDiscount: Number(totalItemDiscount.toFixed(2)),
-        freight: Number(freightCharges.toFixed(2)),
-        otherCharges: Number(otherCharges.toFixed(2)),
-        discountAll: Number(discountAllAmount.toFixed(2)),
-        roundOff: Number(formData.round_off || 0),
-        grandTotal: Number(grandTotal.toFixed(2)),
-        totalAfterCharges: Number(totalAfterCharges.toFixed(2)),
-        totalAfterDiscountAll: Number(totalAfterDiscountAll.toFixed(2)),
-    };
-};
-    const totals = calculateTotals();
-
-const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!company?.id) return;
-
-    setIsSubmitting(true);
-    try {
-        console.log("=== FRONTEND CALCULATIONS ===");
-        console.log("Items:", items);
-        console.log("Totals:", totals);
-        console.log("Form Data:", formData);
-
-        // Prepare items with all fields
-        const preparedItems = items.map(item => {
-            console.log("Item calculation:", {
-                purchase_price: item.purchase_price,
-                quantity: item.quantity,
-                discount_percent: item.discount_percent,
-                gst_rate: item.gst_rate,
-                calculated_total: item.total_amount
-            });
-            
-            return {
-                product_id: item.product_id ? String(item.product_id) : null,
-                description: item.description || "",
-                quantity: Number(item.quantity) || 1,
-                unit: item.unit || "unit",
-                rate: Number(item.purchase_price) || 0,  // Use rate not unit_price
-                item_code: item.item_code || "",
-                discount_percent: Number(item.discount_percent || 0),
-                discount_amount: Number(item.discount_amount || 0),
-                gst_rate: Number(item.gst_rate || 0),
-                tax_amount: Number(item.tax_amount || 0),
-                total_amount: Number(item.total_amount || 0),
-            };
+            subtotal += taxable;
+            totalTax += tax;
+            totalItemDiscount += discount;
         });
 
-        // Prepare purchase order data
-        const purchaseOrderData = {
-            vendor_id: formData.supplier_id,
-            order_date: formData.purchase_order_date,
-            expected_date: formData.delivery_date || null,
-            reference_number: formData.reference_no || null,
-            notes: formData.notes || "",
-            terms: formData.terms || "",
-            subtotal: totals.subtotal,  // Send calculated subtotal
-            tax_amount: totals.totalTax,  // Send calculated tax
-            total_amount: totals.grandTotal,  // Send calculated grand total
-            freight_charges: formData.freight_charges || 0,
-            other_charges: formData.other_charges || 0,
-            discount_on_all: formData.discount_on_all || 0,
-            round_off: formData.round_off || 0,
-            currency: formData.currency,
-            exchange_rate: formData.exchange_rate,
-            items: preparedItems,
+        // Function to apply tax based on selected type
+        const calculateWithTax = (baseAmount: number, taxType: string) => {
+            if (taxType === 'fixed' || taxType === 'percentage') {
+                return baseAmount;
+            }
+
+            // Extract tax percentage from string like "tax@18%"
+            const match = taxType.match(/tax@(\d+)%/);
+            if (match) {
+                const taxRate = parseInt(match[1]);
+                return baseAmount * (1 + taxRate / 100);
+            }
+
+            return baseAmount;
         };
 
-        console.log("=== PURCHASE ORDER DATA BEING SENT ===");
-        console.log(JSON.stringify(purchaseOrderData, null, 2));
+        // Calculate charges with tax
+        const freightCharges = calculateWithTax(formData.freight_charges || 0, formData.freight_type);
+        const otherCharges = calculateWithTax(formData.other_charges || 0, formData.other_charges_type);
 
-        // Call the API
-        const response = await ordersApi.createPurchaseOrder(company.id, purchaseOrderData);
-        
-        console.log('=== BACKEND RESPONSE ===');
-        console.log('Purchase order created successfully:', response);
-        
-        // Check if response matches what we sent
-        console.log('=== DATA VALIDATION ===');
-        console.log('Sent subtotal:', totals.subtotal, 'Received subtotal:', response.subtotal);
-        console.log('Sent total:', totals.grandTotal, 'Received total:', response.total_amount);
-        
-        alert("Purchase order saved successfully!");
-        router.push(`/purchase/purchase-orders`);
+        const discountOnAll = formData.discount_on_all || 0;
+        const discountAllAmount = formData.discount_type === 'percentage'
+            ? subtotal * (discountOnAll / 100)
+            : discountOnAll;
 
-    } catch (error: any) {
-        console.error("Error creating purchase order:", error);
-        // ... error handling
-    } finally {
-        setIsSubmitting(false);
-    }
-};
+        const totalBeforeTax = subtotal;
+        const totalAfterTax = totalBeforeTax + totalTax;
+        const totalAfterCharges = totalAfterTax + freightCharges + otherCharges;
+        const totalAfterDiscountAll = totalAfterCharges - discountAllAmount;
+        const grandTotal = totalAfterDiscountAll + (formData.round_off || 0);
+
+        return {
+            subtotal: Number(totalBeforeTax.toFixed(2)),
+            totalTax: Number(totalTax.toFixed(2)),
+            itemDiscount: Number(totalItemDiscount.toFixed(2)),
+            freight: Number(freightCharges.toFixed(2)),
+            otherCharges: Number(otherCharges.toFixed(2)),
+            discountAll: Number(discountAllAmount.toFixed(2)),
+            roundOff: Number(formData.round_off || 0),
+            grandTotal: Number(grandTotal.toFixed(2)),
+            totalAfterCharges: Number(totalAfterCharges.toFixed(2)),
+            totalAfterDiscountAll: Number(totalAfterDiscountAll.toFixed(2)),
+        };
+    };
+    const totals = calculateTotals();
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!company?.id) return;
+
+        setIsSubmitting(true);
+        try {
+            console.log("=== FRONTEND CALCULATIONS ===");
+            console.log("Items:", items);
+            console.log("Totals:", totals);
+            console.log("Form Data:", formData);
+
+            // Prepare items with all fields
+            const preparedItems = items.map(item => {
+                console.log("Item calculation:", {
+                    purchase_price: item.purchase_price,
+                    quantity: item.quantity,
+                    discount_percent: item.discount_percent,
+                    gst_rate: item.gst_rate,
+                    calculated_total: item.total_amount
+                });
+
+                return {
+                    product_id: item.product_id ? String(item.product_id) : null,
+                    description: item.description || "",
+                    quantity: Number(item.quantity) || 1,
+                    unit: item.unit || "unit",
+                    rate: Number(item.purchase_price) || 0,  // Use rate not unit_price
+                    item_code: item.item_code || "",
+                    discount_percent: Number(item.discount_percent || 0),
+                    discount_amount: Number(item.discount_amount || 0),
+                    gst_rate: Number(item.gst_rate || 0),
+                    tax_amount: Number(item.tax_amount || 0),
+                    total_amount: Number(item.total_amount || 0),
+                };
+            });
+
+            // Prepare purchase order data
+            const purchaseOrderData = {
+                vendor_id: formData.supplier_id,
+                order_date: formData.purchase_order_date,
+                expected_date: formData.delivery_date || null,
+                reference_number: formData.reference_no || null,
+                notes: formData.notes || "",
+                terms: formData.terms || "",
+                subtotal: totals.subtotal,  // Send calculated subtotal
+                tax_amount: totals.totalTax,  // Send calculated tax
+                total_amount: totals.grandTotal,  // Send calculated grand total
+                freight_charges: formData.freight_charges || 0,
+                other_charges: formData.other_charges || 0,
+                discount_on_all: formData.discount_on_all || 0,
+                round_off: formData.round_off || 0,
+                currency: formData.currency,
+                exchange_rate: formData.exchange_rate,
+                items: preparedItems,
+            };
+
+            console.log("=== PURCHASE ORDER DATA BEING SENT ===");
+            console.log(JSON.stringify(purchaseOrderData, null, 2));
+
+            // Call the API
+            const response = await ordersApi.createPurchaseOrder(company.id, purchaseOrderData);
+
+            console.log('=== BACKEND RESPONSE ===');
+            console.log('Purchase order created successfully:', response);
+
+            // Check if response matches what we sent
+            console.log('=== DATA VALIDATION ===');
+            console.log('Sent subtotal:', totals.subtotal, 'Received subtotal:', response.subtotal);
+            console.log('Sent total:', totals.grandTotal, 'Received total:', response.total_amount);
+
+            alert("Purchase order saved successfully!");
+            router.push(`/purchase/purchase-orders`);
+
+        } catch (error: any) {
+            console.error("Error creating purchase order:", error);
+            // ... error handling
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     // Update item calculation
     const updateItem = (id: number, field: string, value: any) => {
@@ -528,10 +525,11 @@ const handleSubmit = async (e: React.FormEvent) => {
                             updated.description = selectedProduct.name;
                             updated.purchase_price = selectedProduct.cost_price || selectedProduct.purchase_price || 0;
                             updated.gst_rate = parseFloat(selectedProduct.gst_rate) || 18;
+                            updated.item_code = selectedProduct.sku || selectedProduct.item_code || "";
                         }
                     }
 
-                    // Recalculate item totals
+                    // Recalculate item totals EVERY TIME any field changes
                     const itemTotal = updated.quantity * updated.purchase_price;
                     const discount = updated.discount_percent > 0 ?
                         itemTotal * (updated.discount_percent / 100) : 0;
@@ -627,7 +625,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-50">
                     <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg dark:bg-gray-dark">
                         <h3 className="mb-4 text-lg font-semibold text-dark dark:text-white">Add New Currency</h3>
-                        
+
                         <div className="space-y-4">
                             <div>
                                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
@@ -642,7 +640,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                                     maxLength={3}
                                 />
                             </div>
-                            
+
                             <div>
                                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                                     Currency Name <span className="text-red-500">*</span>
@@ -655,7 +653,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                                     placeholder="e.g., US Dollar, Euro"
                                 />
                             </div>
-                            
+
                             <div>
                                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                                     Exchange Rate <span className="text-red-500">*</span>
@@ -675,7 +673,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                                 </div>
                             </div>
                         </div>
-                        
+
                         <div className="mt-6 flex justify-end gap-3">
                             <button
                                 type="button"
@@ -811,19 +809,19 @@ const handleSubmit = async (e: React.FormEvent) => {
                                     </div>
                                 )}
                                 <div>
-                                    
-                                  <SelectField
-    label="Supplier"
-    name="supplier_id"
-    value={formData.supplier_id}
-    onChange={handleFormChange}
-    options={suppliers.map(supplier => ({
-        value: supplier.id,
-        label: `${supplier.name}${supplier.email ? ` (${supplier.email})` : ''}${supplier.contact ? ` ${-supplier.contact}` : ''}`
-    }))}
-    required={true}
-    placeholder="Select Supplier"
-/>
+
+                                    <SelectField
+                                        label="Supplier"
+                                        name="supplier_id"
+                                        value={formData.supplier_id}
+                                        onChange={handleFormChange}
+                                        options={suppliers.map(supplier => ({
+                                            value: supplier.id,
+                                            label: `${supplier.name}${supplier.email ? ` (${supplier.email})` : ''}${supplier.contact ? ` ${-supplier.contact}` : ''}`
+                                        }))}
+                                        required={true}
+                                        placeholder="Select Supplier"
+                                    />
                                 </div>
                                 <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
@@ -956,22 +954,30 @@ const handleSubmit = async (e: React.FormEvent) => {
                                                             setItems(prev =>
                                                                 prev.map(i => {
                                                                     if (i.id !== item.id) return i;
+
                                                                     const purchasePrice = product.cost_price || product.purchase_price || 0;
-                                                                    const gstRate = Number(product.gst_rate) || i.gst_rate || 18;
+                                                                    const gstRate = Number(product.gst_rate) || 18;
                                                                     const qty = i.quantity || 1;
-                                                                    const taxable = qty * purchasePrice;
+
+                                                                    // Calculate totals
+                                                                    const itemTotal = qty * purchasePrice;
+                                                                    const discount = 0; // No discount initially
+                                                                    const taxable = itemTotal - discount;
                                                                     const tax = taxable * (gstRate / 100);
+                                                                    const total = taxable + tax;
+
                                                                     return {
                                                                         ...i,
                                                                         product_id: product.id,
-                                                                        item_code: i.item_code || "",
+                                                                        item_code: product.sku || product.item_code || i.item_code || "",
                                                                         description: product.name,
                                                                         purchase_price: purchasePrice,
                                                                         gst_rate: gstRate,
-                                                                        discount_amount: 0,
+                                                                        discount_percent: 0,
+                                                                        discount_amount: discount,
                                                                         tax_amount: tax,
                                                                         unit_cost: purchasePrice,
-                                                                        total_amount: taxable + tax,
+                                                                        total_amount: total,
                                                                     };
                                                                 })
                                                             );
@@ -1067,44 +1073,86 @@ const handleSubmit = async (e: React.FormEvent) => {
                                     <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Charges & Discounts</h2>
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Freight Charges
+                                            </label>
                                             <div className="flex gap-2">
                                                 <input
                                                     type="number"
                                                     value={formData.freight_charges}
-                                                    onChange={(e) => setFormData({ ...formData, freight_charges: parseFloat(e.target.value) })}
+                                                    onChange={(e) => setFormData({ ...formData, freight_charges: parseFloat(e.target.value) || 0 })}
                                                     className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
+                                                    step="0.01"
                                                 />
                                                 <select
                                                     value={formData.freight_type}
                                                     onChange={(e) => setFormData({ ...formData, freight_type: e.target.value })}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
-                                                    <option value="percentage">%</option>
+                                                    <option value="tax@0%">Tax@0%</option>
+                                                    <option value="tax@5%">Tax@5%</option>
+                                                    <option value="tax@12%">Tax@12%</option>
+                                                    <option value="tax@18%">Tax@18%</option>
+                                                    <option value="tax@28%">Tax@28%</option>
                                                 </select>
                                             </div>
+                                            {formData.freight_type.startsWith('tax@') && formData.freight_charges > 0 && (
+                                                <div className="mt-1 text-xs text-dark-6">
+                                                    Base: ₹{formData.freight_charges.toFixed(2)} + {formData.freight_type.replace('tax@', '')} tax = ₹{
+                                                        (() => {
+                                                            const match = formData.freight_type.match(/tax@(\d+)%/);
+                                                            if (match) {
+                                                                const taxRate = parseInt(match[1]);
+                                                                return (formData.freight_charges * (1 + taxRate / 100)).toFixed(2);
+                                                            }
+                                                            return formData.freight_charges.toFixed(2);
+                                                        })()
+                                                    }
+                                                </div>
+                                            )}
                                         </div>
                                         <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Other Charges</label>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Other Charges
+                                            </label>
                                             <div className="flex gap-2">
                                                 <input
                                                     type="number"
                                                     value={formData.other_charges}
-                                                    onChange={(e) => setFormData({ ...formData, other_charges: parseFloat(e.target.value) })}
+                                                    onChange={(e) => setFormData({ ...formData, other_charges: parseFloat(e.target.value) || 0 })}
                                                     className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
+                                                    step="0.01"
                                                 />
                                                 <select
                                                     value={formData.other_charges_type}
                                                     onChange={(e) => setFormData({ ...formData, other_charges_type: e.target.value })}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
-                                                    <option value="percentage">%</option>
+                                                    <option value="tax@0%">Tax@0%</option>
+                                                    <option value="tax@5%">Tax@5%</option>
+                                                    <option value="tax@12%">Tax@12%</option>
+                                                    <option value="tax@18%">Tax@18%</option>
+                                                    <option value="tax@28%">Tax@28%</option>
                                                 </select>
                                             </div>
+                                            {formData.other_charges_type.startsWith('tax@') && formData.other_charges > 0 && (
+                                                <div className="mt-1 text-xs text-dark-6">
+                                                    Base: ₹{formData.other_charges.toFixed(2)} + {formData.other_charges_type.replace('tax@', '')} tax = ₹{
+                                                        (() => {
+                                                            const match = formData.other_charges_type.match(/tax@(\d+)%/);
+                                                            if (match) {
+                                                                const taxRate = parseInt(match[1]);
+                                                                return (formData.other_charges * (1 + taxRate / 100)).toFixed(2);
+                                                            }
+                                                            return formData.other_charges.toFixed(2);
+                                                        })()
+                                                    }
+                                                </div>
+                                            )}
                                         </div>
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount on All</label>
@@ -1249,7 +1297,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                         <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
                             <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
                                 <h2 className="text-lg font-semibold text-dark dark:text-white">
-                                   Terms & Conditions
+                                    Terms & Conditions
                                 </h2>
                                 <button
                                     type="button"
@@ -1277,7 +1325,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                                 <div className="p-6">
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div className="md:col-span-2">
-                                           
+
                                             <textarea
                                                 value={formData.terms}
                                                 onChange={(e) => setFormData({ ...formData, terms: e.target.value })}

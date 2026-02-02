@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect ,useMemo} from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
@@ -173,7 +173,7 @@ export default function AddSalesOrderPage() {
     const [salesmen, setSalesmen] = useState<any[]>([]);
     const [contactPersons, setContactPersons] = useState<any[]>([]);
     const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
-    
+
     const [loading, setLoading] = useState({
         customers: false,
         products: false,
@@ -188,66 +188,68 @@ export default function AddSalesOrderPage() {
         sales_order_date: new Date().toISOString().split('T')[0],
         expire_date: "",
         status: "pending" as "pending" | "approved" | "cancelled" | "completed",
-        
+
         // Reference details
         reference_no: "",
         reference_date: "",
         payment_terms: "",
-        
+
         // Sales pipeline tracking
         sales_person_id: "",
         contact_person: "",
-        
+
         // Additional fields
         notes: "",
         terms: `1. All payments should be made direct to the company or its authorized representative by cheque/RTGS.
 2. All disputes subject to Chennai Jurisdiction.
 3. Goods once sold will not be taken back.`,
-        
+
         // New charges fields
         freight_charges: 0,
+        freight_type: "tax@18%",
         p_and_f_charges: 0,
+        pf_type: "tax@18%",
         send_message: false,
-        
+
         // Calculated fields
         subtotal: 0,
         total_tax: 0,
         total_amount: 0,
 
-            deliveryNote: "",
-    supplierRef: "",
-    otherReferences: "",
-    buyerOrderNo: "",
-    buyerOrderDate: "",
-    despatchDocNo: "",
-    deliveryNoteDate: "",
-    despatchedThrough: "",
-    destination: "",
-    termsOfDelivery: "",
+        deliveryNote: "",
+        supplierRef: "",
+        otherReferences: "",
+        buyerOrderNo: "",
+        buyerOrderDate: "",
+        despatchDocNo: "",
+        deliveryNoteDate: "",
+        despatchedThrough: "",
+        destination: "",
+        termsOfDelivery: "",
     });
 
     // Sales items state
-const [items, setItems] = useState([
-    {
-        id: 1,
-        product_id: "",
-        description: "",
-        quantity: 1,
-        unit: "unit",
-        unit_price: 0,  // Make sure this is included
-        rate: 0,        // Keep for compatibility if needed
-        item_code: "",
-        discount_percent: 0,
-        discount_amount: 0,
-        gst_rate: 18,
-        cgst_rate: 9,
-        sgst_rate: 9,
-        igst_rate: 0,
-        taxable_amount: 0,
-        tax_amount: 0,
-        total_amount: 0,
-    },
-]);
+    const [items, setItems] = useState([
+        {
+            id: 1,
+            product_id: "",
+            description: "",
+            quantity: 1,
+            unit: "unit",
+            unit_price: 0,  // Make sure this is included
+            rate: 0,        // Keep for compatibility if needed
+            item_code: "",
+            discount_percent: 0,
+            discount_amount: 0,
+            gst_rate: 18,
+            cgst_rate: 9,
+            sgst_rate: 9,
+            igst_rate: 0,
+            taxable_amount: 0,
+            tax_amount: 0,
+            total_amount: 0,
+        },
+    ]);
 
     // Round off state
     const [roundOff, setRoundOff] = useState({
@@ -294,77 +296,76 @@ const [items, setItems] = useState([
         }
     };
 
-   const loadSalesmen = async () => {
-    try {
-        setLoading(prev => ({ ...prev, salesmen: true }));
-        
-        // Use the sales-engineers API endpoint
-        const token = localStorage.getItem("access_token");
-        const response = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/companies/${company!.id}/sales-engineers`,
-            {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                },
-            }
-        );
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        
-        // Process the data - adjust based on your API response structure
-        let salesEngineers: any[] = [];
-        
-        if (Array.isArray(data)) {
-            salesEngineers = data;
-        } else if (data && typeof data === 'object') {
-            salesEngineers = data.sales_engineers || data.data || data.items || [];
-        }
-        
-        // Format the data to match your frontend structure
-        const formattedSalesmen = salesEngineers.map(engineer => ({
-            id: engineer.id,
-            name: engineer.full_name || engineer.name || 'Unnamed Engineer',
-            email: engineer.email || '',
-            phone: engineer.phone || engineer.mobile || '',
-            designation: engineer.designation_name || engineer.designation || 'Sales Engineer',
-            employee_code: engineer.employee_code || engineer.code || ''
-        }));
-
-        setSalesmen(formattedSalesmen);
-        
-    } catch (error) {
-        
-        console.error("Failed to load sales engineers:", error);
-        // Fallback to employees API if sales-engineers endpoint fails
+    const loadSalesmen = async () => {
         try {
-            const employees = await employeesApi.list(company!.id);
-            const salesEmployees = employees.filter(emp =>
-                emp.designation?.toLowerCase().includes('sales') ||
-                emp.employee_type?.toLowerCase().includes('sales') 
-             
+            setLoading(prev => ({ ...prev, salesmen: true }));
+
+            // Use the sales-engineers API endpoint
+            const token = localStorage.getItem("access_token");
+            const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/companies/${company!.id}/sales-engineers`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                }
             );
-            setSalesmen(salesEmployees);
-        } catch (fallbackError) {
-            console.error("Failed to load employees as fallback:", fallbackError);
-            setSalesmen([]);
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            // Process the data - adjust based on your API response structure
+            let salesEngineers: any[] = [];
+
+            if (Array.isArray(data)) {
+                salesEngineers = data;
+            } else if (data && typeof data === 'object') {
+                salesEngineers = data.sales_engineers || data.data || data.items || [];
+            }
+
+            // Format the data to match your frontend structure
+            const formattedSalesmen = salesEngineers.map(engineer => ({
+                id: engineer.id,
+                name: engineer.full_name || engineer.name || 'Unnamed Engineer',
+                email: engineer.email || '',
+                phone: engineer.phone || engineer.mobile || '',
+                designation: engineer.designation_name || engineer.designation || 'Sales Engineer',
+                employee_code: engineer.employee_code || engineer.code || ''
+            }));
+
+            setSalesmen(formattedSalesmen);
+
+        } catch (error) {
+
+            console.error("Failed to load sales engineers:", error);
+            // Fallback to employees API if sales-engineers endpoint fails
+            try {
+                const employees = await employeesApi.list(company!.id);
+                const salesEmployees = employees.filter(emp =>
+                    (emp.designation?.name || emp.designation || '').toString().toLowerCase().includes('sales') ||
+                    emp.employee_type?.toLowerCase().includes('sales')
+                );
+                setSalesmen(salesEmployees);
+            } catch (fallbackError) {
+                console.error("Failed to load employees as fallback:", fallbackError);
+                setSalesmen([]);
+            }
+        } finally {
+            setLoading(prev => ({ ...prev, salesmen: false }));
         }
-    } finally {
-        setLoading(prev => ({ ...prev, salesmen: false }));
-    }
-};
+    };
 
     // Fetch contact persons for a specific customer
     const fetchContactPersons = async (customerId: string) => {
         if (!company?.id || !customerId) return;
-        
+
         try {
             setLoading(prev => ({ ...prev, contactPersons: true }));
-            
+
             // Try to fetch contact persons from API
             // First check if customer has contact_persons field
             const customer = customers.find(c => c.id === customerId);
@@ -382,17 +383,17 @@ const [items, setItems] = useState([
                             },
                         }
                     );
-                    
+
                     if (response.ok) {
                         const data = await response.json();
                         let persons: any[] = [];
-                        
+
                         if (Array.isArray(data)) {
                             persons = data;
                         } else if (data && typeof data === 'object') {
                             persons = data.contact_persons || data.contacts || data.data || data.items || [];
                         }
-                        
+
                         setContactPersons(persons);
                     }
                 } catch (apiError) {
@@ -470,21 +471,37 @@ const [items, setItems] = useState([
             totalTax += tax;
         });
 
-        // Calculate freight and P&F charges
-        const freightCharges = formData.freight_charges || 0;
-        const pAndFCharges = formData.p_and_f_charges || 0;
+        // Function to calculate tax like in sales page
+        const calculateWithTax = (baseAmount: number, taxType: string) => {
+            if (taxType === 'fixed') {
+                return baseAmount;
+            }
+
+            // Extract tax percentage from string like "tax@18%"
+            const match = taxType.match(/tax@(\d+)%/);
+            if (match) {
+                const taxRate = parseInt(match[1]);
+                return baseAmount * (1 + taxRate / 100);
+            }
+
+            return baseAmount;
+        };
+
+        // Calculate charges with tax (if tax types are added)
+        const freightCharges = calculateWithTax(formData.freight_charges || 0, formData.freight_type || "fixed");
+        const pAndFCharges = calculateWithTax(formData.p_and_f_charges || 0, formData.pf_type || "fixed");
 
         // Calculate total before round off
         const totalBeforeRoundOff = subtotal + totalTax + freightCharges + pAndFCharges;
-        
-        // Apply round off based on type
+
+        // Apply round off
         let finalRoundOff = 0;
         if (roundOff.type === "plus") {
             finalRoundOff = roundOff.amount;
         } else if (roundOff.type === "minus") {
             finalRoundOff = -roundOff.amount;
         }
-        
+
         const grandTotal = totalBeforeRoundOff + finalRoundOff;
 
         return {
@@ -508,276 +525,276 @@ const [items, setItems] = useState([
         });
     };
 
-const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!company?.id) return;
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!company?.id) return;
 
-    setIsSubmitting(true);
-    try {
-        // Validate all items have required fields
-        const hasInvalidItems = items.some(item => {
-            const unit_price = Number( item.unit_price || 0);
-            return unit_price <= 0 || !item.product_id;
-        });
-        
-        if (hasInvalidItems) {
-            alert("Please ensure all items have valid product and rate");
-            setIsSubmitting(false);
-            return;
-        }
-const processedItems = items.map(item => {
-    // Use unit_price from UI
-    const unitPrice = Number(item.unit_price || 0);
-    const quantity = Number(item.quantity) || 1;
-    const discountPercent = Number(item.discount_percent) || 0;
-    const gstRate = Number(item.gst_rate) || 18;
-    
-    const itemTotal = quantity * unitPrice;
-    const discountAmount = itemTotal * (discountPercent / 100);
-    const taxableAmount = itemTotal - discountAmount;
-    const taxAmount = taxableAmount * (gstRate / 100);
-    const totalAmount = taxableAmount + taxAmount;
-    
-    // Return object with unit_price
-    return {
-        product_id: item.product_id,
-        description: item.description || '',
-        quantity: quantity,
-        unit: item.unit || 'unit',
-        unit_price: unitPrice,  // This is what backend expects
-        discount_percent: discountPercent,
-        gst_rate: gstRate,
-        discount_amount: discountAmount,
-        taxable_amount: taxableAmount,
-        tax_amount: taxAmount,
-        total_amount: totalAmount,
-        cgst_rate: gstRate / 2,
-        sgst_rate: gstRate / 2,
-        igst_rate: 0,
-        item_code: item.item_code || '',
-    };
-});   // Prepare sales order data
-        const salesOrderData = {
-            company_id: company.id,
-            customer_id: formData.customer_id,
-            sales_order_date: formData.sales_order_date + "T00:00:00Z",
-            expire_date: formData.expire_date ? formData.expire_date + "T00:00:00Z" : null,
-            status: formData.status,
-            reference_no: formData.reference_no || null,
-            reference_date: formData.reference_date ? formData.reference_date + "T00:00:00Z" : null,
-            payment_terms: formData.payment_terms || null,
-            sales_person_id: formData.sales_person_id || undefined,
-            contact_person: formData.contact_person || null,
-            notes: formData.notes || null,
-            terms: formData.terms,
-            other_charges: 0,
-            discount_on_all: 0,
-            freight_charges: Number(totals.freightCharges) || 0,
-            p_and_f_charges: Number(totals.pAndFCharges) || 0,
-            round_off: Number(totals.roundOff) || 0,
-            subtotal: Number(totals.subtotal) || 0,
-            total_tax: Number(totals.totalTax) || 0,
-            total_amount: Number(totals.grandTotal) || 0,
-            send_message: formData.send_message,
-            
-            // New fields
-            delivery_note: formData.deliveryNote || null,
-            supplier_ref: formData.supplierRef || null,
-            other_references: formData.otherReferences || null,
-            buyer_order_no: formData.buyerOrderNo || null,
-            buyer_order_date: formData.buyerOrderDate ? formData.buyerOrderDate + "T00:00:00Z" : null,
-            despatch_doc_no: formData.despatchDocNo || null,
-            delivery_note_date: formData.deliveryNoteDate ? formData.deliveryNoteDate + "T00:00:00Z" : null,
-            despatched_through: formData.despatchedThrough || null,
-            destination: formData.destination || null,
-            terms_of_delivery: formData.termsOfDelivery || null,
-            
-            items: processedItems,
-        };
+        setIsSubmitting(true);
+        try {
+            // Validate all items have required fields
+            const hasInvalidItems = items.some(item => {
+                const unit_price = Number(item.unit_price || 0);
+                return unit_price <= 0 || !item.product_id;
+            });
 
-        console.log('Submitting sales order:', JSON.stringify(salesOrderData, null, 2));
+            if (hasInvalidItems) {
+                alert("Please ensure all items have valid product and rate");
+                setIsSubmitting(false);
+                return;
+            }
+            const processedItems = items.map(item => {
+                // Use unit_price from UI
+                const unitPrice = Number(item.unit_price || 0);
+                const quantity = Number(item.quantity) || 1;
+                const discountPercent = Number(item.discount_percent) || 0;
+                const gstRate = Number(item.gst_rate) || 18;
 
-        // Test if the API accepts this structure
-        const response = await salesOrdersApi.create(company.id, salesOrderData as any);
-        
-        console.log('Sales order created successfully:', response);
-        router.push(`/sales/sales-orders`);
+                const itemTotal = quantity * unitPrice;
+                const discountAmount = itemTotal * (discountPercent / 100);
+                const taxableAmount = itemTotal - discountAmount;
+                const taxAmount = taxableAmount * (gstRate / 100);
+                const totalAmount = taxableAmount + taxAmount;
 
-    } catch (error: any) {
-        console.error('Error creating sales order:', error);
-        
-        if (error.response?.data) {
-            console.error('Backend error details:', error.response.data);
-            if (error.response.data.detail) {
-                if (Array.isArray(error.response.data.detail)) {
-                    const errorMessages = error.response.data.detail.map((err: any) => 
-                        `Field: ${err.loc?.join('.')}\nError: ${err.msg}`
-                    ).join('\n\n');
-                    alert(`Validation Errors:\n\n${errorMessages}`);
+                // Return object with unit_price
+                return {
+                    product_id: item.product_id,
+                    description: item.description || '',
+                    quantity: quantity,
+                    unit: item.unit || 'unit',
+                    unit_price: unitPrice,  // This is what backend expects
+                    discount_percent: discountPercent,
+                    gst_rate: gstRate,
+                    discount_amount: discountAmount,
+                    taxable_amount: taxableAmount,
+                    tax_amount: taxAmount,
+                    total_amount: totalAmount,
+                    cgst_rate: gstRate / 2,
+                    sgst_rate: gstRate / 2,
+                    igst_rate: 0,
+                    item_code: item.item_code || '',
+                };
+            });   // Prepare sales order data
+            const salesOrderData = {
+                company_id: company.id,
+                customer_id: formData.customer_id,
+                sales_order_date: formData.sales_order_date + "T00:00:00Z",
+                expire_date: formData.expire_date ? formData.expire_date + "T00:00:00Z" : null,
+                status: formData.status,
+                reference_no: formData.reference_no || null,
+                reference_date: formData.reference_date ? formData.reference_date + "T00:00:00Z" : null,
+                payment_terms: formData.payment_terms || null,
+                sales_person_id: formData.sales_person_id || undefined,
+                contact_person: formData.contact_person || null,
+                notes: formData.notes || null,
+                terms: formData.terms,
+                other_charges: 0,
+                discount_on_all: 0,
+                freight_charges: Number(totals.freightCharges) || 0,
+                p_and_f_charges: Number(totals.pAndFCharges) || 0,
+                round_off: Number(totals.roundOff) || 0,
+                subtotal: Number(totals.subtotal) || 0,
+                total_tax: Number(totals.totalTax) || 0,
+                total_amount: Number(totals.grandTotal) || 0,
+                send_message: formData.send_message,
+
+                // New fields
+                delivery_note: formData.deliveryNote || null,
+                supplier_ref: formData.supplierRef || null,
+                other_references: formData.otherReferences || null,
+                buyer_order_no: formData.buyerOrderNo || null,
+                buyer_order_date: formData.buyerOrderDate ? formData.buyerOrderDate + "T00:00:00Z" : null,
+                despatch_doc_no: formData.despatchDocNo || null,
+                delivery_note_date: formData.deliveryNoteDate ? formData.deliveryNoteDate + "T00:00:00Z" : null,
+                despatched_through: formData.despatchedThrough || null,
+                destination: formData.destination || null,
+                terms_of_delivery: formData.termsOfDelivery || null,
+
+                items: processedItems,
+            };
+
+            console.log('Submitting sales order:', JSON.stringify(salesOrderData, null, 2));
+
+            // Test if the API accepts this structure
+            const response = await salesOrdersApi.create(company.id, salesOrderData as any);
+
+            console.log('Sales order created successfully:', response);
+            router.push(`/sales/sales-orders`);
+
+        } catch (error: any) {
+            console.error('Error creating sales order:', error);
+
+            if (error.response?.data) {
+                console.error('Backend error details:', error.response.data);
+                if (error.response.data.detail) {
+                    if (Array.isArray(error.response.data.detail)) {
+                        const errorMessages = error.response.data.detail.map((err: any) =>
+                            `Field: ${err.loc?.join('.')}\nError: ${err.msg}`
+                        ).join('\n\n');
+                        alert(`Validation Errors:\n\n${errorMessages}`);
+                    } else {
+                        alert(`Error: ${error.response.data.detail}`);
+                    }
                 } else {
-                    alert(`Error: ${error.response.data.detail}`);
+                    alert(`Backend Error: ${JSON.stringify(error.response.data, null, 2)}`);
                 }
             } else {
-                alert(`Backend Error: ${JSON.stringify(error.response.data, null, 2)}`);
+                alert('Failed to create sales order. Please try again.');
             }
-        } else {
-            alert('Failed to create sales order. Please try again.');
+        } finally {
+            setIsSubmitting(false);
         }
-    } finally {
-        setIsSubmitting(false);
-    }
-};
+    };
 
-const updateItem = (id: number, field: string, value: any) => {
-    setItems(items.map(item => {
-        if (item.id === id) {
-            const updated = { ...item, [field]: value };
+    const updateItem = (id: number, field: string, value: any) => {
+        setItems(items.map(item => {
+            if (item.id === id) {
+                const updated = { ...item, [field]: value };
 
-            // Auto-fill product details when product is selected
-            if (field === 'product_id' && value) {
-                const selectedProduct = products.find(p => p.id === value);
-                if (selectedProduct) {
-                    updated.description = selectedProduct.name;
-                    const unitPrice = Number(selectedProduct.selling_price || selectedProduct.unit_price || 0);
-                    updated.unit_price = unitPrice;  // Set unit_price
-                    updated.rate = unitPrice;        // Keep rate for compatibility
-                    updated.gst_rate = Number(selectedProduct.gst_rate) || 18;
-                    // REMOVE THIS LINE: updated.item_code = selectedProduct.sku || selectedProduct.code || "";
-                    // Keep item_code as is (don't auto-fill)
+                // Auto-fill product details when product is selected
+                if (field === 'product_id' && value) {
+                    const selectedProduct = products.find(p => p.id === value);
+                    if (selectedProduct) {
+                        updated.description = selectedProduct.name;
+                        const unitPrice = Number(selectedProduct.selling_price || selectedProduct.unit_price || 0);
+                        updated.unit_price = unitPrice;  // Set unit_price
+                        updated.rate = unitPrice;        // Keep rate for compatibility
+                        updated.gst_rate = Number(selectedProduct.gst_rate) || 18;
+                        // REMOVE THIS LINE: updated.item_code = selectedProduct.sku || selectedProduct.code || "";
+                        // Keep item_code as is (don't auto-fill)
+                    }
+                }
+
+                // Handle both unit_price and rate changes
+                if (field === 'unit_price') {
+                    updated.unit_price = Number(value) || 0;
+                    updated.rate = Number(value) || 0;  // Sync both fields
+                }
+
+                if (field === 'rate') {
+                    updated.rate = Number(value) || 0;
+                    updated.unit_price = Number(value) || 0;  // Sync both fields
+                }
+
+                // Use unit_price for calculations
+                const unitPrice = Number(updated.unit_price || 0);
+
+                // Recalculate item totals
+                const itemTotal = Number(updated.quantity) * unitPrice;
+                const discount = updated.discount_percent > 0 ?
+                    itemTotal * (Number(updated.discount_percent) / 100) : 0;
+                const taxable = itemTotal - discount;
+                const tax = taxable * (Number(updated.gst_rate) / 100);
+
+                updated.discount_amount = discount;
+                updated.taxable_amount = taxable;
+                updated.tax_amount = tax;
+                updated.total_amount = taxable + tax;
+
+                return updated;
+            }
+            return item;
+        }));
+    };
+
+    // Add this test function to your component
+    const testBackendSchema = async () => {
+        console.log('=== TESTING BACKEND SCHEMA ===');
+
+        const testPayloads = [
+            {
+                name: 'Test 1: Only rate',
+                data: {
+                    company_id: company?.id,
+                    customer_id: formData.customer_id,
+                    sales_order_date: formData.sales_order_date + "T00:00:00Z",
+                    status: "pending",
+                    items: [{
+                        product_id: items[0]?.product_id,
+                        description: "Test item",
+                        quantity: 1,
+                        unit: "unit",
+                        rate: 100,
+                        gst_rate: 18,
+                        tax_amount: 18,
+                        total_amount: 118
+                    }]
+                }
+            },
+            {
+                name: 'Test 2: Only unit_price',
+                data: {
+                    company_id: company?.id,
+                    customer_id: formData.customer_id,
+                    sales_order_date: formData.sales_order_date + "T00:00:00Z",
+                    status: "pending",
+                    items: [{
+                        product_id: items[0]?.product_id,
+                        description: "Test item",
+                        quantity: 1,
+                        unit: "unit",
+                        unit_price: 100,
+                        gst_rate: 18,
+                        tax_amount: 18,
+                        total_amount: 118
+                    }]
+                }
+            },
+            {
+                name: 'Test 3: Both fields',
+                data: {
+                    company_id: company?.id,
+                    customer_id: formData.customer_id,
+                    sales_order_date: formData.sales_order_date + "T00:00:00Z",
+                    status: "pending",
+                    items: [{
+                        product_id: items[0]?.product_id,
+                        description: "Test item",
+                        quantity: 1,
+                        unit: "unit",
+                        unit_price: 100,
+                        rate: 100,
+                        gst_rate: 18,
+                        tax_amount: 18,
+                        total_amount: 118
+                    }]
                 }
             }
+        ];
 
-            // Handle both unit_price and rate changes
-            if (field === 'unit_price') {
-                updated.unit_price = Number(value) || 0;
-                updated.rate = Number(value) || 0;  // Sync both fields
-            }
-            
-            if (field === 'rate') {
-                updated.rate = Number(value) || 0;
-                updated.unit_price = Number(value) || 0;  // Sync both fields
-            }
+        for (const test of testPayloads) {
+            console.log(`\nTrying: ${test.name}`);
+            console.log('Payload:', JSON.stringify(test.data, null, 2));
 
-            // Use unit_price for calculations
-            const unitPrice = Number(updated.unit_price || 0);
-            
-            // Recalculate item totals
-            const itemTotal = Number(updated.quantity) * unitPrice;
-            const discount = updated.discount_percent > 0 ?
-                itemTotal * (Number(updated.discount_percent) / 100) : 0;
-            const taxable = itemTotal - discount;
-            const tax = taxable * (Number(updated.gst_rate) / 100);
-
-            updated.discount_amount = discount;
-            updated.taxable_amount = taxable;
-            updated.tax_amount = tax;
-            updated.total_amount = taxable + tax;
-
-            return updated;
-        }
-        return item;
-    }));
-};
-
- // Add this test function to your component
-const testBackendSchema = async () => {
-    console.log('=== TESTING BACKEND SCHEMA ===');
-    
-    const testPayloads = [
-        {
-            name: 'Test 1: Only rate',
-            data: {
-                company_id: company?.id,
-                customer_id: formData.customer_id,
-                sales_order_date: formData.sales_order_date + "T00:00:00Z",
-                status: "pending",
-                items: [{
-                    product_id: items[0]?.product_id,
-                    description: "Test item",
-                    quantity: 1,
-                    unit: "unit",
-                    rate: 100,
-                    gst_rate: 18,
-                    tax_amount: 18,
-                    total_amount: 118
-                }]
-            }
-        },
-        {
-            name: 'Test 2: Only unit_price',
-            data: {
-                company_id: company?.id,
-                customer_id: formData.customer_id,
-                sales_order_date: formData.sales_order_date + "T00:00:00Z",
-                status: "pending",
-                items: [{
-                    product_id: items[0]?.product_id,
-                    description: "Test item",
-                    quantity: 1,
-                    unit: "unit",
-                    unit_price: 100,
-                    gst_rate: 18,
-                    tax_amount: 18,
-                    total_amount: 118
-                }]
-            }
-        },
-        {
-            name: 'Test 3: Both fields',
-            data: {
-                company_id: company?.id,
-                customer_id: formData.customer_id,
-                sales_order_date: formData.sales_order_date + "T00:00:00Z",
-                status: "pending",
-                items: [{
-                    product_id: items[0]?.product_id,
-                    description: "Test item",
-                    quantity: 1,
-                    unit: "unit",
-                    unit_price: 100,
-                    rate: 100,
-                    gst_rate: 18,
-                    tax_amount: 18,
-                    total_amount: 118
-                }]
+            try {
+                const response = await salesOrdersApi.create(company!.id, test.data as any);
+                console.log('✅ SUCCESS with this payload!');
+                return test.data; // Return the successful payload structure
+            } catch (error: any) {
+                console.log('❌ Failed:', error.response?.data?.detail || error.message);
             }
         }
-    ];
-    
-    for (const test of testPayloads) {
-        console.log(`\nTrying: ${test.name}`);
-        console.log('Payload:', JSON.stringify(test.data, null, 2));
-        
-        try {
-            const response = await salesOrdersApi.create(company!.id, test.data as any);
-            console.log('✅ SUCCESS with this payload!');
-            return test.data; // Return the successful payload structure
-        } catch (error: any) {
-            console.log('❌ Failed:', error.response?.data?.detail || error.message);
-        }
-    }
-    
-    console.log('No payload worked. Backend schema is unclear.');
-    return null;
-};
 
-// Call this function in your component or in handleSubmit
-//    // Handle customer change - load contact persons
+        console.log('No payload worked. Backend schema is unclear.');
+        return null;
+    };
+
+    // Call this function in your component or in handleSubmit
+    //    // Handle customer change - load contact persons
     const handleCustomerChange = async (customerId: string) => {
         setFormData(prev => ({
             ...prev,
             customer_id: customerId,
             contact_person: "" // Clear contact person when customer changes
         }));
-        
+
         // Find and set selected customer
         const customer = customers.find(c => c.id === customerId);
         setSelectedCustomer(customer);
-        
+
         if (customerId) {
             // Fetch contact persons for this customer
             await fetchContactPersons(customerId);
-            
+
             // If customer has a default contact person, set it
             if (customer?.contact_person) {
                 setFormData(prev => ({
@@ -861,7 +878,7 @@ const testBackendSchema = async () => {
                 product_id: "",
                 description: "",
                 quantity: 1,
-                 item_code: "",
+                item_code: "",
                 unit: "unit",
                 unit_price: 0,
                 rate: 0,
@@ -871,7 +888,7 @@ const testBackendSchema = async () => {
                 cgst_rate: 9,
                 sgst_rate: 9,
                 igst_rate: 0,
-                 tax_amount: 0, 
+                tax_amount: 0,
                 taxable_amount: 0,
                 total_amount: 0,
                 ...prefill,
@@ -1092,12 +1109,12 @@ const testBackendSchema = async () => {
                                         value={contactPersonOptions.find(opt => opt.value === formData.contact_person)}
                                         onChange={(selected) => handleFormChange('contact_person', selected?.value || "")}
                                         placeholder={
-                                            !formData.customer_id 
-                                                ? "Select customer first" 
-                                                : loading.contactPersons 
-                                                    ? "Loading contact persons..." 
-                                                    : contactPersonOptions.length > 0 
-                                                        ? "Select Contact Person" 
+                                            !formData.customer_id
+                                                ? "Select customer first"
+                                                : loading.contactPersons
+                                                    ? "Loading contact persons..."
+                                                    : contactPersonOptions.length > 0
+                                                        ? "Select Contact Person"
                                                         : "No contact persons found"
                                         }
                                         isClearable
@@ -1124,7 +1141,7 @@ const testBackendSchema = async () => {
                                             }),
                                         }}
                                         classNamePrefix="react-select"
-                                         required={true}
+                                        required={true}
                                     />
                                     {!formData.customer_id && (
                                         <p className="mt-1 text-xs text-gray-500">
@@ -1143,17 +1160,17 @@ const testBackendSchema = async () => {
                                         className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                     />
                                 </div>
-                            <div>
-    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-        Mode / Terms of Payment
-    </label>
-    <input
-        type="text"
-        value={formData.payment_terms} 
-        onChange={(e) => handleFormChange('payment_terms', e.target.value)}
-        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-    />
-</div>
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                        Mode / Terms of Payment
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.payment_terms}
+                                        onChange={(e) => handleFormChange('payment_terms', e.target.value)}
+                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                    />
+                                </div>
 
                             </div>
                         </div>
@@ -1219,7 +1236,7 @@ const testBackendSchema = async () => {
                                         <tr className="border-b border-stroke dark:border-dark-3">
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Name</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Code</th>
-                                          
+
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit Price</th>
@@ -1273,16 +1290,16 @@ const testBackendSchema = async () => {
                                                         }}
                                                     />
                                                 </td>
-                                               
-<td className="px-4 py-3">
-    <input
-        type="text"
-        value={item.item_code || ''}  // Make sure to bind to item.item_code
-        onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}  // Add onChange handler
-        className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-        placeholder="Enter item code"
-    />
-</td>
+
+                                                <td className="px-4 py-3">
+                                                    <input
+                                                        type="text"
+                                                        value={item.item_code || ''}  // Make sure to bind to item.item_code
+                                                        onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}  // Add onChange handler
+                                                        className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        placeholder="Enter item code"
+                                                    />
+                                                </td>
                                                 <td className="px-4 py-3">
                                                     <input
                                                         type="text"
@@ -1301,20 +1318,20 @@ const testBackendSchema = async () => {
                                                         min="1"
                                                     />
                                                 </td>
-<td className="px-4 py-3">
-    <input
-        type="number"
-        value={item.unit_price || 0}  // Show unit_price
-        onChange={(e) => {
-            const value = parseFloat(e.target.value) || 0;
-            updateItem(item.id, 'unit_price', value);  // Update unit_price field
-        }}
-        className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-        min="0"
-        step="0.01"
-        required
-    />
-</td>                                                <td className="px-4 py-3">
+                                                <td className="px-4 py-3">
+                                                    <input
+                                                        type="number"
+                                                        value={item.unit_price || 0}  // Show unit_price
+                                                        onChange={(e) => {
+                                                            const value = parseFloat(e.target.value) || 0;
+                                                            updateItem(item.id, 'unit_price', value);  // Update unit_price field
+                                                        }}
+                                                        className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        min="0"
+                                                        step="0.01"
+                                                        required
+                                                    />
+                                                </td>                                                <td className="px-4 py-3">
                                                     <div className="flex gap-1">
                                                         <input
                                                             type="number"
@@ -1387,14 +1404,23 @@ const testBackendSchema = async () => {
                                                 <input
                                                     type="number"
                                                     value={formData.freight_charges}
-                                                    onChange={(e) => handleFormChange('freight_charges', parseFloat(e.target.value))}
+                                                    onChange={(e) => handleFormChange('freight_charges', parseFloat(e.target.value) || 0)}
                                                     className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                     step="0.01"
                                                 />
-                                                <div className="w-24 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 dark:border-dark-3 dark:bg-dark-2">
-                                                    Fixed
-                                                </div>
+                                                <select
+                                                    value={formData.freight_type || "tax@18%"}
+                                                    onChange={(e) => handleFormChange('freight_type', e.target.value)}
+                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                >
+                                                    <option value="fixed">Fixed</option>
+                                                    <option value="tax@0%">Tax@0%</option>
+                                                    <option value="tax@5%">Tax@5%</option>
+                                                    <option value="tax@12%">Tax@12%</option>
+                                                    <option value="tax@18%">Tax@18%</option>
+                                                    <option value="tax@28%">Tax@28%</option>
+                                                </select>
                                             </div>
                                         </div>
                                         <div>
@@ -1403,14 +1429,23 @@ const testBackendSchema = async () => {
                                                 <input
                                                     type="number"
                                                     value={formData.p_and_f_charges}
-                                                    onChange={(e) => handleFormChange('p_and_f_charges', parseFloat(e.target.value))}
+                                                    onChange={(e) => handleFormChange('p_and_f_charges', parseFloat(e.target.value) || 0)}
                                                     className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                     step="0.01"
                                                 />
-                                                <div className="w-24 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 dark:border-dark-3 dark:bg-dark-2">
-                                                    Fixed
-                                                </div>
+                                                <select
+                                                    value={formData.pf_type || "tax@18%"}
+                                                    onChange={(e) => handleFormChange('pf_type', e.target.value)}
+                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                >
+                                                    <option value="fixed">Fixed</option>
+                                                    <option value="tax@0%">Tax@0%</option>
+                                                    <option value="tax@5%">Tax@5%</option>
+                                                    <option value="tax@12%">Tax@12%</option>
+                                                    <option value="tax@18%">Tax@18%</option>
+                                                    <option value="tax@28%">Tax@28%</option>
+                                                </select>
                                             </div>
                                         </div>
                                         <div className="md:col-span-2">
@@ -1458,103 +1493,100 @@ const testBackendSchema = async () => {
                                             <span className="text-dark-6">P & F Charges</span>
                                             <span className="font-medium text-dark dark:text-white">₹{totals.pAndFCharges.toLocaleString('en-IN')}</span>
                                         </div>
-                                    
-<div className="border-t border-stroke pt-3 dark:border-dark-3">
-    <div className="flex justify-between mb-3">
-        <span className="font-semibold text-dark dark:text-white">Total before Round Off</span>
-        <span className="font-bold text-dark dark:text-white">₹{totals.totalBeforeRoundOff.toLocaleString('en-IN')}</span>
-    </div>
-    
-    {/* Round Off Controls */}
-    <div className="flex justify-between items-center mb-2">
-        <div className="flex items-center gap-2">
-            <span className="text-dark-6">Round Off</span>
-            <div className="flex gap-1">
-                <button
-                    type="button"
-                    onClick={() => {
-                        const newAmount = roundOff.amount + 1;
-                        handleRoundOffChange("plus", newAmount);
-                    }}
-                    className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "plus" ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-                >
-                    +
-                </button>
-                <button
-                    type="button"
-                    onClick={() => {
-                        const newAmount = roundOff.amount > 0 ? roundOff.amount - 1 : 0;
-                        handleRoundOffChange("minus", newAmount);
-                    }}
-                    className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "minus" ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-                >
-                    -
-                </button>
-                <button
-                    type="button"
-                    onClick={() => handleRoundOffChange("none", 0)}
-                    className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "none" ? 'bg-gray-200 text-gray-700' : 'bg-gray-100 text-gray-600'}`}
-                >
-                    0
-                </button>
-            </div>
-        </div>
-        
-        <div className="flex items-center gap-2">
-            <div className="relative">
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                    {roundOff.type === "plus" ? "+" : roundOff.type === "minus" ? "-" : ""}₹
-                </span>
-                <input
-                    type="number"
-                    value={roundOff.amount}
-                    onChange={(e) => {
-                        const amount = parseFloat(e.target.value) || 0;
-                        // Keep the current type, just update the amount
-                        setRoundOff(prev => ({
-                            ...prev,
-                            amount: amount
-                        }));
-                    }}
-                    className={`w-28 rounded border pl-8 pr-2 py-1.5 outline-none focus:border-primary dark:border-dark-3 ${
-                        roundOff.type === "plus" ? 'border-green-300 bg-green-50' :
-                        roundOff.type === "minus" ? 'border-red-300 bg-red-50' :
-                        'border-stroke bg-transparent'
-                    }`}
-                    min="0"
-                    step="0.01"
-                    disabled={roundOff.type === "none"}
-                />
-            </div>
-            <span className={`font-medium ${
-                roundOff.type === "plus" ? 'text-green-600' : 
-                roundOff.type === "minus" ? 'text-red-600' : 
-                'text-gray-600'
-            }`}>
-                {roundOff.type === "plus" ? "+₹" : roundOff.type === "minus" ? "-₹" : "₹"}
-                {roundOff.amount.toFixed(2)}
-            </span>
-        </div>
-    </div>
-    
-   
-    
-    
-    {/* Round Off Amount Display */}
-    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-        <div className="flex justify-between items-center">
-            <span className="text-dark-6">Applied Round Off:</span>
-            <span className={`font-medium ${
-                roundOff.type === "plus" ? 'text-green-600' : 
-                roundOff.type === "minus" ? 'text-red-600' : 
-                'text-gray-600'
-            }`}>
-                {roundOff.type === "plus" ? '+₹' : roundOff.type === "minus" ? '-₹' : '₹'}
-                {totals.roundOff.toFixed(2)}
-            </span>
-        </div>
-    </div>
-</div>
+
+                                        <div className="border-t border-stroke pt-3 dark:border-dark-3">
+                                            <div className="flex justify-between mb-3">
+                                                <span className="font-semibold text-dark dark:text-white">Total before Round Off</span>
+                                                <span className="font-bold text-dark dark:text-white">₹{totals.totalBeforeRoundOff.toLocaleString('en-IN')}</span>
+                                            </div>
+
+                                            {/* Round Off Controls */}
+                                            <div className="flex justify-between items-center mb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-dark-6">Round Off</span>
+                                                    <div className="flex gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const newAmount = roundOff.amount + 1;
+                                                                handleRoundOffChange("plus", newAmount);
+                                                            }}
+                                                            className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "plus" ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'}`}
+                                                        >
+                                                            +
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const newAmount = roundOff.amount > 0 ? roundOff.amount - 1 : 0;
+                                                                handleRoundOffChange("minus", newAmount);
+                                                            }}
+                                                            className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "minus" ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'}`}
+                                                        >
+                                                            -
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRoundOffChange("none", 0)}
+                                                            className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "none" ? 'bg-gray-200 text-gray-700' : 'bg-gray-100 text-gray-600'}`}
+                                                        >
+                                                            0
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-2">
+                                                    <div className="relative">
+                                                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                                                            {roundOff.type === "plus" ? "+" : roundOff.type === "minus" ? "-" : ""}₹
+                                                        </span>
+                                                        <input
+                                                            type="number"
+                                                            value={roundOff.amount}
+                                                            onChange={(e) => {
+                                                                const amount = parseFloat(e.target.value) || 0;
+                                                                // Keep the current type, just update the amount
+                                                                setRoundOff(prev => ({
+                                                                    ...prev,
+                                                                    amount: amount
+                                                                }));
+                                                            }}
+                                                            className={`w-28 rounded border pl-8 pr-2 py-1.5 outline-none focus:border-primary dark:border-dark-3 ${roundOff.type === "plus" ? 'border-green-300 bg-green-50' :
+                                                                roundOff.type === "minus" ? 'border-red-300 bg-red-50' :
+                                                                    'border-stroke bg-transparent'
+                                                                }`}
+                                                            min="0"
+                                                            step="0.01"
+                                                            disabled={roundOff.type === "none"}
+                                                        />
+                                                    </div>
+                                                    <span className={`font-medium ${roundOff.type === "plus" ? 'text-green-600' :
+                                                        roundOff.type === "minus" ? 'text-red-600' :
+                                                            'text-gray-600'
+                                                        }`}>
+                                                        {roundOff.type === "plus" ? "+₹" : roundOff.type === "minus" ? "-₹" : "₹"}
+                                                        {roundOff.amount.toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+
+
+
+                                            {/* Round Off Amount Display */}
+                                            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-dark-6">Applied Round Off:</span>
+                                                    <span className={`font-medium ${roundOff.type === "plus" ? 'text-green-600' :
+                                                        roundOff.type === "minus" ? 'text-red-600' :
+                                                            'text-gray-600'
+                                                        }`}>
+                                                        {roundOff.type === "plus" ? '+₹' : roundOff.type === "minus" ? '-₹' : '₹'}
+                                                        {totals.roundOff.toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
                                         <div className="border-t border-stroke pt-3 dark:border-dark-3">
                                             <div className="flex justify-between">
                                                 <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
@@ -1591,7 +1623,7 @@ const testBackendSchema = async () => {
                                 </div>
                             )}
                         </div>
-    {/* SECTION 8: Other Fields (Accordion) */}
+                        {/* SECTION 8: Other Fields (Accordion) */}
                         <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
                             <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
                                 <h2 className="text-lg font-semibold text-dark dark:text-white">

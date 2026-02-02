@@ -71,6 +71,20 @@ export const NAV_DATA = [
     ]
   },
   {
+    label: "VENDORS",
+    items: [
+      {
+        title: "Vendors",
+        url: "/vendors",
+        icon: Icons.Building,
+        items: [
+          { title: "All Vendors", url: "/vendors" },
+          { title: "Add Vendor", url: "/vendors/new" }
+        ],
+      }
+    ]
+  },
+  {
     label: "SALES PIPELINE",
     items: [
       {
@@ -177,15 +191,6 @@ export const NAV_DATA = [
   {
     label: "PURCHASES",
     items: [
-      {
-        title: "Vendors",
-        url: "/vendors",
-        icon: Icons.Building,
-        items: [
-          { title: "All Vendors", url: "/vendors" },
-          { title: "Add Vendor", url: "/vendors/new" }
-        ],
-      },
         {
         title: "Purchase Request",
         url: "/purchase-req",

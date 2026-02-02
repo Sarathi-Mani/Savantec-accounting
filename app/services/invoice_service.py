@@ -107,13 +107,15 @@ class InvoiceService:
         print("\n" + "="*50)
         print("DEBUG: INVOICE CREATION STARTED")
         print("="*50)
-        
-        # Get next invoice number
-        company_service = CompanyService(self.db)
-        invoice_number = company_service.get_next_invoice_number(company)
-        print(f"Invoice number: {invoice_number}")
+    
+        # Get voucher type FIRST (before invoice number generation)
         voucher_type = getattr(data, 'voucher_type', VoucherType.SALES)
         print(f"Voucher type: {voucher_type}")
+
+        # Get next invoice number WITH voucher_type parameter
+        company_service = CompanyService(self.db)
+        invoice_number = company_service.get_next_invoice_number(company, voucher_type)
+        print(f"Invoice number: {invoice_number}")
         # Determine place of supply
         place_of_supply = data.place_of_supply
         if not place_of_supply and customer:
