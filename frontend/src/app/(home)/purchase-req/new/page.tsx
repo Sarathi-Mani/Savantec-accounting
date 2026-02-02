@@ -640,7 +640,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           
           <div>
             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-              Notes (Optional)
+            Remarks
             </label>
             <textarea
               name="notes"

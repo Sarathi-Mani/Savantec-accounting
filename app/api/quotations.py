@@ -118,8 +118,17 @@ class QuotationCreateRequest(BaseModel):
     exchange_rate: float = 1.0
     # PDF options
     show_images_in_pdf: bool = True
-
-
+    # New fields
+    show_images: bool = True  # Add this
+    quotation_type: str = "item"  # Add this - "item" or "project"
+    sales_ticket_id: Optional[str] = None  # Add this
+    contact_id: Optional[str] = None  # Add this
+    cess_amount: float = 0.0  # Add this
+    is_project: Optional[bool] = None  # Add this
+    quotation_number: Optional[str] = None  # Add this
+    
+    class Config:
+        from_attributes = True
 
 class QuotationUpdateRequest(BaseModel):
     validity_days: Optional[int] = None
@@ -140,6 +149,17 @@ class QuotationUpdateRequest(BaseModel):
     exchange_rate: Optional[float] = None
     # PDF options
     show_images_in_pdf: Optional[bool] = None
+    # New fields
+    show_images: Optional[bool] = None  # Add this
+    quotation_type: Optional[str] = None  # Add this
+    sales_ticket_id: Optional[str] = None  # Add this
+    contact_id: Optional[str] = None  # Add this
+    cess_amount: Optional[float] = None  # Add this
+    is_project: Optional[bool] = None  # Add this
+    place_of_supply: Optional[str] = None  # Add this
+    
+    class Config:
+        from_attributes = True
 
 class SubItemResponse(BaseModel):  # Add this schema
     id: str
@@ -173,7 +193,6 @@ class QuotationItemResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 class QuotationResponse(BaseModel):
     id: str
     quotation_number: str
@@ -194,12 +213,20 @@ class QuotationResponse(BaseModel):
     base_currency_total: Optional[float] = None
     # PDF options
     show_images_in_pdf: bool = True
+    # New fields
+    show_images: bool = True  # Add this
+    quotation_type: str = "item"  # Add this
+    is_project: bool = False  # Add this
+    cess_amount: float = 0.0  # Add this
+    sales_ticket_id: Optional[str] = None  # Add this
+    contact_id: Optional[str] = None  # Add this
     # Amounts
     subtotal: float
     discount_amount: float
     cgst_amount: float
     sgst_amount: float
     igst_amount: float
+    cess_amount: float  # Already added above, keep only one
     total_tax: float
     total_amount: float
     notes: Optional[str]
@@ -217,7 +244,7 @@ class QuotationResponse(BaseModel):
     items: Optional[List[QuotationItemResponse]] = None
     quotation_code: Optional[str] = None  # This is actually quotation_number
     validity_days: Optional[int] = None
-    quotation_type: Optional[str] = None  # Add this if you have quotation_type in your model
+    
     @classmethod
     def from_orm(cls, obj):
         # Custom from_orm to handle computed fields
@@ -231,7 +258,6 @@ class QuotationResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 class QuotationListResponse(BaseModel):
     items: List[QuotationResponse]
@@ -488,15 +514,21 @@ async def create_quotation(
         for item in quotation_data.get("items", []):
             item_dict = {
                 "product_id": item.get("product_id"),
-                "item_code":item.get('item_code'), 
+                "item_code": item.get('item_code'), 
                 "description": item.get("description", "Item"),
                 "hsn_code": item.get("hsn_code", ""),
                 "quantity": float(item.get("quantity", 0)),
                 "unit": item.get("unit", "unit"),
                 "unit_price": float(item.get("unit_price", 0)),
                 "discount_percent": float(item.get("discount_percent", 0)),
-                "gst_rate": float(item.get("gst_rate", 18))
+                "gst_rate": float(item.get("gst_rate", 18)),
+                "cess_amount": float(item.get("cess_amount", 0))  # Add cess_amount
             }
+            
+            # Add item_type if it's a project item
+            if quotation_data.get("quotation_type") == "project":
+                item_dict["item_type"] = "project"
+                item_dict["is_project"] = True
             
             # Add sub-items if they exist
             sub_items = item.get("sub_items")
@@ -526,6 +558,8 @@ async def create_quotation(
             items=items,
             quotation_date=parse_date(quotation_data.get("quotation_date")),
             validity_days=quotation_data.get("validity_days", 30),
+            show_images=quotation_data.get("show_images", True),  # Add this
+            quotation_number=quotation_data.get("quotation_number"),  # Add this
             place_of_supply=quotation_data.get("place_of_supply"),
             subject=quotation_data.get("subject"),
             notes=quotation_data.get("notes"),
@@ -544,6 +578,13 @@ async def create_quotation(
             # Multi-currency support
             currency_code=quotation_data.get("currency_code", "INR"),
             exchange_rate=Decimal(str(quotation_data.get("exchange_rate", 1.0))),
+            # PDF options
+            show_images_in_pdf=quotation_data.get("show_images_in_pdf", True),  # Add this
+            # New fields
+            sales_ticket_id=quotation_data.get("sales_ticket_id"),  # Add this
+            contact_id=quotation_data.get("contact_id"),  # Add this
+            cess_amount=Decimal(str(quotation_data.get("cess_amount", 0))),  # Add this
+            is_project=quotation_data.get("is_project"),  # Add this
         )
         
         return _quotation_to_response(quotation, db)
@@ -553,8 +594,8 @@ async def create_quotation(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
-
-
+    
+    
 @router.get("/companies/{company_id}/quotations", response_model=QuotationListResponse)
 async def list_quotations(
     company_id: str,
@@ -756,8 +797,14 @@ async def update_quotation(
                     "unit": item.get("unit", "unit"),
                     "unit_price": float(item.get("unit_price", 0)),
                     "discount_percent": float(item.get("discount_percent", 0)),
-                    "gst_rate": float(item.get("gst_rate", 18))
+                    "gst_rate": float(item.get("gst_rate", 18)),
+                    "cess_amount": float(item.get("cess_amount", 0))  # Add this
                 }
+                
+                # Add item_type if it's a project item
+                if update_data.get("quotation_type") == "project":
+                    item_dict["item_type"] = "project"
+                    item_dict["is_project"] = True
                 
                 # Add sub-items if they exist
                 sub_items = item.get("sub_items")
@@ -795,6 +842,18 @@ async def update_quotation(
             excel_notes=update_data.get("excel_notes"),
             excel_file_content=excel_file_content,
             excel_filename=excel_filename,
+            # Multi-currency support
+            currency_code=update_data.get("currency_code"),
+            exchange_rate=Decimal(str(update_data.get("exchange_rate"))) if update_data.get("exchange_rate") else None,
+            # PDF options
+            show_images_in_pdf=update_data.get("show_images_in_pdf"),  # Add this
+            # New fields
+            show_images=update_data.get("show_images"),  # Add this
+            sales_ticket_id=update_data.get("sales_ticket_id"),  # Add this
+            contact_id=update_data.get("contact_id"),  # Add this
+            cess_amount=Decimal(str(update_data.get("cess_amount"))) if update_data.get("cess_amount") is not None else None,  # Add this
+            is_project=update_data.get("is_project"),  # Add this
+            place_of_supply=update_data.get("place_of_supply"),  # Add this
         )
         
         return _quotation_to_response(quotation, db)
@@ -806,7 +865,7 @@ async def update_quotation(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
-
+    
 
 @router.delete("/companies/{company_id}/quotations/{quotation_id}")
 async def delete_quotation(
@@ -1021,7 +1080,6 @@ async def compare_quotations(
 
 
 # ==================== HELPER FUNCTIONS ====================
-
 def _quotation_to_response(quotation, db: Session, include_items: bool = True) -> dict:
     """Convert quotation model to response dict."""
     customer_name = None
@@ -1060,6 +1118,13 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
         "base_currency_total": float(quotation.base_currency_total or quotation.total_amount or 0),
         # PDF options
         "show_images_in_pdf": quotation.show_images_in_pdf if quotation.show_images_in_pdf is not None else True,
+        # New fields
+        "show_images": quotation.show_images if quotation.show_images is not None else True,
+        "quotation_type": quotation.quotation_type or "item",
+        "is_project": quotation.is_project or False,
+        "cess_amount": float(quotation.cess_amount or 0),
+        "sales_ticket_id": quotation.sales_ticket_id,
+        "contact_id": quotation.contact_id,
         # Amounts
         "subtotal": float(quotation.subtotal or 0),
         "discount_amount": float(quotation.discount_amount or 0),
@@ -1080,7 +1145,7 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
         "approved_at": quotation.approved_at,
         "converted_invoice_id": quotation.converted_invoice_id,
         "created_at": quotation.created_at,
-        "quotation_type": quotation.quotation_type or "item",  # Add this field
+        "quotation_type": quotation.quotation_type or "item",
     }
     
     if include_items:
@@ -1100,6 +1165,7 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
                 "cgst_amount": float(item.cgst_amount or 0),
                 "sgst_amount": float(item.sgst_amount or 0),
                 "igst_amount": float(item.igst_amount or 0),
+                "cess_amount": float(item.cess_amount or 0),  # Add this
                 "taxable_amount": float(item.taxable_amount),
                 "total_amount": float(item.total_amount),
                 "is_project": item.is_project or False,
@@ -1123,4 +1189,3 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
         response["items"] = items_response
     
     return response
-

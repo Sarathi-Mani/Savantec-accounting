@@ -7,7 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from app.database.models import (
     DeliveryChallan, DeliveryChallanItem, DeliveryChallanType, DeliveryChallanStatus,
     Company, Customer, Product, Invoice, InvoiceItem, Quotation, SalesOrder,
-    StockEntry, StockMovementType, Godown, Batch,
+    StockEntry, StockMovementType, Godown, Batch, User, Contact,
     generate_uuid
 )
 
@@ -35,8 +35,14 @@ class DeliveryChallanService:
         
         if last_dc and last_dc.dc_number:
             try:
-                last_num = int(last_dc.dc_number.split('-')[-1])
-                next_num = last_num + 1
+                # Try to parse existing format
+                if '-' in last_dc.dc_number:
+                    last_num = int(last_dc.dc_number.split('-')[-1])
+                    next_num = last_num + 1
+                else:
+                    # If it's a simple number
+                    last_num = int(last_dc.dc_number)
+                    next_num = last_num + 1
             except (ValueError, IndexError):
                 next_num = 1
         else:
@@ -50,8 +56,12 @@ class DeliveryChallanService:
         items: List[Dict[str, Any]],
         customer_id: Optional[str] = None,
         invoice_id: Optional[str] = None,
+        reference_no: Optional[str] = None,
+        
         quotation_id: Optional[str] = None,
         sales_order_id: Optional[str] = None,
+        sales_ticket_id: Optional[str] = None,
+        contact_id: Optional[str] = None,
         dc_date: Optional[datetime] = None,
         from_godown_id: Optional[str] = None,
         transporter_name: Optional[str] = None,
@@ -60,14 +70,26 @@ class DeliveryChallanService:
         delivery_address: Optional[Dict[str, str]] = None,
         notes: Optional[str] = None,
         auto_update_stock: bool = True,
+        # New fields from frontend
+        dc_number: Optional[str] = None,
+        status: str = "Open",
+        custom_status: str = "Open",
+        bill_title: Optional[str] = None,
+        bill_description: Optional[str] = None,
+        contact_person: Optional[str] = None,
+        expiry_date: Optional[datetime] = None,
+        salesman_id: Optional[str] = None,
+        # Charges and discounts
+        subtotal: Optional[Decimal] = None,
+        freight_charges: Optional[Decimal] = None,
+        packing_forwarding_charges: Optional[Decimal] = None,
+        discount_on_all: Optional[Decimal] = None,
+        discount_type: str = "percentage",
+        round_off: Optional[Decimal] = None,
+        grand_total: Optional[Decimal] = None,
     ) -> DeliveryChallan:
         """
-        Create a DC Out (Delivery Challan for goods dispatch).
-        
-        Can be created:
-        1. From an invoice (goods dispatch after invoicing)
-        2. Standalone (goods sent before invoicing, like consignment)
-        3. From quotation or sales order
+        Create a DC Out (Delivery Challan for goods dispatch) with new fields.
         """
         # Get customer from linked documents if not provided
         if not customer_id:
@@ -87,15 +109,49 @@ class DeliveryChallanService:
         # Normalize empty godown id to None to satisfy FK constraint
         from_godown_id = from_godown_id or None
 
-        # Create delivery challan
+        # Get or generate DC number
+        if not dc_number:
+            dc_number = self._get_next_dc_number(company, DeliveryChallanType.DC_OUT)
+        
+        # Convert status string to enum if possible
+        dc_status = DeliveryChallanStatus.DRAFT
+        if status.lower() == "dispatched":
+            dc_status = DeliveryChallanStatus.DISPATCHED
+        elif status.lower() == "delivered":
+            dc_status = DeliveryChallanStatus.DELIVERED
+        elif status.lower() == "cancelled":
+            dc_status = DeliveryChallanStatus.CANCELLED
+        elif status.lower() == "received":
+            dc_status = DeliveryChallanStatus.RECEIVED
+
+        # Try to get contact from contact_person name
+        if not contact_id and contact_person and customer_id:
+            contact = self.db.query(Contact).filter(
+                Contact.company_id == company.id,
+                Contact.name == contact_person
+            ).first()
+            if contact:
+                contact_id = contact.id
+
+        # Create delivery challan with all fields
         dc = DeliveryChallan(
             id=generate_uuid(),
             company_id=company.id,
             customer_id=customer_id,
-            dc_number=self._get_next_dc_number(company, DeliveryChallanType.DC_OUT),
+            dc_number=dc_number,
             dc_date=dc_date or datetime.utcnow(),
             dc_type=DeliveryChallanType.DC_OUT,
-            status=DeliveryChallanStatus.DRAFT,
+            status=dc_status,
+             reference_no=reference_no,
+            custom_status=custom_status,  # Your frontend status
+            # New fields
+            bill_title=bill_title,
+            bill_description=bill_description,
+            expiry_date=expiry_date,
+            salesman_id=salesman_id,
+            # Relationship fields
+            sales_ticket_id=sales_ticket_id,
+            contact_id=contact_id,
             invoice_id=invoice_id,
             quotation_id=quotation_id,
             sales_order_id=sales_order_id,
@@ -138,7 +194,7 @@ class DeliveryChallanService:
         self.db.add(dc)
         self.db.flush()
         
-        # Add items
+        # Add items with all fields
         for item_data in items:
             product_id = item_data.get("product_id")
             product = None
@@ -146,6 +202,22 @@ class DeliveryChallanService:
                 product = self.db.query(Product).filter(Product.id == product_id).first()
             
             qty = Decimal(str(item_data.get("quantity", 0)))
+            
+            # Calculate item totals if not provided
+            unit_price = Decimal(str(item_data.get("unit_price", 0)))
+            discount_percent = Decimal(str(item_data.get("discount_percent", 0)))
+            gst_rate = Decimal(str(item_data.get("gst_rate", 0)))
+            
+            item_total = qty * unit_price
+            discount_amount = item_total * (discount_percent / Decimal('100'))
+            taxable_amount = item_total - discount_amount
+            tax_amount = taxable_amount * (gst_rate / Decimal('100'))
+            total_amount = taxable_amount + tax_amount
+            
+            # Set CGST/SGST/IGST rates (assuming intra-state)
+            cgst_rate = gst_rate / Decimal('2')
+            sgst_rate = gst_rate / Decimal('2')
+            igst_rate = Decimal('0')
             
             dc_item = DeliveryChallanItem(
                 id=generate_uuid(),
@@ -157,7 +229,16 @@ class DeliveryChallanService:
                 hsn_code=item_data.get("hsn_code") or (product.hsn_code if product else None),
                 quantity=qty,
                 unit=item_data.get("unit") or (product.unit if product else "unit"),
-                unit_price=Decimal(str(item_data.get("unit_price", 0))),
+                unit_price=unit_price,
+                # New item fields
+                discount_percent=discount_percent,
+                discount_amount=discount_amount,
+                gst_rate=gst_rate,
+                cgst_rate=cgst_rate,
+                sgst_rate=sgst_rate,
+                igst_rate=igst_rate,
+                taxable_amount=taxable_amount,
+                total_amount=total_amount,
                 godown_id=item_data.get("godown_id") or from_godown_id,
                 serial_numbers=item_data.get("serial_numbers"),
                 notes=item_data.get("notes"),
@@ -180,16 +261,34 @@ class DeliveryChallanService:
         customer_id: Optional[str] = None,
         original_dc_id: Optional[str] = None,
         invoice_id: Optional[str] = None,
+        sales_ticket_id: Optional[str] = None,
+        contact_id: Optional[str] = None,
+        reference_no: Optional[str] = None,
         dc_date: Optional[datetime] = None,
         to_godown_id: Optional[str] = None,
         return_reason: Optional[str] = None,
         notes: Optional[str] = None,
         auto_update_stock: bool = True,
+        # New fields from frontend
+        dc_number: Optional[str] = None,
+        status: str = "Open",
+        custom_status: str = "Open",
+        bill_title: Optional[str] = None,
+        bill_description: Optional[str] = None,
+        contact_person: Optional[str] = None,
+        expiry_date: Optional[datetime] = None,
+        salesman_id: Optional[str] = None,
+        # Charges and discounts
+        subtotal: Optional[Decimal] = None,
+        freight_charges: Optional[Decimal] = None,
+        packing_forwarding_charges: Optional[Decimal] = None,
+        discount_on_all: Optional[Decimal] = None,
+        discount_type: str = "percentage",
+        round_off: Optional[Decimal] = None,
+        grand_total: Optional[Decimal] = None,
     ) -> DeliveryChallan:
         """
-        Create a DC In (Delivery Challan for goods return).
-        
-        Used when customer returns goods.
+        Create a DC In (Delivery Challan for goods return) with new fields.
         """
         # Normalize empty godown id to None to satisfy FK constraint
         to_godown_id = to_godown_id or None
@@ -204,16 +303,50 @@ class DeliveryChallanService:
                 customer_id = original_dc.customer_id
             if original_dc and not invoice_id:
                 invoice_id = original_dc.invoice_id
+            if original_dc and not sales_ticket_id:
+                sales_ticket_id = original_dc.sales_ticket_id
+            if original_dc and not contact_id:
+                contact_id = original_dc.contact_id
         
-        # Create return challan
+        # Get or generate DC number
+        if not dc_number:
+            dc_number = self._get_next_dc_number(company, DeliveryChallanType.DC_IN)
+        
+        # Convert status string to enum if possible
+        dc_status = DeliveryChallanStatus.DRAFT
+        if status.lower() == "received":
+            dc_status = DeliveryChallanStatus.RECEIVED
+        elif status.lower() == "cancelled":
+            dc_status = DeliveryChallanStatus.CANCELLED
+
+        # Try to get contact from contact_person name
+        if not contact_id and contact_person and customer_id:
+            contact = self.db.query(Contact).filter(
+                Contact.company_id == company.id,
+                Contact.name == contact_person
+            ).first()
+            if contact:
+                contact_id = contact.id
+
+        # Create return challan with all fields
         dc = DeliveryChallan(
             id=generate_uuid(),
             company_id=company.id,
             customer_id=customer_id,
-            dc_number=self._get_next_dc_number(company, DeliveryChallanType.DC_IN),
+            dc_number=dc_number,
             dc_date=dc_date or datetime.utcnow(),
             dc_type=DeliveryChallanType.DC_IN,
-            status=DeliveryChallanStatus.DRAFT,
+            status=dc_status,
+             reference_no=reference_no,
+            custom_status=custom_status,  # Your frontend status
+            # New fields
+            bill_title=bill_title,
+            bill_description=bill_description,
+            expiry_date=expiry_date,
+            salesman_id=salesman_id,
+            # Relationship fields
+            sales_ticket_id=sales_ticket_id,
+            contact_id=contact_id,
             invoice_id=invoice_id,
             original_dc_id=original_dc_id,
             return_reason=return_reason,
@@ -224,7 +357,7 @@ class DeliveryChallanService:
         self.db.add(dc)
         self.db.flush()
         
-        # Add return items
+        # Add return items with all fields
         for item_data in items:
             product_id = item_data.get("product_id")
             product = None
@@ -232,6 +365,22 @@ class DeliveryChallanService:
                 product = self.db.query(Product).filter(Product.id == product_id).first()
             
             qty = Decimal(str(item_data.get("quantity", 0)))
+            
+            # Calculate item totals if not provided
+            unit_price = Decimal(str(item_data.get("unit_price", 0)))
+            discount_percent = Decimal(str(item_data.get("discount_percent", 0)))
+            gst_rate = Decimal(str(item_data.get("gst_rate", 0)))
+            
+            item_total = qty * unit_price
+            discount_amount = item_total * (discount_percent / Decimal('100'))
+            taxable_amount = item_total - discount_amount
+            tax_amount = taxable_amount * (gst_rate / Decimal('100'))
+            total_amount = taxable_amount + tax_amount
+            
+            # Set CGST/SGST/IGST rates (assuming intra-state)
+            cgst_rate = gst_rate / Decimal('2')
+            sgst_rate = gst_rate / Decimal('2')
+            igst_rate = Decimal('0')
             
             dc_item = DeliveryChallanItem(
                 id=generate_uuid(),
@@ -242,7 +391,16 @@ class DeliveryChallanService:
                 hsn_code=item_data.get("hsn_code") or (product.hsn_code if product else None),
                 quantity=qty,
                 unit=item_data.get("unit") or (product.unit if product else "unit"),
-                unit_price=Decimal(str(item_data.get("unit_price", 0))),
+                unit_price=unit_price,
+                # New item fields
+                discount_percent=discount_percent,
+                discount_amount=discount_amount,
+                gst_rate=gst_rate,
+                cgst_rate=cgst_rate,
+                sgst_rate=sgst_rate,
+                igst_rate=igst_rate,
+                taxable_amount=taxable_amount,
+                total_amount=total_amount,
                 godown_id=item_data.get("godown_id") or to_godown_id,
                 serial_numbers=item_data.get("serial_numbers"),
                 notes=item_data.get("notes"),
@@ -337,12 +495,27 @@ class DeliveryChallanService:
         from_godown_id: Optional[str] = None,
         items: Optional[List[Dict[str, Any]]] = None,
         partial_dispatch: bool = False,
+        # New fields
+        dc_number: Optional[str] = None,
+        status: str = "Open",
+        reference_no: Optional[str] = None,
+        custom_status: str = "Open",
+        bill_title: Optional[str] = None,
+        bill_description: Optional[str] = None,
+        contact_person: Optional[str] = None,
+        expiry_date: Optional[datetime] = None,
+        salesman_id: Optional[str] = None,
+        # Charges and discounts
+        subtotal: Optional[Decimal] = None,
+        freight_charges: Optional[Decimal] = None,
+        packing_forwarding_charges: Optional[Decimal] = None,
+        discount_on_all: Optional[Decimal] = None,
+        discount_type: str = "percentage",
+        round_off: Optional[Decimal] = None,
+        grand_total: Optional[Decimal] = None,
     ) -> DeliveryChallan:
         """
-        Create a DC Out from an invoice.
-        
-        If partial_dispatch=True, only specified items/quantities are dispatched.
-        Otherwise, all invoice items are included.
+        Create a DC Out from an invoice with new fields.
         """
         company = self.db.query(Company).filter(Company.id == invoice.company_id).first()
         
@@ -355,7 +528,8 @@ class DeliveryChallanService:
         else:
             # Include all invoice items
             for inv_item in invoice.items:
-                dc_items.append({
+                # Convert invoice item to DC item format with all fields
+                dc_item = {
                     "product_id": inv_item.product_id,
                     "invoice_item_id": inv_item.id,
                     "description": inv_item.description,
@@ -363,14 +537,48 @@ class DeliveryChallanService:
                     "quantity": float(inv_item.quantity),
                     "unit": inv_item.unit,
                     "unit_price": float(inv_item.unit_price),
-                })
+                    "discount_percent": float(inv_item.discount_percent) if hasattr(inv_item, 'discount_percent') else 0,
+                    "gst_rate": float(inv_item.gst_rate) if hasattr(inv_item, 'gst_rate') else 0,
+                    "taxable_amount": float(inv_item.taxable_amount) if hasattr(inv_item, 'taxable_amount') else 0,
+                    "total_amount": float(inv_item.total_amount) if hasattr(inv_item, 'total_amount') else 0,
+                }
+                dc_items.append(dc_item)
+        
+        # Get contact from invoice if available
+        contact_id = None
+        contact_person_name = None
+        if invoice.contact_id:
+            contact = self.db.query(Contact).filter(Contact.id == invoice.contact_id).first()
+            if contact:
+                contact_id = contact.id
+                contact_person_name = contact.name
         
         return self.create_dc_out(
             company=company,
             items=dc_items,
             customer_id=invoice.customer_id,
             invoice_id=invoice.id,
+            sales_ticket_id=invoice.sales_ticket_id,
+            contact_id=contact_id,
             from_godown_id=from_godown_id,
+            # New fields
+            dc_number=dc_number,
+             reference_no=reference_no,
+            status=status,
+            custom_status=custom_status,
+            bill_title=bill_title,
+            bill_description=bill_description,
+            contact_person=contact_person or contact_person_name,
+            expiry_date=expiry_date,
+            salesman_id=salesman_id,
+            # Charges and discounts
+            subtotal=subtotal,
+            freight_charges=freight_charges,
+            packing_forwarding_charges=packing_forwarding_charges,
+            discount_on_all=discount_on_all,
+            discount_type=discount_type,
+            round_off=round_off,
+            grand_total=grand_total,
         )
     
     def mark_dispatched(self, dc: DeliveryChallan) -> DeliveryChallan:
@@ -379,6 +587,7 @@ class DeliveryChallanService:
             raise ValueError("Can only dispatch DCs in DRAFT status")
         
         dc.status = DeliveryChallanStatus.DISPATCHED
+        dc.custom_status = "Dispatched"
         dc.updated_at = datetime.utcnow()
         
         # Update stock if not already done
@@ -398,6 +607,7 @@ class DeliveryChallanService:
     ) -> DeliveryChallan:
         """Mark DC as in transit."""
         dc.status = DeliveryChallanStatus.IN_TRANSIT
+        dc.custom_status = "In Transit"
         if vehicle_number:
             dc.vehicle_number = vehicle_number
         if lr_number:
@@ -417,6 +627,7 @@ class DeliveryChallanService:
     ) -> DeliveryChallan:
         """Mark DC Out as delivered."""
         dc.status = DeliveryChallanStatus.DELIVERED
+        dc.custom_status = "Delivered"
         dc.delivered_at = delivered_at or datetime.utcnow()
         dc.received_by = received_by
         dc.updated_at = datetime.utcnow()
@@ -439,7 +650,8 @@ class DeliveryChallanService:
         if dc.status not in [DeliveryChallanStatus.DRAFT]:
             raise ValueError("Can only receive DCs in DRAFT status")
         
-        dc.status = "received"  # Use string value directly for PostgreSQL enum compatibility
+        dc.status = DeliveryChallanStatus.RECEIVED
+        dc.custom_status = "Received"
         dc.delivered_at = received_at or datetime.utcnow()
         dc.received_by = received_by
         dc.updated_at = datetime.utcnow()
@@ -481,6 +693,7 @@ class DeliveryChallanService:
             self._reverse_stock_entries(dc)
         
         dc.status = DeliveryChallanStatus.CANCELLED
+        dc.custom_status = "Cancelled"
         if reason:
             dc.notes = f"{dc.notes or ''}\nCancelled: {reason}".strip()
         dc.updated_at = datetime.utcnow()
@@ -541,6 +754,7 @@ class DeliveryChallanService:
         company_id: str,
         dc_type: Optional[DeliveryChallanType] = None,
         status: Optional[DeliveryChallanStatus] = None,
+        custom_status: Optional[str] = None,
         customer_id: Optional[str] = None,
         invoice_id: Optional[str] = None,
         from_date: Optional[date] = None,
@@ -548,7 +762,7 @@ class DeliveryChallanService:
         page: int = 1,
         page_size: int = 20,
     ) -> Dict[str, Any]:
-        """List delivery challans with filters."""
+        """List delivery challans with filters including custom_status."""
         query = self.db.query(DeliveryChallan).filter(
             DeliveryChallan.company_id == company_id
         )
@@ -557,6 +771,8 @@ class DeliveryChallanService:
             query = query.filter(DeliveryChallan.dc_type == dc_type)
         if status:
             query = query.filter(DeliveryChallan.status == status)
+        if custom_status:
+            query = query.filter(DeliveryChallan.custom_status == custom_status)
         if customer_id:
             query = query.filter(DeliveryChallan.customer_id == customer_id)
         if invoice_id:
@@ -628,4 +844,3 @@ class DeliveryChallanService:
         self.db.delete(dc)
         self.db.commit()
         return True
-
