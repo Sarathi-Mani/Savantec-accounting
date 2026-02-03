@@ -5,12 +5,18 @@ from enum import Enum as PyEnum
 from typing import Optional, List
 from sqlalchemy import (
     Column, Integer, String, Text, DateTime, Date, Numeric, Boolean,
-    ForeignKey, Enum, JSON, Index, Float, ARRAY
+    ForeignKey, Enum, JSON, Index, Float
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
+
+# IMPORTANT: Import Base from your existing connection.py
 from app.database.connection import Base
-from app.database.models import generate_uuid
+
+# For UUID generation
+import uuid
+def generate_uuid():
+    return str(uuid.uuid4())
 
 # ==================== ENUMS ====================
 
