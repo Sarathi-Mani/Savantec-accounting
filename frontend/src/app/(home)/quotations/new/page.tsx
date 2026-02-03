@@ -64,6 +64,8 @@ interface FormData {
   payment_terms?: string;
   remarks?: string;
   contact_person?: string; 
+  show_images?: boolean;
+   show_images_in_pdf?: boolean; 
   quotation_type?: "item" | "project"; 
 }
 
@@ -125,7 +127,10 @@ export default function NewQuotationPage() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [salesmen, setSalesmen] = useState<any[]>([]);
+  
   const [contactPersons, setContactPersons] = useState<any[]>([]);
+  const [imagePreview, setImagePreview] = useState<{ url: string; alt: string } | null>(null);
+
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [selectedContactPerson, setSelectedContactPerson] = useState<any>(null);
   const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: "success" | "error" | "info" | "warning" }>>([]);
@@ -283,6 +288,8 @@ const fetchNextQuotationNumber = async () => {
       setCopyError("Quotation not found. Please check the quotation number.");
       return;
     }
+
+   
     
     // FIRST: Update form data with quotation details
     setFormData(prev => ({
@@ -302,7 +309,9 @@ const fetchNextQuotationNumber = async () => {
         new Date(quotation.reference_date).toISOString().split("T")[0] : "",
       payment_terms: quotation.payment_terms || standardTermsTemplate,
       remarks: quotation.remarks || "",
-      contact_person: quotation.contact_person || ""
+      contact_person: quotation.contact_person || "",
+      show_images: quotation.show_images !== false
+      
     }));
     
     // Update customer selection if customer exists
@@ -484,7 +493,9 @@ const fetchNextQuotationNumber = async () => {
     payment_terms: standardTermsTemplate,
     remarks: "", 
     contact_person: "",
-    quotation_type: "item" 
+    quotation_type: "item" ,
+     show_images: true,
+       show_images_in_pdf: true,
   });
 
   const [items, setItems] = useState<QuotationItem[]>([
@@ -554,125 +565,128 @@ const fetchNextQuotationNumber = async () => {
     return grid[row][col];
   };
 
-  const evaluateFormula = (expr: string, grid: ExcelCell[][]): number | string => {
-    try {
-      // Remove the = sign if present
-      expr = expr.trim();
-      if (expr.startsWith('=')) {
-        expr = expr.substring(1).trim();
-      }
+ const evaluateFormula = (expr: string, grid: ExcelCell[][]): number | string => {
+  try {
+    // Remove the = sign if present
+    expr = expr.trim();
+    if (expr.startsWith('=')) {
+      expr = expr.substring(1).trim();
+    }
 
-      // If expression is empty, return empty string
-      if (expr === '') {
-        return '';
-      }
+    // If expression is empty, return empty string
+    if (expr === '') {
+      return '';
+    }
 
-      // Handle single cell reference
-      const singleCellPattern = /^([A-Z]+)(\d+)$/;
-      const singleCellMatch = expr.match(singleCellPattern);
-      if (singleCellMatch) {
-        const col = singleCellMatch[1];
-        const rowStr = singleCellMatch[2];
-        const row = parseInt(rowStr, 10) - 1; // Fixed: added radix parameter
-        
-        if (isNaN(row) || row < 0) {
-          return '#ERROR';
-        }
-        
-        const colIndex = getColumnIndex(col);
-        
-        if (row >= 0 && row < grid.length && colIndex >= 0 && colIndex < (grid[row]?.length || 0)) {
-          const cell = grid[row][colIndex];
-          if (cell) {
-            const val = cell.computedValue;
-            if (val === undefined || val === '' || val === null) {
-              return 0;
-            }
-            if (typeof val === 'string') {
-              const num = parseFloat(val);
-              return isNaN(num) ? 0 : num;
-            }
-            return val;
+    // Handle single cell reference
+    const singleCellPattern = /^([A-Z]+)(\d+)$/;
+    const singleCellMatch = expr.match(singleCellPattern);
+    if (singleCellMatch) {
+      const col = singleCellMatch[1];
+      const rowStr = singleCellMatch[2];
+      const row = parseInt(rowStr, 10) - 1; // Already fixed with radix
+      
+      if (isNaN(row) || row < 0) {
+        return '#ERROR';
+      }
+      
+      const colIndex = getColumnIndex(col);
+      
+      if (row >= 0 && row < grid.length && colIndex >= 0 && colIndex < (grid[row]?.length || 0)) {
+        const cell = grid[row][colIndex];
+        if (cell) {
+          const val = cell.computedValue;
+          if (val === undefined || val === '' || val === null) {
+            return 0;
           }
-        }
-        return '#REF!';
-      }
-
-      // Handle cell references in expressions
-      const cellReferencePattern = /([A-Z]+)(\d+)/g;
-      let processedExpr = expr;
-      let hasCellReference = false;
-      let match: RegExpExecArray | null;
-
-      while ((match = cellReferencePattern.exec(expr)) !== null) {
-        hasCellReference = true;
-        const colLetter = match[1];
-        const rowStr = match[2];
-        const rowNum = parseInt(rowStr, 10) - 1; // Fixed: added radix parameter
-        
-        if (isNaN(rowNum) || rowNum < 0) {
-          continue;
-        }
-        
-        const colIndex = getColumnIndex(colLetter);
-        
-        if (rowNum >= 0 && rowNum < grid.length && colIndex >= 0 && colIndex < (grid[rowNum]?.length || 0)) {
-          const cell = grid[rowNum][colIndex];
-          if (cell) {
-            let cellValue = cell.computedValue;
-            if (cellValue === undefined || cellValue === '' || cellValue === null) {
-              cellValue = 0;
-            } else if (typeof cellValue === 'string') {
-              const num = parseFloat(cellValue);
-              cellValue = isNaN(num) ? 0 : num;
-            }
-            processedExpr = processedExpr.replace(match[0], cellValue.toString());
-          } else {
-            processedExpr = processedExpr.replace(match[0], '0');
+          if (typeof val === 'string') {
+            const num = parseFloat(val);
+            return isNaN(num) ? 0 : num;
           }
+          // val is already a number
+          return val;
+        }
+      }
+      return '#REF!';
+    }
+
+    // Handle cell references in expressions
+    const cellReferencePattern = /([A-Z]+)(\d+)/g;
+    let processedExpr = expr;
+    let hasCellReference = false;
+    let match: RegExpExecArray | null;
+
+    while ((match = cellReferencePattern.exec(expr)) !== null) {
+      hasCellReference = true;
+      const colLetter = match[1];
+      const rowStr = match[2];
+      const rowNum = parseInt(rowStr, 10) - 1; // Already fixed with radix
+      
+      if (isNaN(rowNum) || rowNum < 0) {
+        continue;
+      }
+      
+      const colIndex = getColumnIndex(colLetter);
+      
+      if (rowNum >= 0 && rowNum < grid.length && colIndex >= 0 && colIndex < (grid[rowNum]?.length || 0)) {
+        const cell = grid[rowNum][colIndex];
+        if (cell) {
+          let cellValue = cell.computedValue;
+          if (cellValue === undefined || cellValue === '' || cellValue === null) {
+            cellValue = 0;
+          } else if (typeof cellValue === 'string') {
+            const num = parseFloat(cellValue);
+            cellValue = isNaN(num) ? 0 : num;
+          }
+          // cellValue is now a number
+          processedExpr = processedExpr.replace(match[0], cellValue.toString());
         } else {
           processedExpr = processedExpr.replace(match[0], '0');
         }
+      } else {
+        processedExpr = processedExpr.replace(match[0], '0');
       }
+    }
 
-      // Handle percentages
-      processedExpr = processedExpr.replace(/(\d+(\.\d+)?)%/g, (match, p1) => {
-        const percentageValue = parseFloat(p1);
-        return isNaN(percentageValue) ? match : (percentageValue / 100).toString();
-      });
+    // Handle percentages
+    processedExpr = processedExpr.replace(/(\d+(\.\d+)?)%/g, (match, p1) => {
+      const percentageValue = parseFloat(p1);
+      return isNaN(percentageValue) ? match : (percentageValue / 100).toString();
+    });
 
-      // If no cell references and it's just a number, return it
-      if (!hasCellReference) {
-        const num = parseFloat(processedExpr);
-        if (!isNaN(num)) {
-          return num;
-        }
-        return processedExpr;
+    // If no cell references and it's just a number, return it
+    if (!hasCellReference) {
+      const num = parseFloat(processedExpr);
+      if (!isNaN(num)) {
+        return num;
       }
+      return processedExpr;
+    }
 
-      // Try to evaluate the mathematical expression
-      try {
-        const safeExpr = processedExpr.replace(/[^0-9+\-*/().%\s]/g, '');
-        
-        if (safeExpr.trim() === '') {
-          return '#ERROR';
-        }
-
-        const result = Function(`'use strict'; try { return (${safeExpr}) } catch(e) { return '#ERROR' }`)();
-        
-        if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
-          return result;
-        }
-        return '#ERROR';
-      } catch (error) {
-        console.error('Formula evaluation error:', error);
+    // Try to evaluate the mathematical expression
+    try {
+      const safeExpr = processedExpr.replace(/[^0-9+\-*/().%\s]/g, '');
+      
+      if (safeExpr.trim() === '') {
         return '#ERROR';
       }
+
+      const result = Function(`'use strict'; try { return (${safeExpr}) } catch(e) { return '#ERROR' }`)();
+      
+      if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
+        return result;
+      }
+      return '#ERROR';
     } catch (error) {
       console.error('Formula evaluation error:', error);
       return '#ERROR';
     }
-  };
+  } catch (error) {
+    console.error('Formula evaluation error:', error);
+    return '#ERROR';
+  }
+};
+
 
   // Update dependent cells recursively with dynamic grid
   const updateDependentCells = (grid: ExcelCell[][]) => {
@@ -1006,42 +1020,74 @@ const fetchNextQuotationNumber = async () => {
   };
 
   // Prepare options
-  const productOptions = useMemo(() => 
-    products
-      .filter(product => product.name && product.name.trim()) // Filter out products without names
-      .map((product) => {
-        // Create a descriptive label with item code and name
-        const name = product.name || "Unnamed Product";
-        const itemCode = product.item_code || product.code || "";
-        const description = product.description || "";
-        const hsn = product.hsn || product.hsn_code || "";
+ // Update the productOptions useMemo section:
+const productOptions = useMemo(() => 
+  products
+    .filter(product => product.name && product.name.trim())
+    .map((product) => {
+      // Debug: Check what image data is available
+      console.log(`Processing product: ${product.name}`, {
+        image_url: product.image_url,
+        main_image_url: product.main_image_url,
+        additional_image_url: product.additional_image_url,
+        image: product.image,
+        main_image: product.main_image,
+        additional_image: product.additional_image
+      });
       
-        
-        // Format label to show both item code and name
-        const label = itemCode 
-          ? `${itemCode} - ${name}`
-          : name;
-        
-        // Add description as tooltip or secondary info
-        const subLabel = description ? `${description}` : '';
-        
-        return {
-          value: product.id,
-          label: label,
-          subLabel: subLabel, // For tooltip or secondary display
-          item_code: itemCode,
-hsn: hsn,
-          description: description || name,
-          unit_price: product.unit_price || product.sales_price || 0,
-          discount_percent: product.discount || 0,
-          gst_rate: product.tax_rate || product.gst_rate || 18,
-          unit: product.unit || "unit",
-          sku: product.sku || "",
-          stock_quantity: product.stock_quantity || 0,
-          // Store complete product data for reference
-          product
-        };
-      }), [products]);
+      const name = product.name || "Unnamed Product";
+      const itemCode = product.item_code || product.code || "";
+      const description = product.description || "";
+      const hsn = product.hsn_code || product.hsn || "";
+      
+      // IMPORTANT: Use the image_url that's already properly formatted by the backend
+      const mainImageUrl = product.image_url || product.main_image_url || null;
+      const additionalImageUrl = product.additional_image_url || null;
+      
+      // Check if image_url exists and log it
+      if (mainImageUrl) {
+        console.log(`Product ${name} has image URL: ${mainImageUrl}`);
+      }
+      
+      const label = itemCode 
+        ? `${itemCode} - ${name}`
+        : name;
+      
+      const subLabel = description ? `${description}` : '';
+      
+      return {
+        value: product.id,
+        label: label,
+        subLabel: subLabel,
+        item_code: itemCode,
+        hsn: hsn,
+        description: description || name,
+        unit_price: product.unit_price || product.sales_price || 0,
+        discount_percent: product.discount_percent || product.discount || 0,
+        gst_rate: product.tax_rate || product.gst_rate || 18,
+        unit: product.unit || "unit",
+        sku: product.sku || "",
+        stock_quantity: product.current_stock || product.opening_stock || 0,
+        // Use the normalized URLs from backend - they're already correct!
+        image_url: mainImageUrl,
+        additional_image_url: additionalImageUrl,
+        image_path: product.image || product.main_image,
+        additional_image_path: product.additional_image,
+        product
+      };
+    }), [products]);
+
+
+    useEffect(() => {
+  console.log("=== DEBUG: Products data received ===");
+  if (products.length > 0) {
+    console.log("First product data:", products[0]);
+    console.log("First product image_url:", products[0].image_url);
+    console.log("First product main_image_url:", products[0].main_image_url);
+    console.log("First product additional_image_url:", products[0].additional_image_url);
+  }
+}, [products]);
+
 
   const customerOptions = useMemo(() => {
     if (!customers || customers.length === 0) {
@@ -1791,6 +1837,8 @@ const itemsForBackend = items
         quotation_type: formData.quotation_type || "item", 
         payment_terms: formData.payment_terms || undefined,
         excel_notes: excelDataText || undefined,
+      show_images: formData.show_images, 
+       show_images_in_pdf: formData.show_images,
        
         items: itemsForBackend
       };
@@ -1927,6 +1975,40 @@ const itemsForBackend = items
             />
           ))}
         </div>
+
+        {imagePreview && (
+  <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[100] p-4">
+    <div className="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+          Image Preview
+        </h3>
+        <button
+          type="button"
+          onClick={() => setImagePreview(null)}
+          className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+        >
+          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div className="p-4 overflow-auto">
+        <div className="flex flex-col items-center">
+          <img
+            src={imagePreview.url}
+            alt={imagePreview.alt}
+            className="max-w-full max-h-[70vh] object-contain rounded-lg"
+          />
+          <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+            {imagePreview.alt}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
         {showCopyModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
@@ -2026,6 +2108,7 @@ const itemsForBackend = items
                 Create a detailed quotation for your customer
               </p>
             </div>
+            
             <div className="flex gap-2">
               <button
                 type="button"
@@ -2163,8 +2246,7 @@ const itemsForBackend = items
     formatOptionLabel={(option) => (
       <div className="flex flex-col">
         <div className="font-medium">{option.label}</div>
-        <div className="text-xs text-gray-500 mt-0.5">{option.description}</div>
-      </div>
+       </div>
     )}
     noOptionsMessage={() => "No quotation types found"}
     styles={{
@@ -2214,6 +2296,33 @@ const itemsForBackend = items
                       <option value="lost">Lost</option>
                     </select>
                   </div>
+
+                  {/* Add this in the Quotation Details section after Status field */}
+<div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+  <label className="flex items-center gap-3 cursor-pointer">
+    <div className="relative">
+      <input
+        type="checkbox"
+        checked={formData.show_images}
+        onChange={(e) => setFormData(prev => ({ 
+          ...prev, 
+          show_images: e.target.checked 
+        }))}
+        className="sr-only peer"
+      />
+      <div className="w-10 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+    </div>
+    <div>
+      <span className="text-sm font-medium text-gray-900 dark:text-white">
+        Show Product Images
+      </span>
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        {formData.show_images ? "Images will be displayed in quotation" : "Images will be hidden"}
+      </p>
+    </div>
+  </label>
+</div>
+
                 </div>
               </div>
 
@@ -2505,6 +2614,11 @@ const itemsForBackend = items
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
                         Qty *
                       </th>
+                        {formData.show_images && (
+      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+        Image
+      </th>
+    )}
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
                         Unit Price *
                       </th>
@@ -2526,71 +2640,94 @@ const itemsForBackend = items
                     {items.map((item, index) => (
                       <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                         {/* Item Selection */}
-                        <td className="px-4 py-3">
-                          <Select
-                            options={productOptions}
-                            value={productOptions.find(opt => opt.value === item.product_id)}
-                            onChange={(option) => {
-                              if (option) {
-                                const selectedProduct = option.product || products.find(p => p.id === option.value);
-                                if (selectedProduct) {
-                                  const updatedItem = {
-                                    product_id: selectedProduct.id,
-                                    hsn: selectedProduct.hsn ||"",
-                                    description: selectedProduct.description || selectedProduct.name || "Product",
-                                    unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
-                                    discount_percent: selectedProduct.discount || selectedProduct.discount_percent || 0,
-                                    gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
-                                    quantity: item.quantity,
-                                    unit: item.unit || "unit"
-                                  };
-                                  setItems(prev => prev.map((it, idx) => 
-                                    idx === index ? { ...it, ...updatedItem } : it
-                                  ));
-                                  const stockInfo = selectedProduct.stock_quantity > 0 
-                                    ? ` (Stock: ${selectedProduct.stock_quantity})`
-                                    : " (Out of stock)";
-                                  showToast(`Selected: ${selectedProduct.name || selectedProduct.item_code}${stockInfo}`, "info");
-                                }
-                              } else {
-                                setItems(prev => prev.map((it, idx) => 
-                                  idx === index ? { 
-                                    ...it,
-                                    product_id: "",
-                                    hsn: "",
-                                    description: "",
-                                    unit_price: 0,
-                                    discount_percent: 0,
-                                    gst_rate: 18
-                                  } : it
-                                ));
-                              }
-                            }}
-                            placeholder="Search by item code or name..."
-                            className="react-select-container"
-                            classNamePrefix="react-select"
-                            isClearable
-                            isSearchable
-                            formatOptionLabel={(option, { context }) => (
-                              <div className="flex flex-col">
-                                <div className="font-medium">{option.label}</div>
-                                {option.subLabel && (
-                                  <div className="text-xs text-gray-500 truncate">{option.subLabel}</div>
-                                )}
-                                <div className="flex gap-2 text-xs text-gray-600 mt-1">
-                                  <span>Price: ₹{option.unit_price?.toFixed(2) || '0.00'}</span>
-                                  <span>•</span>
-                                  <span>Stock: {option.stock_quantity || 0}</span>
-                                  <span>•</span>
-                                  <span>HSN: {option.hsn || 'N/A'}</span>
-                                  <span>•</span>
-                                  <span>GST: {option.gst_rate || 18}%</span>
-                                </div>
-                              </div>
-                            )}
-                            noOptionsMessage={() => "No products found. Add products first."}
-                          />
-                        </td>
+                     {/* Item Selection */}
+<td className="px-4 py-3">
+  <div className="flex items-center gap-3">
+    {/* Product Image Thumbnail */}
+    {productOptions.find(opt => opt.value === item.product_id)?.image_url && (
+      <div className="relative flex-shrink-0">
+      
+      </div>
+    )}
+    <Select
+      options={productOptions}
+      value={productOptions.find(opt => opt.value === item.product_id)}
+      onChange={(option) => {
+        if (option) {
+          const selectedProduct = option.product || products.find(p => p.id === option.value);
+          if (selectedProduct) {
+            const updatedItem = {
+              product_id: selectedProduct.id,
+              hsn: selectedProduct.hsn || "",
+              description: selectedProduct.description || selectedProduct.name || "Product",
+              unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
+              discount_percent: selectedProduct.discount || selectedProduct.discount_percent || 0,
+              gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
+              quantity: item.quantity,
+              unit: item.unit || "unit"
+            };
+            setItems(prev => prev.map((it, idx) => 
+              idx === index ? { ...it, ...updatedItem } : it
+            ));
+            
+            // Show image preview
+            if (option.image_url) {
+              showToast(`Selected: ${selectedProduct.name || selectedProduct.item_code}`, "info");
+            }
+          }
+        } else {
+          setItems(prev => prev.map((it, idx) => 
+            idx === index ? { 
+              ...it,
+              product_id: "",
+              hsn: "",
+              description: "",
+              unit_price: 0,
+              discount_percent: 0,
+              gst_rate: 18
+            } : it
+          ));
+        }
+      }}
+      placeholder="Search by item code or name..."
+      className="react-select-container flex-1"
+      classNamePrefix="react-select"
+      isClearable
+      isSearchable
+      formatOptionLabel={(option, { context }) => (
+        <div className="flex items-center gap-3">
+          {/* Image in dropdown option */}
+          {option.image_url && (
+            <div className="flex-shrink-0">
+              <img
+                src={option.image_url}
+                alt={option.label}
+                className="h-8 w-8 object-cover rounded border border-gray-200"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            </div>
+          )}
+          <div className="flex-1">
+            <div className="font-medium">{option.label}</div>
+            {option.subLabel && (
+              <div className="text-xs text-gray-500 truncate">{option.subLabel}</div>
+            )}
+            <div className="flex gap-2 text-xs text-gray-600 mt-1">
+              <span>Price: ₹{option.unit_price?.toFixed(2) || '0.00'}</span>
+              <span>•</span>
+              <span>Stock: {option.stock_quantity || 0}</span>
+              <span>•</span>
+              <span>HSN: {option.hsn || 'N/A'}</span>
+            </div>
+          </div>
+        </div>
+      )}
+      noOptionsMessage={() => "No products found. Add products first."}
+    />
+  </div>
+</td>
                         
 
                          <td className="px-4 py-3">
@@ -2669,7 +2806,71 @@ const itemsForBackend = items
                             required
                           />
                         </td>
-                        
+
+
+
+<td className="px-4 py-3 w-16">
+  {formData.show_images ? (
+    <>
+      {item.product_id && productOptions.find(opt => opt.value === item.product_id)?.image_url ? (
+        <div className="relative group">
+          <img
+            src={productOptions.find(opt => opt.value === item.product_id)?.image_url || ''}
+            alt="Product"
+            className="h-12 w-12 object-cover rounded-lg border border-gray-300 dark:border-gray-600 cursor-pointer"
+            onClick={() => {
+              const imgUrl = productOptions.find(opt => opt.value === item.product_id)?.image_url;
+              if (imgUrl) {
+                setImagePreview({
+                  url: imgUrl,
+                  alt: productOptions.find(opt => opt.value === item.product_id)?.label || 'Product Image'
+                });
+              }
+            }}
+            onError={(e) => {
+              console.error(`Failed to load image for product ${item.product_id}:`, e);
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+              
+              // Show placeholder icon
+              const parent = target.parentElement;
+              if (parent) {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'h-12 w-12 flex items-center justify-center border border-dashed border-gray-300 dark:border-gray-600 rounded-lg';
+                placeholder.innerHTML = `
+                  <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                `;
+                parent.appendChild(placeholder);
+              }
+            }}
+            onLoad={() => {
+              console.log(`Successfully loaded image for product ${item.product_id}`);
+            }}
+          />
+          {/* Tooltip on hover */}
+          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
+            Click to view larger
+          </div>
+        </div>
+      ) : (
+        <div className="h-12 w-12 flex items-center justify-center border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+          <svg className="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        </div>
+      )}
+    </>
+  ) : (
+    <div className="h-12 w-12 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800">
+      <span className="text-xs text-gray-500 dark:text-gray-400">OFF</span>
+    </div>
+  )}
+</td>                        
+
+
+
                         {/* Unit Price */}
                         <td className="px-4 py-3">
                           <input
@@ -2682,7 +2883,6 @@ const itemsForBackend = items
                             required
                           />
                         </td>
-                        
                         {/* Discount */}
                         <td className="px-4 py-3">
                           <input
@@ -2792,6 +2992,11 @@ const itemsForBackend = items
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
                                 Unit Price *
                               </th>
+                             {formData.show_images && (
+      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-32">
+        Image
+      </th>
+    )}
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
                                 Discount %
                               </th>
@@ -2806,70 +3011,104 @@ const itemsForBackend = items
                           <tbody>
                             <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                               {/* Item Selection */}
-                              <td className="px-4 py-3">
-                                <Select
-                                  options={productOptions}
-                                  value={productOptions.find(opt => opt.value === item.product_id)}
-                                  onChange={(option) => {
-                                    if (option) {
-                                      const selectedProduct = option.product || products.find(p => p.id === option.value);
-                                      if (selectedProduct) {
-                                        const updatedItem = {
-                                          product_id: selectedProduct.id,
-                                          hsn: selectedProduct.hsn || "",
-                                          description: item.description || selectedProduct.description || selectedProduct.name || "Project Item",
-                                          unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
-                                          discount_percent: selectedProduct.discount || selectedProduct.discount_percent || 0,
-                                          gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
-                                          quantity: item.quantity,
-                                          unit: item.unit || "unit"
-                                        };
-                                        setItems(prev => prev.map((it, idx) => 
-                                          idx === itemIndex ? { ...it, ...updatedItem } : it
-                                        ));
-                                        const stockInfo = selectedProduct.stock_quantity > 0 
-                                          ? ` (Stock: ${selectedProduct.stock_quantity})`
-                                          : " (Out of stock)";
-                                        showToast(`Selected: ${selectedProduct.name || selectedProduct.item_code}${stockInfo}`, "info");
-                                      }
-                                    } else {
-                                      setItems(prev => prev.map((it, idx) => 
-                                        idx === itemIndex ? { 
-                                          ...it,
-                                          product_id: "",
-                                          hsn: "",
-                                          unit_price: 0,
-                                          discount_percent: 0,
-                                          gst_rate: 18
-                                        } : it
-                                      ));
-                                    }
-                                  }}
-                                  placeholder="Select project item or product..."
-                                  className="react-select-container"
-                                  classNamePrefix="react-select"
-                                  isClearable
-                                  isSearchable
-                                  formatOptionLabel={(option, { context }) => (
-                                    <div className="flex flex-col">
-                                      <div className="font-medium">{option.label}</div>
-                                      {option.subLabel && (
-                                        <div className="text-xs text-gray-500 truncate">{option.subLabel}</div>
-                                      )}
-                                      <div className="flex gap-2 text-xs text-gray-600 mt-1">
-                                        <span>Price: ₹{option.unit_price?.toFixed(2) || '0.00'}</span>
-                                        <span>•</span>
-                                        <span>Stock: {option.stock_quantity || 0}</span>
-                                        <span>•</span>
-                                        <span>HSN: {option.hsn || 'N/A'}</span>
-                                        <span>•</span>
-                                        <span>GST: {option.gst_rate || 18}%</span>
-                                      </div>
-                                    </div>
-                                  )}
-                                  noOptionsMessage={() => "No products found. Add products first."}
-                                />
-                              </td>
+   {/* Find the Image cell in project items table and replace with this: */}
+
+                        {/* Item Selection */}
+{/* In project items table, fix the item selection cell */}
+<td className="px-4 py-3">
+  <div className="flex items-center gap-3">
+    {/* Product Image Thumbnail in selection */}
+    {item.product_id && productOptions.find(opt => opt.value === item.product_id)?.image_url && (
+      <div className="relative flex-shrink-0">
+        <img
+          src={productOptions.find(opt => opt.value === item.product_id)?.image_url || ''}
+          alt="Product"
+          className="h-10 w-10 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = 'none';
+          }}
+        />
+      </div>
+    )}
+    <Select
+      options={productOptions}
+      value={productOptions.find(opt => opt.value === item.product_id)}
+      onChange={(option) => {
+        if (option) {
+          const selectedProduct = option.product || products.find(p => p.id === option.value);
+          if (selectedProduct) {
+            const updatedItem = {
+              product_id: selectedProduct.id,
+              hsn: selectedProduct.hsn || "",
+              description: selectedProduct.description || selectedProduct.name || "Product",
+              unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
+              discount_percent: selectedProduct.discount || selectedProduct.discount_percent || 0,
+              gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
+              quantity: item.quantity,
+              unit: item.unit || "unit"
+            };
+            setItems(prev => prev.map((it, idx) => 
+              idx === itemIndex ? { ...it, ...updatedItem } : it
+            ));
+            
+            // Show image preview
+            if (option.image_url) {
+              showToast(`Selected: ${selectedProduct.name || selectedProduct.item_code}`, "info");
+            }
+          }
+        } else {
+          setItems(prev => prev.map((it, idx) => 
+            idx === itemIndex ? { 
+              ...it,
+              product_id: "",
+              hsn: "",
+              description: "",
+              unit_price: 0,
+              discount_percent: 0,
+              gst_rate: 18
+            } : it
+          ));
+        }
+      }}
+      placeholder="Search by item code or name..."
+      className="react-select-container flex-1"
+      classNamePrefix="react-select"
+      isClearable
+      isSearchable
+      formatOptionLabel={(option, { context }) => (
+        <div className="flex items-center gap-3">
+          {/* Image in dropdown option */}
+          {option.image_url && (
+            <div className="flex-shrink-0">
+              <img
+                src={option.image_url}
+                alt={option.label}
+                className="h-8 w-8 object-cover rounded border border-gray-200"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            </div>
+          )}
+          <div className="flex-1">
+            <div className="font-medium">{option.label}</div>
+            {option.subLabel && (
+              <div className="text-xs text-gray-500 truncate">{option.subLabel}</div>
+            )}
+            <div className="flex gap-2 text-xs text-gray-600 mt-1">
+              <span>Price: ₹{option.unit_price?.toFixed(2) || '0.00'}</span>
+              <span>•</span>
+              <span>Stock: {option.stock_quantity || 0}</span>
+              <span>•</span>
+              <span>HSN: {option.hsn || 'N/A'}</span>
+            </div>
+          </div>
+        </div>
+      )}
+      noOptionsMessage={() => "No products found. Add products first."}
+    />
+  </div>
+</td>
                                <td className="px-4 py-3">
   <input
     type="text"
@@ -2959,6 +3198,69 @@ const itemsForBackend = items
                                   required
                                 />
                               </td>
+
+                              
+{/* Replace the Image column cell in project items table */}
+<td className="px-4 py-3 w-16">
+  {formData.show_images ? (
+    <>
+      {item.product_id && productOptions.find(opt => opt.value === item.product_id)?.image_url ? (
+        <div className="relative group">
+          <img
+            src={productOptions.find(opt => opt.value === item.product_id)?.image_url || ''}
+            alt="Product"
+            className="h-12 w-12 object-cover rounded-lg border border-gray-300 dark:border-gray-600 cursor-pointer"
+            onClick={() => {
+              const imgUrl = productOptions.find(opt => opt.value === item.product_id)?.image_url;
+              if (imgUrl) {
+                setImagePreview({
+                  url: imgUrl,
+                  alt: productOptions.find(opt => opt.value === item.product_id)?.label || 'Product Image'
+                });
+              }
+            }}
+            onError={(e) => {
+              console.error(`Failed to load image for product ${item.product_id}:`, e);
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+              
+              // Show placeholder icon
+              const parent = target.parentElement;
+              if (parent) {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'h-12 w-12 flex items-center justify-center border border-dashed border-gray-300 dark:border-gray-600 rounded-lg';
+                placeholder.innerHTML = `
+                  <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                `;
+                parent.appendChild(placeholder);
+              }
+            }}
+            onLoad={() => {
+              console.log(`Successfully loaded image for product ${item.product_id}`);
+            }}
+          />
+          {/* Tooltip on hover */}
+          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
+            Click to view larger
+          </div>
+        </div>
+      ) : (
+        <div className="h-12 w-12 flex items-center justify-center border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+          <svg className="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        </div>
+      )}
+    </>
+  ) : (
+    <div className="h-12 w-12 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800">
+      <span className="text-xs text-gray-500 dark:text-gray-400">OFF</span>
+    </div>
+  )}
+</td>
+
                               
                               {/* Discount */}
                               <td className="px-4 py-3">
@@ -3041,21 +3343,23 @@ const itemsForBackend = items
             <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-24">
               Qty *
             </th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-32">
-              Image
-            </th>
+           {formData.show_images && (
+      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+        Image
+      </th>
+    )}
             <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-20">
               Action
             </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-          {item.subItems.map((subItem, subIndex) => (
+        {item.subItems.map((subItem, idx) => (
             <tr key={subItem.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
               {/* Serial Number */}
               <td className="px-3 py-3 whitespace-nowrap w-12">
                 <span className="text-sm font-medium text-gray-900 dark:text-white">
-                  {subIndex + 1}
+                  {idx + 1}
                 </span>
               </td>
               

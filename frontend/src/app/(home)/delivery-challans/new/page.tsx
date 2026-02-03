@@ -23,6 +23,24 @@ interface DCItem {
   taxable_amount: number;
   total_amount: number;
   godown_id?: string;
+   
+}
+
+interface ContactPerson {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  designation?: string;
+}
+
+interface Salesman {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  designation?: string;
+  employee_code?: string;
 }
 
 export default function NewDeliveryChallanPage() {
@@ -37,6 +55,10 @@ export default function NewDeliveryChallanPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [godowns, setGodowns] = useState<Godown[]>([]);
+  const [contactPersons, setContactPersons] = useState<ContactPerson[]>([]);
+  const [selectedContactPerson, setSelectedContactPerson] = useState<ContactPerson | null>(null);
+  const [salesmen, setSalesmen] = useState<Salesman[]>([]);
+  const [nextDcNumber, setNextDcNumber] = useState<string>("");
 
   const [formData, setFormData] = useState({
     customer_id: "",
@@ -45,6 +67,7 @@ export default function NewDeliveryChallanPage() {
     to_godown_id: "",
     transporter_name: "",
     vehicle_number: "",
+    reference_no: "", 
     eway_bill_number: "",
     return_reason: "",
     notes: "",
@@ -57,6 +80,14 @@ export default function NewDeliveryChallanPage() {
     discountOnAll: 0,
     discountType: "percentage",
     roundOff: 0,
+    // New fields
+    dc_number: "",
+    status: "Open",
+    bill_title: "",
+    bill_description: "",
+    contact_person: "",
+    expiry_date: "",
+    salesman_id: "",
   });
 
   const [items, setItems] = useState<DCItem[]>([
@@ -82,6 +113,15 @@ export default function NewDeliveryChallanPage() {
   const [productSearch, setProductSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Product[]>([]);
 
+  // Status options from image
+  const statusOptions = [
+    { value: "Open", label: "Open" },
+    { value: "Closed", label: "Closed" },
+    { value: "DC Returned", label: "DC Returned" },
+    { value: "Follow Up", label: "Follow Up" },
+    { value: "Converted", label: "Converted" },
+  ];
+
   useEffect(() => {
     const fetchData = async () => {
       if (!company?.id) return;
@@ -94,6 +134,12 @@ export default function NewDeliveryChallanPage() {
         setCustomers(customersData.customers);
         setProducts(productsData.products);
         setGodowns(godownsData);
+        
+        // Fetch sales engineers
+        await fetchSalesEngineers();
+        
+        // Fetch next DC number
+        await fetchNextDcNumber();
       } catch (error) {
         console.error("Failed to fetch data:", error);
       }
@@ -101,7 +147,149 @@ export default function NewDeliveryChallanPage() {
     fetchData();
   }, [company?.id]);
 
-  // Calculate totals
+
+ // Fetch next DC number
+const fetchNextDcNumber = async () => {
+  if (!company?.id) return;
+  
+  try {
+    const token = getToken();
+    if (!token) return;
+
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/delivery-challans/next-number?dc_type=${dcType}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.next_number) {
+        setNextDcNumber(data.next_number);
+        setFormData(prev => ({
+          ...prev,
+          dc_number: data.next_number
+        }));
+      }
+    }
+  } catch (error) {
+    console.error("Failed to fetch next DC number:", error);
+  }
+};
+
+  // Fetch contact persons when customer changes
+  useEffect(() => {
+    if (formData.customer_id) {
+      fetchContactPersons(formData.customer_id);
+    } else {
+      setContactPersons([]);
+      setSelectedContactPerson(null);
+      setFormData(prev => ({
+        ...prev,
+        contact_person: ""
+      }));
+    }
+  }, [formData.customer_id]);
+
+  // Fetch contact persons
+  const fetchContactPersons = async (customerId: string) => {
+    if (!company?.id) return;
+    try {
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/contact-persons?customer_id=${customerId}`;
+      
+      const response = await fetch(
+        apiUrl,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+          },
+        }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        let persons: any[] = [];
+        
+        if (Array.isArray(data)) {
+          persons = data;
+        } else if (data && typeof data === 'object') {
+          persons = data.contact_persons || data.contacts || data.data || data.items || [];
+        }
+        
+        setContactPersons(persons);
+        
+        if (persons.length > 0) {
+          const firstPerson = persons[0];
+          setSelectedContactPerson(firstPerson);
+          setFormData(prev => ({
+            ...prev,
+            contact_person: firstPerson.name || ""
+          }));
+        } else {
+          setSelectedContactPerson(null);
+          setFormData(prev => ({
+            ...prev,
+            contact_person: ""
+          }));
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch contact persons:", error);
+      setContactPersons([]);
+      setSelectedContactPerson(null);
+    }
+  };
+
+  const fetchSalesEngineers = async () => {
+    if (!company?.id) return;
+    
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        return;
+      }
+
+      const salesEngineersUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/sales-engineers`;
+      
+      const response = await fetch(salesEngineersUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Process the data correctly
+      if (data && Array.isArray(data) && data.length > 0) {
+        // Format the data to match your frontend structure
+        const formattedSalesmen = data.map(engineer => ({
+          id: engineer.id,
+          name: engineer.full_name || 'Unnamed Engineer',
+          email: engineer.email || '',
+          phone: engineer.phone || '',
+          designation: engineer.designation_name || 'Sales Engineer',
+          employee_code: engineer.employee_code || ''
+        }));
+
+        setSalesmen(formattedSalesmen);
+      } else {
+        setSalesmen([]);
+      }
+    } catch (error: any) {
+      console.error("Failed to fetch sales engineers:", error);
+      setSalesmen([]);
+    }
+  };
+
+  // Calculate totals (unchanged)
   const calculateTotals = () => {
     let subtotal = 0;
     let totalTax = 0;
@@ -249,63 +437,74 @@ export default function NewDeliveryChallanPage() {
     setSearchResults([]);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const token = getToken();
-    if (!company?.id || !token) return;
+ const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  const token = getToken();
+  if (!company?.id || !token) return;
 
-    const validItems = items.filter((item) => item.description && item.quantity > 0);
-    if (validItems.length === 0) {
-      setError("Please add at least one item with description and quantity");
-      return;
+  const validItems = items.filter((item) => item.description && item.quantity > 0);
+  if (validItems.length === 0) {
+    setError("Please add at least one item with description and quantity");
+    return;
+  }
+
+  setLoading(true);
+  setError(null);
+
+  try {
+    const endpoint = dcType === "dc_out" ? "dc-out" : "dc-in";
+    const body: any = {
+      ...formData,
+      items: validItems.map(item => ({
+        product_id: item.product_id,
+        description: item.description,
+        hsn_code: item.hsn_code,
+        quantity: item.quantity,
+        unit: item.unit,
+        unit_price: item.unit_price,
+        discount_percent: item.discount_percent,
+        discount_amount: item.discount_amount,
+        gst_rate: item.gst_rate,
+        taxable_amount: item.taxable_amount,
+        total_amount: item.total_amount,
+        godown_id: dcType === "dc_out" ? formData.from_godown_id : formData.to_godown_id,
+      })),
+      // FIX: Include all the new fields
+      dc_number: formData.dc_number,
+       reference_no: formData.reference_no,
+      status: formData.status,
+      bill_title: formData.bill_title,
+      bill_description: formData.bill_description,
+      contact_person: formData.contact_person, // This should map to contact_id
+      expiry_date: formData.expiry_date,
+      salesman_id: formData.salesman_id,
+      // Include totals for reference
+      subtotal: totals.subtotal,
+      freight_charges: formData.freightCharges,
+      packing_forwarding_charges: formData.pfCharges,
+      discount_on_all: totals.discountAll,
+      discount_type: formData.discountType,
+      round_off: formData.roundOff,
+      grand_total: totals.grandTotal,
+    };
+
+    if (invoiceId) {
+      body.invoice_id = invoiceId;
     }
 
-    setLoading(true);
-    setError(null);
+    console.log("Sending data to API:", body); // Debug log
 
-    try {
-      const endpoint = dcType === "dc_out" ? "dc-out" : "dc-in";
-      const body: any = {
-        ...formData,
-        items: validItems.map(item => ({
-          product_id: item.product_id,
-          description: item.description,
-          hsn_code: item.hsn_code,
-          quantity: item.quantity,
-          unit: item.unit,
-          unit_price: item.unit_price,
-          discount_percent: item.discount_percent,
-          discount_amount: item.discount_amount,
-          gst_rate: item.gst_rate,
-          taxable_amount: item.taxable_amount,
-          total_amount: item.total_amount,
-          godown_id: dcType === "dc_out" ? formData.from_godown_id : formData.to_godown_id,
-        })),
-        // Include totals for reference
-        subtotal: totals.subtotal,
-        freight_charges: formData.freightCharges,
-        packing_forwarding_charges: formData.pfCharges,
-        discount_on_all: totals.discountAll,
-        discount_type: formData.discountType,
-        round_off: formData.roundOff,
-        grand_total: totals.grandTotal,
-      };
-
-      if (invoiceId) {
-        body.invoice_id = invoiceId;
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/delivery-challans/${endpoint}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
       }
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/companies/${company.id}/delivery-challans/${endpoint}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(body),
-        }
-      );
+    );
 
       if (response.ok) {
         const data = await response.json();
@@ -327,6 +526,14 @@ export default function NewDeliveryChallanPage() {
       ...prev,
       [field]: value,
     }));
+
+    // If contact person dropdown changes
+    if (field === 'contact_person') {
+      const selectedPerson = contactPersons.find(p => p.name === value);
+      if (selectedPerson) {
+        setSelectedContactPerson(selectedPerson);
+      }
+    }
   };
 
   return (
@@ -387,6 +594,59 @@ export default function NewDeliveryChallanPage() {
             <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
               <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Basic Information</h2>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {/* DC Number */}
+              
+<div>
+  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+    {dcType === "dc_out" ? "Delivery Challan Out Code" : "Delivery Challan In Code"}
+  </label>
+  <input
+    type="text"
+    value={formData.dc_number}
+    onChange={(e) => handleFormChange('dc_number', e.target.value)}
+    placeholder={dcType === "dc_out" ? "DCO-XXXX-XXXX" : "DCI-XXXX-XXXX"}
+    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+    required
+  />
+  {nextDcNumber && (
+    <p className="mt-1 text-xs text-dark-6">
+      Next available: {nextDcNumber}
+    </p>
+  )}
+</div>
+
+                {/* Status */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Status
+                  </label>
+                  <select
+                    value={formData.status}
+                    onChange={(e) => handleFormChange('status', e.target.value)}
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    required
+                  >
+                    {statusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* DC Date */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">DC Date</label>
+                  <input
+                    type="date"
+                    value={formData.dc_date}
+                    onChange={(e) => handleFormChange('dc_date', e.target.value)}
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    required
+                  />
+                </div>
+
+                {/* Customer */}
                 <div>
                   <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Customer</label>
                   <select
@@ -404,18 +664,109 @@ export default function NewDeliveryChallanPage() {
                   </select>
                 </div>
 
+                {/* Contact Person */}
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">DC Date</label>
-                  <input
-                    type="date"
-                    value={formData.dc_date}
-                    onChange={(e) => handleFormChange('dc_date', e.target.value)}
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Contact Person</label>
+                  <select
+                    value={formData.contact_person}
+                    onChange={(e) => handleFormChange('contact_person', e.target.value)}
                     className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                    required
+                    disabled={!formData.customer_id || contactPersons.length === 0}
+                  >
+                    <option value="">Select Contact Person</option>
+                    {contactPersons.map((person) => (
+                      <option key={person.id} value={person.name}>
+                        {person.name} {person.designation ? `(${person.designation})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {formData.customer_id && contactPersons.length === 0 && (
+                    <p className="mt-1 text-xs text-dark-6">
+                      No contact persons found for this customer
+                    </p>
+                  )}
+                  {selectedContactPerson && (
+                    <div className="mt-1 text-xs text-dark-6">
+                      {selectedContactPerson.email && <div>Email: {selectedContactPerson.email}</div>}
+                      {selectedContactPerson.phone && <div>Phone: {selectedContactPerson.phone}</div>}
+                    </div>
+                  )}
+                </div>
+
+
+{/* Add this field in the Basic Information grid */}
+<div>
+  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+    Reference Number
+  </label>
+  <input
+    type="text"
+    value={formData.reference_no || ""} // You'll need to add this to formData state
+    onChange={(e) => handleFormChange('reference_no', e.target.value)}
+    placeholder="PO/Order/Reference No"
+    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+  />
+</div>
+
+                {/* Salesman */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Salesman</label>
+                  <select
+                    value={formData.salesman_id}
+                    onChange={(e) => handleFormChange('salesman_id', e.target.value)}
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                  >
+                    <option value="">Select Salesman</option>
+                    {salesmen.map((salesman) => (
+                      <option key={salesman.id} value={salesman.id}>
+                        {salesman.name} {salesman.employee_code ? `(${salesman.employee_code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Bill Title */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Bill Title</label>
+                  <input
+                    type="text"
+                    value={formData.bill_title}
+                    onChange={(e) => handleFormChange('bill_title', e.target.value)}
+                    placeholder="Bill title or reference"
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                   />
                 </div>
 
-                {dcType === "dc_out" ? (
+                {/* Expiry Date */}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Expiry Date</label>
+                  <input
+                    type="date"
+                    value={formData.expiry_date}
+                    onChange={(e) => handleFormChange('expiry_date', e.target.value)}
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                  />
+                </div>
+              </div>
+
+              {/* Bill Description */}
+              <div className="mt-4">
+                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Bill Description</label>
+                <textarea
+                  value={formData.bill_description}
+                  onChange={(e) => handleFormChange('bill_description', e.target.value)}
+                  rows={2}
+                  placeholder="Description of the bill or additional notes..."
+                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                />
+              </div>
+            </div>
+
+            {/* Godown Selection */}
+            {dcType === "dc_out" ? (
+              <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+                <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Godown Details</h2>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">From Godown</label>
                     <select
@@ -432,7 +783,12 @@ export default function NewDeliveryChallanPage() {
                       ))}
                     </select>
                   </div>
-                ) : (
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+                <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Godown Details</h2>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">To Godown</label>
                     <select
@@ -448,45 +804,6 @@ export default function NewDeliveryChallanPage() {
                         </option>
                       ))}
                     </select>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Transport Details (for DC Out) */}
-            {dcType === "dc_out" && (
-              <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Transport Details</h2>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Transporter Name</label>
-                    <input
-                      type="text"
-                      value={formData.transporter_name}
-                      onChange={(e) => handleFormChange('transporter_name', e.target.value)}
-                      placeholder="Transport company name"
-                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Vehicle Number</label>
-                    <input
-                      type="text"
-                      value={formData.vehicle_number}
-                      onChange={(e) => handleFormChange('vehicle_number', e.target.value)}
-                      placeholder="e.g., MH12AB1234"
-                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">E-Way Bill Number</label>
-                    <input
-                      type="text"
-                      value={formData.eway_bill_number}
-                      onChange={(e) => handleFormChange('eway_bill_number', e.target.value)}
-                      placeholder="For goods > ₹50,000"
-                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                    />
                   </div>
                 </div>
               </div>
@@ -509,7 +826,7 @@ export default function NewDeliveryChallanPage() {
               </div>
             )}
 
-            {/* SECTION 2: Delivery Challan Items */}
+            {/* SECTION 2: Delivery Challan Items (unchanged) */}
             <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-dark dark:text-white">Delivery Challan Items</h2>
@@ -827,6 +1144,45 @@ export default function NewDeliveryChallanPage() {
                 </div>
               </div>
             </div>
+
+            {/* Transport Details (for DC Out) */}
+            {dcType === "dc_out" && (
+              <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+                <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Transport Details</h2>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Transporter Name</label>
+                    <input
+                      type="text"
+                      value={formData.transporter_name}
+                      onChange={(e) => handleFormChange('transporter_name', e.target.value)}
+                      placeholder="Transport company name"
+                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Vehicle Number</label>
+                    <input
+                      type="text"
+                      value={formData.vehicle_number}
+                      onChange={(e) => handleFormChange('vehicle_number', e.target.value)}
+                      placeholder="e.g., MH12AB1234"
+                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">E-Way Bill Number</label>
+                    <input
+                      type="text"
+                      value={formData.eway_bill_number}
+                      onChange={(e) => handleFormChange('eway_bill_number', e.target.value)}
+                      placeholder="For goods > ₹50,000"
+                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* SECTION 4: Stock Update Option */}
             <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">

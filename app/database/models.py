@@ -667,7 +667,7 @@ class Company(Base):
 
 
 class PurchaseRequest(Base):
-    """Simplified Purchase Request model - Only essential columns."""
+    """Purchase Request model with both employee and user references."""
     __tablename__ = "purchase_requests"
     
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -689,13 +689,31 @@ class PurchaseRequest(Base):
         nullable=False
     )
     
-    # Approval details
-    approved_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Approval details (dual reference)
+    approved_by_employee = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    approved_by_user = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_at = Column(DateTime, nullable=True)
     approval_notes = Column(Text, nullable=True)
+    approved_by_name = Column(String(255), nullable=True)
+    approved_by_email = Column(String(255), nullable=True)
     
     # Request notes
     notes = Column(Text, nullable=True)
+    
+    # Creator details (dual reference)
+    created_by_employee = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    created_by_user = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_by_name = Column(String(255), nullable=True)
+    created_by_email = Column(String(255), nullable=True)
+    
+    # Updater details (dual reference)
+    updated_by_employee = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    
+    # Deletion details (dual reference)
+    deleted_by_employee = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    deleted_by_user = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    deleted_at = Column(DateTime, nullable=True)
     
     # Basic timestamps
     created_at = Column(DateTime, default=func.now(), nullable=False)
@@ -705,12 +723,25 @@ class PurchaseRequest(Base):
     # Relationships
     company = relationship("Company")
     customer = relationship("Customer")
+    
+    # Employee relationships
+    approver_employee = relationship("Employee", foreign_keys=[approved_by_employee])
+    creator_employee = relationship("Employee", foreign_keys=[created_by_employee])
+    updater_employee = relationship("Employee", foreign_keys=[updated_by_employee])
+    deleter_employee = relationship("Employee", foreign_keys=[deleted_by_employee])
+    
+    # User relationships
+    approver_user = relationship("User", foreign_keys=[approved_by_user])
+    creator_user = relationship("User", foreign_keys=[created_by_user])
+    updater_user = relationship("User", foreign_keys=[updated_by_user])
+    deleter_user = relationship("User", foreign_keys=[deleted_by_user])
+    
+    # Keep the old approved_by for backward compatibility if it exists
+    approved_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approver = relationship("User", foreign_keys=[approved_by])
     
     def __repr__(self):
         return f"<PurchaseRequest {self.request_number} - {self.customer_name}>"
-
-
 class OpeningBalanceTypeEnum(str, enum.Enum):
     OUTSTANDING = "outstanding"
     ADVANCE = "advance"
@@ -4399,7 +4430,7 @@ class Quotation(Base):
     quotation_date = Column(DateTime, nullable=False, default=datetime.utcnow)
     validity_date = Column(DateTime)  # Quote expires after this date
     quotation_type = Column(String(20), default="item") 
-
+    show_images = Column(Boolean, default=True, nullable=False)
     is_project = Column(Boolean, default=False)
     
     # Reference to original document if revised
@@ -4521,9 +4552,16 @@ class DeliveryChallan(Base):
     dc_number = Column(String(50), nullable=False, index=True)
     dc_date = Column(DateTime, nullable=False, default=datetime.utcnow)
     dc_type = Column(Enum(DeliveryChallanType), nullable=False, default=DeliveryChallanType.DC_OUT)
+    reference_no = Column(String(100), index=True) 
+    # Status fields - FIX: Add these columns
+    status = Column(Enum(DeliveryChallanStatus), default=DeliveryChallanStatus.DRAFT)  # This is missing
+    custom_status = Column(String(50), default="Open")  # Your frontend status
     
-    # Status
-    status = Column(Enum(DeliveryChallanStatus), default=DeliveryChallanStatus.DRAFT)
+    # New fields from frontend
+    bill_title = Column(String(255))
+    bill_description = Column(Text)
+    expiry_date = Column(DateTime)
+    salesman_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"))
     
     # Linked documents
     invoice_id = Column(String(36), ForeignKey("invoices.id", ondelete="SET NULL"))
@@ -4598,6 +4636,7 @@ class DeliveryChallan(Base):
     customer = relationship("Customer")
     sales_ticket = relationship("SalesTicket")
     contact = relationship("Contact")
+    salesman = relationship("User", foreign_keys=[salesman_id])
     invoice = relationship("Invoice")
     quotation = relationship("Quotation")
     sales_order = relationship("SalesOrder")
@@ -4612,14 +4651,13 @@ class DeliveryChallan(Base):
         Index("idx_dc_type", "dc_type"),
         Index("idx_dc_date", "dc_date"),
         Index("idx_dc_invoice", "invoice_id"),
-        Index("idx_dc_status", "status"),
+        Index("idx_dc_status", "custom_status"),  # This index exists but column was missing
         Index("idx_dc_ticket", "sales_ticket_id"),
     )
 
     def __repr__(self):
         return f"<DeliveryChallan {self.dc_number} ({self.dc_type.value})>"
-
-
+    
 class DeliveryChallanItem(Base):
     """Delivery Challan line item model."""
     __tablename__ = "delivery_challan_items"
@@ -4645,6 +4683,16 @@ class DeliveryChallanItem(Base):
     
     # Unit price (for valuation purposes, not charged separately in DC)
     unit_price = Column(Numeric(12, 2), default=0)
+    
+    # Add these fields from your frontend
+    discount_percent = Column(Numeric(5, 2), default=0)      # Add this line
+    discount_amount = Column(Numeric(12, 2), default=0)     # Add this line
+    gst_rate = Column(Numeric(5, 2), default=18)           # Add this line
+    cgst_rate = Column(Numeric(5, 2), default=9)           # Add this line
+    sgst_rate = Column(Numeric(5, 2), default=9)           # Add this line
+    igst_rate = Column(Numeric(5, 2), default=0)           # Add this line
+    taxable_amount = Column(Numeric(12, 2), default=0)     # Add this line
+    total_amount = Column(Numeric(12, 2), default=0)       # Add this line
     
     # Serial numbers (if tracked)
     serial_numbers = Column(JSON)  # List of serial numbers
@@ -4674,7 +4722,7 @@ class DeliveryChallanItem(Base):
 
     def __repr__(self):
         return f"<DeliveryChallanItem {self.description[:30]}>"
-
+    
 
 # ============== SALES PIPELINE MODELS ==============
 

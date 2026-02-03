@@ -1,6 +1,6 @@
 """Quotation service for business logic with GST calculations."""
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_,or_
+from sqlalchemy import func, and_, or_
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -60,80 +60,80 @@ class QuotationService:
             }
     
     def _get_next_quotation_number(self, company: Company) -> str:
-  
-       prefix = company.quotation_prefix if hasattr(company, 'quotation_prefix') and company.quotation_prefix else "QT"
-    
-       print(f"DEBUG: Getting next quotation number for company {company.id}")
-       print(f"DEBUG: Prefix is {prefix}")
-    
-    # Get ALL quotations for this company with QT- prefix
-       all_quotations = self.db.query(Quotation.quotation_number).filter(
-        Quotation.company_id == company.id,
-        Quotation.quotation_number.like(f"{prefix}-%")
-       ).all()
-    
-       print(f"DEBUG: Found {len(all_quotations)} existing quotations")
-    
-       max_number = 0
-       for quot_tuple in all_quotations:
-          quot_num = quot_tuple[0]  # Extract the string from tuple
-          print(f"DEBUG: Checking quotation number: '{quot_num}'")
+        prefix = company.quotation_prefix if hasattr(company, 'quotation_prefix') and company.quotation_prefix else "QT"
         
-        # We only want to parse numbers from QT-NNNN format
-        # Skip QT-YYYY-NNNN format
-          if quot_num.startswith(f"{prefix}-") and quot_num.count('-') == 1:
-             # This should be QT-NNNN format
-             try:
-                # Get the part after the dash
-                num_part = quot_num.split('-')[1]
-                
-                # Extract digits only
-                import re
-                digits = re.search(r'\d+', num_part)
-                if digits:
-                    num = int(digits.group())
-                    print(f"DEBUG: Found QT-NNNN format number: {num}")
+        print(f"DEBUG: Getting next quotation number for company {company.id}")
+        print(f"DEBUG: Prefix is {prefix}")
+        
+        # Get ALL quotations for this company with QT- prefix
+        all_quotations = self.db.query(Quotation.quotation_number).filter(
+            Quotation.company_id == company.id,
+            Quotation.quotation_number.like(f"{prefix}-%")
+        ).all()
+        
+        print(f"DEBUG: Found {len(all_quotations)} existing quotations")
+        
+        max_number = 0
+        for quot_tuple in all_quotations:
+            quot_num = quot_tuple[0]  # Extract the string from tuple
+            print(f"DEBUG: Checking quotation number: '{quot_num}'")
+            
+            # We only want to parse numbers from QT-NNNN format
+            # Skip QT-YYYY-NNNN format
+            if quot_num.startswith(f"{prefix}-") and quot_num.count('-') == 1:
+                # This should be QT-NNNN format
+                try:
+                    # Get the part after the dash
+                    num_part = quot_num.split('-')[1]
                     
-                    if num > max_number:
-                        max_number = num
-                else:
-                    print(f"DEBUG: No digits found in '{num_part}'")
-                    
-             except (ValueError, IndexError, AttributeError) as e:
-                print(f"DEBUG: Failed to parse '{quot_num}': {e}")
-                continue
-          else:
-            print(f"DEBUG: Skipping '{quot_num}' - wrong format (not QT-NNNN)")
+                    # Extract digits only
+                    import re
+                    digits = re.search(r'\d+', num_part)
+                    if digits:
+                        num = int(digits.group())
+                        print(f"DEBUG: Found QT-NNNN format number: {num}")
+                        
+                        if num > max_number:
+                            max_number = num
+                    else:
+                        print(f"DEBUG: No digits found in '{num_part}'")
+                        
+                except (ValueError, IndexError, AttributeError) as e:
+                    print(f"DEBUG: Failed to parse '{quot_num}': {e}")
+                    continue
+            else:
+                print(f"DEBUG: Skipping '{quot_num}' - wrong format (not QT-NNNN)")
+        
+        next_num = max_number + 1
+        result = f"{prefix}-{next_num:04d}"
+        print(f"DEBUG: Generated quotation number: {result}")
+        
+        return result
     
-       next_num = max_number + 1
-       result = f"{prefix}-{next_num:04d}"
-       print(f"DEBUG: Generated quotation number: {result}")
-    
-       return result
     def _save_excel_data(self, company_id: str, excel_data: Optional[str]) -> Optional[str]:
-      """Save Excel notes as a CSV file and return the file path."""
-      if not excel_data or not excel_data.strip():
-        return None
-    
-      try:
-        # Create uploads directory if it doesn't exist
-        upload_dir = Path("uploads") / "companies" / company_id / "quotations" / "excel_notes"
-        upload_dir.mkdir(parents=True, exist_ok=True)
+        """Save Excel notes as a CSV file and return the file path."""
+        if not excel_data or not excel_data.strip():
+            return None
         
-        # Generate unique filename with .csv extension
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"excel_notes_{timestamp}_{generate_uuid()[:8]}.csv"  # Changed to .csv
-        file_path = upload_dir / filename
-        
-        # Save the Excel data as CSV
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(excel_data)
-        
-        # Return relative path
-        return str(file_path.relative_to("uploads"))
-      except Exception as e:
-        print(f"Error saving Excel data: {e}")
-        return None
+        try:
+            # Create uploads directory if it doesn't exist
+            upload_dir = Path("uploads") / "companies" / company_id / "quotations" / "excel_notes"
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate unique filename with .csv extension
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"excel_notes_{timestamp}_{generate_uuid()[:8]}.csv"  # Changed to .csv
+            file_path = upload_dir / filename
+            
+            # Save the Excel data as CSV
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(excel_data)
+            
+            # Return relative path
+            return str(file_path.relative_to("uploads"))
+        except Exception as e:
+            print(f"Error saving Excel data: {e}")
+            return None
     
     def _save_excel_file(self, company_id: str, file_content: bytes, filename: str) -> Optional[str]:
         """Save uploaded Excel/CSV file and return the file path."""
@@ -166,10 +166,10 @@ class QuotationService:
         company: Company,
         customer_id: Optional[str],
         items: List[Dict[str, Any]],
-        
         quotation_date: Optional[datetime] = None,
         validity_days: int = 30,
-        quotation_number: Optional[str] = None, 
+        show_images: bool = True,
+        quotation_number: Optional[str] = None,
         place_of_supply: Optional[str] = None,
         subject: Optional[str] = None,
         notes: Optional[str] = None,
@@ -184,15 +184,22 @@ class QuotationService:
         excel_notes: Optional[str] = None,
         excel_file_content: Optional[bytes] = None,
         excel_filename: Optional[str] = None,
-        quotation_type: Optional[str] = "item",  # Add this parameter
-        # Multi-currency support
+        quotation_type: Optional[str] = "item",
         currency_code: str = "INR",
         exchange_rate: Decimal = Decimal("1.0"),
-        # PDF options
         show_images_in_pdf: bool = True,
+        sales_ticket_id: Optional[str] = None,
+        contact_id: Optional[str] = None,
+        cess_amount: Optional[Decimal] = Decimal("0"),
+        is_project: Optional[bool] = None,
         **kwargs  # Accept additional fields
     ) -> Quotation:
         """Create a new quotation with all fields and GST calculations."""
+        print(f"DEBUG: Creating quotation with type: {quotation_type}")
+        print(f"DEBUG: Show images: {show_images}")
+        print(f"DEBUG: Show images in PDF: {show_images_in_pdf}")
+        print(f"DEBUG: Items data: {items}")
+        
         # Get customer
         customer = None
         if customer_id:
@@ -200,6 +207,8 @@ class QuotationService:
                 Customer.id == customer_id,
                 Customer.company_id == company.id
             ).first()
+            if not customer:
+                raise ValueError(f"Customer not found with ID: {customer_id}")
         
         # Get sales person details
         sales_person_name = None
@@ -210,6 +219,8 @@ class QuotationService:
             ).first()
             if sales_person:
                 sales_person_name = sales_person.full_name or sales_person.name
+            else:
+                print(f"WARNING: Sales person with ID {sales_person_id} not found")
         
         # Handle Excel data
         excel_notes_file_url = None
@@ -225,20 +236,29 @@ class QuotationService:
             place_of_supply = company.state_code or "27"
         
         place_of_supply_name = INDIAN_STATE_CODES.get(place_of_supply, "")
+        
+        # Generate quotation number if not provided
         if quotation_number:
-             # Check if quotation number already exists
-              existing = self.db.query(Quotation).filter(
+            # Check if quotation number already exists
+            existing = self.db.query(Quotation).filter(
                 Quotation.company_id == company.id,
                 Quotation.quotation_number == quotation_number
-              ).first()
-              if existing:
-              # If exists, generate a new one or handle error
-                   quotation_number = self._get_next_quotation_number(company)
+            ).first()
+            if existing:
+                quotation_number = self._get_next_quotation_number(company)
         else:
-             quotation_number = self._get_next_quotation_number(company)
-       
+            quotation_number = self._get_next_quotation_number(company)
+        
         quote_date = quotation_date or datetime.utcnow()
         validity_date = quote_date + timedelta(days=validity_days)
+        
+        # Determine if it's a project based on items or explicit flag
+        if is_project is None:
+            # Auto-detect if any item is marked as project
+            is_project = quotation_type == "project" or any(
+                item_data.get("item_type") == "project" or item_data.get("is_project") 
+                for item_data in items
+            )
         
         # Create quotation with all fields
         quotation = Quotation(
@@ -249,8 +269,8 @@ class QuotationService:
             contact_person=contact_person,
             sales_person_id=sales_person_id,
             sales_person_name=sales_person_name,
-            
-            quotation_type=quotation_type,
+            show_images=show_images,  # Ensure this is set
+            quotation_type=quotation_type,  # Ensure this is set
             quotation_date=quote_date,
             validity_date=validity_date,
             place_of_supply=place_of_supply,
@@ -262,10 +282,15 @@ class QuotationService:
             
             # PDF options
             show_images_in_pdf=show_images_in_pdf,
-         
+            
+            # Additional fields from model
+            sales_ticket_id=sales_ticket_id,
+            contact_id=contact_id,
+            is_project=is_project,
+            cess_amount=cess_amount or Decimal("0"),
+            
             subject=subject or f"Quotation {quotation_number}",
             notes=notes,
-
             terms=terms,  # Additional terms from form
             remarks=remarks,
             reference=reference,
@@ -276,6 +301,11 @@ class QuotationService:
             status=QuotationStatus.DRAFT,
         )
         
+        # Handle any additional kwargs
+        for key, value in kwargs.items():
+            if hasattr(quotation, key):
+                setattr(quotation, key, value)
+        
         self.db.add(quotation)
         self.db.flush()
         
@@ -285,15 +315,20 @@ class QuotationService:
         total_sgst = Decimal("0")
         total_igst = Decimal("0")
         total_discount = Decimal("0")
+        total_cess = cess_amount or Decimal("0")
         
         company_state = company.state_code or "27"
         
         # Add items
         for item_data in items:
+            print(f"DEBUG: Processing item data: {item_data}")
+            
             qty = Decimal(str(item_data.get("quantity", 0)))
             unit_price = Decimal(str(item_data.get("unit_price", 0)))
             gst_rate = Decimal(str(item_data.get("gst_rate", 18)))
             discount_percent = Decimal(str(item_data.get("discount_percent", 0)))
+            item_code = item_data.get("item_code")
+            item_cess = Decimal(str(item_data.get("cess_amount", 0)))
             
             # Calculate amounts
             base_amount = self._round_amount(qty * unit_price)
@@ -308,7 +343,11 @@ class QuotationService:
                 place_of_supply
             )
             
-            total_tax = gst_split["cgst_amount"] + gst_split["sgst_amount"] + gst_split["igst_amount"]
+            # Add cess if applicable
+            item_cess_amount = self._round_amount(taxable_amount * item_cess / 100)
+            total_cess += item_cess_amount
+            
+            total_tax = gst_split["cgst_amount"] + gst_split["sgst_amount"] + gst_split["igst_amount"] + item_cess_amount
             item_total = taxable_amount + total_tax
             
             # Get product details
@@ -316,15 +355,23 @@ class QuotationService:
             if item_data.get("product_id"):
                 product = self.db.query(Product).filter(Product.id == item_data["product_id"]).first()
             
+            # Determine description
+            description = item_data.get("description") or (product.name if product else "Item")
+            hsn_code = item_data.get("hsn_code") or item_data.get("hsn") or (product.hsn_code if product else None)
+            unit = item_data.get("unit") or (product.unit if product else "unit")
+            
+            # Check if this is a project item
+            item_is_project = is_project or quotation_type == "project" or item_data.get("item_type") == "project"
+            
             item = QuotationItem(
                 id=generate_uuid(),
                 quotation_id=quotation.id,
                 product_id=item_data.get("product_id"),
-                item_code=item_data.get("item_code") or None,
-                description=item_data.get("description") or (product.name if product else "Item"),
-                hsn_code=item_data.get("hsn_code") or (product.hsn_code if product else None),
+                item_code=item_code,  # Set item_code
+                description=description,
+                hsn_code=hsn_code,
                 quantity=qty,
-                unit=item_data.get("unit") or (product.unit if product else "unit"),
+                unit=unit,
                 unit_price=unit_price,
                 discount_percent=discount_percent,
                 discount_amount=discount_amount,
@@ -335,23 +382,26 @@ class QuotationService:
                 cgst_amount=gst_split["cgst_amount"],
                 sgst_amount=gst_split["sgst_amount"],
                 igst_amount=gst_split["igst_amount"],
+                cess_amount=item_cess_amount,
                 taxable_amount=taxable_amount,
                 total_amount=item_total,
-                is_project=quotation_type == "project"
+                is_project=item_is_project  # Set is_project flag
             )
             self.db.add(item)
             self.db.flush()
-          # Add sub_items if this is a project quotation and item has sub_items
-            if quotation_type == "project" and item_data.get("sub_items"):
-              for sub_item_data in item_data.get("sub_items", []):
-                     sub_item = SubItem(
-            id=generate_uuid(),
-            quotation_item_id=item.id,
-            description=sub_item_data.get("description", ""),
-            quantity=sub_item_data.get("quantity", 1),
-            image_url=sub_item_data.get("image_url")
-        )
-                     self.db.add(sub_item)
+            
+            # Add sub_items if this is a project quotation and item has sub_items
+            if item_is_project and item_data.get("sub_items"):
+                print(f"DEBUG: Adding sub_items for project item: {item.id}")
+                for sub_item_data in item_data.get("sub_items", []):
+                    sub_item = SubItem(
+                        id=generate_uuid(),
+                        quotation_item_id=item.id,
+                        description=sub_item_data.get("description", ""),
+                        quantity=sub_item_data.get("quantity", 1),
+                        image_url=sub_item_data.get("image_url")
+                    )
+                    self.db.add(sub_item)
             
             # Accumulate totals
             subtotal += taxable_amount
@@ -366,12 +416,22 @@ class QuotationService:
         quotation.cgst_amount = total_cgst
         quotation.sgst_amount = total_sgst
         quotation.igst_amount = total_igst
-        quotation.total_tax = total_cgst + total_sgst + total_igst
+        quotation.cess_amount = total_cess
+        quotation.total_tax = total_cgst + total_sgst + total_igst + total_cess
         quotation.total_amount = subtotal + quotation.total_tax
         
         # Calculate base currency total (in INR) for reporting
         exchange_rate_decimal = Decimal(str(exchange_rate)) if exchange_rate else Decimal("1.0")
         quotation.base_currency_total = self._round_amount(quotation.total_amount * exchange_rate_decimal)
+        
+        # Debug output
+        print(f"DEBUG: Created quotation {quotation.quotation_number}")
+        print(f"DEBUG: Show images: {quotation.show_images}")
+        print(f"DEBUG: Show images in PDF: {quotation.show_images_in_pdf}")
+        print(f"DEBUG: Quotation type: {quotation.quotation_type}")
+        print(f"DEBUG: Is project: {quotation.is_project}")
+        print(f"DEBUG: Total items: {len(quotation.items)}")
+        print(f"DEBUG: Cess amount: {quotation.cess_amount}")
         
         self.db.commit()
         self.db.refresh(quotation)
@@ -386,6 +446,7 @@ class QuotationService:
         subject: Optional[str] = None,
         notes: Optional[str] = None,
         terms: Optional[str] = None,
+        show_images: Optional[bool] = None,
         contact_person: Optional[str] = None,
         remarks: Optional[str] = None,
         sales_person_id: Optional[str] = None,
@@ -401,6 +462,11 @@ class QuotationService:
         exchange_rate: Optional[Decimal] = None,
         # PDF options
         show_images_in_pdf: Optional[bool] = None,
+        # Additional fields
+        sales_ticket_id: Optional[str] = None,
+        contact_id: Optional[str] = None,
+        cess_amount: Optional[Decimal] = None,
+        is_project: Optional[bool] = None,
     ) -> Quotation:
         """Update a quotation (only if in DRAFT status)."""
         if quotation.status != QuotationStatus.DRAFT:
@@ -432,6 +498,18 @@ class QuotationService:
             quotation.reference_date = reference_date
         if payment_terms is not None:
             quotation.payment_terms = payment_terms
+        if show_images is not None:
+            quotation.show_images = show_images
+        if show_images_in_pdf is not None:
+            quotation.show_images_in_pdf = show_images_in_pdf
+        if sales_ticket_id is not None:
+            quotation.sales_ticket_id = sales_ticket_id
+        if contact_id is not None:
+            quotation.contact_id = contact_id
+        if cess_amount is not None:
+            quotation.cess_amount = cess_amount
+        if is_project is not None:
+            quotation.is_project = is_project
         
         # Update sales person
         if sales_person_id is not None:
@@ -471,6 +549,7 @@ class QuotationService:
             total_sgst = Decimal("0")
             total_igst = Decimal("0")
             total_discount = Decimal("0")
+            total_cess = quotation.cess_amount or Decimal("0")
             
             company = self.db.query(Company).filter(Company.id == quotation.company_id).first()
             company_state = company.state_code or "27"
@@ -481,6 +560,8 @@ class QuotationService:
                 unit_price = Decimal(str(item_data.get("unit_price", 0)))
                 gst_rate = Decimal(str(item_data.get("gst_rate", 18)))
                 discount_percent = Decimal(str(item_data.get("discount_percent", 0)))
+                item_code = item_data.get("item_code")
+                item_cess = Decimal(str(item_data.get("cess_amount", 0)))
                 
                 base_amount = self._round_amount(qty * unit_price)
                 discount_amount = self._round_amount(base_amount * discount_percent / 100)
@@ -490,22 +571,34 @@ class QuotationService:
                     taxable_amount, gst_rate, company_state, place_of_supply
                 )
                 
-                total_tax = gst_split["cgst_amount"] + gst_split["sgst_amount"] + gst_split["igst_amount"]
+                # Add cess if applicable
+                item_cess_amount = self._round_amount(taxable_amount * item_cess / 100)
+                total_cess += item_cess_amount
+                
+                total_tax = gst_split["cgst_amount"] + gst_split["sgst_amount"] + gst_split["igst_amount"] + item_cess_amount
                 item_total = taxable_amount + total_tax
                 
                 product = None
                 if item_data.get("product_id"):
                     product = self.db.query(Product).filter(Product.id == item_data["product_id"]).first()
                 
+                # Determine description
+                description = item_data.get("description") or (product.name if product else "Item")
+                hsn_code = item_data.get("hsn_code") or item_data.get("hsn") or (product.hsn_code if product else None)
+                unit = item_data.get("unit") or (product.unit if product else "unit")
+                
+                # Check if this is a project item
+                item_is_project = quotation.is_project or quotation.quotation_type == "project" or item_data.get("item_type") == "project"
+                
                 item = QuotationItem(
                     id=generate_uuid(),
                     quotation_id=quotation.id,
                     product_id=item_data.get("product_id"),
-                    item_code=item_data.get("item_code") or None,
-                    description=item_data.get("description") or (product.name if product else "Item"),
-                    hsn_code=item_data.get("hsn_code") or (product.hsn_code if product else None),
+                    item_code=item_code,
+                    description=description,
+                    hsn_code=hsn_code,
                     quantity=qty,
-                    unit=item_data.get("unit") or (product.unit if product else "unit"),
+                    unit=unit,
                     unit_price=unit_price,
                     discount_percent=discount_percent,
                     discount_amount=discount_amount,
@@ -516,14 +609,16 @@ class QuotationService:
                     cgst_amount=gst_split["cgst_amount"],
                     sgst_amount=gst_split["sgst_amount"],
                     igst_amount=gst_split["igst_amount"],
+                    cess_amount=item_cess_amount,
                     taxable_amount=taxable_amount,
                     total_amount=item_total,
+                    is_project=item_is_project
                 )
                 self.db.add(item)
                 self.db.flush()
                 
                 # Add sub_items if this is a project quotation and item has sub_items
-                if quotation.quotation_type == "project" and item_data.get("sub_items"):
+                if item_is_project and item_data.get("sub_items"):
                     for sub_item_data in item_data.get("sub_items", []):
                         sub_item = SubItem(
                             id=generate_uuid(),
@@ -545,7 +640,8 @@ class QuotationService:
             quotation.cgst_amount = total_cgst
             quotation.sgst_amount = total_sgst
             quotation.igst_amount = total_igst
-            quotation.total_tax = total_cgst + total_sgst + total_igst
+            quotation.cess_amount = total_cess
+            quotation.total_tax = total_cgst + total_sgst + total_igst + total_cess
             quotation.total_amount = subtotal + quotation.total_tax
         
         # Update multi-currency fields
@@ -553,10 +649,6 @@ class QuotationService:
             quotation.currency_code = currency_code
         if exchange_rate is not None:
             quotation.exchange_rate = exchange_rate
-        
-        # Update PDF options
-        if show_images_in_pdf is not None:
-            quotation.show_images_in_pdf = show_images_in_pdf
         
         # Calculate base currency total (in INR) for reporting
         current_exchange_rate = Decimal(str(quotation.exchange_rate or 1.0))
@@ -670,6 +762,7 @@ class QuotationService:
             cgst_amount=quotation.cgst_amount,
             sgst_amount=quotation.sgst_amount,
             igst_amount=quotation.igst_amount,
+            cess_amount=quotation.cess_amount,
             total_tax=quotation.total_tax,
             total_amount=quotation.total_amount,
             balance_due=quotation.total_amount,
@@ -679,6 +772,11 @@ class QuotationService:
             remarks=quotation.remarks,
             contact_person=quotation.contact_person,
             status=InvoiceStatus.DRAFT,
+            sales_person_id=quotation.sales_person_id,
+            reference=quotation.reference,
+            reference_no=quotation.reference_no,
+            reference_date=quotation.reference_date,
+            payment_terms=quotation.payment_terms,
         )
         
         self.db.add(invoice)
@@ -704,6 +802,7 @@ class QuotationService:
                 cgst_amount=q_item.cgst_amount,
                 sgst_amount=q_item.sgst_amount,
                 igst_amount=q_item.igst_amount,
+                cess_amount=q_item.cess_amount,
                 taxable_amount=q_item.taxable_amount,
                 total_amount=q_item.total_amount,
             )
@@ -791,10 +890,18 @@ class QuotationService:
     
     def get_quotation(self, company_id: str, quotation_id: str) -> Optional[Quotation]:
         """Get a single quotation by ID with all details."""
-        return self.db.query(Quotation).filter(
+        quotation = self.db.query(Quotation).filter(
             Quotation.id == quotation_id,
             Quotation.company_id == company_id,
         ).first()
+        
+        if quotation:
+            # Eager load items and sub_items
+            quotation.items  # This triggers lazy load
+            for item in quotation.items:
+                item.sub_items  # This triggers lazy load for sub_items
+        
+        return quotation
     
     def delete_quotation(self, quotation: Quotation) -> bool:
         """Delete a quotation (only if in DRAFT status)."""
@@ -831,11 +938,16 @@ class QuotationService:
             revision_number=quotation.revision_number + 1,
             place_of_supply=quotation.place_of_supply,
             place_of_supply_name=quotation.place_of_supply_name,
+            show_images=quotation.show_images,
+            show_images_in_pdf=quotation.show_images_in_pdf,
+            quotation_type=quotation.quotation_type,
+            is_project=quotation.is_project,
             subtotal=quotation.subtotal,
             discount_amount=quotation.discount_amount,
             cgst_amount=quotation.cgst_amount,
             sgst_amount=quotation.sgst_amount,
             igst_amount=quotation.igst_amount,
+            cess_amount=quotation.cess_amount,
             total_tax=quotation.total_tax,
             total_amount=quotation.total_amount,
             subject=quotation.subject,
@@ -848,6 +960,11 @@ class QuotationService:
             payment_terms=quotation.payment_terms,
             excel_notes_file_url=quotation.excel_notes_file_url,
             status=QuotationStatus.DRAFT,
+            sales_ticket_id=quotation.sales_ticket_id,
+            contact_id=quotation.contact_id,
+            currency_code=quotation.currency_code,
+            exchange_rate=quotation.exchange_rate,
+            base_currency_total=quotation.base_currency_total,
         )
         
         self.db.add(new_quotation)
@@ -859,6 +976,7 @@ class QuotationService:
                 id=generate_uuid(),
                 quotation_id=new_quotation.id,
                 product_id=q_item.product_id,
+                item_code=q_item.item_code,
                 description=q_item.description,
                 hsn_code=q_item.hsn_code,
                 quantity=q_item.quantity,
@@ -873,10 +991,25 @@ class QuotationService:
                 cgst_amount=q_item.cgst_amount,
                 sgst_amount=q_item.sgst_amount,
                 igst_amount=q_item.igst_amount,
+                cess_amount=q_item.cess_amount,
                 taxable_amount=q_item.taxable_amount,
                 total_amount=q_item.total_amount,
+                is_project=q_item.is_project,
             )
             self.db.add(new_item)
+            self.db.flush()
+            
+            # Copy sub_items if it's a project item
+            if q_item.is_project and q_item.sub_items:
+                for sub_item in q_item.sub_items:
+                    new_sub_item = SubItem(
+                        id=generate_uuid(),
+                        quotation_item_id=new_item.id,
+                        description=sub_item.description,
+                        quantity=sub_item.quantity,
+                        image_url=sub_item.image_url,
+                    )
+                    self.db.add(new_sub_item)
         
         self.db.commit()
         self.db.refresh(new_quotation)
@@ -970,13 +1103,16 @@ class QuotationService:
                 item_data = {
                     "id": item.id,
                     "description": item.description,
+                    "item_code": item.item_code,
                     "hsn_code": item.hsn_code,
                     "quantity": float(item.quantity or 0),
                     "unit": item.unit,
                     "unit_price": float(item.unit_price or 0),
                     "discount_percent": float(item.discount_percent or 0),
                     "gst_rate": float(item.gst_rate or 0),
+                    "cess_amount": float(item.cess_amount or 0),
                     "total_amount": float(item.total_amount or 0),
+                    "is_project": item.is_project,
                 }
                 quote_data["items"].append(item_data)
                 
@@ -985,6 +1121,7 @@ class QuotationService:
                 if desc_key not in all_items_by_description:
                     all_items_by_description[desc_key] = {
                         "description": item.description,
+                        "item_code": item.item_code,
                         "hsn_code": item.hsn_code,
                         "quotations": {}
                     }
@@ -992,6 +1129,7 @@ class QuotationService:
                     "quantity": float(item.quantity or 0),
                     "unit_price": float(item.unit_price or 0),
                     "discount_percent": float(item.discount_percent or 0),
+                    "cess_amount": float(item.cess_amount or 0),
                     "total_amount": float(item.total_amount or 0),
                 }
             
@@ -1004,6 +1142,7 @@ class QuotationService:
             
             comparison["items_comparison"].append({
                 "description": item_data["description"],
+                "item_code": item_data["item_code"],
                 "hsn_code": item_data["hsn_code"],
                 "quotations": item_data["quotations"],
                 "price_range": {

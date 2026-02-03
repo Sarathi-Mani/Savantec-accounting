@@ -157,7 +157,7 @@ export default function NewProductPage() {
       }
     };
 
- const handleSubmit = async (e: React.FormEvent) => {
+const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   if (!company?.id) return;
 
@@ -181,37 +181,37 @@ export default function NewProductPage() {
   setError(null);
 
   try {
-    // Prepare the product data according to backend schema
-    // Send only the fields that match ProductCreate schema
-    const productData = {
-      name: formData.name.trim(),
-      hsn_code: formData.hsn_code || undefined,
-      barcode: formData.barcode || undefined,
-      sku: formData.sku || undefined,
-      brand_id: formData.brand_id || undefined,
-      category_id: formData.category_id || undefined,
-      unit: formData.unit,
-      alert_quantity: formData.alert_quantity,
-      min_stock_level: formData.alert_quantity,
-      opening_stock: formData.opening_stock,
-      description: formData.description || undefined,
-      is_service: formData.is_service,
-      is_inclusive: formData.is_inclusive,
-      unit_price: formData.unit_price,
-      gst_rate: formData.gst_rate,
-      company_id: company.id
-    };
+    // Create FormData instead of JSON to include files
+    const formDataToSend = new FormData();
+    
+    // Add all product fields
+    formDataToSend.append('name', formData.name.trim());
+    formDataToSend.append('hsn_code', formData.hsn_code || '');
+    formDataToSend.append('barcode', formData.barcode || '');
+    formDataToSend.append('sku', formData.sku || '');
+    formDataToSend.append('brand_id', formData.brand_id || '');
+    formDataToSend.append('category_id', formData.category_id || '');
+    formDataToSend.append('unit', formData.unit);
+    formDataToSend.append('alert_quantity', formData.alert_quantity.toString());
+    formDataToSend.append('min_stock_level', formData.alert_quantity.toString());
+    formDataToSend.append('opening_stock', formData.opening_stock.toString());
+    formDataToSend.append('description', formData.description || '');
+    formDataToSend.append('is_service', formData.is_service.toString());
+    formDataToSend.append('is_inclusive', formData.is_inclusive.toString());
+    formDataToSend.append('unit_price', formData.unit_price.toString());
+    formDataToSend.append('gst_rate', formData.gst_rate);
+    formDataToSend.append('company_id', company.id);
 
-    // Remove undefined values
-    Object.keys(productData).forEach(key => {
-      if (productData[key] === undefined) {
-        delete productData[key];
-      }
-    });
+    // Add images if they exist
+    if (mainImage) {
+      formDataToSend.append('main_image', mainImage);
+    }
+    if (additionalImage) {
+      formDataToSend.append('additional_image', additionalImage);
+    }
 
-    console.log("Sending product data:", JSON.stringify(productData, null, 2));
+    console.log("Sending form data with images");
 
-    // Try sending as JSON without images first
     const token = localStorage.getItem("access_token");
     const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/products`;
     
@@ -219,9 +219,9 @@ export default function NewProductPage() {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
+        // Don't set Content-Type header for FormData - let browser set it with boundary
       },
-      body: JSON.stringify(productData),
+      body: formDataToSend,
     });
 
     console.log("Response status:", response.status);
@@ -231,12 +231,7 @@ export default function NewProductPage() {
 
     if (response.ok) {
       const data = JSON.parse(responseText);
-      console.log("Product created successfully:", data);
-      
-      // Now upload images if we have them
-      if (mainImage || additionalImage) {
-        await uploadImages(company.id, data.id, mainImage, additionalImage);
-      }
+      console.log("Product created successfully with images:", data);
       
       showToast("Product created successfully!", "success");
       setTimeout(() => {

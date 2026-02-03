@@ -1,6 +1,6 @@
 """Product schemas."""
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional
+from typing import Optional,Dict
 from datetime import datetime
 from decimal import Decimal
 
@@ -16,7 +16,8 @@ class ProductCreate(BaseModel):
     unit: str = "unit"
     
     gst_rate: str = "18"
-    is_inclusive: bool = False
+   
+
     is_service: bool = False
     
     # New fields for mapping
@@ -56,46 +57,38 @@ class ProductUpdate(BaseModel):
     unit: Optional[str] = None
     
     gst_rate: Optional[str] = None
-    is_inclusive: Optional[bool] = None
+  
     is_service: Optional[bool] = None
     is_active: Optional[bool] = None
 
 
 class ProductResponse(BaseModel):
-    """Schema for product response."""
     id: str
-    company_id: str
-    
     name: str
     description: Optional[str] = None
     sku: Optional[str] = None
     hsn_code: Optional[str] = None
-    
-    unit_price: Decimal
+    unit_price: float
     unit: str
-    
     gst_rate: str
-    is_inclusive: bool
     is_service: bool
-    
-    is_active: bool
+    # Image fields
+    image: Optional[str] = None
+    image_url: Optional[str] = None
+    additional_image: Optional[str] = None
+    additional_image_url: Optional[str] = None
+    # Stock fields
+    current_stock: float = 0.0
+    min_stock_level: float = 0.0
+    opening_stock: float = 0.0
+    # Other fields
     created_at: datetime
     updated_at: datetime
+    brand: Optional[Dict] = None
+    category: Optional[Dict] = None
     
-    # Stock info (unified model - products include inventory)
-    current_stock: Optional[Decimal] = None
-    min_stock_level: Optional[Decimal] = None
-    opening_stock: Optional[Decimal] = None
-    
-    # Optional relationships
-    brand: Optional[dict] = None
-    category: Optional[dict] = None
-
     class Config:
-        from_attributes = True
-        extra = 'ignore'  # This will ignore item_group and other extra fields
-
-        
+        from_attributes = True      
 
 class ProductListResponse(BaseModel):
     """Schema for product list response."""
