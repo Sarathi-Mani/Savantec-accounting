@@ -2,6 +2,7 @@
 
 import { Header } from "@/components/Layouts/header";
 import { Sidebar } from "@/components/Layouts/sidebar";
+import { RouteGuard } from "@/components/Auth/RouteGuard";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -49,7 +50,7 @@ export default function HomeLayout({
               <p className="text-sm">Please create a company profile to start using the invoicing features.</p>
             </div>
           )}
-          {children}
+          <RouteGuard>{children}</RouteGuard>
         </main>
       </div>
     </div>

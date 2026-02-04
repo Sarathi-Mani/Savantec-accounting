@@ -6,7 +6,8 @@ import {
   hasPermission, 
   hasAllPermissions,
   canAccessModule,
-  MODULE_PERMISSIONS 
+  MODULE_PERMISSIONS,
+  normalizePermissions,
 } from "@/utils/permissions";
 
 export const usePermissions = () => {
@@ -14,12 +15,49 @@ export const usePermissions = () => {
   
   // Get user's permissions based on designation
   const getUserPermissions = (): PermissionKey[] => {
-    if (!user || !user.designation) {
+    if (!user) {
       return [];
     }
-    
-    const designationName = user.designation.name;
-    return getPermissionsForRole(designationName);
+
+    if (typeof user.designation === "object" && Array.isArray(user.designation?.permissions)) {
+      const permissions = normalizePermissions(
+        user.designation.permissions,
+        user.designation?.name,
+      );
+      if (permissions.length > 0) {
+        return permissions;
+      }
+    }
+
+    if (typeof window !== "undefined" && typeof user.designation === "object" && user.designation?.id) {
+      const cached = localStorage.getItem("current_designation");
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed?.id === user.designation.id && Array.isArray(parsed?.permissions)) {
+            const permissions = normalizePermissions(
+              parsed.permissions,
+              user.designation?.name,
+            );
+            if (permissions.length > 0 || parsed.permissions.length === 0) {
+              return permissions;
+            }
+          }
+        } catch {
+          // Ignore cache parse errors
+        }
+      }
+    }
+
+    if (typeof user.designation === "object" && user.designation?.name) {
+      return getPermissionsForRole(user.designation.name);
+    }
+
+    if (typeof user.designation === "string") {
+      return getPermissionsForRole(user.designation);
+    }
+
+    return [];
   };
   
   // Check if user has specific permission
@@ -51,12 +89,35 @@ export const usePermissions = () => {
     });
   };
   
+  const permissions = getUserPermissions();
+  const cachedDesignation =
+    typeof window !== "undefined" ? localStorage.getItem("current_designation") : null;
+  const cachedMatch =
+    !!cachedDesignation &&
+    typeof user?.designation === "object" &&
+    user.designation?.id &&
+    (() => {
+      try {
+        return JSON.parse(cachedDesignation).id === user.designation?.id;
+      } catch {
+        return false;
+      }
+    })();
+
+  const permissionsReady = !user?.designation
+    ? true
+    : typeof user.designation === "string"
+      ? true
+      : typeof user.designation === "object" &&
+        (Array.isArray(user.designation?.permissions) || cachedMatch);
+
   return {
     getUserPermissions,
     checkPermission,
     checkAllPermissions,
     checkModuleAccess,
     filterByPermission,
-    permissions: getUserPermissions(),
+    permissions,
+    permissionsReady,
   };
 };

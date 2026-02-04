@@ -496,13 +496,22 @@ class User(Base):
     is_verified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
+    designation_id = Column(String(36), ForeignKey("designations.id", ondelete="SET NULL"), nullable=True)
 
     # Relationships
     items = relationship("Product", back_populates="creator")
     taxes = relationship("Tax", back_populates="creator")
     brands = relationship("Brand", back_populates="creator")
     categories = relationship("Category", back_populates="creator")
-    companies = relationship("Company", back_populates="owner", cascade="all, delete-orphan")
+    companies = relationship(
+        "Company",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+        foreign_keys="Company.user_id",
+    )
+    company = relationship("Company", foreign_keys=[company_id])
+    designation = relationship("Designation", foreign_keys=[designation_id])
     approved_purchase_requests = relationship("PurchaseRequest", foreign_keys="[PurchaseRequest.approved_by]", back_populates="approver")
     def __repr__(self):
         return f"<User {self.email}>"
@@ -639,7 +648,7 @@ class Company(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    owner = relationship("User", back_populates="companies")
+    owner = relationship("User", back_populates="companies", foreign_keys=[user_id])
     customers = relationship("Customer", back_populates="company", cascade="all, delete-orphan")
     items = relationship("Product", back_populates="company", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="company", cascade="all, delete-orphan")
@@ -664,8 +673,6 @@ class Company(Base):
 
     def __repr__(self):
         return f"<Company {self.name}>"
-
-
 class PurchaseRequest(Base):
     """Purchase Request model with both employee and user references."""
     __tablename__ = "purchase_requests"
@@ -677,17 +684,38 @@ class PurchaseRequest(Base):
     
     # Simple request number
     request_number = Column(String(50), unique=True, nullable=False, index=True)
+    
+    # NEW: Purchase Request No. - specific field for the PR number format
+    purchase_req_no = Column(String(50), unique=True, nullable=True, index=True)
+    
     request_date = Column(DateTime, default=func.now(), nullable=False)
     
-    # Items: [{"item": "Product Name", "quantity": 5, "make": "Brand Name"}]
+    # Items: [{"product_id": "...", "item": "Product Name", "quantity": 5, "store_remarks": "...", "approval_status": "pending"}]
     items = Column(JSON, nullable=False)
     
-    # Simple status
+    # NEW: Status with options: open, in_process, closed (for the overall request)
+    overall_status = Column(
+        Enum('open', 'in_process', 'closed', name='purchase_overall_status'),
+        default='open',
+        nullable=False
+    )
+    
+    # Simple status (keeping for backward compatibility)
     status = Column(
-        Enum('pending', 'approved', 'hold', 'rejected', name='purchase_request_status'),
+        Enum('pending', 'approved', 'hold', 'rejected', 'open', 'in_progress', 'closed', 
+             name='purchase_request_status'),
         default='pending',
         nullable=False
     )
+    
+    # NEW: Store remarks for the entire purchase request
+    store_remarks = Column(Text, nullable=True)
+    
+    # Request notes
+    notes = Column(Text, nullable=True)
+    
+    # NEW: Additional notes field for customer/request specific notes
+    additional_notes = Column(Text, nullable=True)
     
     # Approval details (dual reference)
     approved_by_employee = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
@@ -696,9 +724,6 @@ class PurchaseRequest(Base):
     approval_notes = Column(Text, nullable=True)
     approved_by_name = Column(String(255), nullable=True)
     approved_by_email = Column(String(255), nullable=True)
-    
-    # Request notes
-    notes = Column(Text, nullable=True)
     
     # Creator details (dual reference)
     created_by_employee = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
@@ -742,6 +767,7 @@ class PurchaseRequest(Base):
     
     def __repr__(self):
         return f"<PurchaseRequest {self.request_number} - {self.customer_name}>"
+    
 class OpeningBalanceTypeEnum(str, enum.Enum):
     OUTSTANDING = "outstanding"
     ADVANCE = "advance"
@@ -5637,6 +5663,8 @@ class VisitPlan(Base):
         return f"<VisitPlan {self.id} for {self.planned_date}>"
 
 
+
+
 # Indian State codes for GST
 INDIAN_STATE_CODES = {
     "01": "Jammu & Kashmir",
@@ -5679,4 +5707,7 @@ INDIAN_STATE_CODES = {
     "97": "Other Territory",
     "99": "Centre Jurisdiction",
 }
+
+
+
 

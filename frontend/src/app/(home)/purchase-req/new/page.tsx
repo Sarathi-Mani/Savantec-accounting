@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 
 // Update the import statement at the top of page.tsx
 import { customersApi, productsApi, getErrorMessage, purchaseRequestsApi } from "@/services/api";
+
 interface Customer {
   id: string;
   name: string;
@@ -26,14 +27,27 @@ interface PurchaseRequestItem {
   product_id: string;
   item: string;
   quantity: string;
+  store_remarks: string;
+  approval_status: "pending" | "approved" | "rejected" | "hold";
 }
 
 interface FormData {
+  purchase_req_no: string;
+  date: string;
+  status: "open" | "in_process" | "closed";
   customer_id: string;
   customer_name: string;
   items: PurchaseRequestItem[];
   notes: string;
 }
+
+// Generate purchase request number
+const generatePurchaseReqNo = () => {
+  const prefix = "PR";
+  const timestamp = Date.now();
+  const random = Math.floor(Math.random() * 1000);
+  return `${prefix}-${random}`;
+};
 
 // Debounce function to limit API calls
 const debounce = <T extends (...args: any[]) => any>(
@@ -65,9 +79,18 @@ export default function CreatePurchaseRequestPage() {
   const [selectedProductIndex, setSelectedProductIndex] = useState<number | null>(null);
 
   const [formData, setFormData] = useState<FormData>({
+    purchase_req_no: generatePurchaseReqNo(),
+    date: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD
+    status: "open",
     customer_id: "",
     customer_name: "",
-    items: [{ product_id: "", item: "", quantity: "" }],
+    items: [{ 
+      product_id: "", 
+      item: "", 
+      quantity: "", 
+      store_remarks: "",
+      approval_status: "pending"
+    }],
     notes: "",
   });
 
@@ -259,10 +282,34 @@ export default function CreatePurchaseRequestPage() {
     setFormData(prev => ({ ...prev, items: updatedItems }));
   };
 
+  const handleStoreRemarksChange = (index: number, value: string) => {
+    const updatedItems = [...formData.items];
+    updatedItems[index] = {
+      ...updatedItems[index],
+      store_remarks: value
+    };
+    setFormData(prev => ({ ...prev, items: updatedItems }));
+  };
+
+  const handleApprovalStatusChange = (index: number, value: "pending" | "approved" | "rejected" | "hold") => {
+    const updatedItems = [...formData.items];
+    updatedItems[index] = {
+      ...updatedItems[index],
+      approval_status: value
+    };
+    setFormData(prev => ({ ...prev, items: updatedItems }));
+  };
+
   const addItem = () => {
     setFormData(prev => ({
       ...prev,
-      items: [...prev.items, { product_id: "", item: "", quantity: "" }]
+      items: [...prev.items, { 
+        product_id: "", 
+        item: "", 
+        quantity: "", 
+        store_remarks: "",
+        approval_status: "pending"
+      }]
     }));
   };
 
@@ -276,6 +323,16 @@ export default function CreatePurchaseRequestPage() {
   const validateForm = (): boolean => {
     if (!formData.customer_id || !formData.customer_name.trim()) {
       setError("Please select a customer");
+      return false;
+    }
+
+    if (!formData.purchase_req_no.trim()) {
+      setError("Purchase request number is required");
+      return false;
+    }
+
+    if (!formData.date) {
+      setError("Date is required");
       return false;
     }
 
@@ -299,47 +356,52 @@ export default function CreatePurchaseRequestPage() {
 
     return true;
   };
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  
-  if (!company?.id) {
-    setError("Please select a company first");
-    return;
-  }
 
-  if (!validateForm()) {
-    return;
-  }
-
-  setLoading(true);
-  setError(null);
-
-  try {
-    const apiData = {
-      customer_id: formData.customer_id,
-      customer_name: formData.customer_name,
-      items: formData.items.map(item => ({
-        product_id: item.product_id,
-        item: item.item,
-        quantity: parseFloat(item.quantity)
-      })),
-      notes: formData.notes || "",
-      status: "pending"
-    };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     
-    // Use the purchaseRequestsApi from api.ts
-    await purchaseRequestsApi.create(company.id, apiData);
-    
-    router.push("/purchase-req");
-  } catch (error: any) {
-    console.error("=== DEBUG: Purchase Request API Error ===");
-    console.error("Full error:", error);
-    console.error("Error response:", error.response?.data);
-    setError(getErrorMessage(error, "Failed to create purchase request"));
-  } finally {
-    setLoading(false);
-  }
-};
+    if (!company?.id) {
+      setError("Please select a company first");
+      return;
+    }
+
+    if (!validateForm()) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const apiData = {
+        purchase_req_no: formData.purchase_req_no,
+        date: formData.date,
+        status: formData.status,
+        customer_id: formData.customer_id,
+        customer_name: formData.customer_name,
+        items: formData.items.map(item => ({
+          product_id: item.product_id,
+          item: item.item,
+          quantity: parseFloat(item.quantity),
+          store_remarks: item.store_remarks,
+          approval_status: item.approval_status
+        })),
+        notes: formData.notes || ""
+      };
+      
+      // Use the purchaseRequestsApi from api.ts
+      await purchaseRequestsApi.create(company.id, apiData);
+      
+      router.push("/purchase-req");
+    } catch (error: any) {
+      console.error("=== DEBUG: Purchase Request API Error ===");
+      console.error("Full error:", error);
+      console.error("Error response:", error.response?.data);
+      setError(getErrorMessage(error, "Failed to create purchase request"));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!company) {
     return (
@@ -371,6 +433,56 @@ const handleSubmit = async (e: React.FormEvent) => {
             {error}
           </div>
         )}
+
+        {/* Purchase Request Header Information */}
+        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+          <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Purchase Request Details</h2>
+          
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                Purchase Request No. <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.purchase_req_no}
+                onChange={(e) => setFormData(prev => ({ ...prev, purchase_req_no: e.target.value }))}
+                placeholder="PR-XXXX-XXXX"
+                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+              />
+            </div>
+            
+            <div>
+              <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                Date <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                value={formData.date}
+                onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+              />
+            </div>
+            
+            <div>
+              <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                Status <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData(prev => ({ 
+                  ...prev, 
+                  status: e.target.value as "open" | "in_process" | "closed" 
+                }))}
+                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+              >
+                <option value="open">Open</option>
+                <option value="in_process">In Process</option>
+                <option value="closed">Closed</option>
+              </select>
+            </div>
+          </div>
+        </div>
 
         {/* Customer Selection */}
         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
@@ -503,12 +615,18 @@ const handleSubmit = async (e: React.FormEvent) => {
             ) : (
               <>
                 <div className="grid grid-cols-12 gap-4 border-b border-stroke pb-2 dark:border-dark-3">
-                  <div className="col-span-1 text-sm font-medium text-dark-6 dark:text-dark-6">#</div>
-                  <div className="col-span-7 text-sm font-medium text-dark-6 dark:text-dark-6">
+                  <div className="col-span-1 text-sm font-medium text-dark-6 dark:text-dark-6">S.No</div>
+                  <div className="col-span-4 text-sm font-medium text-dark-6 dark:text-dark-6">
                     Item Name <span className="text-red-500">*</span>
                   </div>
-                  <div className="col-span-3 text-sm font-medium text-dark-6 dark:text-dark-6">
+                  <div className="col-span-2 text-sm font-medium text-dark-6 dark:text-dark-6">
                     Quantity <span className="text-red-500">*</span>
+                  </div>
+                  <div className="col-span-2 text-sm font-medium text-dark-6 dark:text-dark-6">
+                    Store Remarks
+                  </div>
+                  <div className="col-span-2 text-sm font-medium text-dark-6 dark:text-dark-6">
+                    Approval Status
                   </div>
                   <div className="col-span-1 text-sm font-medium text-dark-6 dark:text-dark-6">Action</div>
                 </div>
@@ -520,7 +638,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                   >
                     <div className="col-span-1 font-medium text-dark dark:text-white">{index + 1}</div>
                     
-                    <div className="col-span-7">
+                    <div className="col-span-4">
                       <div className="relative">
                         <input
                           type="text"
@@ -603,7 +721,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                       </div>
                     </div>
                     
-                    <div className="col-span-3">
+                    <div className="col-span-2">
                       <input
                         type="number"
                         value={item.quantity}
@@ -613,6 +731,29 @@ const handleSubmit = async (e: React.FormEvent) => {
                         step="0.01"
                         className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
                       />
+                    </div>
+                    
+                    <div className="col-span-2">
+                      <input
+                        type="text"
+                        value={item.store_remarks}
+                        onChange={(e) => handleStoreRemarksChange(index, e.target.value)}
+                        placeholder="Enter store remarks"
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
+                      />
+                    </div>
+                    
+                    <div className="col-span-2">
+                      <select
+                        value={item.approval_status}
+                        onChange={(e) => handleApprovalStatusChange(index, e.target.value as "pending" | "approved" | "rejected" | "hold")}
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approve</option>
+                        <option value="rejected">Reject</option>
+                        <option value="hold">Hold</option>
+                      </select>
                     </div>
                     
                     <div className="col-span-1 flex justify-center">
@@ -640,7 +781,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           
           <div>
             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-            Remarks
+              Remarks
             </label>
             <textarea
               name="notes"

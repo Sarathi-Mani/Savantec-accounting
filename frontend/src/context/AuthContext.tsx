@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { companiesApi, User, Company, LoginRequest, RegisterRequest } from "@/services/api";
+import { companiesApi, payrollApi, User, Company, LoginRequest, RegisterRequest } from "@/services/api";
+import { clearUserDesignation, storeUserDesignation } from "@/utils/permission-check";
 
 // Extended User interface to include employee data
 interface ExtendedUser extends User {
@@ -11,7 +12,12 @@ interface ExtendedUser extends User {
   first_name?: string;
   last_name?: string;
   department?: any;
-  designation?: any;
+  designation?: {
+    id?: string;
+    name?: string;
+    permissions?: string[];
+  } | string | null;
+  designation_id?: string;
   company_name?: string;
   company_id?: string;
 }
@@ -48,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   const isPublicRoute = pathname?.startsWith("/auth");
+  const [isDesignationLoading, setIsDesignationLoading] = useState(false);
 
   // Helper function to get appropriate token
   const getToken = (): string | null => {
@@ -159,6 +166,100 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initAuth();
   }, []);
 
+  const loadDesignationPermissions = useCallback(
+    async (userData: ExtendedUser, companyId: string) => {
+      if (!userData || !companyId) return;
+
+      const designationId =
+        (typeof userData.designation === "object" && userData.designation?.id) ||
+        userData.designation_id;
+
+      if (!designationId) return;
+
+      // If permissions already present, store and stop
+      if (
+        typeof userData.designation === "object" &&
+        Array.isArray(userData.designation?.permissions)
+      ) {
+        storeUserDesignation({
+          id: designationId,
+          name: userData.designation?.name,
+          permissions: userData.designation?.permissions || [],
+        });
+        return;
+      }
+
+      // Try cached designation
+      const cachedDesignation = localStorage.getItem("current_designation");
+      if (cachedDesignation) {
+        try {
+          const parsed = JSON.parse(cachedDesignation);
+          if (parsed?.id === designationId && Array.isArray(parsed?.permissions)) {
+            setUser((prev) => {
+              if (!prev) return prev;
+              const designation =
+                typeof prev.designation === "object"
+                  ? prev.designation
+                  : { name: parsed?.name };
+              return {
+                ...prev,
+                designation: {
+                  ...designation,
+                  id: designationId,
+                  name: designation?.name || parsed?.name,
+                  permissions: parsed.permissions,
+                },
+              };
+            });
+            return;
+          }
+        } catch {
+          // Ignore cache parse errors
+        }
+      }
+
+      setIsDesignationLoading(true);
+      try {
+        const response = await payrollApi.getDesignationPermissions(
+          designationId,
+          companyId,
+        );
+        const permissions = Array.isArray(response?.data)
+          ? response.data
+          : response?.data?.permissions || [];
+
+        storeUserDesignation({
+          id: designationId,
+          name:
+            (typeof userData.designation === "object" && userData.designation?.name) ||
+            (typeof userData.designation === "string" ? userData.designation : undefined),
+          permissions,
+        });
+
+        setUser((prev) => {
+          if (!prev) return prev;
+          const designation =
+            typeof prev.designation === "object"
+              ? prev.designation
+              : { name: typeof prev.designation === "string" ? prev.designation : undefined };
+          return {
+            ...prev,
+            designation: {
+              ...designation,
+              id: designationId,
+              permissions,
+            },
+          };
+        });
+      } catch (error) {
+        console.error("Failed to load designation permissions:", error);
+      } finally {
+        setIsDesignationLoading(false);
+      }
+    },
+    [],
+  );
+
   // Clear all auth data
   const clearAuth = () => {
     localStorage.removeItem("access_token");
@@ -168,6 +269,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem("employee_data");
     localStorage.removeItem("user_type");
     localStorage.removeItem("company_id");
+    clearUserDesignation();
     setUser(null);
     setCompany(null);
     setCompanies([]);
@@ -355,6 +457,18 @@ if (result.user_type === "employee") {
       console.error("Failed to refresh companies:", error);
     }
   };
+
+  useEffect(() => {
+    if (!user || !company || isDesignationLoading) return;
+
+    const designationId =
+      (typeof user.designation === "object" && user.designation?.id) ||
+      user.designation_id;
+
+    if (!designationId) return;
+
+    loadDesignationPermissions(user, company.id);
+  }, [user, company, loadDesignationPermissions, isDesignationLoading]);
 
   return (
     <AuthContext.Provider

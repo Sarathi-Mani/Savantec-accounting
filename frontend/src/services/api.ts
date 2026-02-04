@@ -1873,11 +1873,11 @@ export const purchaseRequestsApi = {
     return response.data;
   },
 
-  updateStatus: async (
+updateStatus: async (
     companyId: string, 
     requestId: string, 
     data: {
-      status: 'pending' | 'approved' | 'hold' | 'rejected';
+      approval_status: 'pending' | 'approved' | 'hold' | 'rejected';  // Use approval_status for API request
       approval_notes?: string;
     }
   ): Promise<any> => {
@@ -2800,7 +2800,9 @@ export interface Designation {
   employee_count?: number;
   created_at?: string;
   updated_at?: string;
+   permissions: string[];
 }
+
 export interface PaginatedDesignations {
   items: Designation[];
   pagination: {
@@ -2827,6 +2829,7 @@ export interface DesignationCreateData {
   code?: string;
   description?: string;
   level?: number;
+  permissions?: string[];
   is_active?: boolean;
 }
 
@@ -3153,13 +3156,15 @@ export const payrollApi = {
     return response.data;
   },
 
-  createDesignation: async (
-    companyId: string,
-    data: { name: string; code?: string; level?: number }
-  ): Promise<Designation> => {
-    const response = await api.post(`/companies/${companyId}/payroll/designations`, data);
-    return response.data;
-  },
+ createDesignation: async (
+  companyId: string,
+  data: DesignationCreateData 
+): Promise<Designation> => {
+  const response = await api.post(`/companies/${companyId}/payroll/designations`, data);
+  return response.data;
+},
+
+
 
   getDesignations: async (
     companyId: string,

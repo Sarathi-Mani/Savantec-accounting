@@ -8,11 +8,11 @@ import Link from "next/link";
 
 interface PurchaseRequest {
   id: string;
-  request_number: string;
+  purchase_req_no: string;
   customer_id: string;
   customer_name: string;
   request_date: string;
-  status: "pending" | "approved" | "hold" | "rejected";
+  status: "pending" | "open" | "in_progress" | "closed";
   total_items: number;
   total_quantity: number;
   notes?: string;
@@ -24,6 +24,14 @@ export default function PurchaseRequestsPage() {
   const { company } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<{
+    id: string;
+    purchase_req_no: string;
+    customer_name: string;
+    currentStatus: string;
+    newStatus: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -39,16 +47,47 @@ export default function PurchaseRequestsPage() {
 
   const statusColors: Record<string, string> = {
     pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300",
-    approved: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
-    hold: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
-    rejected: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+    open: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
+    in_progress: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
+    closed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
   };
 
   const statusLabels: Record<string, string> = {
     pending: "Pending",
-    approved: "Approved",
-    hold: "On Hold",
-    rejected: "Rejected"
+    open: "Open",
+    in_progress: "In Progress ",
+    closed: "Closed"
+  };
+
+  // ADDED: Function to show confirmation modal
+  const showStatusUpdateConfirmation = (
+    id: string,
+    purchase_req_no: string,
+    customer_name: string,
+    currentStatus: string,
+    newStatus: string
+  ) => {
+    setSelectedRequest({
+      id,
+      purchase_req_no,
+      customer_name,
+      currentStatus,
+      newStatus
+    });
+    setShowConfirmModal(true);
+  };
+
+  // ADDED: Function to execute status update after confirmation
+  const executeStatusUpdate = async () => {
+    if (!selectedRequest || !company?.id) return;
+    
+    await updateRequestStatus(
+      selectedRequest.id,
+      selectedRequest.newStatus as "pending" | "open" | "in_progress" | "closed"
+    );
+    
+    setShowConfirmModal(false);
+    setSelectedRequest(null);
   };
 
   const fetchPurchaseRequests = async () => {
@@ -84,15 +123,18 @@ export default function PurchaseRequestsPage() {
     }
   };
 
-  const updateRequestStatus = async (requestId: string, status: "pending" | "approved" | "hold" | "rejected") => {
+  const updateRequestStatus = async (requestId: string, status: "pending" | "open" | "in_progress" | "closed") => {
     if (!company?.id) return;
     
     setUpdatingStatusId(requestId);
     
     try {
-      await purchaseRequestsApi.updateStatus(company.id, requestId, { status });
+      // FIX: Use approval_status instead of status for API request
+      await purchaseRequestsApi.updateStatus(company.id, requestId, { 
+        approval_status: status  // Changed from 'status' to 'approval_status'
+      });
       
-      // Update local state
+      // Update local state - use status for local state (matches API response)
       setPurchaseRequests(prev =>
         prev.map(req =>
           req.id === requestId ? { ...req, status, updated_at: new Date().toISOString() } : req
@@ -164,6 +206,80 @@ export default function PurchaseRequestsPage() {
           <span>+</span> New Purchase Request
         </Link>
       </div>
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && selectedRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-dark">
+            <h3 className="mb-4 text-lg font-semibold text-dark dark:text-white">
+              Confirm Status Update
+            </h3>
+            
+            <div className="mb-6 space-y-3">
+              <div className="flex justify-between">
+                <span className="text-dark-6 dark:text-dark-6">Request No:</span>
+                <span className="font-medium text-dark dark:text-white">
+                  {selectedRequest.purchase_req_no}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-dark-6 dark:text-dark-6">Customer:</span>
+                <span className="font-medium text-dark dark:text-white">
+                  {selectedRequest.customer_name}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-dark-6 dark:text-dark-6">Current Status:</span>
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                  statusColors[selectedRequest.currentStatus]
+                }`}>
+                  {statusLabels[selectedRequest.currentStatus] || selectedRequest.currentStatus}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-dark-6 dark:text-dark-6">New Status:</span>
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                  statusColors[selectedRequest.newStatus]
+                }`}>
+                  {statusLabels[selectedRequest.newStatus] || selectedRequest.newStatus}
+                </span>
+              </div>
+            </div>
+            
+            <p className="mb-6 text-dark-6 dark:text-dark-6">
+              Are you sure you want to update the status of this purchase request?
+              This action will be recorded in the request history.
+            </p>
+            
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowConfirmModal(false);
+                  setSelectedRequest(null);
+                }}
+                className="rounded-lg border border-stroke px-4 py-2 text-dark hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
+                disabled={updatingStatusId === selectedRequest.id}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeStatusUpdate}
+                className="rounded-lg bg-primary px-4 py-2 text-white hover:bg-opacity-90 disabled:opacity-50"
+                disabled={updatingStatusId === selectedRequest.id}
+              >
+                {updatingStatusId === selectedRequest.id ? (
+                  <>
+                    <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                    Updating...
+                  </>
+                ) : (
+                  "Confirm Update"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Alert for status updates */}
       {showAlert && (
@@ -245,9 +361,9 @@ export default function PurchaseRequestsPage() {
               >
                 <option value="all">All Status</option>
                 <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
-                <option value="hold">On Hold</option>
-                <option value="rejected">Rejected</option>
+                <option value="open">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="closed">Closed</option>
               </select>
             </div>
           </div>
@@ -304,7 +420,7 @@ export default function PurchaseRequestsPage() {
                     >
                       <td className="px-6 py-4">
                         <div className="font-medium text-dark dark:text-white">
-                          {request.request_number || `PR-${request.id.slice(0, 8)}`}
+                          {request.purchase_req_no || `PR-${request.id.slice(0, 8)}`}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -339,13 +455,20 @@ export default function PurchaseRequestsPage() {
                           </Link>
                           
                           {/* Status Actions Dropdown - Show for pending and hold requests */}
-                          {(request.status === "pending" || request.status === "hold") && (
+                          {(request.status === "pending" || request.status === "in_progress") && (
                             <div className="relative">
                               <select
                                 onChange={(e) => {
-                                  const newStatus = e.target.value as "pending" | "approved" | "hold" | "rejected";
+                                  const newStatus = e.target.value as "pending" | "open" | "in_progress" | "hold";
                                   if (newStatus) {
-                                    updateRequestStatus(request.id, newStatus);
+                                    // Show confirmation modal instead of directly updating
+                                    showStatusUpdateConfirmation(
+                                      request.id,
+                                      request.purchase_req_no || `PR-${request.id.slice(0, 8)}`,
+                                      request.customer_name,
+                                      request.status,
+                                      newStatus
+                                    );
                                   }
                                   e.target.value = ""; // Reset dropdown
                                 }}
@@ -353,9 +476,9 @@ export default function PurchaseRequestsPage() {
                                 className="appearance-none rounded-lg border border-stroke bg-white px-3 py-1 pr-8 text-sm outline-none focus:border-primary disabled:opacity-50 dark:border-dark-3 dark:bg-dark-3"
                               >
                                 <option value="">Update Status</option>
-                                {request.status !== "approved" && <option value="approved">Approve</option>}
-                                {request.status !== "hold" && <option value="hold">Put on Hold</option>}
-                                {request.status !== "rejected" && <option value="rejected">Reject</option>}
+                                {request.status !== "open" && <option value="open">Open</option>}
+                                {request.status !== "in_progress" && <option value="in_progress">In Progress</option>}
+                                {request.status !== "closed" && <option value="closed">Closed</option>}
                               </select>
                               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
                                 {updatingStatusId === request.id ? (

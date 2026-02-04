@@ -78,6 +78,35 @@ export const PERMISSION_KEYS = {
 } as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[keyof typeof PERMISSION_KEYS];
+export const ALL_PERMISSION_KEYS = Object.values(PERMISSION_KEYS) as PermissionKey[];
+
+const FULL_ACCESS_KEYS = new Set(["full_access", "full access", "admin", "all"]);
+
+export const isPermissionKey = (value: string): value is PermissionKey => {
+  return ALL_PERMISSION_KEYS.includes(value as PermissionKey);
+};
+
+export const normalizePermissions = (
+  permissions?: string[] | null,
+  roleName?: string | null,
+): PermissionKey[] => {
+  const normalizedRoleName = roleName ? roleName.toLowerCase() : "";
+  const roleHasFullAccess =
+    normalizedRoleName.includes("full") || normalizedRoleName.includes("admin");
+
+  if (!permissions || permissions.length === 0) {
+    return roleHasFullAccess ? [...ALL_PERMISSION_KEYS] : [];
+  }
+
+  const hasFullAccess = permissions.some((perm) =>
+    FULL_ACCESS_KEYS.has(perm.toLowerCase()),
+  );
+  if (hasFullAccess || roleHasFullAccess) {
+    return [...ALL_PERMISSION_KEYS];
+  }
+
+  return permissions.filter(isPermissionKey);
+};
 
 // Module-based permission groupings
 export const MODULE_PERMISSIONS = {

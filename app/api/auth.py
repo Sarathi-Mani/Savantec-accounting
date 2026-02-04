@@ -5,16 +5,18 @@ from typing import Optional, Dict, Any,Union
 import jwt
 from sqlalchemy import or_, func
 from passlib.context import CryptContext
+import logging
 
 from app.database.connection import get_db
 from app.database.models import User,Company
-from app.database.payroll_models import Employee, EmployeeStatus
+from app.database.payroll_models import Employee, EmployeeStatus, Designation
 from app.schemas.auth import UserCreate, UserLogin, UserResponse, TokenResponse, UserUpdate, PasswordChange
 from app.auth.supabase_client import auth_helper
 from app.auth.dependencies import get_current_user
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+logger = logging.getLogger(__name__)
 
 # Add JWT config for employees
 EMPLOYEE_SECRET_KEY = "employee-secret-key-change-in-production"
@@ -111,15 +113,53 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
                 access_token = session_info.get("access_token")
                 refresh_token = session_info.get("refresh_token")
                 
+                designation_data = None
+                if user and getattr(user, "designation_id", None):
+                    designation = (
+                        db.query(Designation)
+                        .filter(Designation.id == user.designation_id)
+                        .first()
+                    )
+                    if designation:
+                        designation_data = {
+                            "id": str(designation.id),
+                            "name": designation.name,
+                            "permissions": designation.permissions or [],
+                        }
+                        logger.info(
+                            "Login user=%s designation_id=%s designation_name=%s permissions_count=%s",
+                            user.email,
+                            user.designation_id,
+                            designation.name,
+                            len(designation.permissions or []),
+                        )
+                    else:
+                        logger.info(
+                            "Login user=%s designation_id=%s designation_not_found",
+                            user.email,
+                            user.designation_id,
+                        )
+                else:
+                    logger.info(
+                        "Login user=%s designation_id_missing",
+                        user.email if user else data.email,
+                    )
+
+                user_payload = UserResponse.model_validate(user).model_dump()
+                if designation_data:
+                    user_payload["designation_id"] = str(user.designation_id)
+                    user_payload["designation"] = designation_data
+
                 return LoginResponse(
                     access_token=access_token,
                     refresh_token=refresh_token,
                     token_type="bearer",
                     expires_in=86400,
                     user_type="user",
-                    user_data=UserResponse.model_validate(user).model_dump()
+                    user_data=user_payload,
                 )
-        except Exception:
+        except Exception as supabase_error:
+            logger.exception("Supabase login failed for %s", data.email)
             # Supabase login failed, try employee login
             pass
         
@@ -163,6 +203,34 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
             )
             
             # Prepare employee data - WITH COMPANY_ID ADDED
+            designation_data = None
+            if employee.designation:
+                designation_data = {
+                    "id": str(employee.designation.id),
+                    "name": employee.designation.name
+                }
+            elif employee.designation_id:
+                designation = (
+                    db.query(Designation)
+                    .filter(Designation.id == employee.designation_id)
+                    .first()
+                )
+                if designation:
+                    designation_data = {
+                        "id": str(designation.id),
+                        "name": designation.name,
+                        "permissions": designation.permissions or [],
+                    }
+
+            logger.info(
+                "Employee login email=%s employee_id=%s designation_id=%s designation_name=%s permissions_count=%s",
+                data.email,
+                employee.id,
+                employee.designation_id,
+                designation_data["name"] if designation_data else None,
+                len(designation_data.get("permissions", [])) if designation_data else 0,
+            )
+
             employee_data = {
                 "id": str(employee.id),
                 "employee_code": employee.employee_code,
@@ -179,10 +247,8 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
                     "id": str(employee.department.id),
                     "name": employee.department.name
                 } if employee.department and hasattr(employee.department, 'id') else None,
-                "designation": {
-                    "id": str(employee.designation.id),
-                    "name": employee.designation.name
-                } if employee.designation and hasattr(employee.designation, 'id') else None,
+                "designation_id": str(employee.designation_id) if employee.designation_id else None,
+                "designation": designation_data,
                 "date_of_joining": employee.date_of_joining.isoformat() if employee.date_of_joining else None,
                 "employee_type": employee.employee_type.value if employee.employee_type else None,
                 "status": employee.status.value if employee.status else None,
@@ -208,6 +274,7 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception:
+        logger.exception("Login failed with unexpected error for %s", data.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
