@@ -6,6 +6,7 @@ from app.database.models import Company, BankAccount, User, Account, AccountType
 from app.schemas.company import CompanyCreate, CompanyUpdate, BankAccountCreate, BankAccountUpdate
 
 
+
 class CompanyService:
     """Service for company operations."""
     
