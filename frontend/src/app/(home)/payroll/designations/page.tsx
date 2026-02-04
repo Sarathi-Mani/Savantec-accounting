@@ -24,6 +24,15 @@ interface Role {
   updated_at: string;
 }
 
+interface Employee {
+  id: string;
+  designation_id?: string | null;
+  designation?: {
+    id?: string;
+    name?: string;
+  } | null;
+}
+
 export default function RolesPage() {
   const { company } = useAuth();
   const [roles, setRoles] = useState<Role[]>([]);
@@ -36,12 +45,51 @@ export default function RolesPage() {
     }
   }, [company]);
 
+  const fetchAllEmployees = async (): Promise<Employee[]> => {
+    if (!company?.id) return [];
+
+    const pageSize = 100;
+    let page = 1;
+    let allEmployees: Employee[] = [];
+
+    while (true) {
+      const response = await api.get(`/companies/${company.id}/payroll/employees`, {
+        params: { page, page_size: pageSize },
+      });
+      const batch = Array.isArray(response.data) ? response.data : [];
+      allEmployees = allEmployees.concat(batch);
+
+      if (batch.length < pageSize) {
+        break;
+      }
+      page += 1;
+    }
+
+    return allEmployees;
+  };
+
   const fetchRoles = async () => {
     try {
-      const response = await api.get(
-         `/companies/${company?.id}/payroll/designations`
-      );
-      setRoles(response.data);
+      const [rolesResponse, employees] = await Promise.all([
+        api.get(`/companies/${company?.id}/payroll/designations`),
+        fetchAllEmployees(),
+      ]);
+
+      const roleList: Role[] = Array.isArray(rolesResponse.data) ? rolesResponse.data : [];
+      const counts = employees.reduce((acc, employee) => {
+        const designationId = employee.designation_id || employee.designation?.id;
+        if (designationId) {
+          acc[designationId] = (acc[designationId] || 0) + 1;
+        }
+        return acc;
+      }, {} as Record<string, number>);
+
+      const rolesWithCounts = roleList.map((role) => ({
+        ...role,
+        user_count: counts[role.id] || 0,
+      }));
+
+      setRoles(rolesWithCounts);
     } catch (error) {
       console.error("Error fetching roles:", error);
     } finally {
@@ -145,7 +193,7 @@ export default function RolesPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-2xl font-bold text-dark dark:text-white">
-                {roles.reduce((sum, role) => sum + role.user_count, 0)}
+                {roles.reduce((sum, role) => sum + (role.user_count || 0), 0)}
               </p>
               <p className="text-sm text-dark-6 mt-1">Total Users</p>
             </div>

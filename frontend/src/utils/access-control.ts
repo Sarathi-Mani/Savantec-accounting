@@ -14,6 +14,7 @@ const ROUTE_RULES: RouteRule[] = [
   { match: startsWith("/payroll/designations"), permissions: [PERMISSION_KEYS.PERMISSION_APPROVAL] },
   { match: startsWith("/payroll/employees"), permissions: [PERMISSION_KEYS.PERMISSION_APPROVAL] },
   { match: startsWith("/payroll/leaves"), permissions: [PERMISSION_KEYS.LEAVE_APPROVAL] },
+  { match: startsWith("/payroll"), permissions: [PERMISSION_KEYS.PAYROLL_ACCESS] },
 
   // Products / Inventory
   { match: startsWith("/products/brands"), permissions: [PERMISSION_KEYS.BRAND] },
@@ -59,7 +60,20 @@ const ROUTE_RULES: RouteRule[] = [
   { match: startsWith("/accounting/receipt"), permissions: [PERMISSION_KEYS.CASH_BANK_ENTRIES] },
   { match: startsWith("/accounting/contra"), permissions: [PERMISSION_KEYS.CASH_BANK_ENTRIES] },
   { match: startsWith("/accounting/bank-import"), permissions: [PERMISSION_KEYS.CASH_BANK_ENTRIES] },
+  { match: startsWith("/accounting/reports"), permissions: [PERMISSION_KEYS.REPORTS_ACCESS] },
   { match: startsWith("/accounting"), permissions: [PERMISSION_KEYS.JOURNAL, PERMISSION_KEYS.CASH_BANK_ENTRIES] },
+
+  // Banking
+  { match: startsWith("/banking"), permissions: [PERMISSION_KEYS.BANKING_ACCESS] },
+
+  // Reports
+  { match: startsWith("/reports"), permissions: [PERMISSION_KEYS.REPORTS_ACCESS] },
+  { match: startsWith("/gst-reports"), permissions: [PERMISSION_KEYS.REPORTS_ACCESS] },
+  { match: startsWith("/gst"), permissions: [PERMISSION_KEYS.REPORTS_ACCESS] },
+
+  // Settings / Company
+  { match: startsWith("/company"), permissions: [PERMISSION_KEYS.SETTINGS_ACCESS] },
+  { match: startsWith("/settings"), permissions: [PERMISSION_KEYS.SETTINGS_ACCESS] },
 ];
 
 export const getRoutePermissions = (path: string): PermissionKey[] => {

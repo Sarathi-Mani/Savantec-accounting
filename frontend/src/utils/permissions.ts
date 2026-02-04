@@ -64,6 +64,12 @@ export const PERMISSION_KEYS = {
   // Administration
   PROCESS_PURCHASE_RATE: 'process_purchase_rate',
   PROCESS_QUOTATION_TEAM: 'process_quotation_team',
+
+  // Menu Access
+  PAYROLL_ACCESS: 'payroll_access',
+  BANKING_ACCESS: 'banking_access',
+  SETTINGS_ACCESS: 'settings_access',
+  REPORTS_ACCESS: 'reports_access',
   
   // Delivery Challan Specific
   DC_CREATE: 'dc_create',
