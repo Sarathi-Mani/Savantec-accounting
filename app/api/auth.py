@@ -40,6 +40,9 @@ class LoginResponse(BaseModel):
     user_data: Dict[str, Any]
 
 
+
+
+
 # Helper functions for employee auth
 def verify_employee_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a stored password against one provided by employee."""
