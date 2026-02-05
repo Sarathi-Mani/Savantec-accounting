@@ -483,6 +483,7 @@ class BudgetLine(Base):
     )
 
 
+
 class User(Base):
     """User model - represents a tenant in the multi-tenant system."""
     __tablename__ = "users"
