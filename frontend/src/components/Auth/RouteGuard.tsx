@@ -6,6 +6,8 @@ import { useAuth } from "@/context/AuthContext";
 import { usePermissions } from "@/hooks/usePermissions";
 import { canAccessRoute } from "@/utils/access-control";
 
+
+
 export function RouteGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();

@@ -49,3 +49,5 @@ export function clearUserDesignation() {
     localStorage.removeItem('current_designation');
   }
 }
+
+

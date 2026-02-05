@@ -6,6 +6,8 @@ type RouteRule = {
   permissions: PermissionKey[];
 };
 
+
+
 const startsWith = (prefix: string) => (path: string) =>
   path === prefix || path.startsWith(`${prefix}/`);
 

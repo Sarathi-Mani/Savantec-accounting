@@ -225,6 +225,8 @@ export const getPermissionsForRole = (roleName: string): PermissionKey[] => {
     return [...ROLE_PERMISSIONS['new Purchase Manager']];
   }
   
+
+  
   // Default to view only permissions
   return [
     PERMISSION_KEYS.VIEW_QUOTATION,

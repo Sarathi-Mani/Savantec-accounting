@@ -180,6 +180,7 @@ export function Sidebar() {
                 </nav>
               </div>
             ))}
+            
           </div>
         </div>
       </aside>

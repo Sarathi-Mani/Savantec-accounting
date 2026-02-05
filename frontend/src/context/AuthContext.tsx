@@ -386,6 +386,7 @@ if (result.user_type === "employee") {
     }
   };
 
+  
   const register = async (data: RegisterRequest) => {
     setIsLoading(true);
     try {

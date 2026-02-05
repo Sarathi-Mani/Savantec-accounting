@@ -60,6 +60,9 @@ export const usePermissions = () => {
     return [];
   };
   
+
+
+  
   // Check if user has specific permission
   const checkPermission = (permission: PermissionKey | PermissionKey[]): boolean => {
     const userPermissions = getUserPermissions();
