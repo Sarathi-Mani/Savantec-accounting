@@ -677,17 +677,71 @@ class InvoiceService:
         """Get total number of invoices for a company."""
         return self.db.query(Invoice).filter(Invoice.company_id == company.id).count()
 
-    def update_invoice(self, invoice: Invoice, data: InvoiceUpdate) -> Invoice:
+    def update_invoice(self, invoice: Invoice, data: InvoiceUpdate, company: Company) -> Invoice:
         """Update an invoice."""
         update_data = data.model_dump(exclude_unset=True)
+        items_data = update_data.pop("items", None)
+
         for field, value in update_data.items():
-          if field == 'voucher_type' and isinstance(value, str):
-            # Convert string to VoucherType enum
-            setattr(invoice, field, VoucherType(value.lower()))
-          else:
-            setattr(invoice, field, value)
-      
-        
+            if field == "voucher_type":
+                if value is None:
+                    continue
+                # Normalize to InvoiceVoucher enum
+                normalized = value.value if hasattr(value, "value") else str(value)
+                setattr(invoice, field, InvoiceVoucher(normalized))
+            else:
+                setattr(invoice, field, value)
+
+        if items_data is not None:
+            # Replace all items (draft invoices only - enforced in API)
+            self.db.query(InvoiceItem).filter(
+                InvoiceItem.invoice_id == invoice.id
+            ).delete(synchronize_session=False)
+
+            self.db.flush()
+
+            for item in items_data:
+                if item.get("gst_rate") is None:
+                    item["gst_rate"] = Decimal("0")
+                if item.get("discount_percent") is None:
+                    item["discount_percent"] = Decimal("0")
+                item_obj = InvoiceItemCreate(**item)
+                amounts = self._calculate_item_amounts(
+                    item_obj,
+                    company.state_code or "27",
+                    invoice.place_of_supply or company.state_code or "27"
+                )
+
+                new_item = InvoiceItem(
+                    invoice_id=invoice.id,
+                    product_id=item_obj.product_id,
+                    description=item_obj.description,
+                    hsn_code=item_obj.hsn_code,
+                    quantity=item_obj.quantity,
+                    unit=item_obj.unit,
+                    unit_price=item_obj.unit_price,
+                    discount_percent=item_obj.discount_percent,
+                    gst_rate=item_obj.gst_rate,
+                    **amounts
+                )
+                self.db.add(new_item)
+
+            # If totals were not provided, recalc from items
+            total_fields = {
+                "subtotal",
+                "discount_amount",
+                "cgst_amount",
+                "sgst_amount",
+                "igst_amount",
+                "cess_amount",
+                "total_tax",
+                "total_amount",
+            }
+            if not total_fields.intersection(update_data.keys()):
+                self._recalculate_invoice_totals(invoice)
+            else:
+                invoice.balance_due = invoice.total_amount - invoice.amount_paid
+
         self.db.commit()
         self.db.refresh(invoice)
         return invoice

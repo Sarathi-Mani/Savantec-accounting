@@ -70,7 +70,7 @@ const Toast = ({ message, type = "success", onClose }: {
 };
 
 export default function ViewQuotationPage() {
-  const { company } = useAuth();
+  const { company, getToken } = useAuth();
   const router = useRouter();
   const params = useParams();
   const quotationId = params.id as string;
@@ -133,7 +133,7 @@ export default function ViewQuotationPage() {
     
     try {
       setLoading(true);
-      const token = localStorage.getItem("access_token");
+      const token = getToken();
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${quotationId}`,
         {
@@ -393,7 +393,7 @@ export default function ViewQuotationPage() {
     }
     
     try {
-      const token = localStorage.getItem("access_token");
+      const token = getToken();
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${quotation.id}`,
         {

@@ -276,17 +276,81 @@ class InvoiceCreate(BaseModel):
 
 class InvoiceUpdate(BaseModel):
     """Schema for updating an invoice."""
+    # Core fields
+    invoice_number: Optional[str] = None
+    voucher_type: Optional[VoucherType] = None
     customer_id: Optional[str] = None
     invoice_date: Optional[date] = None
     due_date: Optional[date] = None
-    
     invoice_type: Optional[InvoiceType] = None
     place_of_supply: Optional[str] = None
+    place_of_supply_name: Optional[str] = None
     is_reverse_charge: Optional[bool] = None
-    
+    status: Optional[InvoiceStatus] = None
+
+    # Round off / pipeline
+    round_off: Optional[Decimal] = None
+    sales_person_id: Optional[str] = None
+    contact_id: Optional[str] = None
+
+    # Shipping
+    shipping_address: Optional[str] = None
+    shipping_city: Optional[str] = None
+    shipping_state: Optional[str] = None
+    shipping_country: Optional[str] = None
+    shipping_zip: Optional[str] = None
+
+    # Reference information
+    reference_no: Optional[str] = None
+    delivery_note: Optional[str] = None
+    payment_terms: Optional[str] = None
+    supplier_ref: Optional[str] = None
+    other_references: Optional[str] = None
+    buyer_order_no: Optional[str] = None
+    buyer_order_date: Optional[date] = None
+    despatch_doc_no: Optional[str] = None
+    delivery_note_date: Optional[date] = None
+    despatched_through: Optional[str] = None
+    destination: Optional[str] = None
+    terms_of_delivery: Optional[str] = None
+
+    # Charges / discounts
+    freight_charges: Optional[Decimal] = None
+    packing_forwarding_charges: Optional[Decimal] = None
+    coupon_code: Optional[str] = None
+    coupon_value: Optional[Decimal] = None
+    discount_on_all: Optional[Decimal] = None
+    discount_type: Optional[str] = None
+
+    # Payment info
+    payment_type: Optional[str] = None
+    payment_account: Optional[str] = None
+    payment_note: Optional[str] = None
+    adjust_advance_payment: Optional[bool] = None
+
+    # Denormalized customer info
+    customer_name: Optional[str] = None
+    customer_gstin: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_state: Optional[str] = None
+    customer_state_code: Optional[str] = None
+
+    # Totals
+    subtotal: Optional[Decimal] = None
+    discount_amount: Optional[Decimal] = None
+    cgst_amount: Optional[Decimal] = None
+    sgst_amount: Optional[Decimal] = None
+    igst_amount: Optional[Decimal] = None
+    cess_amount: Optional[Decimal] = None
+    total_tax: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
+
+    # Notes
     notes: Optional[str] = None
     terms: Optional[str] = None
-    status: Optional[InvoiceStatus] = None
+
+    # Items
+    items: Optional[List[InvoiceItemCreate]] = None
 
 
 class PaymentCreate(BaseModel):

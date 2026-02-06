@@ -372,12 +372,14 @@ async def create_enquiry_formdata(
     company_id: str,
     enquiry_no: str = Form(...),
     enquiry_date: date = Form(...),
-    customer_id: str = Form(...),  # This is actually customer_id
+    customer_id: Optional[str] = Form(None),  # customer_id can be empty for manual customers
+    customer_name: Optional[str] = Form(None),
+    customer_search: Optional[str] = Form(None),
     kind_attn: Optional[str] = Form(None),
     mail_id: Optional[str] = Form(None),
     phone_no: Optional[str] = Form(None),
     remarks: Optional[str] = Form(None),
-    salesman_id: Optional[str] = Form(None), 
+    salesman_id: Optional[str] = Form(None),
     status: str = Form("pending"),
     items: str = Form("[]"),  # JSON string of items
     files: List[UploadFile] = File([]),
@@ -393,13 +395,16 @@ async def create_enquiry_formdata(
         raise HTTPException(status_code=400, detail="Invalid items JSON")
     
     # Create enquiry data from form
+    resolved_customer_name = customer_name or customer_search
+    prospect_company = resolved_customer_name if not customer_id else None
     enquiry_data = {
         "subject": remarks or f"Enquiry {enquiry_no}",
-        "customer_id": customer_id if customer_id != company_id else None,
+        "customer_id": customer_id if customer_id and customer_id != company_id else None,
         "sales_person_id": salesman_id,  # Use the salesman_id from form data, not hardcoded "1"
         "prospect_name": kind_attn,
         "prospect_email": mail_id,
         "prospect_phone": phone_no,
+        "prospect_company": prospect_company,
         "description": remarks,
         "notes": remarks,
         "expected_value": Decimal("0"),
@@ -942,15 +947,19 @@ def convert_enquiry_to_quotation(
                         "hsn_code": product.hsn_code,
                         "quantity": quantity,
                         "unit": product.unit or "unit",
-                        "unit_price": float(product.sale_price or 0),
+                    "unit_price": float(product.sales_price or 0),
                         "discount_percent": 0,
-                        "gst_rate": float(product.gst_rate or 18),
+                    "gst_rate": float(getattr(product, "gst_rate", None) or 18),
                     })
                 else:
                     # Product not found, add with description only
                     items.append({
                         "product_id": None,
-                        "description": prod_info.get("product_name", "Product") + (f" - {notes}" if notes else ""),
+                        "description": (
+                            prod_info.get("description")
+                            or prod_info.get("product_name")
+                            or "Product"
+                        ) + (f" - {notes}" if notes else ""),
                         "hsn_code": None,
                         "quantity": quantity,
                         "unit": "unit",
@@ -962,7 +971,11 @@ def convert_enquiry_to_quotation(
                 # No product_id, use description
                 items.append({
                     "product_id": None,
-                    "description": prod_info.get("product_name", "Product") + (f" - {notes}" if notes else ""),
+                    "description": (
+                        prod_info.get("description")
+                        or prod_info.get("product_name")
+                        or "Product"
+                    ) + (f" - {notes}" if notes else ""),
                     "hsn_code": None,
                     "quantity": quantity,
                     "unit": "unit",
@@ -985,6 +998,9 @@ def convert_enquiry_to_quotation(
                 subject=enquiry.subject,
                 notes=data.notes or enquiry.description,
                 terms=data.terms,
+                sales_person_id=enquiry.sales_person_id,
+                sales_ticket_id=enquiry.sales_ticket_id,
+                contact_id=enquiry.contact_id,
             )
         except ImportError:
             # Create simple quotation directly
@@ -1019,7 +1035,7 @@ def convert_enquiry_to_quotation(
             db.add(quotation)
         
         # Update enquiry
-        enquiry.status = EnquiryStatus.PROPOSAL_SENT
+        enquiry.status = EnquiryStatus.CONVERTED_TO_QUOT
         enquiry.converted_quotation_id = quotation.id
         enquiry.converted_at = datetime.utcnow()
         

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/context/AuthContext";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api";
 
@@ -66,6 +67,7 @@ export default function EditEnquiryPage() {
   const router = useRouter();
   const params = useParams();
   const enquiryId = params.id as string;
+  const { getToken } = useAuth();
   
   const [enquiry, setEnquiry] = useState<Enquiry | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,7 +97,7 @@ export default function EditEnquiryPage() {
       `${API_BASE}/companies/${companyId}/enquiries/${enquiryId}`,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+          Authorization: `Bearer ${getToken()}`,
         },
       }
     );
@@ -175,8 +177,10 @@ export default function EditEnquiryPage() {
     setItems(updatedItems);
   };
 
-const handleSubmit = async (e: React.FormEvent) => {
+const handleSubmit = async (e: React.FormEvent, opts?: { redirect?: boolean; showAlert?: boolean }) => {
   e.preventDefault();
+  const redirect = opts?.redirect ?? true;
+  const showAlert = opts?.showAlert ?? true;
   
   // Validate form
   if (!formData.status) {
@@ -193,7 +197,7 @@ const handleSubmit = async (e: React.FormEvent) => {
   setError("");
 
   try {
-    const token = localStorage.getItem("access_token");
+    const token = getToken();
     if (!token) {
       setError("Authentication required. Please login again.");
       setSaving(false);
@@ -251,8 +255,12 @@ const handleSubmit = async (e: React.FormEvent) => {
     const data = await response.json();
     console.log("Success response:", data);
     
-    alert("Enquiry updated successfully!");
-    router.push(`/enquiries/${enquiryId}`);
+    if (showAlert) {
+      alert("Enquiry updated successfully!");
+    }
+    if (redirect) {
+      router.push(`/enquiries/${enquiryId}`);
+    }
     
   } catch (err: any) {
     console.error("Error updating enquiry:", err);
@@ -274,10 +282,10 @@ const handleSubmit = async (e: React.FormEvent) => {
 
     if (confirm("Are you sure you want to convert this enquiry to quotation?")) {
       try {
-        const token = localStorage.getItem("access_token");
+        const token = getToken();
         
         // First, update the enquiry with the current data
-        await handleSubmit(new Event("submit") as any);
+        await handleSubmit(new Event("submit") as any, { redirect: false, showAlert: false });
         
         // Then, convert to quotation
         const convertResponse = await fetch(

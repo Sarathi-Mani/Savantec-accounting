@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { customersApi, productsApi, getErrorMessage } from "@/services/api";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api";
 const STATIC_BASE_URL = API_BASE.replace(/\/api$/, "") || "http://localhost:6768";
 
 
@@ -48,7 +48,7 @@ interface EnquiryItem {
 }
 
 export default function NewEnquiryPage() {
-  const { company, user } = useAuth();
+  const { company, user, getToken } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -576,7 +576,7 @@ export default function NewEnquiryPage() {
   }
 
   try {
-    const token = localStorage.getItem("access_token");
+    const token = getToken();
     if (!token) {
       setError("Authentication required. Please login again.");
       setLoading(false);

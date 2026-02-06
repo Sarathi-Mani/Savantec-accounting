@@ -172,6 +172,8 @@ class SalesOrderResponse(BaseModel):
     order_date: datetime
     expire_date: Optional[datetime]
     customer_id: str
+    customer_name: Optional[str] = None
+    customer_gstin: Optional[str] = None
     status: str
     reference_no: Optional[str]
     reference_date: Optional[datetime]
@@ -540,6 +542,8 @@ async def list_sales_orders(
             order_date=order.order_date,
             expire_date=order.expire_date,
             customer_id=order.customer_id,
+            customer_name=order.customer.name if order.customer else None,
+            customer_gstin=order.customer.tax_number if order.customer else None,
             status=order.status.value,
             reference_no=order.reference_no,
             reference_date=order.reference_date,
@@ -618,6 +622,8 @@ async def get_sales_order(
         order_date=order.order_date,
         expire_date=order.expire_date,
         customer_id=order.customer_id,
+        customer_name=order.customer.name if order.customer else None,
+        customer_gstin=order.customer.tax_number if order.customer else None,
         status=order.status.value,
         reference_no=order.reference_no,
         reference_date=order.reference_date,
