@@ -17,6 +17,7 @@ from sqlalchemy import (
     ForeignKey,
     Enum,
     JSON,
+    Float,
     Index,
     UniqueConstraint,
 )
@@ -483,7 +484,6 @@ class BudgetLine(Base):
     )
 
 
-
 class User(Base):
     """User model - represents a tenant in the multi-tenant system."""
     __tablename__ = "users"
@@ -632,7 +632,10 @@ class Company(Base):
     invoice_counter = Column(Integer, default=1)
     invoice_terms = Column(Text)  # Default terms and conditions
     invoice_notes = Column(Text)  # Default notes
-    
+
+    # Sales tracking settings
+    petrol_rate_per_km = Column(Numeric(10, 2), default=0)
+
     # Bank details for invoices
     default_bank_id = Column(String(36))
     
@@ -649,7 +652,7 @@ class Company(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    owner = relationship("User", back_populates="companies", foreign_keys=[user_id])
+    owner = relationship("User", foreign_keys=[user_id], back_populates="companies")
     customers = relationship("Customer", back_populates="company", cascade="all, delete-orphan")
     items = relationship("Product", back_populates="company", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="company", cascade="all, delete-orphan")
@@ -661,6 +664,7 @@ class Company(Base):
     
     proforma_invoices = relationship("ProformaInvoice", back_populates="company", cascade="all, delete-orphan")
     purchase_requests = relationship("PurchaseRequest", back_populates="company", cascade="all, delete-orphan")
+
     __table_args__ = (
         Index("idx_company_user", "user_id"),
         Index("idx_company_gstin", "gstin"),
@@ -674,8 +678,9 @@ class Company(Base):
 
     def __repr__(self):
         return f"<Company {self.name}>"
+
 class PurchaseRequest(Base):
-    """Purchase Request model with both employee and user references."""
+    """Simplified Purchase Request model - Only essential columns."""
     __tablename__ = "purchase_requests"
     
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -685,61 +690,25 @@ class PurchaseRequest(Base):
     
     # Simple request number
     request_number = Column(String(50), unique=True, nullable=False, index=True)
-    
-    # NEW: Purchase Request No. - specific field for the PR number format
-    purchase_req_no = Column(String(50), unique=True, nullable=True, index=True)
-    
     request_date = Column(DateTime, default=func.now(), nullable=False)
     
-    # Items: [{"product_id": "...", "item": "Product Name", "quantity": 5, "store_remarks": "...", "approval_status": "pending"}]
+    # Items: [{"item": "Product Name", "quantity": 5, "make": "Brand Name"}]
     items = Column(JSON, nullable=False)
     
-    # NEW: Status with options: open, in_process, closed (for the overall request)
-    overall_status = Column(
-        Enum('open', 'in_process', 'closed', name='purchase_overall_status'),
-        default='open',
-        nullable=False
-    )
-    
-    # Simple status (keeping for backward compatibility)
+    # Simple status
     status = Column(
-        Enum('pending', 'approved', 'hold', 'rejected', 'open', 'in_progress', 'closed', 
-             name='purchase_request_status'),
+        Enum('pending', 'approved', 'hold', 'rejected', name='purchase_request_status'),
         default='pending',
         nullable=False
     )
     
-    # NEW: Store remarks for the entire purchase request
-    store_remarks = Column(Text, nullable=True)
+    # Approval details
+    approved_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    approval_notes = Column(Text, nullable=True)
     
     # Request notes
     notes = Column(Text, nullable=True)
-    
-    # NEW: Additional notes field for customer/request specific notes
-    additional_notes = Column(Text, nullable=True)
-    
-    # Approval details (dual reference)
-    approved_by_employee = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
-    approved_by_user = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    approved_at = Column(DateTime, nullable=True)
-    approval_notes = Column(Text, nullable=True)
-    approved_by_name = Column(String(255), nullable=True)
-    approved_by_email = Column(String(255), nullable=True)
-    
-    # Creator details (dual reference)
-    created_by_employee = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
-    created_by_user = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    created_by_name = Column(String(255), nullable=True)
-    created_by_email = Column(String(255), nullable=True)
-    
-    # Updater details (dual reference)
-    updated_by_employee = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
-    updated_by_user = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    
-    # Deletion details (dual reference)
-    deleted_by_employee = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
-    deleted_by_user = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    deleted_at = Column(DateTime, nullable=True)
     
     # Basic timestamps
     created_at = Column(DateTime, default=func.now(), nullable=False)
@@ -749,26 +718,12 @@ class PurchaseRequest(Base):
     # Relationships
     company = relationship("Company")
     customer = relationship("Customer")
-    
-    # Employee relationships
-    approver_employee = relationship("Employee", foreign_keys=[approved_by_employee])
-    creator_employee = relationship("Employee", foreign_keys=[created_by_employee])
-    updater_employee = relationship("Employee", foreign_keys=[updated_by_employee])
-    deleter_employee = relationship("Employee", foreign_keys=[deleted_by_employee])
-    
-    # User relationships
-    approver_user = relationship("User", foreign_keys=[approved_by_user])
-    creator_user = relationship("User", foreign_keys=[created_by_user])
-    updater_user = relationship("User", foreign_keys=[updated_by_user])
-    deleter_user = relationship("User", foreign_keys=[deleted_by_user])
-    
-    # Keep the old approved_by for backward compatibility if it exists
-    approved_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approver = relationship("User", foreign_keys=[approved_by])
     
     def __repr__(self):
         return f"<PurchaseRequest {self.request_number} - {self.customer_name}>"
-    
+
+
 class OpeningBalanceTypeEnum(str, enum.Enum):
     OUTSTANDING = "outstanding"
     ADVANCE = "advance"
@@ -864,6 +819,13 @@ class Customer(Base):
     billing_state = Column(String(100))
     billing_country = Column(String(100), default="India")
     billing_zip = Column(String(20))
+
+    # Location (for tracking / nearby customers)
+    district = Column(String(100))
+    area = Column(String(100))
+    location_lat = Column(Float)
+    location_lng = Column(Float)
+    location_address = Column(String(500))
     
     # Shipping Address
     shipping_address = Column(Text)
@@ -893,6 +855,10 @@ class Customer(Base):
     contacts = relationship("Contact", back_populates="customer", cascade="all, delete-orphan")
     purchase_requests = relationship("PurchaseRequest", back_populates="customer", cascade="all, delete-orphan")
 
+    __table_args__ = (
+        Index("idx_customer_location", "location_lat", "location_lng"),
+        Index("idx_customer_district", "district", "area"),
+    )
     # Compatibility aliases for code that expects these attribute names
     @property
     def gstin(self):
@@ -4457,7 +4423,7 @@ class Quotation(Base):
     quotation_date = Column(DateTime, nullable=False, default=datetime.utcnow)
     validity_date = Column(DateTime)  # Quote expires after this date
     quotation_type = Column(String(20), default="item") 
-    show_images = Column(Boolean, default=True, nullable=False)
+
     is_project = Column(Boolean, default=False)
     
     # Reference to original document if revised
@@ -4579,16 +4545,9 @@ class DeliveryChallan(Base):
     dc_number = Column(String(50), nullable=False, index=True)
     dc_date = Column(DateTime, nullable=False, default=datetime.utcnow)
     dc_type = Column(Enum(DeliveryChallanType), nullable=False, default=DeliveryChallanType.DC_OUT)
-    reference_no = Column(String(100), index=True) 
-    # Status fields - FIX: Add these columns
-    status = Column(Enum(DeliveryChallanStatus), default=DeliveryChallanStatus.DRAFT)  # This is missing
-    custom_status = Column(String(50), default="Open")  # Your frontend status
     
-    # New fields from frontend
-    bill_title = Column(String(255))
-    bill_description = Column(Text)
-    expiry_date = Column(DateTime)
-    salesman_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"))
+    # Status
+    status = Column(Enum(DeliveryChallanStatus), default=DeliveryChallanStatus.DRAFT)
     
     # Linked documents
     invoice_id = Column(String(36), ForeignKey("invoices.id", ondelete="SET NULL"))
@@ -4663,7 +4622,6 @@ class DeliveryChallan(Base):
     customer = relationship("Customer")
     sales_ticket = relationship("SalesTicket")
     contact = relationship("Contact")
-    salesman = relationship("User", foreign_keys=[salesman_id])
     invoice = relationship("Invoice")
     quotation = relationship("Quotation")
     sales_order = relationship("SalesOrder")
@@ -4678,13 +4636,14 @@ class DeliveryChallan(Base):
         Index("idx_dc_type", "dc_type"),
         Index("idx_dc_date", "dc_date"),
         Index("idx_dc_invoice", "invoice_id"),
-        Index("idx_dc_status", "custom_status"),  # This index exists but column was missing
+        Index("idx_dc_status", "status"),
         Index("idx_dc_ticket", "sales_ticket_id"),
     )
 
     def __repr__(self):
         return f"<DeliveryChallan {self.dc_number} ({self.dc_type.value})>"
-    
+
+
 class DeliveryChallanItem(Base):
     """Delivery Challan line item model."""
     __tablename__ = "delivery_challan_items"
@@ -4710,16 +4669,6 @@ class DeliveryChallanItem(Base):
     
     # Unit price (for valuation purposes, not charged separately in DC)
     unit_price = Column(Numeric(12, 2), default=0)
-    
-    # Add these fields from your frontend
-    discount_percent = Column(Numeric(5, 2), default=0)      # Add this line
-    discount_amount = Column(Numeric(12, 2), default=0)     # Add this line
-    gst_rate = Column(Numeric(5, 2), default=18)           # Add this line
-    cgst_rate = Column(Numeric(5, 2), default=9)           # Add this line
-    sgst_rate = Column(Numeric(5, 2), default=9)           # Add this line
-    igst_rate = Column(Numeric(5, 2), default=0)           # Add this line
-    taxable_amount = Column(Numeric(12, 2), default=0)     # Add this line
-    total_amount = Column(Numeric(12, 2), default=0)       # Add this line
     
     # Serial numbers (if tracked)
     serial_numbers = Column(JSON)  # List of serial numbers
@@ -4749,7 +4698,7 @@ class DeliveryChallanItem(Base):
 
     def __repr__(self):
         return f"<DeliveryChallanItem {self.description[:30]}>"
-    
+
 
 # ============== SALES PIPELINE MODELS ==============
 
@@ -5664,8 +5613,6 @@ class VisitPlan(Base):
         return f"<VisitPlan {self.id} for {self.planned_date}>"
 
 
-
-
 # Indian State codes for GST
 INDIAN_STATE_CODES = {
     "01": "Jammu & Kashmir",
@@ -5708,7 +5655,4 @@ INDIAN_STATE_CODES = {
     "97": "Other Territory",
     "99": "Centre Jurisdiction",
 }
-
-
-
 

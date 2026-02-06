@@ -203,6 +203,11 @@ export interface Customer {
   billing_state?: string;
   billing_country?: string;
   billing_zip?: string;  // Add this
+  district?: string;
+  area?: string;
+  location_lat?: number;
+  location_lng?: number;
+  location_address?: string;
   shipping_address?: string;  // Add this
   shipping_city?: string;
   shipping_state?: string;
