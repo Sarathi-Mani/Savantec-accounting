@@ -315,6 +315,7 @@ export interface InvoiceItem {
   id: string;
   invoice_id: string;
   product_id?: string;
+  item_code?: string;
   description: string;
   hsn_code?: string;
   quantity: number;
@@ -353,6 +354,9 @@ export interface Invoice {
   id: string;
   company_id: string;
   customer_id?: string;
+  sales_ticket_id?: string;
+  contact_id?: string;
+  voucher_type?: string;
   invoice_number: string;
   invoice_date: string;
   due_date?: string;
@@ -385,6 +389,37 @@ export interface Invoice {
   customer_gstin?: string;
   customer_email?: string;
   customer_phone?: string;
+  round_off?: number;
+  sales_person_id?: string;
+  shipping_address?: string;
+  shipping_city?: string;
+  shipping_state?: string;
+  shipping_country?: string;
+  shipping_zip?: string;
+  reference_no?: string;
+  delivery_note?: string;
+  payment_terms?: string;
+  supplier_ref?: string;
+  other_references?: string;
+  buyer_order_no?: string;
+  buyer_order_date?: string;
+  despatch_doc_no?: string;
+  delivery_note_date?: string;
+  despatched_through?: string;
+  destination?: string;
+  terms_of_delivery?: string;
+  freight_charges?: number;
+  packing_forwarding_charges?: number;
+  coupon_code?: string;
+  coupon_value?: number;
+  discount_on_all?: number;
+  discount_type?: string;
+  payment_type?: string;
+  payment_account?: string;
+  payment_note?: string;
+  adjust_advance_payment?: boolean;
+  customer_state?: string;
+  customer_state_code?: string;
 }
 
 export interface InvoiceListResponse {
