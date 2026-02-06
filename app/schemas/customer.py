@@ -143,6 +143,13 @@ class CustomerBase(BaseModel):
     billing_state: Optional[str] = Field(None, max_length=100)
     billing_country: str = "India"
     billing_zip: Optional[str] = Field(None, max_length=10)
+
+    # Location fields (for tracking/nearby)
+    district: Optional[str] = Field(None, max_length=100)
+    area: Optional[str] = Field(None, max_length=100)
+    location_lat: Optional[float] = None
+    location_lng: Optional[float] = None
+    location_address: Optional[str] = Field(None, max_length=500)
     
     # Shipping Address
     shipping_address: Optional[str] = None
@@ -245,6 +252,12 @@ class CustomerUpdate(BaseModel):
     billing_state: Optional[str] = Field(None, max_length=100)
     billing_country: Optional[str] = None
     billing_zip: Optional[str] = Field(None, max_length=10)
+
+    district: Optional[str] = Field(None, max_length=100)
+    area: Optional[str] = Field(None, max_length=100)
+    location_lat: Optional[float] = None
+    location_lng: Optional[float] = None
+    location_address: Optional[str] = Field(None, max_length=500)
     
     shipping_address: Optional[str] = None
     shipping_city: Optional[str] = Field(None, max_length=100)
@@ -284,6 +297,11 @@ class CustomerResponse(BaseModel):
     billing_state: Optional[str] = None
     billing_country: Optional[str] = "India"
     billing_zip: Optional[str] = None
+    district: Optional[str] = None
+    area: Optional[str] = None
+    location_lat: Optional[float] = None
+    location_lng: Optional[float] = None
+    location_address: Optional[str] = None
     shipping_address: Optional[str] = None
     shipping_city: Optional[str] = None
     shipping_state: Optional[str] = None

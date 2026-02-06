@@ -3,9 +3,32 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { saveAs } from "file-saver";
+import {
+  Search,
+  Filter,
+  Download,
+  FileText,
+  Printer,
+  Copy,
+  ChevronDown,
+  ChevronUp,
+  MoreVertical,
+  Eye,
+  Edit,
+  Trash2,
+  Users,
+  Building,
+  MapPin,
+  Tag,
+  RefreshCw,
+  Plus
+} from "lucide-react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768";
-
 
 interface EnquiryItem {
   description?: string;
@@ -18,8 +41,6 @@ interface EnquiryItem {
   product_id?: string;
 }
 
-
-
 interface Enquiry {
   id: string;
   enquiry_number: string;
@@ -28,10 +49,10 @@ interface Enquiry {
   status: string;
   priority: string;
   source: string;
-  totalQty?:string;
+  totalQty?: string;
   products_interested?: EnquiryItem[];
   items?: EnquiryItem[];
-  description?: string; 
+  description?: string;
   expected_value: number;
   customer_name?: string;
   contact_name?: string;
@@ -39,18 +60,24 @@ interface Enquiry {
   ticket_number?: string;
   prospect_name?: string;
   prospect_company?: string;
-  
-  // Additional fields from Laravel
   company?: {
+    id: string;
     name: string;
+    state?: string;
   };
   contact_person?: string;
   product?: string;
   quantity?: number;
   remarks?: string;
   salesman?: {
+    id: string;
     name: string;
   };
+  sales_engineer?: {
+    id: string;
+    name: string;
+  };
+  brand?: string;
 }
 
 const statusColors: Record<string, string> = {
@@ -71,52 +98,19 @@ const statusColors: Record<string, string> = {
   on_hold: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300",
 };
 
-// Helper function to determine if actions should be shown
-const shouldShowActions = (status: string): boolean => {
-  // Show actions for statuses that can be edited/deleted
-  
-  return true;
+const getStatusBadgeClass = (status: string): string => {
+  return statusColors[status] || "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
 };
 
-// Helper function to determine if delete is allowed
-// Helper function to determine if edit is allowed
 const canEditEnquiry = (status: string): boolean => {
-  // Allow edit for statuses that haven't been completed/cancelled/won/lost
   const nonEditableStatuses = ['completed', 'cancelled', 'won', 'lost', 'purchased'];
   return !nonEditableStatuses.includes(status);
 };
 
-// Helper function to determine if delete is allowed
 const canDeleteEnquiry = (status: string): boolean => {
-  // Only allow delete for certain statuses (similar to Laravel's permission check)
   const deletableStatuses = ['pending', 'new', 'assigned', 'on_hold'];
   return deletableStatuses.includes(status);
 };
-
-// Helper function to get status badge class
-const getStatusBadgeClass = (status: string): string => {
-  const statusClassMap: Record<string, string> = {
-    pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-    assigned: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-    quoted: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
-    purchased: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-    cancelled: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-    completed: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300",
-    ignored: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300",
-    new: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-    contacted: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400",
-    qualified: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
-    proposal_sent: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-    negotiation: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
-    won: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-    lost: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-    on_hold: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300",
-  };
-  
-  return statusClassMap[status] || "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
-};
-
-
 
 export default function EnquiriesPage() {
   const router = useRouter();
@@ -132,11 +126,35 @@ export default function EnquiriesPage() {
   const [sourceFilter, setSourceFilter] = useState("");
   const [salesmanFilter, setSalesmanFilter] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
+  const [engineerFilter, setEngineerFilter] = useState("");
+  const [brandFilter, setBrandFilter] = useState("");
+  const [stateFilter, setStateFilter] = useState("");
+  
+  // UI state
+  const [showFilters, setShowFilters] = useState(false);
+  const [showColumnDropdown, setShowColumnDropdown] = useState(false);
+  const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
   
   // Dropdown data
   const [companies, setCompanies] = useState<any[]>([]);
   const [salesmen, setSalesmen] = useState<any[]>([]);
+  const [engineers, setEngineers] = useState<any[]>([]);
+  const [brands, setBrands] = useState<string[]>([]);
+  const [states, setStates] = useState<string[]>([]);
   
+  // Column visibility
+  const [visibleColumns, setVisibleColumns] = useState({
+    date: true,
+    enquiryNo: true,
+    company: true,
+    contactPerson: true,
+    quantity: true,
+    status: true,
+    salesEngineer: true,
+    remarks: true,
+    actions: true,
+  });
+
   const companyId = typeof window !== "undefined" ? localStorage.getItem("company_id") : null;
 
   useEffect(() => {
@@ -150,7 +168,7 @@ export default function EnquiriesPage() {
     if (companyId) {
       fetchEnquiries();
     }
-  }, [statusFilter, sourceFilter, salesmanFilter, companyFilter, fromDate, toDate]);
+  }, [statusFilter, sourceFilter, salesmanFilter, companyFilter, engineerFilter, brandFilter, stateFilter, fromDate, toDate]);
 
   const fetchDropdownData = async () => {
     try {
@@ -167,6 +185,12 @@ export default function EnquiriesPage() {
       if (companiesResponse.ok) {
         const companiesData = await companiesResponse.json();
         setCompanies(companiesData);
+        // Extract unique states from companies
+        const uniqueStates = Array.from(new Set(companiesData
+          .filter((c: any) => c.state)
+          .map((c: any) => c.state)
+        ));
+        setStates(uniqueStates);
       }
       
       // Fetch employees/salesmen
@@ -182,6 +206,8 @@ export default function EnquiriesPage() {
       if (salesmenResponse.ok) {
         const salesmenData = await salesmenResponse.json();
         setSalesmen(salesmenData);
+        // Assuming engineers are also employees with a specific role
+        setEngineers(salesmenData);
       }
     } catch (err) {
       console.error("Failed to fetch dropdown data:", err);
@@ -199,6 +225,9 @@ export default function EnquiriesPage() {
       if (toDate) params.append("to_date", toDate);
       if (salesmanFilter) params.append("sales_person_id", salesmanFilter);
       if (companyFilter) params.append("company_id", companyFilter);
+      if (engineerFilter) params.append("engineer_id", engineerFilter);
+      if (brandFilter) params.append("brand", brandFilter);
+      if (stateFilter) params.append("state", stateFilter);
 
       const response = await fetch(
         `${API_BASE}/companies/${companyId}/enquiries?${params}`,
@@ -213,6 +242,13 @@ export default function EnquiriesPage() {
 
       const data = await response.json();
       setEnquiries(data);
+      
+      // Extract unique brands from enquiries
+      const uniqueBrands = Array.from(new Set(data
+        .filter((e: Enquiry) => e.brand)
+        .map((e: Enquiry) => e.brand)
+      ));
+      setBrands(uniqueBrands as string[]);
     } catch (err) {
       setError("Failed to load enquiries");
       console.error(err);
@@ -236,7 +272,7 @@ export default function EnquiriesPage() {
 
         if (response.ok) {
           alert("Enquiry deleted successfully!");
-          fetchEnquiries(); // Refresh the list
+          fetchEnquiries();
         } else {
           throw new Error("Failed to delete enquiry");
         }
@@ -260,6 +296,9 @@ export default function EnquiriesPage() {
     setSourceFilter("");
     setSalesmanFilter("");
     setCompanyFilter("");
+    setEngineerFilter("");
+    setBrandFilter("");
+    setStateFilter("");
     fetchEnquiries();
   };
 
@@ -279,9 +318,149 @@ export default function EnquiriesPage() {
     }).format(amount);
   };
 
+  // Export functions
+  const copyToClipboard = async () => {
+    const filtered = enquiries;
+    const headers = ["Date", "Enquiry No", "Company", "Contact Person", "Quantity", "Status", "Sales Engineer", "Remarks"];
+    const rows = filtered.map(enquiry => [
+      formatDate(enquiry.enquiry_date),
+      enquiry.enquiry_number,
+      enquiry.company?.name || enquiry.customer_name || "-",
+      enquiry.contact_name || enquiry.prospect_name || "-",
+      enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
+      enquiry.status,
+      enquiry.salesman?.name || enquiry.sales_person_name || "-",
+      enquiry.description || "-"
+    ]);
+    
+    const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
+    await navigator.clipboard.writeText(text);
+    alert("Enquiry data copied to clipboard");
+  };
+
+  const exportExcel = () => {
+    const filtered = enquiries;
+    const exportData = filtered.map(enquiry => ({
+      "Date": formatDate(enquiry.enquiry_date),
+      "Enquiry No": enquiry.enquiry_number,
+      "Company": enquiry.company?.name || enquiry.customer_name || "-",
+      "Contact Person": enquiry.contact_name || enquiry.prospect_name || "-",
+      "Quantity": enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
+      "Status": enquiry.status,
+      "Sales Engineer": enquiry.salesman?.name || enquiry.sales_person_name || "-",
+      "Remarks": enquiry.description || "-",
+      "Expected Value": enquiry.expected_value,
+      "Source": enquiry.source,
+      "Brand": enquiry.brand || "-",
+      "State": enquiry.company?.state || "-"
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Enquiries");
+    XLSX.writeFile(wb, "enquiries.xlsx");
+  };
+
+  const exportPDF = () => {
+    const filtered = enquiries;
+    const doc = new jsPDF("landscape");
+    
+    const headers = [["Date", "Enquiry No", "Company", "Contact Person", "Quantity", "Status", "Sales Engineer", "Remarks"]];
+    const body = filtered.map(enquiry => [
+      formatDate(enquiry.enquiry_date),
+      enquiry.enquiry_number,
+      enquiry.company?.name || enquiry.customer_name || "-",
+      enquiry.contact_name || enquiry.prospect_name || "-",
+      enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
+      enquiry.status,
+      enquiry.salesman?.name || enquiry.sales_person_name || "-",
+      enquiry.description || "-"
+    ]);
+
+    autoTable(doc, {
+      head: headers,
+      body: body,
+      startY: 20,
+      margin: { top: 20, left: 10, right: 10, bottom: 20 },
+      styles: {
+        fontSize: 9,
+        cellPadding: 3,
+        overflow: "linebreak",
+        font: "helvetica",
+      },
+      headStyles: {
+        fillColor: [41, 128, 185],
+        textColor: 255,
+        fontStyle: "bold",
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245],
+      },
+      didDrawPage: (data) => {
+        doc.setFontSize(16);
+        doc.text("Enquiries List", data.settings.margin.left, 12);
+        
+        doc.setFontSize(10);
+        doc.text(
+          `Generated: ${new Date().toLocaleDateString("en-IN")}`,
+          doc.internal.pageSize.width - 60,
+          12
+        );
+
+        const pageCount = doc.getNumberOfPages();
+        doc.text(
+          `Page ${data.pageNumber} of ${pageCount}`,
+          data.settings.margin.left,
+          doc.internal.pageSize.height - 8
+        );
+      },
+    });
+
+    doc.save("enquiries.pdf");
+  };
+
+  const exportCSV = () => {
+    const filtered = enquiries;
+    const exportData = filtered.map(enquiry => ({
+      "Date": formatDate(enquiry.enquiry_date),
+      "Enquiry No": enquiry.enquiry_number,
+      "Company": enquiry.company?.name || enquiry.customer_name || "-",
+      "Contact Person": enquiry.contact_name || enquiry.prospect_name || "-",
+      "Quantity": enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
+      "Status": enquiry.status,
+      "Sales Engineer": enquiry.salesman?.name || enquiry.sales_person_name || "-",
+      "Remarks": enquiry.description || "-",
+      "Expected Value": enquiry.expected_value,
+      "Source": enquiry.source,
+      "Brand": enquiry.brand || "-",
+      "State": enquiry.company?.state || "-"
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const csv = XLSX.utils.sheet_to_csv(ws);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    saveAs(blob, "enquiries.csv");
+  };
+
+  const toggleColumn = (key: keyof typeof visibleColumns) => {
+    setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const getTotalQuantity = (enquiry: Enquiry) => {
+    let totalQty = 0;
+    if (enquiry.products_interested && Array.isArray(enquiry.products_interested)) {
+      totalQty = enquiry.products_interested.reduce((sum: number, item: EnquiryItem) => 
+        sum + (item.quantity || 0), 0);
+    } else if (enquiry.items && Array.isArray(enquiry.items)) {
+      totalQty = enquiry.items.reduce((sum: number, item: EnquiryItem) => 
+        sum + (item.quantity || 0), 0);
+    }
+    return totalQty > 0 ? totalQty : "-";
+  };
+
   if (!companyId) {
     return (
-      <div className="p-6">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 dark:bg-yellow-900/20 dark:border-yellow-800">
           <p className="text-yellow-800 dark:text-yellow-400">Please select a company first.</p>
         </div>
@@ -290,369 +469,536 @@ export default function EnquiriesPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Enquiries</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Track and manage sales enquiries</p>
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              Enquiries
+            </h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Track and manage sales enquiries
+            </p>
+          </div>
+          <button
+            onClick={() => router.push("/enquiries/new")}
+            className="px-4 py-2 transition bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2"
+          >
+            <Plus className="w-5 h-5" />
+            New Enquiry
+          </button>
         </div>
-        <Link
-          href="/enquiries/new"
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-2"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          New Enquiry
-        </Link>
       </div>
 
-      {/* Filters Card - Merged from Laravel */}
-      <div className="bg-white dark:bg-gray-dark rounded-lg shadow">
-        <div className="p-4">
-          <form onSubmit={handleSearch} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {/* From Date */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  From Date
-                </label>
-                <input
-                  type="date"
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-dark-2 dark:border-dark-3 dark:text-white"
-                />
-              </div>
+      {/* Filters Section */}
+      <div className="px-6 py-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex flex-wrap gap-4">
+          <div className="flex-1 min-w-[200px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder="Search enquiries, enquiry number, company..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+            </div>
+          </div>
 
-              {/* To Date */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  To Date
-                </label>
-                <input
-                  type="date"
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-dark-2 dark:border-dark-3 dark:text-white"
-                />
-              </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+            >
+              <Filter className="w-5 h-5" />
+              Filters
+            </button>
 
-              {/* Company Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Company
-                </label>
-                <select
-                  value={companyFilter}
-                  onChange={(e) => setCompanyFilter(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-2 dark:border-dark-3 dark:text-white"
-                >
-                  <option value="">All Companies</option>
-                  {companies.map((company) => (
-                    <option key={company.id} value={company.id}>
-                      {company.name}
-                    </option>
+            <button
+              onClick={copyToClipboard}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+            >
+              <Copy className="w-5 h-5" />
+              Copy
+            </button>
+
+            <div className="relative column-dropdown-container">
+              <button
+                onClick={() => setShowColumnDropdown(!showColumnDropdown)}
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              >
+                Columns
+                {showColumnDropdown ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+
+              {showColumnDropdown && (
+                <div className="absolute right-0 mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-3 z-10 min-w-[150px]">
+                  {Object.entries(visibleColumns).map(([key, value]) => (
+                    <label key={key} className="flex items-center gap-2 text-sm mb-2 last:mb-0 cursor-pointer text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={value}
+                        onChange={() => toggleColumn(key as keyof typeof visibleColumns)}
+                        className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                    </label>
                   ))}
-                </select>
-              </div>
-
-              {/* Status Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Status
-                </label>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-2 dark:border-dark-3 dark:text-white"
-                >
-                  <option value="">All Status</option>
-                  <option value="pending">Pending</option>
-                  <option value="assigned">Assigned</option>
-                  <option value="quoted">Quoted</option>
-                  <option value="purchased">Purchased</option>
-                  <option value="cancelled">Cancelled</option>
-                  <option value="completed">Completed</option>
-                  <option value="ignored">Ignored</option>
-                  <option value="new">New</option>
-                  <option value="contacted">Contacted</option>
-                  <option value="qualified">Qualified</option>
-                  <option value="proposal_sent">Proposal Sent</option>
-                  <option value="negotiation">Negotiation</option>
-                  <option value="won">Won</option>
-                  <option value="lost">Lost</option>
-                  <option value="on_hold">On Hold</option>
-                </select>
-              </div>
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {/* Sales Engineer Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Sales Engineer
-                </label>
-                <select
-                  value={salesmanFilter}
-                  onChange={(e) => setSalesmanFilter(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-2 dark:border-dark-3 dark:text-white"
-                >
-                  <option value="">All Sales Engineers</option>
-                  {salesmen.map((salesman) => (
-                    <option key={salesman.id} value={salesman.id}>
-                      {salesman.first_name} {salesman.last_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <button
+              onClick={exportExcel}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+            >
+              <FileText className="w-5 h-5" />
+              Excel
+            </button>
 
-              {/* Source Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Source
-                </label>
-                <select
-                  value={sourceFilter}
-                  onChange={(e) => setSourceFilter(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-2 dark:border-dark-3 dark:text-white"
-                >
-                  <option value="">All Sources</option>
-                  <option value="website">Website</option>
-                  <option value="phone_call">Phone Call</option>
-                  <option value="email">Email</option>
-                  <option value="referral">Referral</option>
-                  <option value="walk_in">Walk In</option>
-                  <option value="trade_show">Trade Show</option>
-                  <option value="social_media">Social Media</option>
-                  <option value="advertisement">Advertisement</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
+            <button
+              onClick={exportPDF}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+            >
+              <Download className="w-5 h-5" />
+              PDF
+            </button>
 
-              {/* Search Input */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Search
-                </label>
-                <input
-                  type="text"
-                  placeholder="Search enquiries..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-dark-2 dark:border-dark-3 dark:text-white"
-                />
-              </div>
+            <button
+              onClick={exportCSV}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+            >
+              <FileText className="w-5 h-5" />
+              CSV
+            </button>
 
-              {/* Action Buttons */}
-              <div className="flex items-end gap-2">
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  Apply
-                </button>
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition flex items-center gap-2 dark:bg-dark-3 dark:text-gray-300 dark:hover:bg-dark-4"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Reset
-                </button>
-              </div>
-            </div>
-          </form>
+            <button
+              onClick={() => window.print()}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+            >
+              <Printer className="w-5 h-5" />
+              Print
+            </button>
+
+            <button
+              onClick={handleReset}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+            >
+              <RefreshCw className="w-5 h-5" />
+              Reset
+            </button>
+          </div>
         </div>
+
+        {showFilters && (
+          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Date Range */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                From Date
+              </label>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                To Date
+              </label>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* Status Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Status
+              </label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="assigned">Assigned</option>
+                <option value="quoted">Quoted</option>
+                <option value="purchased">Purchased</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="completed">Completed</option>
+                <option value="ignored">Ignored</option>
+                <option value="new">New</option>
+                <option value="contacted">Contacted</option>
+                <option value="qualified">Qualified</option>
+                <option value="proposal_sent">Proposal Sent</option>
+                <option value="negotiation">Negotiation</option>
+                <option value="won">Won</option>
+                <option value="lost">Lost</option>
+                <option value="on_hold">On Hold</option>
+              </select>
+            </div>
+
+            {/* Source Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Source
+              </label>
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">All Sources</option>
+                <option value="website">Website</option>
+                <option value="phone_call">Phone Call</option>
+                <option value="email">Email</option>
+                <option value="referral">Referral</option>
+                <option value="walk_in">Walk In</option>
+                <option value="trade_show">Trade Show</option>
+                <option value="social_media">Social Media</option>
+                <option value="advertisement">Advertisement</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
+            {/* Company Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Company
+              </label>
+              <select
+                value={companyFilter}
+                onChange={(e) => setCompanyFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">All Companies</option>
+                {companies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Engineer-wise Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Sales Engineer
+              </label>
+              <select
+                value={engineerFilter}
+                onChange={(e) => setEngineerFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">All Engineers</option>
+                {engineers.map((engineer) => (
+                  <option key={engineer.id} value={engineer.id}>
+                    {engineer.first_name} {engineer.last_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Brand-wise Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Brand
+              </label>
+              <select
+                value={brandFilter}
+                onChange={(e) => setBrandFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">All Brands</option>
+                {brands.map((brand) => (
+                  <option key={brand} value={brand}>
+                    {brand}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* State-wise Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                State
+              </label>
+              <select
+                value={stateFilter}
+                onChange={(e) => setStateFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">All States</option>
+                {states.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Error */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 dark:bg-red-900/20 dark:border-red-800">
+        <div className="mx-6 mt-4 bg-red-50 border border-red-200 rounded-lg p-4 dark:bg-red-900/20 dark:border-red-800">
           <p className="text-red-800 dark:text-red-400">{error}</p>
         </div>
       )}
 
-      {/* Loading */}
-      {loading ? (
-        <div className="bg-white dark:bg-gray-dark rounded-lg shadow p-8 text-center">
-          <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto"></div>
-          <p className="mt-4 text-gray-500 dark:text-gray-400">Loading enquiries...</p>
-        </div>
-      ) : enquiries.length === 0 ? (
-        <div className="bg-white dark:bg-gray-dark rounded-lg shadow p-8 text-center">
-          <svg className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-          </svg>
-          <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-white">No enquiries yet</h3>
-          <p className="mt-2 text-gray-500 dark:text-gray-400">Create your first enquiry to start tracking sales leads.</p>
-          <Link
-            href="/enquiries/new"
-            className="mt-4 inline-block bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
-          >
-            Create Enquiry
-          </Link>
-        </div>
-      ) : (
-        /* Table - Merged columns from Laravel */
-        <div className="bg-white dark:bg-gray-dark rounded-lg shadow overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-3">
-            
-<thead className="bg-gray-50 dark:bg-dark-2">
-  <tr>
-    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-      Date
-    </th>
-    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-      Enquiry No
-    </th>
-    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-      Company / Customer
-    </th>
-    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-      Contact Person
-    </th>
-    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-      Quantity
-    </th>
-    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-      Status
-    </th>
-    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-      Sales Engineer
-    </th>
-    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-      Remarks
-    </th>
-    
-    {/* Always show Actions column */}
-    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-      Actions
-    </th>
-  </tr>
-</thead>
-
-<tbody className="bg-white dark:bg-gray-dark divide-y divide-gray-200 dark:divide-dark-3">
-  {enquiries.map((enquiry) => {
-    // Determine actions for this specific enquiry
-    const isCompleted = enquiry.status === 'completed';
-    const showEditDelete = canEditEnquiry(enquiry.status) || canDeleteEnquiry(enquiry.status);
-    
-    return (
-      <tr key={enquiry.id} className="hover:bg-gray-50 dark:hover:bg-dark-2">
-        <td className="px-6 py-4 whitespace-nowrap">
-          <div className="text-sm text-gray-900 dark:text-white">
-            {formatDate(enquiry.enquiry_date)}
-          </div>
-        </td>
-        <td className="px-6 py-4">
-          <Link
-            href={`/enquiries/${enquiry.id}`}
-            className="text-indigo-600 hover:text-indigo-800 font-medium dark:text-indigo-400 dark:hover:text-indigo-300"
-          >
-            {enquiry.enquiry_number}
-          </Link>
-        </td>
-        <td className="px-6 py-4">
-          <div className="text-sm text-gray-900 dark:text-white font-medium">
-            {enquiry.company?.name || enquiry.customer_name || enquiry.prospect_company || "-"}
-          </div>
-          {enquiry.prospect_name && enquiry.prospect_name !== (enquiry.company?.name || enquiry.customer_name) && (
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              {enquiry.prospect_name}
-            </div>
-          )}
-        </td>
-        <td className="px-6 py-4">
-          <div className="text-sm text-gray-900 dark:text-white">
-            {enquiry.prospect_name || enquiry.contact_name || "-"}
-          </div>
-        </td>
-        
-     <td className="px-6 py-4">
-  <div className="text-sm text-gray-900 dark:text-white">
-    {(() => {
-      let totalQty = 0;
-      if (enquiry.products_interested && Array.isArray(enquiry.products_interested)) {
-        totalQty = enquiry.products_interested.reduce((sum: number, item: EnquiryItem) => sum + (item.quantity || 0), 0);
-      } else if (enquiry.items && Array.isArray(enquiry.items)) {
-        totalQty = enquiry.items.reduce((sum: number, item: EnquiryItem) => sum + (item.quantity || 0), 0);
-      }
-      return totalQty > 0 ? totalQty : "-";
-    })()}
-  </div>
-</td>
-        <td className="px-6 py-4">
-          <div className="flex flex-col gap-1">
-            <span
-              className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                getStatusBadgeClass(enquiry.status)
-              }`}
-            >
-              {enquiry.status.replace("_", " ")}
-            </span>
-          </div>
-        </td>
-        <td className="px-6 py-4">
-          <div className="text-sm text-gray-900 dark:text-white">
-            {enquiry.salesman?.name || enquiry.sales_person_name || "-"}
-          </div>
-        </td>
-        <td className="px-6 py-4">
-          <div className="text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate">
-            { enquiry.description || "-"}
-          </div>
-        </td>
-        
-        
-        {/* Actions column - always show but conditionally render buttons */}
-        <td className="px-6 py-4 text-right">
-          <div className="flex justify-end gap-2">
-            {/* If status is completed, show only View button */}
-            {isCompleted ? (
-              <Link
-                href={`/enquiries/${enquiry.id}`}
-                className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300 p-1"
-                title="View (Completed - Read Only)"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-              </Link>
-            ) : (
-              <>
-                {/* Edit button - only for editable statuses */}
-                {canEditEnquiry(enquiry.status) && (
-                  <Link
-                    href={`/enquiries/${enquiry.id}/edit`}
-                    className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 p-1"
-                    title="Edit"
-                  >
-                   Assign
-                  </Link>
+      {/* Table */}
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 mx-6 mt-4 rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-200 dark:bg-gray-700/50">
+              <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+                {visibleColumns.date && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                    Date
+                  </th>
                 )}
-                
-                
-              </>
-            )}
-          </div>
-        </td>
-      </tr>
-    );
-  })}
-</tbody>
-            </table>
-          </div>
+                {visibleColumns.enquiryNo && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                    Enquiry No
+                  </th>
+                )}
+                {visibleColumns.company && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap min-w-[200px]">
+                    Company / Customer
+                  </th>
+                )}
+                {visibleColumns.contactPerson && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                    Contact Person
+                  </th>
+                )}
+                {visibleColumns.quantity && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                    Quantity
+                  </th>
+                )}
+                {visibleColumns.status && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                    Status
+                  </th>
+                )}
+                {visibleColumns.salesEngineer && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                    Sales Engineer
+                  </th>
+                )}
+                {visibleColumns.remarks && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-64">
+                    Remarks
+                  </th>
+                )}
+                {visibleColumns.actions && (
+                  <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                    Actions
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-sm text-gray-700 dark:text-gray-300">
+              {loading ? (
+                <tr>
+                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                    <div className="flex items-center justify-center">
+                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
+                    </div>
+                  </td>
+                </tr>
+              ) : enquiries.length === 0 ? (
+                <tr>
+                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                    <div className="flex flex-col items-center justify-center">
+                      <Building className="w-12 h-12 text-gray-400 mb-2" />
+                      <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
+                        No enquiries found
+                      </p>
+                      <p className="text-gray-500 dark:text-gray-400 mb-4">
+                        {statusFilter || sourceFilter || search ?
+                          "No enquiries found matching your filters. Try adjusting your search criteria." :
+                          "Create your first enquiry to start tracking sales leads."}
+                      </p>
+                      <button
+                        onClick={() => router.push("/enquiries/new")}
+                        className="text-indigo-600 hover:underline dark:text-indigo-400"
+                      >
+                        Create your first enquiry
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                enquiries.map((enquiry) => {
+                  const isCompleted = enquiry.status === 'completed';
+                  const showEditDelete = canEditEnquiry(enquiry.status) || canDeleteEnquiry(enquiry.status);
+
+                  return (
+                    <tr
+                      key={enquiry.id}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                    >
+                      {visibleColumns.date && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-gray-900 dark:text-white">
+                            {formatDate(enquiry.enquiry_date)}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.enquiryNo && (
+                        <td className="px-6 py-4">
+                          <Link
+                            href={`/enquiries/${enquiry.id}`}
+                            className="text-indigo-600 hover:text-indigo-800 font-medium dark:text-indigo-400 dark:hover:text-indigo-300"
+                          >
+                            {enquiry.enquiry_number}
+                          </Link>
+                        </td>
+                      )}
+                      {visibleColumns.company && (
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <Building className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                            <div className="min-w-0">
+                              <div className="font-medium text-gray-900 dark:text-white truncate">
+                                {enquiry.company?.name || enquiry.customer_name || enquiry.prospect_company || "-"}
+                              </div>
+                              {enquiry.company?.state && (
+                                <div className="flex items-center gap-1 text-xs text-gray-500 truncate">
+                                  <MapPin className="w-3 h-3" />
+                                  {enquiry.company.state}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {enquiry.brand && (
+                            <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
+                              <Tag className="w-3 h-3" />
+                              {enquiry.brand}
+                            </div>
+                          )}
+                        </td>
+                      )}
+                      {visibleColumns.contactPerson && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <Users className="w-4 h-4 text-gray-400" />
+                            <span>{enquiry.prospect_name || enquiry.contact_name || "-"}</span>
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.quantity && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-gray-900 dark:text-white font-medium">
+                            {getTotalQuantity(enquiry)}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.status && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              getStatusBadgeClass(enquiry.status)
+                            }`}
+                          >
+                            {enquiry.status.replace("_", " ")}
+                          </span>
+                        </td>
+                      )}
+                      {visibleColumns.salesEngineer && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-gray-900 dark:text-white">
+                            {enquiry.salesman?.name || enquiry.sales_person_name || "-"}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.remarks && (
+                        <td className="px-6 py-4">
+                          <div className="text-gray-500 dark:text-gray-400 truncate max-w-xs">
+                            {enquiry.description || "-"}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.actions && (
+                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                          <div className="relative action-dropdown-container inline-block">
+                            <button
+                              onClick={() =>
+                                setActiveActionMenu(
+                                  activeActionMenu === enquiry.id ? null : enquiry.id
+                                )
+                              }
+                              className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:text-gray-300 dark:hover:bg-gray-700/50 transition-all duration-200"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+
+                            {activeActionMenu === enquiry.id && (
+                              <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <Link
+                                  href={`/enquiries/${enquiry.id}`}
+                                  onClick={() => setActiveActionMenu(null)}
+                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                >
+                                  <Eye className="w-4 h-4 text-gray-400" />
+                                  <span>View Details</span>
+                                </Link>
+
+                                {canEditEnquiry(enquiry.status) && (
+                                  <Link
+                                    href={`/enquiries/${enquiry.id}/edit`}
+                                    onClick={() => setActiveActionMenu(null)}
+                                    className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                  >
+                                    <Edit className="w-4 h-4 text-gray-400" />
+                                    <span>Edit / Assign</span>
+                                  </Link>
+                                )}
+
+                                {canDeleteEnquiry(enquiry.status) && (
+                                  <>
+                                    <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                                    <button
+                                      onClick={() => {
+                                        if (confirm(`Are you sure you want to delete enquiry ${enquiry.enquiry_number}?`)) {
+                                          handleDeleteEnquiry(enquiry.id, enquiry.enquiry_number);
+                                          setActiveActionMenu(null);
+                                        }
+                                      }}
+                                      className="flex w-full items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                      <span>Delete Enquiry</span>
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
     </div>
   );
 }

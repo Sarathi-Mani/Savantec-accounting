@@ -48,6 +48,13 @@ interface FormData {
   billing_state: string;
   billing_country: string;
   billing_zip: string;
+
+  // Location fields for tracking
+  district: string;
+  area: string;
+  location_lat: string;
+  location_lng: string;
+  location_address: string;
   
   // Shipping Address
   shipping_address: string;
@@ -80,6 +87,8 @@ export default function CreateCustomerPage() {
   const [sameAsBilling, setSameAsBilling] = useState(false);
   const [showGstOptions, setShowGstOptions] = useState(false);
   const [showOpeningBalanceSplit, setShowOpeningBalanceSplit] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<FormData>({
     // Basic Info
@@ -111,6 +120,12 @@ export default function CreateCustomerPage() {
     billing_state: "",
     billing_country: "India",
     billing_zip: "",
+
+    district: "",
+    area: "",
+    location_lat: "",
+    location_lng: "",
+    location_address: "",
     
     // Shipping Address
     shipping_address: "",
@@ -334,6 +349,67 @@ export default function CreateCustomerPage() {
     return re.test(gst.toUpperCase());
   };
 
+  const buildLocationQuery = () => {
+    const parts = [
+      formData.area,
+      formData.district,
+      formData.billing_city,
+      formData.billing_state,
+      formData.billing_zip,
+      formData.billing_country,
+    ].filter(Boolean);
+    return parts.join(", ");
+  };
+
+  const fetchGeocode = async () => {
+    const query = buildLocationQuery();
+    if (!query) {
+      setGeoError("Please enter area/district/state to fetch location.");
+      return null;
+    }
+
+    setGeoLoading(true);
+    setGeoError(null);
+
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(
+          query,
+        )}`,
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch location");
+      }
+
+      const results = await response.json();
+      if (!results || results.length === 0) {
+        setGeoError("Location not found. Please check area/district/state.");
+        return null;
+      }
+
+      const match = results[0];
+      setFormData((prev) => ({
+        ...prev,
+        location_lat: match.lat || "",
+        location_lng: match.lon || "",
+        location_address: match.display_name || "",
+      }));
+
+      return {
+        lat: match.lat,
+        lng: match.lon,
+        address: match.display_name,
+      };
+    } catch (err) {
+      console.error("Geocode error:", err);
+      setGeoError("Unable to fetch location right now.");
+      return null;
+    } finally {
+      setGeoLoading(false);
+    }
+  };
+
   const handleGSTTypeSelect = (type: string) => {
     setFormData(prev => ({ ...prev, gst_registration_type: type }));
     setShowGstOptions(false);
@@ -355,6 +431,15 @@ const handleSubmit = async (e: React.FormEvent) => {
   setError(null);
 
   try {
+    // Auto-fetch location if not already available
+    if (!formData.location_lat || !formData.location_lng) {
+      const hasLocationInputs =
+        formData.area || formData.district || formData.billing_city || formData.billing_state;
+      if (hasLocationInputs) {
+        await fetchGeocode();
+      }
+    }
+
     // Prepare data for API - FIXED VERSION
    const apiData: any = {
   name: formData.name,
@@ -404,6 +489,13 @@ const handleSubmit = async (e: React.FormEvent) => {
   shipping_state: sameAsBilling ? formData.billing_state : (formData.shipping_state || ""),
   shipping_country: sameAsBilling ? formData.billing_country : (formData.shipping_country || "India"),
   shipping_zip: sameAsBilling ? formData.billing_zip : (formData.shipping_zip || ""),
+
+  // Location fields
+  district: formData.district || "",
+  area: formData.area || "",
+  location_lat: formData.location_lat ? parseFloat(formData.location_lat) : undefined,
+  location_lng: formData.location_lng ? parseFloat(formData.location_lng) : undefined,
+  location_address: formData.location_address || "",
 };
     
     await customersApi.create(company.id, apiData);
@@ -1013,6 +1105,63 @@ const handleSubmit = async (e: React.FormEvent) => {
                 />
               </div>
             </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                  District
+                </label>
+                <input
+                  type="text"
+                  name="district"
+                  value={formData.district}
+                  onChange={handleChange}
+                  placeholder="Enter district"
+                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                  Area
+                </label>
+                <input
+                  type="text"
+                  name="area"
+                  value={formData.area}
+                  onChange={handleChange}
+                  placeholder="Enter area/locality"
+                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={fetchGeocode}
+                  disabled={geoLoading}
+                  className="w-full rounded-lg border border-stroke px-4 py-3 text-sm font-medium text-dark transition hover:bg-gray-100 disabled:opacity-60 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
+                >
+                  {geoLoading ? "Fetching..." : "Fetch Location"}
+                </button>
+              </div>
+            </div>
+
+            {(formData.location_lat || formData.location_lng || geoError) && (
+              <div className="rounded-lg border border-stroke bg-gray-50 p-3 text-sm dark:border-dark-3 dark:bg-dark-3">
+                {geoError ? (
+                  <p className="text-red-600 dark:text-red-400">{geoError}</p>
+                ) : (
+                  <div className="space-y-1 text-dark dark:text-white">
+                    <div>Lat: {formData.location_lat || "-"}</div>
+                    <div>Lng: {formData.location_lng || "-"}</div>
+                    {formData.location_address && (
+                      <div className="text-dark-6 dark:text-dark-6">
+                        {formData.location_address}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

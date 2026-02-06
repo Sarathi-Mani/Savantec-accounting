@@ -1,252 +1,438 @@
 "use client";
-import { useAuth } from "@/context/AuthContext";
 
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
+import { payrollApi, Employee, Department, Designation } from "@/services/api";
+import Link from "next/link";
+import { useEffect, useState, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { saveAs } from "file-saver";
-
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
-  Users,
-  Plus,
   Search,
   Filter,
-  MoreVertical,
-  Edit,
-  Eye,
-  Trash2,
-  Download,
+  Plus,
+  Users,
   Mail,
   Phone,
+  Briefcase,
+  Calendar,
+  CheckCircle,
+  XCircle,
+  Clock,
+  AlertCircle,
+  MoreVertical,
+  Eye,
+  Edit,
+  Trash2,
+  Printer,
+  Copy,
+  ChevronDown,
+  ChevronUp,
+  Building,
 } from "lucide-react";
-import { payrollApi, Employee, Department, Designation } from "@/services/api";
+
+// Print component for employees
+const PrintView = ({
+  employees,
+  visibleColumns,
+  formatDate,
+  getStatusText,
+  getDesignationName,
+  getDepartmentName,
+  companyName,
+}: {
+  employees: Employee[];
+  visibleColumns: Record<string, boolean>;
+  formatDate: (dateString: string | null | undefined) => string;
+  getStatusText: (status: string) => string;
+  getDesignationName: (id?: string) => string;
+  getDepartmentName: (id?: string) => string;
+  companyName: string;
+}) => {
+  const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (printRef.current) {
+      const printContents = printRef.current.innerHTML;
+      const originalContents = document.body.innerHTML;
+
+      document.body.innerHTML = printContents;
+      window.print();
+      document.body.innerHTML = originalContents;
+      window.location.reload();
+    }
+  }, []);
+
+  return (
+    <div style={{ display: 'none' }}>
+      <div ref={printRef} style={{ fontFamily: 'Arial, sans-serif', padding: '20px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '5px' }}>
+            Employees List
+          </h1>
+          <p style={{ fontSize: '14px', color: '#666' }}>{companyName}</p>
+          <p style={{ color: '#666', fontSize: '14px' }}>
+            Generated on: {new Date().toLocaleDateString('en-IN')}
+          </p>
+        </div>
+
+        <table style={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          border: '1px solid #ddd'
+        }}>
+          <thead>
+            <tr style={{
+              backgroundColor: '#f3f4f6',
+              borderBottom: '2px solid #ddd'
+            }}>
+              {visibleColumns.employeeCode && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Employee Code
+                </th>
+              )}
+              {visibleColumns.name && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Employee Name
+                </th>
+              )}
+              {visibleColumns.phone && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Phone
+                </th>
+              )}
+              {visibleColumns.email && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Email
+                </th>
+              )}
+              {visibleColumns.department && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Department
+                </th>
+              )}
+              {visibleColumns.designation && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Designation
+                </th>
+              )}
+              {visibleColumns.joiningDate && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Joining Date
+                </th>
+              )}
+              {visibleColumns.status && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  fontWeight: 'bold'
+                }}>
+                  Status
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {employees.map((employee, index) => (
+              <tr key={employee.id} style={{
+                borderBottom: '1px solid #ddd',
+                backgroundColor: index % 2 === 0 ? '#fff' : '#f9f9f9'
+              }}>
+                {visibleColumns.employeeCode && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {employee.employee_code || 'N/A'}
+                  </td>
+                )}
+                {visibleColumns.name && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {employee.full_name || `${employee.first_name} ${employee.last_name || ''}`}
+                  </td>
+                )}
+                {visibleColumns.phone && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {employee.phone || '-'}
+                  </td>
+                )}
+                {visibleColumns.email && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {employee.email || '-'}
+                  </td>
+                )}
+                {visibleColumns.department && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {getDepartmentName(employee.department_id)}
+                  </td>
+                )}
+                {visibleColumns.designation && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {getDesignationName(employee.designation_id)}
+                  </td>
+                )}
+                {visibleColumns.joiningDate && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {formatDate(employee.date_of_joining)}
+                  </td>
+                )}
+                {visibleColumns.status && (
+                  <td style={{ padding: '12px' }}>
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '4px 8px',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      backgroundColor: employee.status === 'active' ? '#d1fae5' :
+                        employee.status === 'inactive' ? '#f3f4f6' :
+                          employee.status === 'on_notice' ? '#fef3c7' :
+                            employee.status === 'terminated' ? '#fee2e2' :
+                              '#f3f4f6',
+                      color: employee.status === 'active' ? '#065f46' :
+                        employee.status === 'inactive' ? '#374151' :
+                          employee.status === 'on_notice' ? '#92400e' :
+                            employee.status === 'terminated' ? '#991b1b' :
+                              '#374151'
+                    }}>
+                      {getStatusText(employee.status)}
+                    </span>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div style={{
+          marginTop: '30px',
+          paddingTop: '20px',
+          borderTop: '1px solid #ddd',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            Total Employees: {employees.length}
+          </div>
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            Page 1 of 1
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Local formatter functions
+const formatDate = (dateString: string | null | undefined): string => {
+  if (!dateString) return '-';
+  try {
+    const date = new Date(dateString.includes('T') ? dateString : dateString + 'T00:00:00');
+    if (isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  } catch {
+    return '-';
+  }
+};
 
 export default function EmployeesPage() {
   const router = useRouter();
   const { company } = useAuth();
-  const [companyId, setCompanyId] = useState<string | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [designations, setDesignations] = useState<Designation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [departmentFilter, setDepartmentFilter] = useState<string>("");
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
   const [showFilters, setShowFilters] = useState(false);
-
-  // Pagination state
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const pageSize = 5;
-
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
+  const [showPrintView, setShowPrintView] = useState(false);
+  const [employeesToPrint, setEmployeesToPrint] = useState<Employee[]>([]);
 
-  // Copy to clipboard function with all columns
-  const copyToClipboard = async () => {
-    const filtered = applyFilters();
-    const headers = ["Company", "Username", "Mobile", "Email", "Role", "Created On", "Status"];
+  // Separate loading states for each export button
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [excelLoading, setExcelLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [csvLoading, setCsvLoading] = useState(false);
+  const [printLoading, setPrintLoading] = useState(false);
 
-    const rows = filtered.map(emp => [
-      company?.name || "",
-      emp.full_name || `${emp.first_name} ${emp.last_name || ""}`,
-      emp.phone || "",
-      emp.email || "",
-      getDesignationName(emp.designation_id),
-      emp.created_at ? formatDate(emp.created_at) : "-",
-      emp.status
-    ]);
-
-    const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
-
-    await navigator.clipboard.writeText(text);
-    alert("Employee data copied to clipboard");
-  };
-
-  // Export functions
-  const exportExcel = () => {
-    const filtered = applyFilters();
-    const exportData = filtered.map(emp => ({
-      Company: company?.name || "",
-      Username: emp.full_name || `${emp.first_name} ${emp.last_name || ""}`,
-      Mobile: emp.phone || "",
-      Email: emp.email || "",
-      Role: getDesignationName(emp.designation_id),
-      "Created On": emp.created_at ? formatDate(emp.created_at) : "-",
-      Status: emp.status,
-      "Employee Code": emp.employee_code,
-      Department: getDepartmentName(emp.department_id),
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Employees");
-    XLSX.writeFile(wb, "employees.xlsx");
-  };
-
-  const exportPDF = () => {
-    const filtered = applyFilters();
-    const doc = new jsPDF();
-
-    autoTable(doc, {
-      head: [["Company", "Username", "Mobile", "Email", "Role", "Created On", "Status"]],
-      body: filtered.map(emp => [
-        company?.name || "",
-        emp.full_name || `${emp.first_name} ${emp.last_name || ""}`,
-        emp.phone || "-",
-        emp.email || "-",
-        getDesignationName(emp.designation_id),
-        emp.created_at ? formatDate(emp.created_at) : "-",
-        emp.status
-      ])
-    });
-
-    doc.save("employees.pdf");
-  };
-
-  const exportCSV = () => {
-    const filtered = applyFilters();
-    const exportData = filtered.map(emp => ({
-      Company: company?.name || "",
-      Username: emp.full_name || `${emp.first_name} ${emp.last_name || ""}`,
-      Mobile: emp.phone || "",
-      Email: emp.email || "",
-      Role: getDesignationName(emp.designation_id),
-      "Created On": emp.created_at ? formatDate(emp.created_at) : "-",
-      Status: emp.status,
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const csv = XLSX.utils.sheet_to_csv(ws);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    saveAs(blob, "employees.csv");
-  };
-
-  const printTable = () => window.print();
+  const [cachedExportData, setCachedExportData] = useState<Employee[] | null>(null);
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
-    company: true,
-    username: true,
-    mobile: true,
+    employeeCode: true,
+    name: true,
+    phone: true,
     email: true,
-    role: true,
-    createdOn: true,
+    department: true,
+    designation: true,
+    joiningDate: true,
     status: true,
     actions: true,
   });
 
-  const toggleColumn = (key: keyof typeof visibleColumns) => {
-    setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
-  };
+  const pageSize = 10;
 
-  useEffect(() => {
-    const storedCompanyId = localStorage.getItem("company_id");
-    if (!storedCompanyId) {
-      router.push("/company");
+  const fetchEmployees = async () => {
+    if (!company?.id) {
+      setLoading(false);
       return;
     }
-    setCompanyId(storedCompanyId);
-    loadData(storedCompanyId);
-  }, [router, page]);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-
-      // Close columns dropdown
-      if (!target.closest('.column-dropdown-container')) {
-        setShowColumnDropdown(false);
-      }
-
-      // Close actions dropdown
-      if (!target.closest('.action-dropdown-container')) {
-        setActiveActionMenu(null);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
-  const loadData = async (companyId: string) => {
-    if (!companyId) return;
+    setLoading(true);
     try {
-      setLoading(true);
-      // You'll need to update your API to support pagination
-      const [employeesList, deptList, desgList] = await Promise.all([
-        payrollApi.listEmployees(companyId),
-        payrollApi.listDepartments(companyId),
-        payrollApi.listDesignations(companyId),
-      ]);
-      setEmployees(employeesList);
-      setDepartments(deptList);
-      setDesignations(desgList);
-      setTotal(employeesList.length); // Set total count for pagination
-      setError(null);
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch employees");
-      console.error("Error loading employees:", err);
+      const employeesList = await payrollApi.listEmployees(company.id);
+      const deptList = await payrollApi.listDepartments(company.id);
+      const desgList = await payrollApi.listDesignations(company.id);
+
+      setEmployees(employeesList || []);
+      setDepartments(deptList || []);
+      setDesignations(desgList || []);
+    } catch (error) {
+      console.error("Failed to fetch employees:", error);
+      setEmployees([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "active":
-        return "bg-primary/10 text-primary dark:bg-green-900/30 dark:text-green-400";
-      case "inactive":
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400";
-      case "on_notice":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400";
-      case "terminated":
-        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
-      default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400";
+  // Memoized function to fetch all employees for export
+  const fetchAllEmployees = useCallback(async (): Promise<Employee[]> => {
+    if (!company?.id) return [];
+
+    try {
+      const employeesList = await payrollApi.listEmployees(company.id);
+      const allEmployees = employeesList || [];
+      setCachedExportData(allEmployees);
+      return allEmployees;
+    } catch (error) {
+      console.error("Failed to fetch all employees:", error);
+      return [];
     }
+  }, [company?.id]);
+
+  // Function to get export data (with cache check)
+  const getExportData = async (): Promise<Employee[]> => {
+    if (cachedExportData) {
+      return cachedExportData;
+    }
+    return await fetchAllEmployees();
   };
 
-  const getDepartmentName = (id?: string) => {
-    if (!id) return "-";
-    const dept = departments.find((d) => d.id === id);
-    return dept?.name || "-";
-  };
+  useEffect(() => {
+    fetchEmployees();
+    setCachedExportData(null);
+  }, [company?.id, page]);
 
-  const getDesignationName = (id?: string) => {
-    if (!id) return "-";
-    const desg = designations.find((d) => d.id === id);
-    return desg?.name || "-";
-  };
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.action-dropdown-container')) {
+        setActiveActionMenu(null);
+      }
+      if (!target.closest('.column-dropdown-container')) {
+        setShowColumnDropdown(false);
+      }
+    };
 
-  const formatDate = (value?: string) => {
-    if (!value) return "-";
-    const date = new Date(value.includes("T") ? value : value + "T00:00:00");
-    return date.toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-  const applyFilters = () => {
-    return employees.filter((emp) => {
+  // Apply filters
+  const applyFilters = (employeesList: Employee[] = employees): Employee[] => {
+    return employeesList.filter(emp => {
       const matchesSearch =
-        emp.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        emp.employee_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        emp.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        emp.phone?.includes(searchTerm);
+        emp.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+        emp.employee_code.toLowerCase().includes(search.toLowerCase()) ||
+        emp.email?.toLowerCase().includes(search.toLowerCase()) ||
+        emp.phone?.includes(search);
 
       const matchesStatus = !statusFilter || emp.status === statusFilter;
       const matchesDepartment = !departmentFilter || emp.department_id === departmentFilter;
 
-      return matchesSearch && matchesStatus && matchesDepartment;
+      // Date filters
+      let matchesFromDate = true;
+      let matchesToDate = true;
+
+      if (fromDate && emp.date_of_joining) {
+        const empDate = new Date(emp.date_of_joining);
+        const from = new Date(fromDate);
+        matchesFromDate = empDate >= from;
+      }
+
+      if (toDate && emp.date_of_joining) {
+        const empDate = new Date(emp.date_of_joining);
+        const to = new Date(toDate);
+        matchesToDate = empDate <= to;
+      }
+
+      return matchesSearch && matchesStatus && matchesDepartment && matchesFromDate && matchesToDate;
     });
   };
 
@@ -256,13 +442,395 @@ export default function EmployeesPage() {
     page * pageSize
   );
 
+  // Export functions with individual loading states
+  const copyToClipboard = async () => {
+    if (copyLoading) return;
+
+    setCopyLoading(true);
+    try {
+      const allEmployees = await getExportData();
+      const filtered = applyFilters(allEmployees);
+
+      const headers: string[] = [];
+      const rowData = filtered.map(employee => {
+        const row: string[] = [];
+
+        if (visibleColumns.employeeCode) {
+          if (!headers.includes("Employee Code")) headers.push("Employee Code");
+          row.push(employee.employee_code);
+        }
+
+        if (visibleColumns.name) {
+          if (!headers.includes("Employee Name")) headers.push("Employee Name");
+          row.push(employee.full_name || `${employee.first_name} ${employee.last_name || ''}`);
+        }
+
+        if (visibleColumns.phone) {
+          if (!headers.includes("Phone")) headers.push("Phone");
+          row.push(employee.phone || '-');
+        }
+
+        if (visibleColumns.email) {
+          if (!headers.includes("Email")) headers.push("Email");
+          row.push(employee.email || '-');
+        }
+
+        if (visibleColumns.department) {
+          if (!headers.includes("Department")) headers.push("Department");
+          row.push(getDepartmentName(employee.department_id));
+        }
+
+        if (visibleColumns.designation) {
+          if (!headers.includes("Designation")) headers.push("Designation");
+          row.push(getDesignationName(employee.designation_id));
+        }
+
+        if (visibleColumns.joiningDate) {
+          if (!headers.includes("Joining Date")) headers.push("Joining Date");
+          row.push(formatDate(employee.date_of_joining));
+        }
+
+        if (visibleColumns.status) {
+          if (!headers.includes("Status")) headers.push("Status");
+          row.push(getStatusText(employee.status));
+        }
+
+        return row;
+      });
+
+      const text = [headers.join("\t"), ...rowData.map(r => r.join("\t"))].join("\n");
+      await navigator.clipboard.writeText(text);
+      alert("Employee data copied to clipboard");
+    } catch (error) {
+      console.error("Copy failed:", error);
+      alert("Failed to copy data. Please try again.");
+    } finally {
+      setCopyLoading(false);
+    }
+  };
+
+  const exportExcel = async () => {
+    if (excelLoading) return;
+
+    setExcelLoading(true);
+    try {
+      const allEmployees = await getExportData();
+      const filtered = applyFilters(allEmployees);
+
+      const exportData = filtered.map(employee => {
+        const row: Record<string, any> = {};
+
+        if (visibleColumns.employeeCode) {
+          row["Employee Code"] = employee.employee_code;
+        }
+
+        if (visibleColumns.name) {
+          row["Employee Name"] = employee.full_name || `${employee.first_name} ${employee.last_name || ''}`;
+          row["First Name"] = employee.first_name;
+          row["Last Name"] = employee.last_name;
+        }
+
+        if (visibleColumns.phone) {
+          row["Phone"] = employee.phone || '';
+        }
+
+        if (visibleColumns.email) {
+          row["Email"] = employee.email || '';
+        }
+
+        if (visibleColumns.department) {
+          row["Department"] = getDepartmentName(employee.department_id);
+        }
+
+        if (visibleColumns.designation) {
+          row["Designation"] = getDesignationName(employee.designation_id);
+        }
+
+        if (visibleColumns.joiningDate) {
+          row["Joining Date"] = formatDate(employee.date_of_joining);
+          row["Created Date"] = formatDate(employee.created_at);
+        }
+
+        if (visibleColumns.status) {
+          row["Status"] = getStatusText(employee.status);
+        }
+
+        row["Company"] = company?.name || '';
+        row["Address"] = employee.current_address || employee.permanent_address || '';
+        row["PAN"] = employee.pan || '';
+        row["Aadhaar"] = employee.aadhaar || '';
+
+        return row;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Employees");
+      XLSX.writeFile(wb, "employees.xlsx");
+    } catch (error) {
+      console.error("Excel export failed:", error);
+      alert("Failed to export Excel. Please try again.");
+    } finally {
+      setExcelLoading(false);
+    }
+  };
+
+  const exportPDF = async () => {
+    if (pdfLoading) return;
+
+    setPdfLoading(true);
+    try {
+      const allEmployees = await getExportData();
+      const filtered = applyFilters(allEmployees);
+
+      const doc = new jsPDF("landscape");
+
+      // Build headers & rows based on visible columns
+      const headers: string[] = [];
+      const body = filtered.map((employee) => {
+        const row: string[] = [];
+
+        if (visibleColumns.employeeCode) {
+          if (!headers.includes("Emp. Code")) headers.push("Emp. Code");
+          row.push(employee.employee_code || "N/A");
+        }
+
+        if (visibleColumns.name) {
+          if (!headers.includes("Employee Name")) headers.push("Employee Name");
+          row.push(employee.full_name || `${employee.first_name} ${employee.last_name || ''}`);
+        }
+
+        if (visibleColumns.phone) {
+          if (!headers.includes("Phone")) headers.push("Phone");
+          row.push(employee.phone || "-");
+        }
+
+        if (visibleColumns.email) {
+          if (!headers.includes("Email")) headers.push("Email");
+          row.push(employee.email || "-");
+        }
+
+        if (visibleColumns.department) {
+          if (!headers.includes("Department")) headers.push("Department");
+          row.push(getDepartmentName(employee.department_id));
+        }
+
+        if (visibleColumns.designation) {
+          if (!headers.includes("Designation")) headers.push("Designation");
+          row.push(getDesignationName(employee.designation_id));
+        }
+
+        if (visibleColumns.joiningDate) {
+          if (!headers.includes("Joining Date")) headers.push("Joining Date");
+          row.push(formatDate(employee.date_of_joining));
+        }
+
+        if (visibleColumns.status) {
+          if (!headers.includes("Status")) headers.push("Status");
+          row.push(getStatusText(employee.status));
+        }
+
+        return row;
+      });
+
+      autoTable(doc, {
+        head: [headers],
+        body,
+        startY: 20,
+        margin: { top: 20, left: 10, right: 10, bottom: 20 },
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          overflow: "linebreak",
+          font: "helvetica",
+        },
+        headStyles: {
+          fillColor: [41, 128, 185],
+          textColor: 255,
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [245, 245, 245],
+        },
+        didDrawPage: (data) => {
+          // Title
+          doc.setFontSize(16);
+          doc.text("Employees List", data.settings.margin.left, 12);
+
+          // Company name
+          doc.setFontSize(10);
+          doc.text(company?.name || '', data.settings.margin.left, 18);
+
+          // Date
+          doc.text(
+            `Generated: ${new Date().toLocaleDateString("en-IN")}`,
+            doc.internal.pageSize.width - 60,
+            12
+          );
+
+          // Page number
+          const pageCount = doc.getNumberOfPages();
+          doc.text(
+            `Page ${data.pageNumber} of ${pageCount}`,
+            data.settings.margin.left,
+            doc.internal.pageSize.height - 8
+          );
+        },
+      });
+
+      doc.save("employees.pdf");
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      alert("Failed to export PDF. Please try again.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const exportCSV = async () => {
+    if (csvLoading) return;
+
+    setCsvLoading(true);
+    try {
+      const allEmployees = await getExportData();
+      const filtered = applyFilters(allEmployees);
+
+      const exportData = filtered.map(employee => {
+        const row: Record<string, any> = {};
+
+        if (visibleColumns.employeeCode) {
+          row["Employee Code"] = employee.employee_code;
+        }
+
+        if (visibleColumns.name) {
+          row["Employee Name"] = employee.full_name || `${employee.first_name} ${employee.last_name || ''}`;
+        }
+
+        if (visibleColumns.phone) {
+          row["Phone"] = employee.phone || '';
+        }
+
+        if (visibleColumns.email) {
+          row["Email"] = employee.email || '';
+        }
+
+        if (visibleColumns.department) {
+          row["Department"] = getDepartmentName(employee.department_id);
+        }
+
+        if (visibleColumns.designation) {
+          row["Designation"] = getDesignationName(employee.designation_id);
+        }
+
+        if (visibleColumns.joiningDate) {
+          row["Joining Date"] = formatDate(employee.date_of_joining);
+        }
+
+        if (visibleColumns.status) {
+          row["Status"] = getStatusText(employee.status);
+        }
+
+        return row;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      saveAs(blob, "employees.csv");
+    } catch (error) {
+      console.error("CSV export failed:", error);
+      alert("Failed to export CSV. Please try again.");
+    } finally {
+      setCsvLoading(false);
+    }
+  };
+
+  // Handle print
+  const handlePrint = async () => {
+    if (printLoading) return;
+
+    setPrintLoading(true);
+    try {
+      const allEmployees = await getExportData();
+      const filtered = applyFilters(allEmployees);
+      setEmployeesToPrint(filtered);
+      setShowPrintView(true);
+    } catch (error) {
+      console.error("Print failed:", error);
+      alert("Failed to prepare print view. Please try again.");
+    } finally {
+      setPrintLoading(false);
+    }
+  };
+
+  const toggleColumn = (key: keyof typeof visibleColumns) => {
+    setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+      case 'inactive': return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400';
+      case 'on_notice': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
+      case 'terminated': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+      default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    const statusMap: Record<string, string> = {
+      'active': 'Active',
+      'inactive': 'Inactive',
+    };
+    return statusMap[status] || status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  const getStatusBadge = (status: string) => {
+    const text = getStatusText(status);
+    const colorClass = getStatusColor(status);
+
+    let icon = null;
+    switch (status) {
+      case 'active':
+        icon = <CheckCircle className="w-3 h-3 mr-1" />;
+        break;
+      case 'terminated':
+        icon = <XCircle className="w-3 h-3 mr-1" />;
+        break;
+      case 'on_notice':
+        icon = <Clock className="w-3 h-3 mr-1" />;
+        break;
+      case 'inactive':
+        icon = <AlertCircle className="w-3 h-3 mr-1" />;
+        break;
+    }
+
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
+        {icon}
+        {text}
+      </span>
+    );
+  };
+
+  const getDepartmentName = (id?: string): string => {
+    if (!id) return '-';
+    const dept = departments.find((d) => d.id === id);
+    return dept?.name || '-';
+  };
+
+  const getDesignationName = (id?: string): string => {
+    if (!id) return '-';
+    const desg = designations.find((d) => d.id === id);
+    return desg?.name || '-';
+  };
+
   const handleDelete = async (employeeId: string) => {
     if (window.confirm("Are you sure you want to delete this employee?")) {
       try {
-        if (companyId) {
-          await payrollApi.deleteEmployee(companyId, employeeId);
-          // Refresh the list
-          loadData(companyId);
+        if (company?.id) {
+          await payrollApi.deactivateEmployee(company.id, employeeId);
+          fetchEmployees();
         }
       } catch (error) {
         console.error("Error deleting employee:", error);
@@ -271,24 +839,43 @@ export default function EmployeesPage() {
     }
   };
 
-  if (!companyId) {
-    return (
-      <div className="p-6 text-center text-gray-500 dark:text-gray-400">
-        Please select a company first.
-      </div>
-    );
-  }
+  const clearFilters = () => {
+    setSearch("");
+    setStatusFilter("");
+    setDepartmentFilter("");
+    setFromDate("");
+    setToDate("");
+    setPage(1);
+  };
 
-  if (loading) {
-    return (
-      <div className="p-6 text-center text-gray-500 dark:text-gray-400">
-        Loading...
-      </div>
-    );
-  }
+  const handleSearch = () => {
+    setPage(1);
+  };
+
+  const getTotalPages = () => {
+    return Math.ceil(filteredEmployees.length / pageSize);
+  };
+
+  // Unique departments for filter
+  const uniqueDepartments = departments.map(dept => ({
+    id: dept.id,
+    name: dept.name
+  }));
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {showPrintView && (
+        <PrintView
+          employees={employeesToPrint}
+          visibleColumns={visibleColumns}
+          formatDate={formatDate}
+          getStatusText={getStatusText}
+          getDesignationName={getDesignationName}
+          getDepartmentName={getDepartmentName}
+          companyName={company?.name || ''}
+        />
+      )}
+
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -297,20 +884,93 @@ export default function EmployeesPage() {
               Employees
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Manage your workforce ({employees.length} total)
+              Manage and track all your employees
             </p>
           </div>
-          <Link
-            href="/payroll/employees/new"
-            className="px-4 py-2 transition bg-primary hover:bg-opacity-90 text-white rounded-lg flex items-center gap-2"
+          <button
+            onClick={() => router.push('/payroll/employees/new')}
+            className="px-4 py-2 transition bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2"
           >
             <Plus className="w-5 h-5" />
             Add Employee
-          </Link>
+          </button>
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Summary Cards */}
+      <div className="px-6 py-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+          {/* Total Employees */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {employees.length.toLocaleString()}
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Total Employees
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
+                <Users className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Active Employees */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold text-green-600">
+                  {employees.filter(e => e.status === 'active').length}
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Active Employees
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Departments */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {departments.length}
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Departments
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
+                <Building className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Designations */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {designations.length}
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Designations
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center">
+                <Briefcase className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters - Updated with proper export buttons */}
       <div className="px-6 py-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="flex flex-wrap gap-4">
           <div className="flex-1 min-w-[200px]">
@@ -318,13 +978,11 @@ export default function EmployeesPage() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Search by name, mobile, email, or code..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-primary focus:border-transparent"
+                placeholder="Search by name, code, email, or phone..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
           </div>
@@ -338,12 +996,26 @@ export default function EmployeesPage() {
               Filters
             </button>
 
+            <button
+              onClick={copyToClipboard}
+              disabled={copyLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {copyLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <Copy className="w-5 h-5" />
+              )}
+              Copy
+            </button>
+
             <div className="relative column-dropdown-container">
               <button
                 onClick={() => setShowColumnDropdown(!showColumnDropdown)}
-                className="px-4 py-2 rounded-lg transition bg-primary hover:bg-opacity-90 text-white"
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
               >
                 Columns
+                {showColumnDropdown ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </button>
 
               {showColumnDropdown && (
@@ -354,7 +1026,7 @@ export default function EmployeesPage() {
                         type="checkbox"
                         checked={value}
                         onChange={() => toggleColumn(key as keyof typeof visibleColumns)}
-                        className="rounded border-gray-300 dark:border-gray-600 text-primary focus:ring-primary"
+                        className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
                       />
                       <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
                     </label>
@@ -364,67 +1036,123 @@ export default function EmployeesPage() {
             </div>
 
             <button
-              onClick={copyToClipboard}
-              className="px-4 py-2 rounded-lg transition bg-primary hover:bg-opacity-90 text-white"
+              onClick={exportExcel}
+              disabled={excelLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Copy
+              {excelLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "Excel"
+              )}
             </button>
 
             <button
-              onClick={exportExcel}
-              className="px-4 py-2 rounded-lg transition bg-primary hover:bg-opacity-90 text-white"
-            >
-              Excel
-            </button>
-            <button
               onClick={exportPDF}
-              className="px-4 py-2 rounded-lg transition bg-primary hover:bg-opacity-90 text-white"
+              disabled={pdfLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              PDF
+              {pdfLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "PDF"
+              )}
+            </button>
+
+            <button
+              onClick={exportCSV}
+              disabled={csvLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {csvLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "CSV"
+              )}
+            </button>
+
+            <button
+              onClick={handlePrint}
+              disabled={printLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {printLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <Printer className="w-5 h-5" />
+              )}
+              Print
             </button>
           </div>
         </div>
 
         {showFilters && (
           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex flex-wrap gap-4">
+            {/* Status Dropdown */}
             <select
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
                 setPage(1);
               }}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent"
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="">All Status</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
-              <option value="on_notice">On Notice</option>
-              <option value="terminated">Terminated</option>
+
             </select>
 
+            {/* Department Dropdown */}
             <select
               value={departmentFilter}
               onChange={(e) => {
                 setDepartmentFilter(e.target.value);
                 setPage(1);
               }}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary focus:border-transparent"
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="">All Departments</option>
-              {departments.map((dept) => (
+              {uniqueDepartments.map((dept) => (
                 <option key={dept.id} value={dept.id}>
                   {dept.name}
                 </option>
               ))}
             </select>
 
+            {/* From Date */}
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => {
+                  setFromDate(e.target.value);
+                  setPage(1);
+                }}
+                className="pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="From Date"
+              />
+            </div>
+
+            {/* To Date */}
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => {
+                  setToDate(e.target.value);
+                  setPage(1);
+                }}
+                className="pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="To Date"
+              />
+            </div>
+
             <button
-              onClick={() => {
-                setStatusFilter("");
-                setDepartmentFilter("");
-                setPage(1);
-              }}
-              className="text-sm text-primary hover:underline"
+              onClick={clearFilters}
+              className="text-sm text-blue-600 hover:underline dark:text-blue-400"
             >
               Clear filters
             </button>
@@ -432,260 +1160,289 @@ export default function EmployeesPage() {
         )}
       </div>
 
-      {/* Error State */}
-      {error && (
-        <div className="mx-6 mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400">
-          {error}
-        </div>
-      )}
-
-      {/* Loading State */}
-      {loading && (
-        <div className="p-6 text-center text-gray-500 dark:text-gray-400">
-          Loading...
-        </div>
-      )}
-
       {/* Table */}
-      {!loading && paginatedEmployees.length === 0 ? (
-        <div className="p-12 text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-            <Users className="w-8 h-8 text-gray-400" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-1">
-            No employees yet
-          </h3>
-          <p className="text-gray-500 dark:text-gray-400 mb-4">
-            Add your first employee to get started.
-          </p>
-          <Link
-            href="/payroll/employees/new"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition"
-          >
-            <Plus className="w-5 h-5" />
-            Add Your First Employee
-          </Link>
-        </div>
-      ) : !loading && (
-        <div className="p-6">
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-200 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
-                  {visibleColumns.company && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Company
+      <div>
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <table className="w-full table-fixed">
+            <div className="overflow-x-auto">
+
+              <thead className="bg-gray-200 dark:bg-gray-700/50">
+                <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+                  {visibleColumns.employeeCode && (
+                    <th className="text-left px-6 py-3 whitespace-nowrap">
+                      Employee Code
                     </th>
                   )}
-                  {visibleColumns.username && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Username
+                  {visibleColumns.name && (
+                    <th className="text-left px-6 py-3 whitespace-nowrap min-w-[200px]">
+                      Employee Name
                     </th>
                   )}
-                  {visibleColumns.mobile && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Mobile
+                  {visibleColumns.phone && (
+                    <th className="text-left px-6 py-3 whitespace-nowrap">
+                      Phone
                     </th>
                   )}
                   {visibleColumns.email && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    <th className="text-left px-6 py-3 whitespace-nowrap">
                       Email
                     </th>
                   )}
-                  {visibleColumns.role && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Role
+                  {visibleColumns.department && (
+                    <th className="text-left px-6 py-3 whitespace-nowrap">
+                      Department
                     </th>
                   )}
-                  {visibleColumns.createdOn && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Created On
+                  {visibleColumns.designation && (
+                    <th className="text-left px-6 py-3 whitespace-nowrap">
+                      Designation
+                    </th>
+                  )}
+                  {visibleColumns.joiningDate && (
+                    <th className="text-left px-6 py-3 whitespace-nowrap">
+                      Joining Date
                     </th>
                   )}
                   {visibleColumns.status && (
-                    <th className="text-left px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    <th className="text-left px-6 py-3 whitespace-nowrap">
                       Status
                     </th>
                   )}
                   {visibleColumns.actions && (
-                    <th className="text-right px-6 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    <th className="text-right px-6 py-3 whitespace-nowrap">
                       Actions
                     </th>
                   )}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {paginatedEmployees.map((employee) => (
-                  <tr
-                    key={employee.id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                  >
-                    {visibleColumns.company && (
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/20 flex items-center justify-center">
-                            <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                              {employee.first_name.charAt(0)}
-                              {employee.last_name?.charAt(0) || ""}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">
-                              {company?.name || ""}
-                            </p>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                              {employee.employee_code}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                    )}
-                    {visibleColumns.username && (
-                      <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
-                        {employee.full_name || `${employee.first_name} ${employee.last_name || ""}`}
-                      </td>
-                    )}
-                    {visibleColumns.mobile && (
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                          <Phone className="w-4 h-4" />
-                          <span>{employee.phone || "-"}</span>
-                        </div>
-                      </td>
-                    )}
-                    {visibleColumns.email && (
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                          <Mail className="w-4 h-4" />
-                          <span className="truncate max-w-[180px]">{employee.email || "-"}</span>
-                        </div>
-                      </td>
-                    )}
-                    {visibleColumns.role && (
-                      <td className="px-6 py-4">
-                        <p className="font-medium text-gray-900 dark:text-white">
-                          {getDesignationName(employee.designation_id)}
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {getDepartmentName(employee.department_id)}
-                        </p>
-                      </td>
-                    )}
-                    {visibleColumns.createdOn && (
-                      <td className="px-6 py-4 text-gray-700 dark:text-gray-300">
-                        {employee.created_at ? formatDate(employee.created_at) : "-"}
-                      </td>
-                    )}
-                    {visibleColumns.status && (
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(employee.status)}`}
-                        >
-                          {employee.status.charAt(0).toUpperCase() + employee.status.slice(1)}
-                        </span>
-                      </td>
-                    )}
-                    {visibleColumns.actions && (
-                      <td className="px-6 py-4 text-right">
-                        <div className="relative action-dropdown-container inline-block">
-                          <button
-                            onClick={() =>
-                              setActiveActionMenu(
-                                activeActionMenu === employee.id ? null : employee.id
-                              )
-                            }
-                            className="p-2 rounded-lg text-gray-500 hover:text-gray-700
-                   dark:text-gray-400 dark:hover:text-white
-                   hover:bg-gray-100 dark:hover:bg-gray-700"
-                          >
-                            <MoreVertical className="w-5 h-5" />
-                          </button>
-
-                          {activeActionMenu === employee.id && (
-                            <div
-                              className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800
-                     border border-gray-200 dark:border-gray-700
-                     rounded-lg shadow-lg z-20"
-                            >
-                              <Link
-                                href={`/payroll/employees/${employee.id}`}
-                                onClick={() => setActiveActionMenu(null)}
-                                className="flex items-center gap-2 px-4 py-2 text-sm
-                       text-gray-700 dark:text-gray-300
-                       hover:bg-gray-100 dark:hover:bg-gray-700"
-                              >
-                                <Eye className="w-4 h-4" />
-                                View
-                              </Link>
-
-                              <Link
-                                href={`/payroll/employees/edit/${employee.id}`}
-                                onClick={() => setActiveActionMenu(null)}
-                                className="flex items-center gap-2 px-4 py-2 text-sm
-                       text-gray-700 dark:text-gray-300
-                       hover:bg-gray-100 dark:hover:bg-gray-700"
-                              >
-                                <Edit className="w-4 h-4" />
-                                Edit
-                              </Link>
-
-                              <button
-                                onClick={() => {
-                                  setActiveActionMenu(null);
-                                  handleDelete(employee.id);
-                                }}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm
-                       text-red-600 dark:text-red-400
-                       hover:bg-red-50 dark:hover:bg-red-900/30"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                                Delete
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    )}
-
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-sm text-gray-700 dark:text-gray-300">
+                {loading ? (
+                  <tr>
+                    <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                      <div className="flex items-center justify-center">
+                        <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
+                      </div>
+                    </td>
                   </tr>
-                ))}
+                ) : !company ? (
+                  <tr>
+                    <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                      No company selected
+                    </td>
+                  </tr>
+                ) : paginatedEmployees.length === 0 ? (
+                  <tr>
+                    <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                      <div className="flex flex-col items-center justify-center">
+                        <Users className="w-12 h-12 text-gray-400 mb-2" />
+                        <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
+                          No employees found
+                        </p>
+                        <p className="text-gray-500 dark:text-gray-400 mb-4">
+                          Try adjusting your filters or add a new employee
+                        </p>
+                        <button
+                          onClick={() => router.push('/payroll/employees/new')}
+                          className="text-blue-600 hover:underline dark:text-blue-400"
+                        >
+                          Add your first employee
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedEmployees.map((employee) => {
+                    const profileInitials = `${employee.first_name.charAt(0)}${employee.last_name?.charAt(0) || ''}`;
+
+                    return (
+                      <tr
+                        key={employee.id}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                      >
+                        {visibleColumns.employeeCode && (
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
+                                <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                                  {profileInitials}
+                                </span>
+                              </div>
+                              <div className="font-medium text-gray-900 dark:text-white">
+                                {employee.employee_code}
+                              </div>
+                            </div>
+                          </td>
+                        )}
+                        {visibleColumns.name && (
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="min-w-0">
+                                <div className="font-medium text-gray-900 dark:text-white truncate">
+                                  {employee.full_name || `${employee.first_name} ${employee.last_name || ''}`}
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                  {employee.first_name} {employee.last_name}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        )}
+                        {visibleColumns.phone && (
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                              <Phone className="w-4 h-4 flex-shrink-0" />
+                              <span>{employee.phone || '-'}</span>
+                            </div>
+                          </td>
+                        )}
+                        {visibleColumns.email && (
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                              <Mail className="w-4 h-4 flex-shrink-0" />
+                              <span className="truncate max-w-[180px]">{employee.email || '-'}</span>
+                            </div>
+                          </td>
+                        )}
+                        {visibleColumns.department && (
+                          <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                            {getDepartmentName(employee.department_id)}
+                          </td>
+                        )}
+                        {visibleColumns.designation && (
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="font-medium text-gray-900 dark:text-white">
+                              {getDesignationName(employee.designation_id)}
+                            </div>
+                          </td>
+                        )}
+                        {visibleColumns.joiningDate && (
+                          <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                            {formatDate(employee.date_of_joining)}
+                          </td>
+                        )}
+                        {visibleColumns.status && (
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {getStatusBadge(employee.status)}
+                          </td>
+                        )}
+                        {visibleColumns.actions && (
+                          <td className="px-6 py-4 text-right whitespace-nowrap">
+                            <div className="relative action-dropdown-container inline-block">
+                              <button
+                                onClick={() =>
+                                  setActiveActionMenu(
+                                    activeActionMenu === employee.id ? null : employee.id
+                                  )
+                                }
+                                className="p-2 rounded-lg text-gray-500 hover:text-gray-700
+                            dark:text-gray-400 dark:hover:text-white
+                            hover:bg-gray-100 dark:hover:bg-gray-700"
+                              >
+                                <MoreVertical className="w-5 h-5" />
+                              </button>
+
+                              {activeActionMenu === employee.id && (
+                                <div
+                                  className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800
+                              border border-gray-200 dark:border-gray-700
+                              rounded-lg shadow-lg z-20"
+                                >
+                                  <Link
+                                    href={`/payroll/employees/${employee.id}`}
+                                    onClick={() => setActiveActionMenu(null)}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm
+                                text-gray-700 dark:text-gray-300
+                                hover:bg-gray-100 dark:hover:bg-gray-700"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                    View Details
+                                  </Link>
+
+                                  <Link
+                                    href={`/payroll/employees/edit/${employee.id}`}
+                                    onClick={() => setActiveActionMenu(null)}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm
+                                text-gray-700 dark:text-gray-300
+                                hover:bg-gray-100 dark:hover:bg-gray-700"
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                    Edit
+                                  </Link>
+
+                                  <button
+                                    onClick={() => {
+                                      setActiveActionMenu(null);
+                                      handleDelete(employee.id);
+                                    }}
+                                    className="flex w-full items-center gap-2 px-4 py-2 text-sm
+                                text-red-600 dark:text-red-400
+                                hover:bg-red-50 dark:hover:bg-red-900/30"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {filteredEmployees.length > pageSize && (
-            <div className="mt-4 flex items-center justify-between">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Showing {(page - 1) * pageSize + 1} to{" "}
-                {Math.min(page * pageSize, filteredEmployees.length)} of {filteredEmployees.length} results
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="bg-primary text-white px-3 py-1 rounded-lg border border-primary
-               hover:bg-primary/90
-               disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-
-                <button
-                  onClick={() => setPage((p) => p + 1)}
-                  disabled={page * pageSize >= filteredEmployees.length}
-                  className="bg-primary text-white px-3 py-1 rounded-lg border border-primary
-               hover:bg-primary/90
-               disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
-
+              {paginatedEmployees.length > 0 && (
+                <tfoot>
+                  <tr className="bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
+                    <td
+                      colSpan={
+                        Object.values(visibleColumns).filter(Boolean).length -
+                        (visibleColumns.actions ? 1 : 0)
+                      }
+                      className="px-6 py-4 text-right font-semibold text-gray-900 dark:text-white whitespace-nowrap"
+                    >
+                      Total Employees:
+                    </td>
+                    <td className="px-6 py-4 font-bold text-gray-900 dark:text-white whitespace-nowrap">
+                      {filteredEmployees.length}
+                    </td>
+                    {visibleColumns.actions && (
+                      <td></td>
+                    )}
+                  </tr>
+                </tfoot>
+              )}
             </div>
-          )}
+          </table>
         </div>
-      )}
+
+        {/* Pagination */}
+        {filteredEmployees.length > pageSize && (
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Showing {(page - 1) * pageSize + 1} to{" "}
+              {Math.min(page * pageSize, filteredEmployees.length)} of {filteredEmployees.length} results
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+
+              <button
+                onClick={() => setPage((p) => p + 1)}
+                disabled={page * pageSize >= filteredEmployees.length}
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

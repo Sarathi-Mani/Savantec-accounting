@@ -5034,7 +5034,129 @@ class VisitStatus(str, PyEnum):
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
+class Visit(Base):
+    """Visit model - Track actual employee visits to customers."""
+    __tablename__ = "visits"
 
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    employee_id = Column(String(36), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
+    customer_id = Column(String(36), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
+    
+    # Visit details
+    visit_date = Column(Date, nullable=False)
+    start_time = Column(Time, nullable=True)
+    end_time = Column(Time, nullable=True)
+    
+    # Location tracking
+    location_lat = Column(Float, nullable=True)
+    location_lng = Column(Float, nullable=True)
+    location_address = Column(String(500), nullable=True)
+    
+    # Purpose and outcome
+    purpose = Column(Text, nullable=True)
+    discussion_points = Column(Text, nullable=True)
+    outcome = Column(Text, nullable=True)
+    
+    # Status
+    status = Column(Enum(VisitStatus), default=VisitStatus.PLANNED)
+    
+    # Expenses
+    travel_distance_km = Column(Numeric(8, 2), default=0)
+    travel_mode = Column(String(50), default="car")  # car, bike, public_transport, other
+    parking_charges = Column(Numeric(10, 2), default=0)
+    toll_charges = Column(Numeric(10, 2), default=0)
+    other_expenses = Column(Numeric(10, 2), default=0)
+    
+    # Verification
+    check_in_time = Column(DateTime, nullable=True)
+    check_out_time = Column(DateTime, nullable=True)
+    check_in_location_lat = Column(Float, nullable=True)
+    check_in_location_lng = Column(Float, nullable=True)
+    check_out_location_lat = Column(Float, nullable=True)
+    check_out_location_lng = Column(Float, nullable=True)
+    check_in_image_url = Column(String(500), nullable=True)
+    check_out_image_url = Column(String(500), nullable=True)
+    
+    # Meeting photos
+    meeting_photos = Column(JSON, nullable=True)  # List of photo URLs
+    
+    # Follow-up
+    next_action = Column(Text, nullable=True)
+    next_followup_date = Column(Date, nullable=True)
+    
+    # Reference to related entities - Use string references
+    sales_ticket_id = Column(String(36), ForeignKey("sales_tickets.id", ondelete="SET NULL"), nullable=True)
+    enquiry_id = Column(String(36), ForeignKey("enquiries.id", ondelete="SET NULL"), nullable=True)
+    quotation_id = Column(String(36), ForeignKey("quotations.id", ondelete="SET NULL"), nullable=True)
+    
+    notes = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships with string references for forward declarations
+    company = relationship("Company")
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    customer = relationship("Customer")
+    sales_ticket = relationship("SalesTicket")
+    enquiry = relationship("Enquiry")
+    quotation = relationship("Quotation")
+    expense_claims = relationship("VisitExpenseClaim", back_populates="visit", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_visit_company", "company_id"),
+        Index("idx_visit_employee", "employee_id"),
+        Index("idx_visit_customer", "customer_id"),
+        Index("idx_visit_date", "visit_date"),
+        Index("idx_visit_status", "status"),
+    )
+
+    def __repr__(self):
+        return f"<Visit {self.id} - {self.visit_date}>"
+
+class VisitExpenseClaim(Base):
+    """Visit Expense Claim model - Detailed expenses for a visit."""
+    __tablename__ = "visit_expense_claims"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    visit_id = Column(String(36), ForeignKey("visits.id", ondelete="CASCADE"), nullable=False)
+    
+    expense_date = Column(Date, nullable=False)
+    category = Column(String(100), nullable=False)  # fuel, food, parking, toll, accommodation, other
+    description = Column(Text, nullable=True)
+    amount = Column(Numeric(10, 2), nullable=False)
+    
+    # Receipt
+    receipt_url = Column(String(500), nullable=True)
+    receipt_number = Column(String(100), nullable=True)
+    
+    # Verification
+    is_verified = Column(Boolean, default=False)
+    verified_by = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+    
+    # Reimbursement
+    reimbursement_status = Column(String(50), default="pending")  # pending, approved, reimbursed
+    reimbursement_date = Column(Date, nullable=True)
+    reimbursement_reference = Column(String(100), nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    visit = relationship("Visit", back_populates="expense_claims")
+    verifier = relationship("Employee", foreign_keys=[verified_by])
+
+    __table_args__ = (
+        Index("idx_visit_expense_visit", "visit_id"),
+        Index("idx_visit_expense_date", "expense_date"),
+        Index("idx_visit_expense_status", "reimbursement_status"),
+    )
+
+    def __repr__(self):
+        return f"<VisitExpenseClaim {self.id} - {self.amount}>"
+        
 class ProjectStatus(str, PyEnum):
     """Project status enumeration."""
     PLANNING = "planning"
@@ -5307,59 +5429,6 @@ class ProjectTask(Base):
         return f"<ProjectTask {self.title}>"
 
 
-class Visit(Base):
-    """Visit/Field visit model - Tracks employee visits to customers."""
-    __tablename__ = "visits"
-
-    id = Column(String(36), primary_key=True, default=generate_uuid)
-    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
-    employee_id = Column(String(36), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
-    customer_id = Column(String(36), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
-    enquiry_id = Column(String(36), ForeignKey("enquiries.id", ondelete="SET NULL"), nullable=True)
-    
-    visit_date = Column(Date, nullable=False)
-    
-    # Distance tracking
-    start_km = Column(Numeric(10, 2), nullable=True)
-    end_km = Column(Numeric(10, 2), nullable=True)
-    distance_km = Column(Numeric(10, 2), nullable=True)  # Calculated
-    
-    # Location tracking (JSON: {lat, lng, address})
-    start_location = Column(JSON, nullable=True)
-    end_location = Column(JSON, nullable=True)
-    
-    # Time tracking
-    check_in_time = Column(DateTime, nullable=True)
-    check_out_time = Column(DateTime, nullable=True)
-    
-    # Visit details
-    purpose = Column(Text, nullable=True)
-    notes = Column(Text, nullable=True)
-    outcome = Column(Text, nullable=True)
-    
-    status = Column(Enum(VisitStatus), default=VisitStatus.PLANNED)
-    
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Relationships
-    company = relationship("Company")
-    employee = relationship("Employee")
-    customer = relationship("Customer")
-    enquiry = relationship("Enquiry")
-
-    __table_args__ = (
-        Index("idx_visit_company", "company_id"),
-        Index("idx_visit_employee", "employee_id"),
-        Index("idx_visit_customer", "customer_id"),
-        Index("idx_visit_date", "visit_date"),
-        Index("idx_visit_status", "status"),
-    )
-
-    def __repr__(self):
-        return f"<Visit {self.id} on {self.visit_date}>"
-
-
 class ExpenseCategory(str, PyEnum):
     """Expense category enumeration."""
     TRAVEL = "travel"
@@ -5571,47 +5640,6 @@ class SalesTarget(Base):
 
     def __repr__(self):
         return f"<SalesTarget {self.employee_id} {self.target_year}/{self.target_month}>"
-
-
-class VisitPlan(Base):
-    """Visit Plan model - Scheduled visits for employees."""
-    __tablename__ = "visit_plans"
-
-    id = Column(String(36), primary_key=True, default=generate_uuid)
-    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
-    employee_id = Column(String(36), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
-    customer_id = Column(String(36), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
-    
-    planned_date = Column(Date, nullable=False)
-    planned_time = Column(Time, nullable=True)
-    
-    purpose = Column(Text, nullable=True)
-    priority = Column(String(20), default="medium")  # low, medium, high
-    
-    status = Column(String(50), default="pending")  # pending, confirmed, cancelled, completed
-    
-    # Reference to actual visit if completed
-    visit_id = Column(String(36), ForeignKey("visits.id", ondelete="SET NULL"), nullable=True)
-    
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Relationships
-    company = relationship("Company")
-    employee = relationship("Employee")
-    customer = relationship("Customer")
-    visit = relationship("Visit")
-
-    __table_args__ = (
-        Index("idx_visit_plan_company", "company_id"),
-        Index("idx_visit_plan_employee", "employee_id"),
-        Index("idx_visit_plan_date", "planned_date"),
-        Index("idx_visit_plan_status", "status"),
-    )
-
-    def __repr__(self):
-        return f"<VisitPlan {self.id} for {self.planned_date}>"
-
 
 # Indian State codes for GST
 INDIAN_STATE_CODES = {

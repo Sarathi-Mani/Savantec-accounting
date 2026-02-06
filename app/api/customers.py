@@ -14,6 +14,19 @@ router = APIRouter(prefix="/companies/{company_id}/customers", tags=["Customers"
 
 def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
     """Helper to get company or raise 404."""
+    # Employee auth returns a dict; handle that here.
+    if isinstance(user, dict) and user.get("is_employee"):
+        company = db.query(Company).filter(
+            Company.id == company_id,
+            Company.is_active == True
+        ).first()
+        if not company or str(company.id) != str(user.get("company_id")):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Company not found"
+            )
+        return company
+
     service = CompanyService(db)
     company = service.get_company(company_id, user)
     if not company:

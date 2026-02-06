@@ -76,6 +76,7 @@ class CompanyService:
             invoice_prefix=data.invoice_prefix,
             invoice_terms=data.invoice_terms,
             invoice_notes=data.invoice_notes,
+            petrol_rate_per_km=data.petrol_rate_per_km,
         )
         
         # Extract state code from GSTIN if not provided

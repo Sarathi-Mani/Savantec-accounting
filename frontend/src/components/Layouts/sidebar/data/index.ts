@@ -39,6 +39,32 @@ export const NAV_DATA = [
       },
     ]
   },
+
+  {
+  label: "SALES TRACKING",
+  items: [
+    {
+      title: "Live Tracking",
+      url: "/sales-tracking/admin-live-tracking",
+      icon: Icons.Target,
+      items: [],
+    },
+    {
+      title: "Nearby Customers",
+      url: "/sales-tracking/nearby-customers",
+      icon: Icons.UserCircle,
+      items: [],
+    },
+    {
+      title: "Trips & Visits",
+      icon: Icons.Truck,
+      items: [
+        { title: "All Trips", url: "/sales-tracking/trips" },
+        { title: "All Visits", url: "/sales-tracking/visits" },
+      ],
+    },
+  ],
+},
   {
     label: "PRODUCTS",
     items: [
@@ -191,7 +217,7 @@ export const NAV_DATA = [
   {
     label: "PURCHASES",
     items: [
-        {
+      {
         title: "Purchase Request",
         url: "/purchase-req",
         icon: Icons.Building,
@@ -200,7 +226,7 @@ export const NAV_DATA = [
           { title: "Add Requests", url: "/purchase-req/new" }
         ],
       },
-     
+
       {
         title: "Purchase Orders",
         icon: Icons.ShoppingCart,
@@ -215,9 +241,7 @@ export const NAV_DATA = [
           },
         ],
       },
-
-      
-       {
+      {
         title: "Purchase Invoices",
         icon: Icons.FileText,
         items: [
@@ -299,7 +323,7 @@ export const NAV_DATA = [
   {
     label: "PURCHASE",
     items: [
-      
+
       {
         title: "Purchase Invoices",
         icon: Icons.ReceiptText,
@@ -309,7 +333,7 @@ export const NAV_DATA = [
           { title: "Debit Notes", url: "/purchase/debit-notes" },
         ],
       },
-      
+
       {
         title: "Purchase Orders",
         url: "/orders/purchase",

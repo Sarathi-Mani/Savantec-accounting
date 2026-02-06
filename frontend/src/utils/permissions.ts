@@ -38,6 +38,13 @@ export const PERMISSION_KEYS = {
   SALES_OUTSTANDING: 'sales_outstanding',
   VISIT_PLAN: 'visit_plan',
   KM_TRAVELLED: 'km_travelled',
+  SALES_TRACKING_LIVE: 'sales_tracking_live',
+  SALES_TRACKING_TRIPS: 'sales_tracking_trips',
+  SALES_TRACKING_VISITS: 'sales_tracking_visits',
+  SALES_TRACKING_REPORTS: 'sales_tracking_reports',
+  NEARBY_CUSTOMERS_VIEW: 'nearby_customers_view',
+  START_TRIP: 'start_trip',
+  MARK_VISIT: 'mark_visit',
   
   // Accounting
   CASH_BANK_ENTRIES: 'cash_bank_entries',
@@ -183,9 +190,12 @@ export const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     PERMISSION_KEYS.VIEW_SALES_ORDER,
     PERMISSION_KEYS.VIEW_STOCK_LIST,
     PERMISSION_KEYS.CUSTOMERS,
-    PERMISSION_KEYS.VISIT_PLAN,
-    PERMISSION_KEYS.KM_TRAVELLED,
     PERMISSION_KEYS.ITEM_COMPARE,
+    PERMISSION_KEYS.SALES_TRACKING_TRIPS,
+    PERMISSION_KEYS.SALES_TRACKING_VISITS,
+    PERMISSION_KEYS.NEARBY_CUSTOMERS_VIEW,
+    PERMISSION_KEYS.START_TRIP,
+    PERMISSION_KEYS.MARK_VISIT,
   ] as PermissionKey[],
   
   // Purchase Manager (from your DB)

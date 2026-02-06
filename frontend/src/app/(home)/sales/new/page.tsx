@@ -339,6 +339,24 @@ export default function AddSalesPage() {
 
     // Previous payments state
     const [previousPayments, setPreviousPayments] = useState<any[]>([]);
+    const salesmanOptions = salesmen
+        .filter((salesman) => typeof salesman?.name === "string" && salesman.name.trim())
+        .map((salesman) => {
+            const metaParts: string[] = [];
+            if (salesman.designation) metaParts.push(String(salesman.designation));
+            if (salesman.email) metaParts.push(String(salesman.email));
+            if (salesman.phone) metaParts.push(String(salesman.phone));
+
+            const label = metaParts.length
+                ? `${salesman.name} (${metaParts.join(" | ")})`
+                : salesman.name;
+
+            return {
+                value: salesman.id,
+                label,
+                salesman,
+            };
+        });
 
     // Load data on component mount
     useEffect(() => {
@@ -350,14 +368,16 @@ export default function AddSalesPage() {
     }, [company?.id]);
 
     useEffect(() => {
-        const loadNextInvoiceNumber = async (voucherType = "sales") => {
+        const loadNextInvoiceNumber = async () => {
             if (!company?.id) return;
 
             try {
                 setLoadingInvoiceNumber(true);
                 const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
-                // Backend API call
+                // IMPORTANT: Use formData.voucher_type for initial load
+                const voucherType = formData.voucher_type || "sales";
+
                 const response = await fetch(
                     `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/next-invoice-number?voucher_type=${voucherType}`,
                     {
@@ -370,18 +390,7 @@ export default function AddSalesPage() {
 
                 if (response.ok) {
                     const data = await response.json();
-                    let invoiceNumber = data.invoice_number || "";
-
-                    // TEMPORARY FIX: If backend doesn't return correct format for service
-                    if (voucherType === "service" && !invoiceNumber.includes("SER")) {
-                        // Extract number from INV-00189 format
-                        const match = invoiceNumber.match(/\d+$/);
-                        if (match) {
-                            invoiceNumber = `INV-SER-${match[0]}`;
-                        }
-                    }
-
-                    setNextInvoiceNumber(invoiceNumber);
+                    setNextInvoiceNumber(data.invoice_number || "");
                 }
             } catch (error) {
                 console.error("Failed to load next invoice number:", error);
@@ -390,8 +399,8 @@ export default function AddSalesPage() {
             }
         };
 
-        loadNextInvoiceNumber(formData.voucher_type);
-    }, [company?.id, formData.voucher_type]);
+        loadNextInvoiceNumber();
+    }, [company?.id]);
 
     const loadCustomers = async () => {
         try {
@@ -819,7 +828,35 @@ export default function AddSalesPage() {
         }));
 
         if (field === 'voucher_type') {
-            loadNextInvoiceNumber(value);
+            const loadInvoiceNumberForVoucherType = async () => {
+                if (!company?.id) return;
+
+                try {
+                    setLoadingInvoiceNumber(true);
+                    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+
+                    const response = await fetch(
+                        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/next-invoice-number?voucher_type=${value}`,
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                        }
+                    );
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        setNextInvoiceNumber(data.invoice_number || "");
+                    }
+                } catch (error) {
+                    console.error("Failed to load next invoice number:", error);
+                } finally {
+                    setLoadingInvoiceNumber(false);
+                }
+            };
+
+            loadInvoiceNumberForVoucherType();
         }
 
         // When place of supply changes, update item tax calculations
@@ -1085,34 +1122,10 @@ export default function AddSalesPage() {
                                         </div>
 
                                         <Select
-                                            options={salesmen
-                                                .filter(salesman => salesman.name && salesman.name.trim())
-                                                .map((salesman) => {
-                                                    const label = salesman.designation
-                                                        ? `${salesman.name} (${salesman.email}) ${salesman.phone ? - salesman.phone : ''}`.trim()
-                                                        : salesman.name;
-
-
-                                                    return {
-                                                        value: salesman.id,
-                                                        label: label,
-                                                        salesman: salesman
-                                                    };
-                                                })}
-                                            value={salesmen
-                                                .filter(salesman => salesman.name && salesman.name.trim())
-                                                .map((salesman) => {
-                                                    const label = salesman.designation
-                                                        ? `${salesman.name} (${salesman.designation})`
-                                                        : salesman.name;
-
-                                                    return {
-                                                        value: salesman.id,
-                                                        label: label,
-                                                        salesman: salesman
-                                                    };
-                                                })
-                                                .find(opt => opt.value === formData.sales_person_id)}
+                                            options={salesmanOptions}
+                                            value={salesmanOptions.find(
+                                                (opt) => String(opt.value) === String(formData.sales_person_id)
+                                            )}
                                             onChange={(option) => {
                                                 handleFormChange('sales_person_id', option?.value || "");
                                                 if (option?.salesman) {

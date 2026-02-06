@@ -25,7 +25,7 @@ const DEFAULT_PERMISSIONS: Permission[] = [
   { id: "variant", name: "Variant", description: "Manage product variants", category: "Stock/Inventory" },
   { id: "stock_view", name: "View Stock", description: "View stock levels and details", category: "Stock/Inventory" },
   { id: "stock_update", name: "Stock Update", description: "Update stock information", category: "Stock/Inventory" },
-  
+
   // Supplier/Customer related
   { id: "suppliers", name: "Suppliers", description: "Manage supplier information", category: "Parties" },
   { id: "customers", name: "Customers", description: "Manage customer information", category: "Parties" },
@@ -33,7 +33,7 @@ const DEFAULT_PERMISSIONS: Permission[] = [
   { id: "supplier_advance_payments", name: "Supplier Advance Payments", description: "Manage supplier advance payments", category: "Parties" },
   { id: "vendor_creation", name: "Vendor Creation", description: "Create new vendors", category: "Parties" },
   { id: "customer_creation", name: "Customer Creation", description: "Create new customers", category: "Parties" },
-  
+
   // Purchase related
   { id: "purchase", name: "Purchase", description: "Manage purchases", category: "Purchase" },
   { id: "purchase_order", name: "Purchase Order", description: "Manage purchase orders", category: "Purchase" },
@@ -42,7 +42,7 @@ const DEFAULT_PERMISSIONS: Permission[] = [
   { id: "purchase_quotation", name: "Purchase Quotation", description: "Manage purchase quotations", category: "Purchase" },
   { id: "purchase_compare", name: "Purchase Compare", description: "Compare purchase options", category: "Purchase" },
   { id: "enquiry_check_purchase", name: "Enquiry Check & Purchase", description: "Check enquiries and process purchases", category: "Purchase" },
-  
+
   // Sales related
   { id: "quotation", name: "Quotation", description: "Create and manage quotations", category: "Sales" },
   { id: "sales_order", name: "Sales Order", description: "Manage sales orders", category: "Sales" },
@@ -52,9 +52,7 @@ const DEFAULT_PERMISSIONS: Permission[] = [
   { id: "enquiry", name: "Enquiry", description: "Manage customer enquiries", category: "Sales" },
   { id: "item_compare", name: "Item Compare", description: "Compare items for sales", category: "Sales" },
   { id: "sales_outstanding", name: "Sales Outstanding", description: "View sales outstanding", category: "Sales" },
-  { id: "visit_plan", name: "Visit Plan", description: "Manage customer visit plans", category: "Sales" },
-  { id: "km_travelled", name: "KM Travelled", description: "Track kilometers travelled", category: "Sales" },
-  
+
   // Accounting related
   { id: "cash_bank_entries", name: "Cash & Bank Entries", description: "Manage cash and bank transactions", category: "Accounting" },
   { id: "journal", name: "Journal", description: "Manage journal entries", category: "Accounting" },
@@ -62,13 +60,13 @@ const DEFAULT_PERMISSIONS: Permission[] = [
   { id: "assets", name: "Assets", description: "Manage company assets", category: "Accounting" },
   { id: "liabilities", name: "Liabilities", description: "Manage liabilities", category: "Accounting" },
   { id: "it_filing", name: "IT Filing", description: "Access tax filing information", category: "Accounting" },
-  
+
   // Approval related
   { id: "leave_approval", name: "Leave Approval", description: "Approve employee leave requests", category: "Approvals" },
   { id: "permission_approval", name: "Permission Approval", description: "Approve permissions", category: "Approvals" },
   { id: "customer_approval", name: "Customer Approval", description: "Approve customer creation", category: "Approvals" },
   { id: "vendor_approval", name: "Vendor Approval", description: "Approve vendor creation", category: "Approvals" },
-  
+
   // View only permissions
   { id: "view_quotation", name: "View Quotation", description: "View quotations only", category: "View" },
   { id: "view_dc", name: "View DC", description: "View delivery challans only", category: "View" },
@@ -76,7 +74,7 @@ const DEFAULT_PERMISSIONS: Permission[] = [
   { id: "view_proforma", name: "View Proforma", description: "View proforma invoices only", category: "View" },
   { id: "view_sales_order", name: "View Sales Order", description: "View sales orders only", category: "View" },
   { id: "view_stock_list", name: "View Stock List", description: "View stock lists only", category: "View" },
-  
+
   // Admin related
   { id: "process_purchase_rate", name: "Process Purchase Rate", description: "Process to get purchase rates", category: "Administration" },
   { id: "process_quotation_team", name: "Process to Quotation Team", description: "Process to quotation team", category: "Administration" },
@@ -86,6 +84,15 @@ const DEFAULT_PERMISSIONS: Permission[] = [
   { id: "banking_access", name: "Banking Access", description: "Access banking module menus", category: "Menu Access" },
   { id: "settings_access", name: "Settings Access", description: "Access settings module menus", category: "Menu Access" },
   { id: "reports_access", name: "Reports Access", description: "Access reports module menus", category: "Menu Access" },
+
+
+  { id: "sales_tracking_live", name: "Sales Tracking Live", description: "Access live tracking dashboard", category: "Sales Tracking" },
+  { id: "sales_tracking_trips", name: "Sales Trips", description: "View sales trips", category: "Sales Tracking" },
+  { id: "sales_tracking_visits", name: "Sales Visits", description: "View customer visits", category: "Sales Tracking" },
+  { id: "nearby_customers_view", name: "Nearby Customers", description: "View nearby customers map", category: "Sales Tracking" },
+  { id: "start_trip", name: "Start Trip", description: "Start new sales trip", category: "Sales Tracking" },
+  { id: "mark_visit", name: "Mark Visit", description: "Mark customer visits", category: "Sales Tracking" },
+
 ];
 
 // Role templates based on your description
@@ -98,7 +105,7 @@ const ROLE_TEMPLATES = {
   "admin_manager": {
     name: "Admin Manager",
     description: "All details and approval for all items, customer/vendor creation approval, leave/permission approval",
-    permissions: DEFAULT_PERMISSIONS.filter(p => 
+    permissions: DEFAULT_PERMISSIONS.filter(p =>
       !p.id.includes("it_filing") && !p.id.includes("assets") && !p.id.includes("liabilities")
     ).map(p => p.id)
   },
@@ -122,11 +129,13 @@ const ROLE_TEMPLATES = {
   },
   "sales_engineer": {
     name: "Sales Engineer",
-    description: "Enquiry, quotation, view permissions, customer details, visit plan, KM travelled",
+    description: "Enquiry, quotation, customer details, nearby customers, trip and visit tracking",
     permissions: [
-      "enquiry", "quotation", "visit_plan", "km_travelled",
+      "enquiry", "quotation", "customers",
       "view_quotation", "view_dc", "view_invoice", "view_proforma", "view_sales_order",
-      "view_stock_list", "item_compare", "customers"
+      "view_stock_list", "item_compare",
+      "nearby_customers_view", "start_trip", "mark_visit",
+      "sales_tracking_trips", "sales_tracking_visits"
     ]
   },
   "internal_sales_engineer": {
@@ -172,22 +181,22 @@ export default function CreateRolePage() {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
-  
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     permissions: [] as string[]
-    
+
   });
 
   // Group permissions by category for tabs
   const categories = Array.from(new Set(DEFAULT_PERMISSIONS.map(p => p.category)));
-  
+
   // Filter permissions based on active tab and search
   const filteredPermissions = DEFAULT_PERMISSIONS.filter(permission => {
     const matchesTab = activeTab === "all" || permission.category === activeTab;
     const matchesSearch = permission.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         permission.description.toLowerCase().includes(searchTerm.toLowerCase());
+      permission.description.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesTab && matchesSearch;
   });
 
@@ -214,7 +223,7 @@ export default function CreateRolePage() {
       const newPermissions = prev.permissions.includes(permissionId)
         ? prev.permissions.filter(id => id !== permissionId)
         : [...prev.permissions, permissionId];
-      
+
       return {
         ...prev,
         permissions: newPermissions
@@ -226,18 +235,18 @@ export default function CreateRolePage() {
     const categoryPermissions = DEFAULT_PERMISSIONS
       .filter(p => p.category === category)
       .map(p => p.id);
-    
+
     setFormData(prev => {
-      const allSelected = categoryPermissions.every(id => 
+      const allSelected = categoryPermissions.every(id =>
         prev.permissions.includes(id)
       );
-      
+
       const newPermissions = allSelected
         ? prev.permissions.filter(id => !categoryPermissions.includes(id))
-        : [...prev.permissions, ...categoryPermissions.filter(id => 
-            !prev.permissions.includes(id)
-          )];
-      
+        : [...prev.permissions, ...categoryPermissions.filter(id =>
+          !prev.permissions.includes(id)
+        )];
+
       return {
         ...prev,
         permissions: newPermissions
@@ -256,17 +265,17 @@ export default function CreateRolePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) {
       alert("Please enter a role name");
       return;
     }
-    
+
     if (formData.permissions.length === 0) {
       alert("Please select at least one permission");
       return;
     }
-    
+
     setLoading(true);
     try {
       await api.post(`/companies/${company?.id}/payroll/designations`, {
@@ -275,7 +284,7 @@ export default function CreateRolePage() {
         permissions: formData.permissions,
         is_active: true
       });
-      
+
       router.push("/payroll/designations");
     } catch (error) {
       console.error("Error creating role:", error);
@@ -327,7 +336,7 @@ export default function CreateRolePage() {
         <div className="lg:col-span-1">
           <div className="bg-white dark:bg-gray-dark rounded-lg shadow-1 p-6 sticky top-6">
             <h2 className="text-lg font-semibold text-dark dark:text-white mb-4">Role Information</h2>
-            
+
             <form onSubmit={handleSubmit}>
               <div className="space-y-4">
                 <div>
@@ -344,7 +353,7 @@ export default function CreateRolePage() {
                     required
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Description
@@ -358,7 +367,7 @@ export default function CreateRolePage() {
                     placeholder="Describe the role's responsibilities..."
                   />
                 </div>
-                
+
                 {/* Quick Templates */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -378,7 +387,7 @@ export default function CreateRolePage() {
                     ))}
                   </div>
                 </div>
-                
+
                 {/* Selected Permissions Summary */}
                 <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                   <div className="flex items-center justify-between mb-2">
@@ -389,7 +398,7 @@ export default function CreateRolePage() {
                       {formData.permissions.length}
                     </span>
                   </div>
-                  
+
                   <div className="space-y-2 max-h-40 overflow-y-auto">
                     {formData.permissions.length === 0 ? (
                       <p className="text-sm text-gray-500 dark:text-gray-400 italic">
@@ -418,7 +427,7 @@ export default function CreateRolePage() {
                     )}
                   </div>
                 </div>
-                
+
                 <div className="pt-4">
                   <button
                     type="submit"
@@ -451,11 +460,10 @@ export default function CreateRolePage() {
               <div className="flex flex-wrap gap-2 p-4">
                 <button
                   onClick={() => setActiveTab("all")}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    activeTab === "all"
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === "all"
                       ? "bg-primary text-white"
                       : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                  }`}
+                    }`}
                 >
                   All Permissions
                 </button>
@@ -463,11 +471,10 @@ export default function CreateRolePage() {
                   <button
                     key={category}
                     onClick={() => setActiveTab(category)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeTab === category
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === category
                         ? "bg-primary text-white"
                         : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                    }`}
+                      }`}
                   >
                     {category}
                   </button>
@@ -514,35 +521,32 @@ export default function CreateRolePage() {
                         : "Select All"}
                     </button>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {permissions.map(permission => {
                       const isSelected = formData.permissions.includes(permission.id);
                       return (
                         <div
                           key={permission.id}
-                          className={`p-4 rounded-lg border cursor-pointer transition-all ${
-                            isSelected
+                          className={`p-4 rounded-lg border cursor-pointer transition-all ${isSelected
                               ? "border-primary bg-primary/5 dark:bg-primary/10"
                               : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
-                          }`}
+                            }`}
                           onClick={() => handlePermissionToggle(permission.id)}
                         >
                           <div className="flex items-start gap-3">
-                            <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center ${
-                              isSelected
+                            <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center ${isSelected
                                 ? "bg-primary border-primary"
                                 : "border-gray-300 dark:border-gray-600"
-                            }`}>
+                              }`}>
                               {isSelected && <Check className="w-3 h-3 text-white" />}
                             </div>
                             <div className="flex-1">
                               <div className="flex items-center justify-between">
-                                <h4 className={`font-medium ${
-                                  isSelected
+                                <h4 className={`font-medium ${isSelected
                                     ? "text-primary"
                                     : "text-dark dark:text-white"
-                                }`}>
+                                  }`}>
                                   {permission.name}
                                 </h4>
                                 <span className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
@@ -560,7 +564,7 @@ export default function CreateRolePage() {
                   </div>
                 </div>
               ))}
-              
+
               {filteredPermissions.length === 0 && (
                 <div className="text-center py-12">
                   <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />

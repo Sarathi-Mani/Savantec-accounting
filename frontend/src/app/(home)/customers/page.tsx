@@ -112,92 +112,138 @@ export default function CustomersPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+const fetchAllCustomersForExport = async (): Promise<Customer[]> => {
+  if (!company?.id) return [];
 
-  // Export functions - matching sales list pattern
-  const copyToClipboard = async () => {
-    const filtered = data?.customers || [];
-    const headers = [
-      "Customer ID", "Name", "Mobile", "Email", "GSTIN", 
-      "Type", "Due Amount", "Credit Limit", "Status"
-    ];
-
-    const rows = filtered.map(customer => [
-      customer.customer_code || 'N/A',
-      customer.name,
-      customer.mobile || customer.contact || '-',
-      customer.email || '-',
-      customer.tax_number || customer.gstin || '-',
-      getTypeLabel(customer.customer_type || ''),
-      formatCurrency(customer.outstanding_balance || 0),
-      formatCurrency(customer.credit_limit || 0),
-      getStatusText(customer.outstanding_balance || 0, customer.credit_limit || 0)
-    ]);
-
-    const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
-    await navigator.clipboard.writeText(text);
-    alert("Customer data copied to clipboard");
-  };
-
-  const exportExcel = () => {
-    const filtered = data?.customers || [];
-    const exportData = filtered.map(customer => ({
-      "Customer ID": customer.customer_code || 'N/A',
-      "Name": customer.name,
-      "Mobile": customer.mobile || customer.contact || '-',
-      "Email": customer.email || '-',
-      "GSTIN": customer.tax_number || customer.gstin || '-',
-      "Type": getTypeLabel(customer.customer_type || ''),
-      "Due Amount": customer.outstanding_balance || 0,
-      "Credit Limit": customer.credit_limit || 0,
-      "Status": getStatusText(customer.outstanding_balance || 0, customer.credit_limit || 0),
-      "Trade Name": customer.trade_name || '-',
-      "State": customer.state || '-',
-      "City": customer.city || '-'
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Customers");
-    XLSX.writeFile(wb, "customers.xlsx");
-  };
-
-  const exportPDF = () => {
-    const filtered = data?.customers || [];
-    const doc = new jsPDF();
-
-    autoTable(doc, {
-      head: [["Customer ID", "Name", "Type", "Due Amount", "Status"]],
-      body: filtered.map(customer => [
-        customer.customer_code || "N/A",
-        customer.name,
-        getTypeLabel(customer.customer_type || ''),
-        formatCurrency(customer.outstanding_balance || 0),
-        getStatusText(customer.outstanding_balance || 0, customer.credit_limit || 0)
-      ])
+  try {
+    const result = await customersApi.list(company.id, {
+      page: 1,
+      page_size: 100, // BIG NUMBER (backend safe limit)
+      search: search || undefined,
+      customer_type: typeFilter || undefined,
     });
 
-    doc.save("customers.pdf");
-  };
+    return result.customers || [];
+  } catch (error) {
+    console.error("Export fetch failed:", error);
+    return [];
+  }
+};
 
-  const exportCSV = () => {
-    const filtered = data?.customers || [];
-    const exportData = filtered.map(customer => ({
-      "Customer ID": customer.customer_code || 'N/A',
-      "Name": customer.name,
-      "Mobile": customer.mobile || customer.contact || '-',
-      "Email": customer.email || '-',
-      "GSTIN": customer.tax_number || customer.gstin || '-',
-      "Type": getTypeLabel(customer.customer_type || ''),
-      "Due Amount": customer.outstanding_balance || 0,
-      "Credit Limit": customer.credit_limit || 0,
-      "Status": getStatusText(customer.outstanding_balance || 0, customer.credit_limit || 0)
-    }));
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const csv = XLSX.utils.sheet_to_csv(ws);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    saveAs(blob, "customers.csv");
-  };
+
+  // Export functions - matching sales list pattern
+const copyToClipboard = async () => {
+  const customers = await fetchAllCustomersForExport();
+
+  const headers = [
+    "Customer ID",
+    "Name",
+    "Mobile",
+    "Email",
+    "GSTIN",
+    "Type",
+    "Due Amount",
+    "Credit Limit",
+    "Status",
+  ];
+
+  const rows = customers.map(c => [
+    c.customer_code || "N/A",
+    c.name,
+    c.mobile || c.contact || "-",
+    c.email || "-",
+    c.tax_number || c.gstin || "-",
+    getTypeLabel(c.customer_type || ""),
+    formatCurrency(c.outstanding_balance || 0),
+    formatCurrency(c.credit_limit || 0),
+    getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
+  ]);
+
+  const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
+
+  await navigator.clipboard.writeText(text);
+  alert(`Copied ${customers.length} customers`);
+};
+
+
+const exportExcel = async () => {
+  const customers = await fetchAllCustomersForExport();
+
+  const exportData = customers.map(c => ({
+    "Customer ID": c.customer_code || "N/A",
+    "Name": c.name,
+    "Mobile": c.mobile || c.contact || "-",
+    "Email": c.email || "-",
+    "GSTIN": c.tax_number || c.gstin || "-",
+    "Type": getTypeLabel(c.customer_type || ""),
+    "Due Amount": c.outstanding_balance || 0,
+    "Credit Limit": c.credit_limit || 0,
+    "Status": getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
+    "Trade Name": c.trade_name || "-",
+    "State": c.state || "-",
+    "City": c.city || "-",
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(exportData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Customers");
+
+  XLSX.writeFile(wb, `customers_${Date.now()}.xlsx`);
+};
+
+
+const exportPDF = async () => {
+  const customers = await fetchAllCustomersForExport();
+  const doc = new jsPDF("l", "mm", "a4");
+
+  autoTable(doc, {
+    head: [[
+      "Customer ID",
+      "Name",
+      "Type",
+      "Due Amount",
+      "Credit Limit",
+      "Status"
+    ]],
+    body: customers.map(c => [
+      c.customer_code || "N/A",
+      c.name,
+      getTypeLabel(c.customer_type || ""),
+      formatCurrency(c.outstanding_balance || 0),
+      formatCurrency(c.credit_limit || 0),
+      getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
+    ]),
+    styles: { fontSize: 9 },
+    headStyles: { fillColor: [37, 99, 235] },
+  });
+
+  doc.save(`customers_${Date.now()}.pdf`);
+};
+
+
+const exportCSV = async () => {
+  const customers = await fetchAllCustomersForExport();
+
+  const exportData = customers.map(c => ({
+    "Customer ID": c.customer_code || "N/A",
+    "Name": c.name,
+    "Mobile": c.mobile || c.contact || "-",
+    "Email": c.email || "-",
+    "GSTIN": c.tax_number || c.gstin || "-",
+    "Type": getTypeLabel(c.customer_type || ""),
+    "Due Amount": c.outstanding_balance || 0,
+    "Credit Limit": c.credit_limit || 0,
+    "Status": getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(exportData);
+  const csv = XLSX.utils.sheet_to_csv(ws);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+
+  saveAs(blob, `customers_${Date.now()}.csv`);
+};
+
 
   const toggleColumn = (key: keyof typeof visibleColumns) => {
     setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));

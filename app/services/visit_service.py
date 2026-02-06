@@ -7,7 +7,7 @@ from sqlalchemy import func, and_
 import math
 
 from app.database.models import (
-    Visit, VisitPlan, VisitStatus, Customer, Company,
+    Visit, VisitStatus, Customer, Company,
     generate_uuid
 )
 from app.database.payroll_models import Employee
@@ -200,82 +200,6 @@ class VisitService:
         self.db.refresh(visit)
         return visit
     
-    # ==================== VISIT PLANS ====================
-    
-    def create_visit_plan(
-        self,
-        company_id: str,
-        employee_id: str,
-        planned_date: date,
-        customer_id: Optional[str] = None,
-        planned_time: Optional[time] = None,
-        purpose: Optional[str] = None,
-        priority: str = "medium",
-    ) -> VisitPlan:
-        """Create a new visit plan."""
-        plan = VisitPlan(
-            id=generate_uuid(),
-            company_id=company_id,
-            employee_id=employee_id,
-            customer_id=customer_id,
-            planned_date=planned_date,
-            planned_time=planned_time,
-            purpose=purpose,
-            priority=priority,
-            status="pending",
-        )
-        self.db.add(plan)
-        self.db.commit()
-        self.db.refresh(plan)
-        return plan
-    
-    def get_visit_plan(self, plan_id: str) -> Optional[VisitPlan]:
-        """Get a visit plan by ID."""
-        return self.db.query(VisitPlan).filter(VisitPlan.id == plan_id).first()
-    
-    def list_visit_plans(
-        self,
-        company_id: str,
-        employee_id: Optional[str] = None,
-        from_date: Optional[date] = None,
-        to_date: Optional[date] = None,
-        status: Optional[str] = None,
-        skip: int = 0,
-        limit: int = 50,
-    ) -> List[VisitPlan]:
-        """List visit plans with filters."""
-        query = self.db.query(VisitPlan).filter(VisitPlan.company_id == company_id)
-        
-        if employee_id:
-            query = query.filter(VisitPlan.employee_id == employee_id)
-        if from_date:
-            query = query.filter(VisitPlan.planned_date >= from_date)
-        if to_date:
-            query = query.filter(VisitPlan.planned_date <= to_date)
-        if status:
-            query = query.filter(VisitPlan.status == status)
-        
-        return query.order_by(VisitPlan.planned_date.asc()).offset(skip).limit(limit).all()
-    
-    def convert_plan_to_visit(self, plan_id: str) -> Optional[Visit]:
-        """Convert a visit plan to an actual visit."""
-        plan = self.get_visit_plan(plan_id)
-        if not plan:
-            return None
-        
-        visit = self.create_visit(
-            company_id=plan.company_id,
-            employee_id=plan.employee_id,
-            customer_id=plan.customer_id,
-            visit_date=plan.planned_date,
-            purpose=plan.purpose,
-        )
-        
-        plan.status = "completed"
-        plan.visit_id = visit.id
-        
-        self.db.commit()
-        return visit
     
     # ==================== REPORTS ====================
     
@@ -383,21 +307,3 @@ class VisitService:
             "total_visits": sum(s["visit_count"] for s in summary),
         }
     
-    def get_pending_visits(
-        self,
-        company_id: str,
-        employee_id: Optional[str] = None,
-    ) -> List[VisitPlan]:
-        """Get pending visit plans."""
-        today = datetime.utcnow().date()
-        
-        query = self.db.query(VisitPlan).filter(
-            VisitPlan.company_id == company_id,
-            VisitPlan.status == "pending",
-            VisitPlan.planned_date >= today,
-        )
-        
-        if employee_id:
-            query = query.filter(VisitPlan.employee_id == employee_id)
-        
-        return query.order_by(VisitPlan.planned_date.asc()).all()

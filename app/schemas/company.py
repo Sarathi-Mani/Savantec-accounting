@@ -93,6 +93,7 @@ class CompanyCreate(BaseModel):
     invoice_prefix: str = "INV"
     invoice_terms: Optional[str] = None
     invoice_notes: Optional[str] = None
+    petrol_rate_per_km: Optional[float] = None
 
     @field_validator("gstin")
     @classmethod
@@ -145,6 +146,10 @@ class CompanyUpdate(BaseModel):
     invoice_terms: Optional[str] = None
     invoice_notes: Optional[str] = None
     default_bank_id: Optional[str] = None
+    petrol_rate_per_km: Optional[float] = None
+
+    # Sales tracking settings
+    petrol_rate_per_km: Optional[float] = None
     
     # Inventory automation settings
     auto_reduce_stock: Optional[bool] = None
@@ -181,6 +186,7 @@ class CompanyResponse(BaseModel):
     invoice_terms: Optional[str] = None
     invoice_notes: Optional[str] = None
     default_bank_id: Optional[str] = None
+    petrol_rate_per_km: Optional[float] = None
     
     # Inventory automation settings
     auto_reduce_stock: bool = True

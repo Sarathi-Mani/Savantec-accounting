@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { invoicesApi } from "@/services/api";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -67,6 +67,267 @@ const formatDateTime = (dateString: Date | string | null | undefined): string =>
     minute: '2-digit',
     hour12: true
   });
+};
+
+// Print component for sales invoices
+const PrintView = ({
+  invoices,
+  visibleColumns,
+  formatCurrency,
+  formatDate,
+  getStatusText,
+  getCustomerDisplayName,
+  calculateSubtotal
+}: {
+  invoices: Invoice[];
+  visibleColumns: Record<string, boolean>;
+  formatCurrency: (amount: number) => string;
+  formatDate: (dateString: Date | string | null | undefined) => string;
+  getStatusText: (status: InvoiceStatus) => string;
+  getCustomerDisplayName: (invoice: Invoice) => string;
+  calculateSubtotal: (invoice: Invoice) => number;
+}) => {
+  const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (printRef.current) {
+      const printContents = printRef.current.innerHTML;
+      const originalContents = document.body.innerHTML;
+
+      document.body.innerHTML = printContents;
+      window.print();
+      document.body.innerHTML = originalContents;
+      window.location.reload();
+    }
+  }, []);
+
+  return (
+    <div style={{ display: 'none' }}>
+      <div ref={printRef} style={{ fontFamily: 'Arial, sans-serif', padding: '20px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '5px' }}>
+            Sales Invoices List
+          </h1>
+          <p style={{ color: '#666', fontSize: '14px' }}>
+            Generated on: {new Date().toLocaleDateString('en-IN')}
+          </p>
+        </div>
+
+        <table style={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          border: '1px solid #ddd'
+        }}>
+          <thead>
+            <tr style={{
+              backgroundColor: '#f3f4f6',
+              borderBottom: '2px solid #ddd'
+            }}>
+              {visibleColumns.invoiceDate && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Sales Date
+                </th>
+              )}
+              {visibleColumns.dueDate && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Due Date
+                </th>
+              )}
+              {visibleColumns.invoiceNumber && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Invoice No.
+                </th>
+              )}
+              {visibleColumns.referenceNo && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Reference No.
+                </th>
+              )}
+              {visibleColumns.customerName && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Customer Name
+                </th>
+              )}
+              {visibleColumns.subtotal && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Subtotal
+                </th>
+              )}
+              {visibleColumns.total && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Total
+                </th>
+              )}
+              {visibleColumns.paidAmount && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Paid
+                </th>
+              )}
+              {visibleColumns.status && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  fontWeight: 'bold'
+                }}>
+                  Status
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {invoices.map((invoice, index) => (
+              <tr key={invoice.id} style={{
+                borderBottom: '1px solid #ddd',
+                backgroundColor: index % 2 === 0 ? '#fff' : '#f9f9f9'
+              }}>
+                {visibleColumns.invoiceDate && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {formatDate(invoice.invoice_date)}
+                  </td>
+                )}
+                {visibleColumns.dueDate && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {formatDate(invoice.due_date) || '-'}
+                  </td>
+                )}
+                {visibleColumns.invoiceNumber && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {invoice.invoice_number || 'N/A'}
+                  </td>
+                )}
+                {visibleColumns.referenceNo && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {invoice.reference_no || '-'}
+                  </td>
+                )}
+                {visibleColumns.customerName && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {getCustomerDisplayName(invoice)}
+                  </td>
+                )}
+                {visibleColumns.subtotal && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {formatCurrency(calculateSubtotal(invoice))}
+                  </td>
+                )}
+                {visibleColumns.total && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {formatCurrency(invoice.total_amount || 0)}
+                  </td>
+                )}
+                {visibleColumns.paidAmount && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {formatCurrency(invoice.amount_paid || 0)}
+                  </td>
+                )}
+                {visibleColumns.status && (
+                  <td style={{ padding: '12px' }}>
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '4px 8px',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      backgroundColor: invoice.status === 'paid' ? '#d1fae5' :
+                        invoice.status === 'pending' ? '#fef3c7' :
+                          invoice.status === 'cancelled' ? '#fee2e2' :
+                            '#f3f4f6',
+                      color: invoice.status === 'paid' ? '#065f46' :
+                        invoice.status === 'pending' ? '#92400e' :
+                          invoice.status === 'cancelled' ? '#991b1b' :
+                            '#374151'
+                    }}>
+                      {getStatusText(invoice.status)}
+                    </span>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div style={{
+          marginTop: '30px',
+          paddingTop: '20px',
+          borderTop: '1px solid #ddd',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            Total Invoices: {invoices.length}
+          </div>
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            Page 1 of 1
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 // Invoice Status Types based on your Enum
@@ -254,6 +515,17 @@ export default function SalesListPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
+  const [showPrintView, setShowPrintView] = useState(false);
+  const [invoicesToPrint, setInvoicesToPrint] = useState<Invoice[]>([]);
+  
+  // Separate loading states for each export button
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [excelLoading, setExcelLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [csvLoading, setCsvLoading] = useState(false);
+  const [printLoading, setPrintLoading] = useState(false);
+  
+  const [cachedExportData, setCachedExportData] = useState<Invoice[] | null>(null);
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
@@ -305,8 +577,42 @@ export default function SalesListPage() {
     }
   };
 
+  // NEW: Memoized function to fetch all invoices
+  const fetchAllInvoices = useCallback(async (): Promise<Invoice[]> => {
+    if (!company?.id) return [];
+
+    try {
+      const result: InvoiceResponse = await invoicesApi.list(company.id, {
+        page: 1,
+        page_size: 100, // Fetch all records
+        search: search || undefined,
+        status: statusFilter || undefined,
+        customer_id: customerFilter || undefined,
+        from_date: fromDate || undefined,
+        to_date: toDate || undefined
+      });
+
+      const allInvoices = result.invoices || [];
+      setCachedExportData(allInvoices); // Cache the data
+      return allInvoices;
+    } catch (error) {
+      console.error("Failed to fetch all invoices:", error);
+      return [];
+    }
+  }, [company?.id, search, statusFilter, customerFilter, fromDate, toDate]);
+
+  // Function to get export data (with cache check)
+  const getExportData = async (): Promise<Invoice[]> => {
+    if (cachedExportData) {
+      return cachedExportData;
+    }
+    return await fetchAllInvoices();
+  };
+
   useEffect(() => {
     fetchInvoices();
+    // Clear cache when filters change to ensure fresh data on next export
+    setCachedExportData(null);
   }, [company?.id, page, search, statusFilter, customerFilter, fromDate, toDate]);
 
   useEffect(() => {
@@ -324,95 +630,349 @@ export default function SalesListPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Export functions
+  // UPDATED Export functions with individual loading states
   const copyToClipboard = async () => {
-    const filtered = data;
-    const headers = [
-      "Sales Date", "Due Date", "Invoice No.", "Reference No.",
-      "Customer Name", "Subtotal", "Total", "Paid", "Status"
-    ];
+    if (copyLoading) return;
+    
+    setCopyLoading(true);
+    try {
+      const allInvoices = await getExportData();
+      const headers: string[] = [];
+      const rowData = allInvoices.map(invoice => {
+        const row: string[] = [];
 
-    const rows = filtered.map(invoice => [
-      formatDate(invoice.invoice_date),
-      formatDate(invoice.due_date),
-      invoice.invoice_number,
-      invoice.reference_no || '-',
-      getCustomerDisplayName(invoice),
-      formatCurrency(calculateSubtotal(invoice)),
-      formatCurrency(invoice.total_amount || 0),
-      formatCurrency(invoice.amount_paid || 0),
-      getStatusText(invoice.status)
-    ]);
+        if (visibleColumns.invoiceDate) {
+          if (!headers.includes("Sales Date")) headers.push("Sales Date");
+          row.push(formatDate(invoice.invoice_date));
+        }
 
-    const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
+        if (visibleColumns.dueDate) {
+          if (!headers.includes("Due Date")) headers.push("Due Date");
+          row.push(formatDate(invoice.due_date));
+        }
 
-    await navigator.clipboard.writeText(text);
-    alert("Sales data copied to clipboard");
+        if (visibleColumns.invoiceNumber) {
+          if (!headers.includes("Invoice No.")) headers.push("Invoice No.");
+          row.push(invoice.invoice_number);
+        }
+
+        if (visibleColumns.referenceNo) {
+          if (!headers.includes("Reference No.")) headers.push("Reference No.");
+          row.push(invoice.reference_no || '-');
+        }
+
+        if (visibleColumns.customerName) {
+          if (!headers.includes("Customer Name")) headers.push("Customer Name");
+          row.push(getCustomerDisplayName(invoice));
+        }
+
+        if (visibleColumns.subtotal) {
+          if (!headers.includes("Subtotal")) headers.push("Subtotal");
+          row.push(`Rs. ${new Intl.NumberFormat("en-IN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }).format(calculateSubtotal(invoice))}`);
+        }
+
+        if (visibleColumns.total) {
+          if (!headers.includes("Total")) headers.push("Total");
+          row.push(`Rs. ${new Intl.NumberFormat("en-IN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }).format(invoice.total_amount || 0)}`);
+        }
+
+        if (visibleColumns.paidAmount) {
+          if (!headers.includes("Paid")) headers.push("Paid");
+          row.push(`Rs. ${new Intl.NumberFormat("en-IN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }).format(invoice.amount_paid || 0)}`);
+        }
+
+        if (visibleColumns.status) {
+          if (!headers.includes("Status")) headers.push("Status");
+          row.push(getStatusText(invoice.status));
+        }
+
+        return row;
+      });
+
+      const text = [headers.join("\t"), ...rowData.map(r => r.join("\t"))].join("\n");
+      await navigator.clipboard.writeText(text);
+      alert("Sales data copied to clipboard");
+    } catch (error) {
+      console.error("Copy failed:", error);
+      alert("Failed to copy data. Please try again.");
+    } finally {
+      setCopyLoading(false);
+    }
   };
 
-  const exportExcel = () => {
-    const filtered = data;
-    const exportData = filtered.map(invoice => ({
-      "Sales Date": formatDate(invoice.invoice_date),
-      "Due Date": formatDate(invoice.due_date),
-      "Invoice Number": invoice.invoice_number,
-      "Reference No": invoice.reference_no || '-',
-      "Customer Name": getCustomerDisplayName(invoice),
-      "Customer GSTIN": getCustomerGSTIN(invoice),
-      "Subtotal": calculateSubtotal(invoice),
-      "Total": invoice.total_amount || 0,
-      "Paid": invoice.amount_paid || 0,
-      "Balance Due": invoice.balance_due || 0,
-      "Status": getStatusText(invoice.status),
-      "Payment Status": getPaymentStatus(invoice),
-      "Overdue": getDaysOverdue(invoice.due_date) > 0 ? "Yes" : "No",
-      "E-Invoice": invoice.irn ? "Yes" : "No"
-    }));
+  const exportExcel = async () => {
+    if (excelLoading) return;
+    
+    setExcelLoading(true);
+    try {
+      const allInvoices = await getExportData();
+      const exportData = allInvoices.map(invoice => {
+        const row: Record<string, any> = {};
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Sales Invoices");
-    XLSX.writeFile(wb, "sales-invoices.xlsx");
+        if (visibleColumns.invoiceDate) {
+          row["Sales Date"] = formatDate(invoice.invoice_date);
+        }
+
+        if (visibleColumns.dueDate) {
+          row["Due Date"] = formatDate(invoice.due_date);
+        }
+
+        if (visibleColumns.invoiceNumber) {
+          row["Invoice Number"] = invoice.invoice_number;
+        }
+
+        if (visibleColumns.referenceNo) {
+          row["Reference No"] = invoice.reference_no || '-';
+        }
+
+        if (visibleColumns.customerName) {
+          row["Customer Name"] = getCustomerDisplayName(invoice);
+          row["Customer GSTIN"] = getCustomerGSTIN(invoice);
+          row["Customer Phone"] = getCustomerPhone(invoice);
+        }
+
+        if (visibleColumns.subtotal) {
+          row["Subtotal"] = calculateSubtotal(invoice);
+        }
+
+        if (visibleColumns.total) {
+          row["Total"] = invoice.total_amount || 0;
+          row["Tax Amount"] = calculateTax(invoice);
+        }
+
+        if (visibleColumns.paidAmount) {
+          row["Paid"] = invoice.amount_paid || 0;
+          row["Balance Due"] = invoice.balance_due || 0;
+        }
+
+        if (visibleColumns.status) {
+          row["Status"] = getStatusText(invoice.status);
+          row["Payment Status"] = getPaymentStatus(invoice);
+          row["Overdue"] = getDaysOverdue(invoice.due_date) > 0 ? "Yes" : "No";
+        }
+
+        row["E-Invoice"] = invoice.irn ? "Yes" : "No";
+        row["Invoice Type"] = invoice.voucher_type === 'sales_return' ? 'Sales Return' : 'Sales';
+
+        return row;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Sales Invoices");
+      XLSX.writeFile(wb, "sales-invoices.xlsx");
+    } catch (error) {
+      console.error("Excel export failed:", error);
+      alert("Failed to export Excel. Please try again.");
+    } finally {
+      setExcelLoading(false);
+    }
   };
 
-  const exportPDF = () => {
-    const filtered = data;
-    const doc = new jsPDF();
+  const exportPDF = async () => {
+    if (pdfLoading) return;
+    
+    setPdfLoading(true);
+    try {
+      const allInvoices = await getExportData();
+      const doc = new jsPDF("landscape");
 
-    autoTable(doc, {
-      head: [["Sales Date", "Due Date", "Invoice No.", "Customer Name", "Total", "Paid", "Status"]],
-      body: filtered.map(invoice => [
-        formatDate(invoice.invoice_date),
-        formatDate(invoice.due_date),
-        invoice.invoice_number,
-        getCustomerDisplayName(invoice),
-        formatCurrency(invoice.total_amount || 0),
-        formatCurrency(invoice.amount_paid || 0),
-        getStatusText(invoice.status)
-      ])
-    });
+       // PDF-safe currency formatter (NO ₹ symbol)
+      const formatCurrencyForPDF = (amount: number): string => {
+        return `Rs. ${new Intl.NumberFormat("en-IN", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(amount)}`;
+      };
 
-    doc.save("sales-invoices.pdf");
+      // Build headers & rows based on visible columns
+      const headers: string[] = [];
+      const body = allInvoices.map((invoice) => {
+        const row: string[] = [];
+
+        if (visibleColumns.invoiceDate) {
+          if (!headers.includes("Sales Date")) headers.push("Sales Date");
+          row.push(formatDate(invoice.invoice_date));
+        }
+
+        if (visibleColumns.dueDate) {
+          if (!headers.includes("Due Date")) headers.push("Due Date");
+          row.push(formatDate(invoice.due_date) || "-");
+        }
+
+        if (visibleColumns.invoiceNumber) {
+          if (!headers.includes("Invoice No.")) headers.push("Invoice No.");
+          row.push(invoice.invoice_number || "N/A");
+        }
+
+        if (visibleColumns.referenceNo) {
+          if (!headers.includes("Reference No.")) headers.push("Reference No.");
+          row.push(invoice.reference_no || "-");
+        }
+
+        if (visibleColumns.customerName) {
+          if (!headers.includes("Customer Name")) headers.push("Customer Name");
+          row.push(getCustomerDisplayName(invoice));
+        }
+
+        if (visibleColumns.subtotal) {
+          if (!headers.includes("Subtotal")) headers.push("Subtotal");
+          row.push(formatCurrencyForPDF(calculateSubtotal(invoice)));
+        }
+
+        if (visibleColumns.total) {
+          if (!headers.includes("Total")) headers.push("Total");
+          row.push(formatCurrencyForPDF(invoice.total_amount || 0));
+        }
+
+        if (visibleColumns.paidAmount) {
+          if (!headers.includes("Paid")) headers.push("Paid");
+          row.push(formatCurrencyForPDF(invoice.amount_paid || 0));
+        }
+
+        if (visibleColumns.status) {
+          if (!headers.includes("Status")) headers.push("Status");
+          row.push(getStatusText(invoice.status));
+        }
+
+        return row;
+      });
+
+      autoTable(doc, {
+        head: [headers],
+        body,
+        startY: 20,
+        margin: { top: 20, left: 10, right: 10, bottom: 20 },
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          overflow: "linebreak",
+          font: "helvetica",
+        },
+        headStyles: {
+          fillColor: [41, 128, 185],
+          textColor: 255,
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [245, 245, 245],
+        },
+        didDrawPage: (data) => {
+          // Title
+          doc.setFontSize(16);
+          doc.text("Sales Invoices List", data.settings.margin.left, 12);
+
+          // Date
+          doc.setFontSize(10);
+          doc.text(
+            `Generated: ${new Date().toLocaleDateString("en-IN")}`,
+            doc.internal.pageSize.width - 60,
+            12
+          );
+
+          // Page number
+          const pageCount = doc.getNumberOfPages();
+          doc.text(
+            `Page ${data.pageNumber} of ${pageCount}`,
+            data.settings.margin.left,
+            doc.internal.pageSize.height - 8
+          );
+        },
+      });
+
+      doc.save("sales-invoices.pdf");
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      alert("Failed to export PDF. Please try again.");
+    } finally {
+      setPdfLoading(false);
+    }
   };
 
-  const exportCSV = () => {
-    const filtered = data;
-    const exportData = filtered.map(invoice => ({
-      "Sales Date": formatDate(invoice.invoice_date),
-      "Due Date": formatDate(invoice.due_date),
-      "Invoice Number": invoice.invoice_number,
-      "Reference No": invoice.reference_no || '-',
-      "Customer Name": getCustomerDisplayName(invoice),
-      "Subtotal": calculateSubtotal(invoice),
-      "Total": invoice.total_amount || 0,
-      "Paid": invoice.amount_paid || 0,
-      "Status": getStatusText(invoice.status)
-    }));
+  const exportCSV = async () => {
+    if (csvLoading) return;
+    
+    setCsvLoading(true);
+    try {
+      const allInvoices = await getExportData();
+      const exportData = allInvoices.map(invoice => {
+        const row: Record<string, any> = {};
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const csv = XLSX.utils.sheet_to_csv(ws);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    saveAs(blob, "sales-invoices.csv");
+        if (visibleColumns.invoiceDate) {
+          row["Sales Date"] = formatDate(invoice.invoice_date);
+        }
+
+        if (visibleColumns.dueDate) {
+          row["Due Date"] = formatDate(invoice.due_date);
+        }
+
+        if (visibleColumns.invoiceNumber) {
+          row["Invoice Number"] = invoice.invoice_number;
+        }
+
+        if (visibleColumns.referenceNo) {
+          row["Reference No"] = invoice.reference_no || '-';
+        }
+
+        if (visibleColumns.customerName) {
+          row["Customer Name"] = getCustomerDisplayName(invoice);
+        }
+
+        if (visibleColumns.subtotal) {
+          row["Subtotal"] = calculateSubtotal(invoice);
+        }
+
+        if (visibleColumns.total) {
+          row["Total"] = invoice.total_amount || 0;
+        }
+
+        if (visibleColumns.paidAmount) {
+          row["Paid"] = invoice.amount_paid || 0;
+        }
+
+        if (visibleColumns.status) {
+          row["Status"] = getStatusText(invoice.status);
+        }
+
+        return row;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      saveAs(blob, "sales-invoices.csv");
+    } catch (error) {
+      console.error("CSV export failed:", error);
+      alert("Failed to export CSV. Please try again.");
+    } finally {
+      setCsvLoading(false);
+    }
+  };
+
+  // Handle print - UPDATED to fetch all data
+  const handlePrint = async () => {
+    if (printLoading) return;
+    
+    setPrintLoading(true);
+    try {
+      const allInvoices = await getExportData();
+      setInvoicesToPrint(allInvoices);
+      setShowPrintView(true);
+    } catch (error) {
+      console.error("Print failed:", error);
+      alert("Failed to prepare print view. Please try again.");
+    } finally {
+      setPrintLoading(false);
+    }
   };
 
   const toggleColumn = (key: keyof typeof visibleColumns) => {
@@ -490,7 +1050,7 @@ export default function SalesListPage() {
       (invoice.cess_amount || 0);
   };
 
-  const handlePrint = async (invoiceId: string) => {
+  const handlePrintInvoice = async (invoiceId: string) => {
     if (!company?.id) return;
 
     try {
@@ -592,6 +1152,18 @@ export default function SalesListPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {showPrintView && (
+        <PrintView
+          invoices={invoicesToPrint}
+          visibleColumns={visibleColumns}
+          formatCurrency={formatCurrency}
+          formatDate={formatDate}
+          getStatusText={getStatusText}
+          getCustomerDisplayName={getCustomerDisplayName}
+          calculateSubtotal={calculateSubtotal}
+        />
+      )}
+
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -686,7 +1258,7 @@ export default function SalesListPage() {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters - Updated with proper export buttons */}
       <div className="px-6 py-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="flex flex-wrap gap-4">
           <div className="flex-1 min-w-[200px]">
@@ -710,6 +1282,19 @@ export default function SalesListPage() {
             >
               <Filter className="w-5 h-5" />
               Filters
+            </button>
+
+            <button
+              onClick={copyToClipboard}
+              disabled={copyLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {copyLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <Copy className="w-5 h-5" />
+              )}
+              Copy
             </button>
 
             <div className="relative column-dropdown-container">
@@ -739,36 +1324,51 @@ export default function SalesListPage() {
             </div>
 
             <button
-              onClick={copyToClipboard}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
-            >
-              <Copy className="w-5 h-5" />
-              Copy
-            </button>
-
-            <button
               onClick={exportExcel}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={excelLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Excel
+              {excelLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "Excel"
+              )}
             </button>
 
             <button
               onClick={exportPDF}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={pdfLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              PDF
+              {pdfLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "PDF"
+              )}
             </button>
 
             <button
               onClick={exportCSV}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={csvLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              CSV
+              {csvLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "CSV"
+              )}
             </button>
 
-            <button className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2">
-              <Printer className="w-5 h-5" />
+            <button
+              onClick={handlePrint}
+              disabled={printLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {printLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <Printer className="w-5 h-5" />
+              )}
               Print
             </button>
           </div>
@@ -854,8 +1454,8 @@ export default function SalesListPage() {
       </div>
 
       {/* Table */}
-      <div className="p-6">
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+      {/* <div className="p-6"> */}
+        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="w-full">
             <table className="w-full table-fixed">
               <div className="overflow-x-auto">
@@ -1120,7 +1720,7 @@ export default function SalesListPage() {
                                     )}
 
                                     <button
-                                      onClick={() => handlePrint(invoice.id)}
+                                      onClick={() => handlePrintInvoice(invoice.id)}
                                       className="flex items-center gap-2 px-4 py-2 text-sm
                                 text-gray-700 dark:text-gray-300
                                 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -1190,7 +1790,7 @@ export default function SalesListPage() {
           </div>
         </div>
 
-        {/* Pagination - Added similar to purchase list */}
+        {/* Pagination */}
         {data.length > 0 && totalRecords > pageSize && (
           <div className="mt-4 flex items-center justify-between">
             <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -1216,7 +1816,7 @@ export default function SalesListPage() {
             </div>
           </div>
         )}
-      </div>
+      {/* </div> */}
     </div>
   );
 }

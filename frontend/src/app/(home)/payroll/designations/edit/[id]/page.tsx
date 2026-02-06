@@ -50,8 +50,6 @@ const DEFAULT_PERMISSIONS: Permission[] = [
   { id: "enquiry", name: "Enquiry", description: "Manage customer enquiries", category: "Sales" },
   { id: "item_compare", name: "Item Compare", description: "Compare items for sales", category: "Sales" },
   { id: "sales_outstanding", name: "Sales Outstanding", description: "View sales outstanding", category: "Sales" },
-  { id: "visit_plan", name: "Visit Plan", description: "Manage customer visit plans", category: "Sales" },
-  { id: "km_travelled", name: "KM Travelled", description: "Track kilometers travelled", category: "Sales" },
 
   // Accounting related
   { id: "cash_bank_entries", name: "Cash & Bank Entries", description: "Manage cash and bank transactions", category: "Accounting" },
@@ -84,6 +82,14 @@ const DEFAULT_PERMISSIONS: Permission[] = [
   { id: "banking_access", name: "Banking Access", description: "Access banking module menus", category: "Menu Access" },
   { id: "settings_access", name: "Settings Access", description: "Access settings module menus", category: "Menu Access" },
   { id: "reports_access", name: "Reports Access", description: "Access reports module menus", category: "Menu Access" },
+
+  // Sales Tracking
+  { id: "sales_tracking_live", name: "Sales Tracking Live", description: "Access live tracking dashboard", category: "Sales Tracking" },
+  { id: "sales_tracking_trips", name: "Sales Trips", description: "View sales trips", category: "Sales Tracking" },
+  { id: "sales_tracking_visits", name: "Sales Visits", description: "View customer visits", category: "Sales Tracking" },
+  { id: "nearby_customers_view", name: "Nearby Customers", description: "View nearby customers map", category: "Sales Tracking" },
+  { id: "start_trip", name: "Start Trip", description: "Start new sales trip", category: "Sales Tracking" },
+  { id: "mark_visit", name: "Mark Visit", description: "Mark customer visits", category: "Sales Tracking" },
 ];
 
 export default function EditRolePage() {

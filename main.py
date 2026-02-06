@@ -47,6 +47,7 @@ from app.api.attendance_leave import router as attendance_leave_router
 from app.api.upload import router as upload_router
 from app.api.visits import router as visits_router
 from app.api.stock_journal import router as stock_journal_router
+from app.api.tracking import router as tracking_router
 
 # Create FastAPI application
 app = FastAPI(
@@ -141,6 +142,7 @@ app.include_router(categories_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
 app.include_router(visits_router)
 app.include_router(stock_journal_router, prefix="/api")
+app.include_router(tracking_router)
 
 
 @app.on_event("startup")

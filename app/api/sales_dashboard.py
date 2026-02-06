@@ -317,7 +317,7 @@ def get_engineer_dashboard(
     ).count()
     
     # Get today's visits
-    from app.database.models import Visit, VisitStatus, VisitPlan
+    from app.database.models import Visit, VisitStatus
     
     todays_visits = db.query(Visit).filter(
         Visit.company_id == company_id,
@@ -325,13 +325,7 @@ def get_engineer_dashboard(
         Visit.visit_date == today,
     ).all()
     
-    # Get pending visit plans
-    pending_visits = db.query(VisitPlan).filter(
-        VisitPlan.company_id == company_id,
-        VisitPlan.employee_id == employee_id,
-        VisitPlan.status == "pending",
-        VisitPlan.planned_date >= today,
-    ).count()
+    pending_visits = 0
     
     return {
         "employee_id": employee_id,

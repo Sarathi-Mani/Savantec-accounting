@@ -70,6 +70,11 @@ class CustomerService:
             billing_state=data.billing_state,
             billing_country=data.billing_country,
             billing_zip=data.billing_zip,
+            district=data.district,
+            area=data.area,
+            location_lat=data.location_lat,
+            location_lng=data.location_lng,
+            location_address=data.location_address,
             
             shipping_address=data.shipping_address,
             shipping_city=data.shipping_city,
