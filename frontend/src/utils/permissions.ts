@@ -105,7 +105,10 @@ export const normalizePermissions = (
 ): PermissionKey[] => {
   const normalizedRoleName = roleName ? roleName.toLowerCase() : "";
   const roleHasFullAccess =
-    normalizedRoleName.includes("full") || normalizedRoleName.includes("admin");
+    normalizedRoleName.includes("full access") ||
+    normalizedRoleName === "full_access" ||
+    normalizedRoleName === "super admin" ||
+    normalizedRoleName === "super_admin";
 
   if (!permissions || permissions.length === 0) {
     return roleHasFullAccess ? [...ALL_PERMISSION_KEYS] : [];
@@ -223,7 +226,7 @@ export const getPermissionsForRole = (roleName: string): PermissionKey[] => {
   }
   
   // Check for partial matches
-  if (normalizedRoleName.includes('admin') || normalizedRoleName.includes('full')) {
+  if (normalizedRoleName.includes('full access') || normalizedRoleName === 'full_access') {
     return [...ROLE_PERMISSIONS['full access']];
   }
   

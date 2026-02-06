@@ -48,11 +48,18 @@ const ROUTE_RULES: RouteRule[] = [
   { match: startsWith("/sales"), permissions: [PERMISSION_KEYS.SALES_INVOICE, PERMISSION_KEYS.QUOTATION, PERMISSION_KEYS.SALES_ORDER, PERMISSION_KEYS.PROFORMA, PERMISSION_KEYS.DELIVERY_CHALLAN, PERMISSION_KEYS.ENQUIRY] },
 
   // Sales Tracking
+  { match: startsWith("/sales-tracking/live"), permissions: [PERMISSION_KEYS.SALES_TRACKING_LIVE] },
+  { match: startsWith("/sales-tracking/salesman-dashboard"), permissions: [PERMISSION_KEYS.SALES_TRACKING_LIVE] },
   { match: startsWith("/sales-tracking/nearby-customers"), permissions: [PERMISSION_KEYS.NEARBY_CUSTOMERS_VIEW] },
   { match: startsWith("/sales-tracking/admin-live-tracking"), permissions: [PERMISSION_KEYS.SALES_TRACKING_LIVE] },
+  { match: startsWith("/sales-tracking/trips/new"), permissions: [PERMISSION_KEYS.START_TRIP] },
   { match: startsWith("/sales-tracking/trips"), permissions: [PERMISSION_KEYS.SALES_TRACKING_TRIPS] },
+  { match: startsWith("/sales-tracking/visits/new"), permissions: [PERMISSION_KEYS.MARK_VISIT] },
   { match: startsWith("/sales-tracking/visits"), permissions: [PERMISSION_KEYS.SALES_TRACKING_VISITS] },
-  { match: startsWith("/sales-tracking"), permissions: [PERMISSION_KEYS.SALES_TRACKING_LIVE, PERMISSION_KEYS.NEARBY_CUSTOMERS_VIEW, PERMISSION_KEYS.SALES_TRACKING_TRIPS, PERMISSION_KEYS.SALES_TRACKING_VISITS] },
+  { match: startsWith("/sales-tracking/visit-planning"), permissions: [PERMISSION_KEYS.SALES_TRACKING_VISITS] },
+  { match: startsWith("/sales-tracking/petrol-claims/approval"), permissions: [PERMISSION_KEYS.SALES_TRACKING_REPORTS] },
+  { match: startsWith("/sales-tracking/petrol-claims"), permissions: [PERMISSION_KEYS.SALES_TRACKING_REPORTS] },
+  { match: startsWith("/sales-tracking"), permissions: [PERMISSION_KEYS.SALES_TRACKING_LIVE, PERMISSION_KEYS.NEARBY_CUSTOMERS_VIEW, PERMISSION_KEYS.SALES_TRACKING_TRIPS, PERMISSION_KEYS.SALES_TRACKING_VISITS, PERMISSION_KEYS.SALES_TRACKING_REPORTS, PERMISSION_KEYS.START_TRIP, PERMISSION_KEYS.MARK_VISIT] },
 
   // Purchase
   { match: startsWith("/purchase-req"), permissions: [PERMISSION_KEYS.PURCHASE_REQUEST] },

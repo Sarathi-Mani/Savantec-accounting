@@ -89,6 +89,7 @@ const DEFAULT_PERMISSIONS: Permission[] = [
   { id: "sales_tracking_live", name: "Sales Tracking Live", description: "Access live tracking dashboard", category: "Sales Tracking" },
   { id: "sales_tracking_trips", name: "Sales Trips", description: "View sales trips", category: "Sales Tracking" },
   { id: "sales_tracking_visits", name: "Sales Visits", description: "View customer visits", category: "Sales Tracking" },
+  { id: "sales_tracking_reports", name: "Sales Tracking Reports", description: "View sales tracking reports", category: "Sales Tracking" },
   { id: "nearby_customers_view", name: "Nearby Customers", description: "View nearby customers map", category: "Sales Tracking" },
   { id: "start_trip", name: "Start Trip", description: "Start new sales trip", category: "Sales Tracking" },
   { id: "mark_visit", name: "Mark Visit", description: "Mark customer visits", category: "Sales Tracking" },
