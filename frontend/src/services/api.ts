@@ -32,17 +32,17 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    
+
     // FIX: Check for employee token too
     const userType = localStorage.getItem('user_type');
     let token;
-    
+
     if (userType === 'employee') {
       token = localStorage.getItem('employee_token');
     } else {
       token = localStorage.getItem('access_token');
     }
-    
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -118,7 +118,7 @@ export interface BankAccount {
 export interface Company {
   id: string;
   name: string;
- 
+
   gstin?: string;
   pan?: string;
   cin?: string;
@@ -469,7 +469,7 @@ export const uploadApi = {
   uploadFile: async (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
-    
+
     // Use the correct endpoint
     const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
       headers: {
@@ -1878,9 +1878,9 @@ export const purchaseRequestsApi = {
     return response.data;
   },
 
-updateStatus: async (
-    companyId: string, 
-    requestId: string, 
+  updateStatus: async (
+    companyId: string,
+    requestId: string,
     data: {
       approval_status: 'pending' | 'approved' | 'hold' | 'rejected';  // Use approval_status for API request
       approval_notes?: string;
@@ -2146,7 +2146,7 @@ export interface PurchaseInvoice {
   igst_amount: number;
   total_tax: number;
   total_amount: number;
- 
+
   net_payable: number;
   amount_paid: number;
   balance_due: number;
@@ -2277,9 +2277,9 @@ export const purchasesApi = {
     godown_id?: string
   ): Promise<{ message: string; entries_created: number }> => {
     const response = await api.post(`/purchases/${invoiceId}/receive-stock`, null, {
-      params: { 
+      params: {
         company_id: companyId,
-        ...(godown_id && { godown_id }) 
+        ...(godown_id && { godown_id })
       }
     });
     return response.data;
@@ -2298,10 +2298,10 @@ export const purchasesApi = {
     toDate: string
   ): Promise<InputGSTSummary> => {
     const response = await api.get(`/purchases/reports/input-gst`, {
-      params: { 
+      params: {
         company_id: companyId,
-        from_date: fromDate, 
-        to_date: toDate 
+        from_date: fromDate,
+        to_date: toDate
       },
     });
     return response.data;
@@ -2616,7 +2616,7 @@ export interface Vendor {
   id: string;
   company_id: string;
   name: string;
- 
+
   contact: string;
   email?: string;
   mobile?: string;
@@ -2624,44 +2624,44 @@ export interface Vendor {
   gst_registration_type?: string;
   pan_number?: string;
   vendor_code?: string;
-  
+
   // Opening Balance
   opening_balance?: number;
   opening_balance_type?: "outstanding" | "advance";
   opening_balance_mode?: "single" | "split";
-  
+
   // Financial Info
   credit_limit?: number;
   credit_days?: number;
   payment_terms?: string;
   tds_applicable?: boolean;
   tds_rate?: number;
-  
+
   // Bank Details
   bank_details?: VendorBankDetail[];
-  
+
   // Contact Persons
   contact_persons?: VendorContactPerson[];
-  
+
   // Opening Balance Items (for split mode)
   opening_balance_items?: VendorOpeningBalanceItem[];
-  
+
   // Address
   billing_address?: string;
   billing_city?: string;
   billing_state?: string;
   billing_country?: string;
   billing_zip?: string;
-  
+
   shipping_address?: string;
   shipping_city?: string;
   shipping_state?: string;
   shipping_country?: string;
   shipping_zip?: string;
-  
+
   // Status
   is_active: boolean;
-  
+
   // Timestamps
   created_at: string;
   updated_at: string;
@@ -2716,7 +2716,7 @@ export interface VendorListResponse {
 export interface VendorCreateRequest {
   // Basic Info
   name: string;
- 
+
   contact: string;
   email?: string;
   mobile?: string;
@@ -2724,19 +2724,19 @@ export interface VendorCreateRequest {
   gst_registration_type?: string;
   pan_number?: string;
   vendor_code?: string;
-  
+
   // Opening Balance
   opening_balance?: number;
   opening_balance_type?: "outstanding" | "advance";
   opening_balance_mode?: "single" | "split";
-  
+
   // Financial Info
   credit_limit?: number;
   credit_days?: number;
   payment_terms?: string;
   tds_applicable?: boolean;
   tds_rate?: number;
-  
+
   // Bank Details
   bank_details?: Array<{
     bank_name: string;
@@ -2748,7 +2748,7 @@ export interface VendorCreateRequest {
     is_primary?: boolean;
     upi_id?: string;
   }>;
-  
+
   // Contact Persons
   contact_persons?: Array<{
     name: string;
@@ -2757,7 +2757,7 @@ export interface VendorCreateRequest {
     phone?: string;
     is_primary?: boolean;
   }>;
-  
+
   // Opening Balance Items (for split mode)
   opening_balance_items?: Array<{
     date: string;
@@ -2765,14 +2765,14 @@ export interface VendorCreateRequest {
     days?: number;
     amount: number;
   }>;
-  
+
   // Address
   billing_address?: string;
   billing_city?: string;
   billing_state?: string;
   billing_country?: string;
   billing_zip?: string;
-  
+
   shipping_address?: string;
   shipping_city?: string;
   shipping_state?: string;
@@ -2780,7 +2780,7 @@ export interface VendorCreateRequest {
   shipping_zip?: string;
 }
 
-export interface VendorUpdateRequest extends Partial<VendorCreateRequest> {}
+export interface VendorUpdateRequest extends Partial<VendorCreateRequest> { }
 
 
 
@@ -2805,7 +2805,7 @@ export interface Designation {
   employee_count?: number;
   created_at?: string;
   updated_at?: string;
-   permissions: string[];
+  permissions: string[];
 }
 
 export interface PaginatedDesignations {
@@ -3161,13 +3161,13 @@ export const payrollApi = {
     return response.data;
   },
 
- createDesignation: async (
-  companyId: string,
-  data: DesignationCreateData 
-): Promise<Designation> => {
-  const response = await api.post(`/companies/${companyId}/payroll/designations`, data);
-  return response.data;
-},
+  createDesignation: async (
+    companyId: string,
+    data: DesignationCreateData
+  ): Promise<Designation> => {
+    const response = await api.post(`/companies/${companyId}/payroll/designations`, data);
+    return response.data;
+  },
 
 
 
@@ -3189,7 +3189,7 @@ export const payrollApi = {
     if (params?.status) queryParams.append('status_filter', params.status);
     if (params?.sort_by) queryParams.append('sort_by', params.sort_by);
     if (params?.sort_order) queryParams.append('sort_order', params.sort_order);
-    
+
     const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
     const response = await api.get(`/companies/${companyId}/payroll/designations/paginated${queryString}`);
     return response.data;
@@ -3204,7 +3204,7 @@ export const payrollApi = {
     const queryParams = new URLSearchParams();
     queryParams.append('search', search);
     if (status) queryParams.append('status_filter', status);
-    
+
     const response = await api.get(`/companies/${companyId}/payroll/designations/search?${queryParams.toString()}`);
     return response.data;
   },
@@ -3216,11 +3216,11 @@ export const payrollApi = {
   },
 
   // Get designation statistics
-getDesignationStats: async (companyId: string): Promise<{ success: boolean; data: DesignationStats }> => {
+  getDesignationStats: async (companyId: string): Promise<{ success: boolean; data: DesignationStats }> => {
     const response = await api.get(`/companies/${companyId}/payroll/designations/stats`);
     return response.data;
   },
-  
+
   // Get a single designation by ID
   getDesignationById: async (
     designationId: string,
@@ -3378,6 +3378,10 @@ getDesignationStats: async (companyId: string): Promise<{ success: boolean; data
   },
 
   deactivateEmployee: async (companyId: string, employeeId: string): Promise<void> => {
+    await api.delete(`/companies/${companyId}/payroll/employees/${employeeId}`);
+  },
+
+  deleteEmployee: async (companyId: string, employeeId: string): Promise<void> => {
     await api.delete(`/companies/${companyId}/payroll/employees/${employeeId}`);
   },
 
