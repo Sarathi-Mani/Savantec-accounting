@@ -276,7 +276,7 @@ async def update_invoice(
             detail="Only draft invoices can be updated"
         )
     
-    updated_invoice = invoice_service.update_invoice(invoice, data)
+    updated_invoice = invoice_service.update_invoice(invoice, data, company)
     return InvoiceResponse.model_validate(updated_invoice)
 
 
