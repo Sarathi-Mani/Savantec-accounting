@@ -1369,18 +1369,20 @@ export default function EmployeesPage() {
                                     Edit
                                   </Link>
 
-                                  <button
-                                    onClick={() => {
-                                      setActiveActionMenu(null);
-                                      handleDelete(employee.id);
-                                    }}
-                                    className="flex w-full items-center gap-2 px-4 py-2 text-sm
+                                  {employee.status !== "inactive" && (
+                                    <button
+                                      onClick={() => {
+                                        setActiveActionMenu(null);
+                                        handleDelete(employee.id);
+                                      }}
+                                      className="flex w-full items-center gap-2 px-4 py-2 text-sm
                                 text-red-600 dark:text-red-400
                                 hover:bg-red-50 dark:hover:bg-red-900/30"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                    Delete
-                                  </button>
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                      Delete
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </div>
