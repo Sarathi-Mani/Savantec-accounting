@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum as PyEnum
 from sqlalchemy import (
-    Column, Integer, Date, Time, String, Text, DateTime, 
+    Column, Integer, Date, Time, String, Text, DateTime,
     Numeric, Boolean, ForeignKey, Enum, JSON, Float, Index
 )
 from sqlalchemy.orm import relationship
@@ -13,6 +13,10 @@ import uuid
 
 def generate_uuid():
     return str(uuid.uuid4())
+
+def enum_values(enum_cls):
+    """Use enum values (not names) for DB storage."""
+    return [e.value for e in enum_cls]
 
 class TrackingStatus(str, PyEnum):
     IDLE = "idle"
@@ -82,7 +86,7 @@ class EngineerTrackingStatus(Base):
     company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     engineer_id = Column(String(36), ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
     
-    status = Column(Enum(TrackingStatus), default=TrackingStatus.IDLE)
+    status = Column(Enum(TrackingStatus, values_callable=enum_values), default=TrackingStatus.IDLE)
     
     # Current location
     current_lat = Column(Float)
@@ -112,7 +116,7 @@ class EngineerTrackingStatus(Base):
     
     # Fraud detection flags
     has_fraud_flag = Column(Boolean, default=False)
-    fraud_reason = Column(Enum(FraudFlagReason))
+    fraud_reason = Column(Enum(FraudFlagReason, values_callable=enum_values))
     fraud_score = Column(Integer, default=0)  # 0-100
     
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -153,7 +157,7 @@ class Trip(Base):
     gps_distance_km = Column(Numeric(10, 2))  # Calculated from GPS
     system_distance_km = Column(Numeric(10, 2))  # System calculated (primary)
     
-    status = Column(Enum(TripStatus), default=TripStatus.DRAFT)
+    status = Column(Enum(TripStatus, values_callable=enum_values), default=TripStatus.DRAFT)
     
     # Validation flags
     is_valid = Column(Boolean, default=False)
@@ -162,7 +166,7 @@ class Trip(Base):
     
     # Fraud detection
     has_fraud_flag = Column(Boolean, default=False)
-    fraud_reason = Column(Enum(FraudFlagReason))
+    fraud_reason = Column(Enum(FraudFlagReason, values_callable=enum_values))
     fraud_score = Column(Integer, default=0)
     
     notes = Column(Text)
@@ -218,14 +222,14 @@ class SalesVisit(Base):
     # Visit duration
     duration_minutes = Column(Numeric(10, 2))
     
-    status = Column(Enum(VisitStatus), default=VisitStatus.PLANNED)
+    status = Column(Enum(VisitStatus, values_callable=enum_values), default=VisitStatus.PLANNED)
     
     # Validation
     is_valid = Column(Boolean, default=False)
     
     # Fraud detection
     has_fraud_flag = Column(Boolean, default=False)
-    fraud_reason = Column(Enum(FraudFlagReason))
+    fraud_reason = Column(Enum(FraudFlagReason, values_callable=enum_values))
     fraud_score = Column(Integer, default=0)
     
     # Photos/Proof
@@ -309,7 +313,7 @@ class PetrolClaim(Base):
     claimed_amount = Column(Numeric(14, 2), nullable=False)
     
     # Approval workflow
-    status = Column(Enum(PetrolClaimStatus), default=PetrolClaimStatus.DRAFT)
+    status = Column(Enum(PetrolClaimStatus, values_callable=enum_values), default=PetrolClaimStatus.DRAFT)
     submitted_at = Column(DateTime)
     approved_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"))
     approved_at = Column(DateTime)
@@ -322,7 +326,7 @@ class PetrolClaim(Base):
     
     # Fraud detection
     has_fraud_flag = Column(Boolean, default=False)
-    fraud_reason = Column(Enum(FraudFlagReason))
+    fraud_reason = Column(Enum(FraudFlagReason, values_callable=enum_values))
     fraud_score = Column(Integer, default=0)
     
     notes = Column(Text)
