@@ -9,6 +9,8 @@ const config: Config = {
   "./src/css/**/*.{css}",
 ],
 
+
+
   darkMode: ["class"],
   theme: {
     extend: {
