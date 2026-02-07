@@ -93,7 +93,7 @@ export default function ProformaInvoicesPage() {
             <thead>
               <tr className="border-b border-stroke dark:border-dark-3">
                 <th className="px-4 py-4 text-left font-medium text-dark dark:text-white">Invoice #</th>
-                <th className="px-4 py-4 text-left font-medium text-dark dark:text-white">Customer</th>
+                <th className="px-4 py-4 text-left font-medium text-dark dark:text-white whitespace-nowrap w-64">Customer</th>
                 <th className="px-4 py-4 text-left font-medium text-dark dark:text-white">Date</th>
                 <th className="px-4 py-4 text-left font-medium text-dark dark:text-white">Due Date</th>
                 <th className="px-4 py-4 text-left font-medium text-dark dark:text-white">Reference</th>
@@ -132,8 +132,10 @@ export default function ProformaInvoicesPage() {
                         {invoice.invoice_number}
                       </Link>
                     </td>
-                    <td className="px-4 py-4 text-dark dark:text-white">
-                      {invoice.customer_name || "-"}
+                    <td className="px-4 py-4 text-dark dark:text-white whitespace-nowrap">
+                      <span className="inline-block max-w-[240px] truncate">
+                        {invoice.customer_name || "-"}
+                      </span>
                     </td>
                     <td className="px-4 py-4 text-dark-6">
                       {dayjs(invoice.proforma_date).format("DD MMM YYYY")}

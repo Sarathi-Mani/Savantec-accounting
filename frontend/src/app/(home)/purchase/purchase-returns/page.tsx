@@ -158,6 +158,12 @@ export default function PurchaseReturnsListPage() {
     const [page, setPage] = useState(1);
     const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
 
+    // Export loading states
+    const [copyLoading, setCopyLoading] = useState(false);
+    const [excelLoading, setExcelLoading] = useState(false);
+    const [pdfLoading, setPdfLoading] = useState(false);
+    const [csvLoading, setCsvLoading] = useState(false);
+
     const pageSize = 10;
 
     // Column visibility state
@@ -193,57 +199,13 @@ export default function PurchaseReturnsListPage() {
 
     // Export functions
     const copyToClipboard = async () => {
-        const filtered = filteredReturns;
-        const headers = ["Date", "Purchase Code", "Return Code", "Return Status", "Reference No", "Supplier Name", "Total", "Paid Payment", "Payment Status", "Created By"];
+        if (copyLoading) return;
+        setCopyLoading(true);
+        try {
+            const filtered = filteredReturns;
+            const headers = ["Date", "Purchase Code", "Return Code", "Return Status", "Reference No", "Supplier Name", "Total", "Paid Payment", "Payment Status", "Created By"];
 
-        const rows = filtered.map(ret => [
-            formatDate(ret.date),
-            ret.purchaseCode,
-            ret.returnCode,
-            ret.returnStatus,
-            ret.referenceNo,
-            ret.supplierName,
-            `$${ret.total.toLocaleString()}`,
-            `$${ret.paidPayment.toLocaleString()}`,
-            ret.paymentStatus,
-            ret.createdBy
-        ]);
-
-        const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
-
-        await navigator.clipboard.writeText(text);
-        alert("Purchase returns data copied to clipboard");
-    };
-
-    const exportExcel = () => {
-        const filtered = filteredReturns;
-        const exportData = filtered.map(ret => ({
-            "Date": formatDate(ret.date),
-            "Purchase Code": ret.purchaseCode,
-            "Return Code": ret.returnCode,
-            "Return Status": ret.returnStatus,
-            "Reference No": ret.referenceNo,
-            "Supplier Name": ret.supplierName,
-            "Total": ret.total,
-            "Currency Code": ret.currencyCode,
-            "Paid Payment": ret.paidPayment,
-            "Payment Status": ret.paymentStatus,
-            "Created By": ret.createdBy,
-        }));
-
-        const ws = XLSX.utils.json_to_sheet(exportData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "PurchaseReturns");
-        XLSX.writeFile(wb, "purchase_returns.xlsx");
-    };
-
-    const exportPDF = () => {
-        const filtered = filteredReturns;
-        const doc = new jsPDF();
-
-        autoTable(doc, {
-            head: [["Date", "Purchase Code", "Return Code", "Return Status", "Reference No", "Supplier Name", "Total", "Paid Payment", "Payment Status", "Created By"]],
-            body: filtered.map(ret => [
+            const rows = filtered.map(ret => [
                 formatDate(ret.date),
                 ret.purchaseCode,
                 ret.returnCode,
@@ -254,32 +216,112 @@ export default function PurchaseReturnsListPage() {
                 `$${ret.paidPayment.toLocaleString()}`,
                 ret.paymentStatus,
                 ret.createdBy
-            ])
-        });
+            ]);
 
-        doc.save("purchase_returns.pdf");
+            const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
+
+            await navigator.clipboard.writeText(text);
+            alert("Purchase returns data copied to clipboard");
+        } catch (error) {
+            console.error("Copy failed:", error);
+            alert("Failed to copy data. Please try again.");
+        } finally {
+            setCopyLoading(false);
+        }
     };
 
-    const exportCSV = () => {
-        const filtered = filteredReturns;
-        const exportData = filtered.map(ret => ({
-            "Date": formatDate(ret.date),
-            "Purchase Code": ret.purchaseCode,
-            "Return Code": ret.returnCode,
-            "Return Status": ret.returnStatus,
-            "Reference No": ret.referenceNo,
-            "Supplier Name": ret.supplierName,
-            "Total": ret.total,
-            "Currency Code": ret.currencyCode,
-            "Paid Payment": ret.paidPayment,
-            "Payment Status": ret.paymentStatus,
-            "Created By": ret.createdBy,
-        }));
+    const exportExcel = async () => {
+        if (excelLoading) return;
+        setExcelLoading(true);
+        try {
+            const filtered = filteredReturns;
+            const exportData = filtered.map(ret => ({
+                "Date": formatDate(ret.date),
+                "Purchase Code": ret.purchaseCode,
+                "Return Code": ret.returnCode,
+                "Return Status": ret.returnStatus,
+                "Reference No": ret.referenceNo,
+                "Supplier Name": ret.supplierName,
+                "Total": ret.total,
+                "Currency Code": ret.currencyCode,
+                "Paid Payment": ret.paidPayment,
+                "Payment Status": ret.paymentStatus,
+                "Created By": ret.createdBy,
+            }));
 
-        const ws = XLSX.utils.json_to_sheet(exportData);
-        const csv = XLSX.utils.sheet_to_csv(ws);
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-        saveAs(blob, "purchase_returns.csv");
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "PurchaseReturns");
+            XLSX.writeFile(wb, "purchase_returns.xlsx");
+        } catch (error) {
+            console.error("Excel export failed:", error);
+            alert("Failed to export Excel. Please try again.");
+        } finally {
+            setExcelLoading(false);
+        }
+    };
+
+    const exportPDF = async () => {
+        if (pdfLoading) return;
+        setPdfLoading(true);
+        try {
+            const filtered = filteredReturns;
+            const doc = new jsPDF();
+
+            autoTable(doc, {
+                head: [["Date", "Purchase Code", "Return Code", "Return Status", "Reference No", "Supplier Name", "Total", "Paid Payment", "Payment Status", "Created By"]],
+                body: filtered.map(ret => [
+                    formatDate(ret.date),
+                    ret.purchaseCode,
+                    ret.returnCode,
+                    ret.returnStatus,
+                    ret.referenceNo,
+                    ret.supplierName,
+                    `$${ret.total.toLocaleString()}`,
+                    `$${ret.paidPayment.toLocaleString()}`,
+                    ret.paymentStatus,
+                    ret.createdBy
+                ])
+            });
+
+            doc.save("purchase_returns.pdf");
+        } catch (error) {
+            console.error("PDF export failed:", error);
+            alert("Failed to export PDF. Please try again.");
+        } finally {
+            setPdfLoading(false);
+        }
+    };
+
+    const exportCSV = async () => {
+        if (csvLoading) return;
+        setCsvLoading(true);
+        try {
+            const filtered = filteredReturns;
+            const exportData = filtered.map(ret => ({
+                "Date": formatDate(ret.date),
+                "Purchase Code": ret.purchaseCode,
+                "Return Code": ret.returnCode,
+                "Return Status": ret.returnStatus,
+                "Reference No": ret.referenceNo,
+                "Supplier Name": ret.supplierName,
+                "Total": ret.total,
+                "Currency Code": ret.currencyCode,
+                "Paid Payment": ret.paidPayment,
+                "Payment Status": ret.paymentStatus,
+                "Created By": ret.createdBy,
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const csv = XLSX.utils.sheet_to_csv(ws);
+            const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+            saveAs(blob, "purchase_returns.csv");
+        } catch (error) {
+            console.error("CSV export failed:", error);
+            alert("Failed to export CSV. Please try again.");
+        } finally {
+            setCsvLoading(false);
+        }
     };
 
     const toggleColumn = (key: keyof typeof visibleColumns) => {
@@ -396,7 +438,7 @@ export default function PurchaseReturnsListPage() {
     const totalPaidAmount = filteredReturns.reduce((sum, ret) => sum + ret.paidPayment, 0);
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="w-full">
             {/* Header */}
             <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
                 <div className="flex items-center justify-between">

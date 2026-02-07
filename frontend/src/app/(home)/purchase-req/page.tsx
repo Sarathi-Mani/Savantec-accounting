@@ -395,7 +395,7 @@ export default function PurchaseRequestsPage() {
                     <th className="px-6 py-3 text-left text-sm font-medium text-dark-6 dark:text-dark-6">
                       Request #
                     </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium text-dark-6 dark:text-dark-6">
+                    <th className="px-6 py-3 text-left text-sm font-medium text-dark-6 dark:text-dark-6 whitespace-nowrap w-64">
                       Customer
                     </th>
                     <th className="px-6 py-3 text-left text-sm font-medium text-dark-6 dark:text-dark-6">
@@ -423,8 +423,8 @@ export default function PurchaseRequestsPage() {
                           {request.purchase_req_no || `PR-${request.id.slice(0, 8)}`}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-dark dark:text-white">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="font-medium text-dark dark:text-white max-w-[240px] truncate">
                           {request.customer_name}
                         </div>
                       </td>

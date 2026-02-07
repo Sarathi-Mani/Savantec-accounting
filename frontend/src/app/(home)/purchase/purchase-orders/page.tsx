@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -95,6 +95,14 @@ export default function PurchaseOrderListPage() {
   const [converting, setConverting] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
+  // Export loading states
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [excelLoading, setExcelLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [csvLoading, setCsvLoading] = useState(false);
+
+  const [cachedExportData, setCachedExportData] = useState<PurchaseOrder[] | null>(null);
+
   // Get token from localStorage
   const getToken = () => {
     if (typeof window !== "undefined") {
@@ -102,6 +110,20 @@ export default function PurchaseOrderListPage() {
     }
     return null;
   };
+
+  const buildQueryParams = (pageValue: number, pageSizeValue: number) => {
+    const params = new URLSearchParams();
+    params.append("page", pageValue.toString());
+    params.append("page_size", pageSizeValue.toString());
+
+    if (searchTerm) params.append("search", searchTerm);
+    if (statusFilter) params.append("status", statusFilter);
+    if (fromDate) params.append("from_date", fromDate);
+    if (toDate) params.append("to_date", toDate);
+
+    return params;
+  };
+
 
   const convertToINR = (amount: number, currency: string, exchangeRate: number = 1): number => {
   if (currency === 'INR') {
@@ -130,22 +152,7 @@ const formatCurrencyINR = (amount: number) => {
       setError(null);
       
       // Build query parameters
-      const params = new URLSearchParams();
-      params.append("page", pagination.page.toString());
-      params.append("page_size", pagination.page_size.toString());
-      
-      if (searchTerm) {
-        params.append("search", searchTerm);
-      }
-      if (statusFilter) {
-        params.append("status", statusFilter);
-      }
-      if (fromDate) {
-        params.append("from_date", fromDate);
-      }
-      if (toDate) {
-        params.append("to_date", toDate);
-      }
+      const params = buildQueryParams(pagination.page, pagination.page_size);
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/orders/purchase?${params.toString()}`,
@@ -184,6 +191,42 @@ const formatCurrencyINR = (amount: number) => {
       setRefreshing(false);
     }
   };
+
+  const fetchAllPurchaseOrdersForExport = useCallback(async (): Promise<PurchaseOrder[]> => {
+    try {
+      const token = getToken();
+      if (!company?.id || !token) return [];
+
+      const params = buildQueryParams(1, 1000);
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/orders/purchase?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch purchase orders: ${response.statusText}`);
+      }
+
+      const data: PurchaseOrderResponse = await response.json();
+      const orders = data.purchases || [];
+      setCachedExportData(orders);
+      return orders;
+    } catch (error) {
+      console.error("Export fetch failed:", error);
+      return [];
+    }
+  }, [company?.id, searchTerm, statusFilter, fromDate, toDate]);
+
+  const getExportData = async (): Promise<PurchaseOrder[]> => {
+    if (cachedExportData) return cachedExportData;
+    return await fetchAllPurchaseOrdersForExport();
+  };
+
 
   // Delete purchase order
   const deletePurchaseOrder = async (id: string) => {
@@ -287,6 +330,7 @@ const formatCurrencyINR = (amount: number) => {
   useEffect(() => {
     if (company?.id) {
       fetchPurchaseOrders();
+      setCachedExportData(null);
     }
   }, [company?.id, pagination.page, statusFilter, fromDate, toDate]);
 
@@ -307,89 +351,123 @@ const formatCurrencyINR = (amount: number) => {
 
   // Export functions
   const copyToClipboard = async () => {
-    const filtered = purchaseOrders;
-    const headers = ["Purchase Order Date", "Purchase Order Code", "Purchase Order Status", "Reference No.", "Supplier Name", "Total", "Created by"];
+    if (copyLoading) return;
+    setCopyLoading(true);
+    try {
+      const filtered = await getExportData();
+      const headers = ["Purchase Order Date", "Purchase Order Code", "Purchase Order Status", "Reference No.", "Supplier Name", "Total", "Created by"];
 
-    const rows = filtered.map(order => [
-      formatDate(order.order_date),
-      order.order_number,
-      getStatusText(order.status),
-      order.reference_number || "",
-      order.vendor_name || "",
-       formatCurrencyINR(convertToINR(order.total_amount, order.currency, order.exchange_rate || 1)),
-
-        order.creator_name || order.created_by || "System"
-    ]);
-
-    const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
-
-    await navigator.clipboard.writeText(text);
-    alert("Purchase order data copied to clipboard");
-  };
-
-  const exportExcel = () => {
-    const filtered = purchaseOrders;
- const exportData = filtered.map(order => ({
-  "Purchase Order Date": formatDate(order.order_date),
-  "Purchase Order Code": order.order_number,
-  "Purchase Order Status": getStatusText(order.status),
-  "Reference No.": order.reference_number || "",
-  "Supplier Name": order.vendor_name || "",
-  "Total (Original Currency)": order.total_amount,
-  "Original Currency": order.currency,
-  "Exchange Rate": order.exchange_rate || 1,
-  "Total (INR)": convertToINR(order.total_amount, order.currency, order.exchange_rate || 1),
-  "Created by": order.creator_name || order.created_by || "System",
-  "Created At": formatDate(order.created_at),
-}));
-
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "PurchaseOrders");
-    XLSX.writeFile(wb, "purchase_orders.xlsx");
-  };
-
-  const exportPDF = () => {
-    const filtered = purchaseOrders;
-    const doc = new jsPDF();
-
-    autoTable(doc, {
-      head: [["Purchase Order Date", "Purchase Order Code", "Purchase Order Status", "Reference No.", "Supplier Name", "Total", "Created by"]],
-      body: filtered.map(order => [
+      const rows = filtered.map(order => [
         formatDate(order.order_date),
         order.order_number,
         getStatusText(order.status),
         order.reference_number || "",
         order.vendor_name || "",
-         formatCurrencyINR(convertToINR(order.total_amount, order.currency, order.exchange_rate || 1)),
+        formatCurrencyINR(convertToINR(order.total_amount, order.currency, order.exchange_rate || 1)),
+        order.creator_name || order.created_by || "System"
+      ]);
 
-         order.creator_name || order.created_by || "System"
-      ])
-    });
+      const text = [headers.join("	"), ...rows.map(r => r.join("	"))].join("\n");
 
-    doc.save("purchase_orders.pdf");
+      await navigator.clipboard.writeText(text);
+      alert("Purchase order data copied to clipboard");
+    } catch (error) {
+      console.error("Copy failed:", error);
+      alert("Failed to copy data. Please try again.");
+    } finally {
+      setCopyLoading(false);
+    }
   };
 
-  const exportCSV = () => {
-    const filtered = purchaseOrders;
-   const exportData = filtered.map(order => ({
-  "Purchase Order Date": formatDate(order.order_date),
-  "Purchase Order Code": order.order_number,
-  "Purchase Order Status": getStatusText(order.status),
-  "Reference No.": order.reference_number || "",
-  "Supplier Name": order.vendor_name || "",
-  "Total (Original Currency)": order.total_amount,
-  "Original Currency": order.currency,
-  "Exchange Rate": order.exchange_rate || 1,
-  "Total (INR)": convertToINR(order.total_amount, order.currency, order.exchange_rate || 1),
-  "Created by": order.creator_name || order.created_by || "System",
-  "Created At": formatDate(order.created_at),
-}));
+  const exportExcel = async () => {
+    if (excelLoading) return;
+    setExcelLoading(true);
+    try {
+      const filtered = await getExportData();
+      const exportData = filtered.map(order => ({
+        "Purchase Order Date": formatDate(order.order_date),
+        "Purchase Order Code": order.order_number,
+        "Purchase Order Status": getStatusText(order.status),
+        "Reference No.": order.reference_number || "",
+        "Supplier Name": order.vendor_name || "",
+        "Total (Original Currency)": order.total_amount,
+        "Original Currency": order.currency,
+        "Exchange Rate": order.exchange_rate || 1,
+        "Total (INR)": convertToINR(order.total_amount, order.currency, order.exchange_rate || 1),
+        "Created by": order.creator_name || order.created_by || "System",
+        "Created At": formatDate(order.created_at),
+      }));
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const csv = XLSX.utils.sheet_to_csv(ws);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    saveAs(blob, "purchase_orders.csv");
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "PurchaseOrders");
+      XLSX.writeFile(wb, "purchase_orders.xlsx");
+    } catch (error) {
+      console.error("Excel export failed:", error);
+      alert("Failed to export Excel. Please try again.");
+    } finally {
+      setExcelLoading(false);
+    }
+  };
+
+  const exportPDF = async () => {
+    if (pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const filtered = await getExportData();
+      const doc = new jsPDF();
+
+      autoTable(doc, {
+        head: [["Purchase Order Date", "Purchase Order Code", "Purchase Order Status", "Reference No.", "Supplier Name", "Total", "Created by"]],
+        body: filtered.map(order => [
+          formatDate(order.order_date),
+          order.order_number,
+          getStatusText(order.status),
+          order.reference_number || "",
+          order.vendor_name || "",
+          formatCurrencyINR(convertToINR(order.total_amount, order.currency, order.exchange_rate || 1)),
+          order.creator_name || order.created_by || "System"
+        ])
+      });
+
+      doc.save("purchase_orders.pdf");
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      alert("Failed to export PDF. Please try again.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const exportCSV = async () => {
+    if (csvLoading) return;
+    setCsvLoading(true);
+    try {
+      const filtered = await getExportData();
+      const exportData = filtered.map(order => ({
+        "Purchase Order Date": formatDate(order.order_date),
+        "Purchase Order Code": order.order_number,
+        "Purchase Order Status": getStatusText(order.status),
+        "Reference No.": order.reference_number || "",
+        "Supplier Name": order.vendor_name || "",
+        "Total (Original Currency)": order.total_amount,
+        "Original Currency": order.currency,
+        "Exchange Rate": order.exchange_rate || 1,
+        "Total (INR)": convertToINR(order.total_amount, order.currency, order.exchange_rate || 1),
+        "Created by": order.creator_name || order.created_by || "System",
+        "Created At": formatDate(order.created_at),
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      saveAs(blob, "purchase_orders.csv");
+    } catch (error) {
+      console.error("CSV export failed:", error);
+      alert("Failed to export CSV. Please try again.");
+    } finally {
+      setCsvLoading(false);
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -511,7 +589,7 @@ const formatCurrencyINR = (amount: number) => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="w-full">
       {/* Header with Company Info */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -636,9 +714,14 @@ const formatCurrencyINR = (amount: number) => {
 
             <button
               onClick={copyToClipboard}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={copyLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Copy className="w-5 h-5" />
+              {copyLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <Copy className="w-5 h-5" />
+              )}
               Copy
             </button>
 

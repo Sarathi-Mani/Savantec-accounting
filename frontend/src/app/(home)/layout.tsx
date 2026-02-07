@@ -42,7 +42,7 @@ export default function HomeLayout({
     <div className="flex min-h-screen">
       <Sidebar />
 
-      <div className="w-full bg-gray-2 dark:bg-[#020d1a]">
+      <div className="flex min-w-0 flex-1 flex-col bg-gray-2 dark:bg-[#020d1a]">
         <Header />
 
         <main className="relative mx-auto w-full max-w-screen-2xl p-4 md:p-6 2xl:p-10">

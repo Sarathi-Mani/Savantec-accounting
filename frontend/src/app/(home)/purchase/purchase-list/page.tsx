@@ -134,6 +134,12 @@ export default function PurchaseListPage() {
   const [page, setPage] = useState(1);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
 
+  // Export loading states
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [excelLoading, setExcelLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [csvLoading, setCsvLoading] = useState(false);
+
   const pageSize = 10;
 
   // Column visibility state
@@ -183,57 +189,13 @@ export default function PurchaseListPage() {
 
   // Export functions
   const copyToClipboard = async () => {
-    const filtered = filteredPurchases;
-    const headers = ["Purchase Date", "Due Date", "Purchase Code", "Purchase Status", "Reference No", "Supplier Name", "Total", "Currency Code", "Paid Payment", "Payment Status"];
+    if (copyLoading) return;
+    setCopyLoading(true);
+    try {
+      const filtered = filteredPurchases;
+      const headers = ["Purchase Date", "Due Date", "Purchase Code", "Purchase Status", "Reference No", "Supplier Name", "Total", "Currency Code", "Paid Payment", "Payment Status"];
 
-    const rows = filtered.map(purchase => [
-      formatDate(purchase.purchaseDate),
-      formatDate(purchase.dueDate),
-      purchase.purchaseCode,
-      purchase.purchaseStatus,
-      purchase.referenceNo,
-      purchase.supplierName,
-      `$${purchase.total.toLocaleString()}`,
-      purchase.currencyCode,
-      `$${purchase.paidAmount.toLocaleString()}`,
-      purchase.paymentStatus
-    ]);
-
-    const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
-
-    await navigator.clipboard.writeText(text);
-    alert("Purchase data copied to clipboard");
-  };
-
-  const exportExcel = () => {
-    const filtered = filteredPurchases;
-    const exportData = filtered.map(purchase => ({
-      "Purchase Date": formatDate(purchase.purchaseDate),
-      "Due Date": formatDate(purchase.dueDate),
-      "Purchase Code": purchase.purchaseCode,
-      "Purchase Status": purchase.purchaseStatus,
-      "Reference No": purchase.referenceNo,
-      "Supplier Name": purchase.supplierName,
-      "Total": purchase.total,
-      "Currency Code": purchase.currencyCode,
-      "Paid Payment": purchase.paidAmount,
-      "Payment Status": purchase.paymentStatus,
-      "Overdue": isOverdue(purchase.dueDate) ? "Yes" : "No"
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Purchases");
-    XLSX.writeFile(wb, "purchases.xlsx");
-  };
-
-  const exportPDF = () => {
-    const filtered = filteredPurchases;
-    const doc = new jsPDF();
-
-    autoTable(doc, {
-      head: [["Purchase Date", "Due Date", "Purchase Code", "Purchase Status", "Reference No", "Supplier Name", "Total", "Currency Code", "Paid Payment", "Payment Status"]],
-      body: filtered.map(purchase => [
+      const rows = filtered.map(purchase => [
         formatDate(purchase.purchaseDate),
         formatDate(purchase.dueDate),
         purchase.purchaseCode,
@@ -244,31 +206,111 @@ export default function PurchaseListPage() {
         purchase.currencyCode,
         `$${purchase.paidAmount.toLocaleString()}`,
         purchase.paymentStatus
-      ])
-    });
+      ]);
 
-    doc.save("purchases.pdf");
+      const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
+
+      await navigator.clipboard.writeText(text);
+      alert("Purchase data copied to clipboard");
+    } catch (error) {
+      console.error("Copy failed:", error);
+      alert("Failed to copy data. Please try again.");
+    } finally {
+      setCopyLoading(false);
+    }
   };
 
-  const exportCSV = () => {
-    const filtered = filteredPurchases;
-    const exportData = filtered.map(purchase => ({
-      "Purchase Date": formatDate(purchase.purchaseDate),
-      "Due Date": formatDate(purchase.dueDate),
-      "Purchase Code": purchase.purchaseCode,
-      "Purchase Status": purchase.purchaseStatus,
-      "Reference No": purchase.referenceNo,
-      "Supplier Name": purchase.supplierName,
-      "Total": purchase.total,
-      "Currency Code": purchase.currencyCode,
-      "Paid Payment": purchase.paidAmount,
-      "Payment Status": purchase.paymentStatus
-    }));
+  const exportExcel = async () => {
+    if (excelLoading) return;
+    setExcelLoading(true);
+    try {
+      const filtered = filteredPurchases;
+      const exportData = filtered.map(purchase => ({
+        "Purchase Date": formatDate(purchase.purchaseDate),
+        "Due Date": formatDate(purchase.dueDate),
+        "Purchase Code": purchase.purchaseCode,
+        "Purchase Status": purchase.purchaseStatus,
+        "Reference No": purchase.referenceNo,
+        "Supplier Name": purchase.supplierName,
+        "Total": purchase.total,
+        "Currency Code": purchase.currencyCode,
+        "Paid Payment": purchase.paidAmount,
+        "Payment Status": purchase.paymentStatus,
+        "Overdue": isOverdue(purchase.dueDate) ? "Yes" : "No"
+      }));
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const csv = XLSX.utils.sheet_to_csv(ws);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    saveAs(blob, "purchases.csv");
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Purchases");
+      XLSX.writeFile(wb, "purchases.xlsx");
+    } catch (error) {
+      console.error("Excel export failed:", error);
+      alert("Failed to export Excel. Please try again.");
+    } finally {
+      setExcelLoading(false);
+    }
+  };
+
+  const exportPDF = async () => {
+    if (pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const filtered = filteredPurchases;
+      const doc = new jsPDF();
+
+      autoTable(doc, {
+        head: [["Purchase Date", "Due Date", "Purchase Code", "Purchase Status", "Reference No", "Supplier Name", "Total", "Currency Code", "Paid Payment", "Payment Status"]],
+        body: filtered.map(purchase => [
+          formatDate(purchase.purchaseDate),
+          formatDate(purchase.dueDate),
+          purchase.purchaseCode,
+          purchase.purchaseStatus,
+          purchase.referenceNo,
+          purchase.supplierName,
+          `$${purchase.total.toLocaleString()}`,
+          purchase.currencyCode,
+          `$${purchase.paidAmount.toLocaleString()}`,
+          purchase.paymentStatus
+        ])
+      });
+
+      doc.save("purchases.pdf");
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      alert("Failed to export PDF. Please try again.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const exportCSV = async () => {
+    if (csvLoading) return;
+    setCsvLoading(true);
+    try {
+      const filtered = filteredPurchases;
+      const exportData = filtered.map(purchase => ({
+        "Purchase Date": formatDate(purchase.purchaseDate),
+        "Due Date": formatDate(purchase.dueDate),
+        "Purchase Code": purchase.purchaseCode,
+        "Purchase Status": purchase.purchaseStatus,
+        "Reference No": purchase.referenceNo,
+        "Supplier Name": purchase.supplierName,
+        "Total": purchase.total,
+        "Currency Code": purchase.currencyCode,
+        "Paid Payment": purchase.paidAmount,
+        "Payment Status": purchase.paymentStatus
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      saveAs(blob, "purchases.csv");
+    } catch (error) {
+      console.error("CSV export failed:", error);
+      alert("Failed to export CSV. Please try again.");
+    } finally {
+      setCsvLoading(false);
+    }
   };
 
   const toggleColumn = (key: keyof typeof visibleColumns) => {
@@ -373,7 +415,7 @@ export default function PurchaseListPage() {
   const totalAmount = filteredPurchases.reduce((sum, purchase) => sum + purchase.total, 0);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="w-full">
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -523,31 +565,51 @@ export default function PurchaseListPage() {
 
             <button
               onClick={copyToClipboard}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={copyLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Copy className="w-5 h-5" />
+              {copyLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <Copy className="w-5 h-5" />
+              )}
               Copy
             </button>
 
             <button
               onClick={exportExcel}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={excelLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Excel
+              {excelLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "Excel"
+              )}
             </button>
 
             <button
               onClick={exportPDF}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={pdfLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              PDF
+              {pdfLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "PDF"
+              )}
             </button>
 
             <button
               onClick={exportCSV}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={csvLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              CSV
+              {csvLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "CSV"
+              )}
             </button>
 
             <button className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import * as XLSX from "xlsx";
@@ -135,6 +135,14 @@ export default function EnquiriesPage() {
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
   
+  // Export loading states
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [excelLoading, setExcelLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [csvLoading, setCsvLoading] = useState(false);
+
+  const [cachedExportData, setCachedExportData] = useState<Enquiry[] | null>(null);
+  
   // Dropdown data
   const [companies, setCompanies] = useState<any[]>([]);
   const [salesmen, setSalesmen] = useState<any[]>([]);
@@ -157,6 +165,22 @@ export default function EnquiriesPage() {
 
   const companyId = typeof window !== "undefined" ? localStorage.getItem("company_id") : null;
 
+  const buildQueryParams = () => {
+    const params = new URLSearchParams();
+    if (statusFilter) params.append("status", statusFilter);
+    if (sourceFilter) params.append("source", sourceFilter);
+    if (search) params.append("search", search);
+    if (fromDate) params.append("from_date", fromDate);
+    if (toDate) params.append("to_date", toDate);
+    if (salesmanFilter) params.append("sales_person_id", salesmanFilter);
+    if (companyFilter) params.append("company_id", companyFilter);
+    if (engineerFilter) params.append("engineer_id", engineerFilter);
+    if (brandFilter) params.append("brand", brandFilter);
+    if (stateFilter) params.append("state", stateFilter);
+    return params;
+  };
+
+
   useEffect(() => {
     if (companyId) {
       fetchEnquiries();
@@ -167,6 +191,7 @@ export default function EnquiriesPage() {
   useEffect(() => {
     if (companyId) {
       fetchEnquiries();
+      setCachedExportData(null);
     }
   }, [statusFilter, sourceFilter, salesmanFilter, companyFilter, engineerFilter, brandFilter, stateFilter, fromDate, toDate]);
 
@@ -217,17 +242,7 @@ export default function EnquiriesPage() {
   const fetchEnquiries = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (statusFilter) params.append("status", statusFilter);
-      if (sourceFilter) params.append("source", sourceFilter);
-      if (search) params.append("search", search);
-      if (fromDate) params.append("from_date", fromDate);
-      if (toDate) params.append("to_date", toDate);
-      if (salesmanFilter) params.append("sales_person_id", salesmanFilter);
-      if (companyFilter) params.append("company_id", companyFilter);
-      if (engineerFilter) params.append("engineer_id", engineerFilter);
-      if (brandFilter) params.append("brand", brandFilter);
-      if (stateFilter) params.append("state", stateFilter);
+      const params = buildQueryParams();
 
       const response = await fetch(
         `${API_BASE}/companies/${companyId}/enquiries?${params}`,
@@ -256,6 +271,39 @@ export default function EnquiriesPage() {
       setLoading(false);
     }
   };
+
+  const fetchAllEnquiriesForExport = useCallback(async (): Promise<Enquiry[]> => {
+    try {
+      const params = buildQueryParams();
+      params.append("page", "1");
+      params.append("page_size", "1000");
+
+      const response = await fetch(
+        `${API_BASE}/companies/${companyId}/enquiries?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+          },
+        }
+      );
+
+      if (!response.ok) throw new Error("Failed to fetch enquiries for export");
+
+      const data = await response.json();
+      const list = Array.isArray(data) ? data : (data.enquiries || []);
+      setCachedExportData(list);
+      return list;
+    } catch (error) {
+      console.error("Export fetch failed:", error);
+      return [];
+    }
+  }, [companyId, search, statusFilter, sourceFilter, salesmanFilter, companyFilter, engineerFilter, brandFilter, stateFilter, fromDate, toDate]);
+
+  const getExportData = async (): Promise<Enquiry[]> => {
+    if (cachedExportData) return cachedExportData;
+    return await fetchAllEnquiriesForExport();
+  };
+
 
   const handleDeleteEnquiry = async (enquiryId: string, enquiryNumber: string) => {
     if (window.confirm(`Are you sure you want to delete enquiry ${enquiryNumber}? This action cannot be undone.`)) {
@@ -320,126 +368,162 @@ export default function EnquiriesPage() {
 
   // Export functions
   const copyToClipboard = async () => {
-    const filtered = enquiries;
-    const headers = ["Date", "Enquiry No", "Company", "Contact Person", "Quantity", "Status", "Sales Engineer", "Remarks"];
-    const rows = filtered.map(enquiry => [
-      formatDate(enquiry.enquiry_date),
-      enquiry.enquiry_number,
-      enquiry.company?.name || enquiry.customer_name || "-",
-      enquiry.contact_name || enquiry.prospect_name || "-",
-      enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
-      enquiry.status,
-      enquiry.salesman?.name || enquiry.sales_person_name || "-",
-      enquiry.description || "-"
-    ]);
-    
-    const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
-    await navigator.clipboard.writeText(text);
-    alert("Enquiry data copied to clipboard");
+    if (copyLoading) return;
+    setCopyLoading(true);
+    try {
+      const filtered = await getExportData();
+      const headers = ["Date", "Enquiry No", "Company", "Contact Person", "Quantity", "Status", "Sales Engineer", "Remarks"];
+      const rows = filtered.map(enquiry => [
+        formatDate(enquiry.enquiry_date),
+        enquiry.enquiry_number,
+        enquiry.company?.name || enquiry.customer_name || "-",
+        enquiry.contact_name || enquiry.prospect_name || "-",
+        enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
+        enquiry.status,
+        enquiry.salesman?.name || enquiry.sales_person_name || "-",
+        enquiry.description || "-"
+      ]);
+      
+      const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
+      await navigator.clipboard.writeText(text);
+      alert("Enquiry data copied to clipboard");
+    } catch (error) {
+      console.error("Copy failed:", error);
+      alert("Failed to copy data. Please try again.");
+    } finally {
+      setCopyLoading(false);
+    }
   };
 
-  const exportExcel = () => {
-    const filtered = enquiries;
-    const exportData = filtered.map(enquiry => ({
-      "Date": formatDate(enquiry.enquiry_date),
-      "Enquiry No": enquiry.enquiry_number,
-      "Company": enquiry.company?.name || enquiry.customer_name || "-",
-      "Contact Person": enquiry.contact_name || enquiry.prospect_name || "-",
-      "Quantity": enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
-      "Status": enquiry.status,
-      "Sales Engineer": enquiry.salesman?.name || enquiry.sales_person_name || "-",
-      "Remarks": enquiry.description || "-",
-      "Expected Value": enquiry.expected_value,
-      "Source": enquiry.source,
-      "Brand": enquiry.brand || "-",
-      "State": enquiry.company?.state || "-"
-    }));
+  const exportExcel = async () => {
+    if (excelLoading) return;
+    setExcelLoading(true);
+    try {
+      const filtered = await getExportData();
+      const exportData = filtered.map(enquiry => ({
+        "Date": formatDate(enquiry.enquiry_date),
+        "Enquiry No": enquiry.enquiry_number,
+        "Company": enquiry.company?.name || enquiry.customer_name || "-",
+        "Contact Person": enquiry.contact_name || enquiry.prospect_name || "-",
+        "Quantity": enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
+        "Status": enquiry.status,
+        "Sales Engineer": enquiry.salesman?.name || enquiry.sales_person_name || "-",
+        "Remarks": enquiry.description || "-",
+        "Expected Value": enquiry.expected_value,
+        "Source": enquiry.source,
+        "Brand": enquiry.brand || "-",
+        "State": enquiry.company?.state || "-"
+      }));
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Enquiries");
-    XLSX.writeFile(wb, "enquiries.xlsx");
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Enquiries");
+      XLSX.writeFile(wb, "enquiries.xlsx");
+    } catch (error) {
+      console.error("Excel export failed:", error);
+      alert("Failed to export Excel. Please try again.");
+    } finally {
+      setExcelLoading(false);
+    }
   };
 
-  const exportPDF = () => {
-    const filtered = enquiries;
-    const doc = new jsPDF("landscape");
-    
-    const headers = [["Date", "Enquiry No", "Company", "Contact Person", "Quantity", "Status", "Sales Engineer", "Remarks"]];
-    const body = filtered.map(enquiry => [
-      formatDate(enquiry.enquiry_date),
-      enquiry.enquiry_number,
-      enquiry.company?.name || enquiry.customer_name || "-",
-      enquiry.contact_name || enquiry.prospect_name || "-",
-      enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
-      enquiry.status,
-      enquiry.salesman?.name || enquiry.sales_person_name || "-",
-      enquiry.description || "-"
-    ]);
+  const exportPDF = async () => {
+    if (pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const filtered = await getExportData();
+      const doc = new jsPDF("landscape");
+      
+      const headers = [["Date", "Enquiry No", "Company", "Contact Person", "Quantity", "Status", "Sales Engineer", "Remarks"]];
+      const body = filtered.map(enquiry => [
+        formatDate(enquiry.enquiry_date),
+        enquiry.enquiry_number,
+        enquiry.company?.name || enquiry.customer_name || "-",
+        enquiry.contact_name || enquiry.prospect_name || "-",
+        enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
+        enquiry.status,
+        enquiry.salesman?.name || enquiry.sales_person_name || "-",
+        enquiry.description || "-"
+      ]);
 
-    autoTable(doc, {
-      head: headers,
-      body: body,
-      startY: 20,
-      margin: { top: 20, left: 10, right: 10, bottom: 20 },
-      styles: {
-        fontSize: 9,
-        cellPadding: 3,
-        overflow: "linebreak",
-        font: "helvetica",
-      },
-      headStyles: {
-        fillColor: [41, 128, 185],
-        textColor: 255,
-        fontStyle: "bold",
-      },
-      alternateRowStyles: {
-        fillColor: [245, 245, 245],
-      },
-      didDrawPage: (data) => {
-        doc.setFontSize(16);
-        doc.text("Enquiries List", data.settings.margin.left, 12);
-        
-        doc.setFontSize(10);
-        doc.text(
-          `Generated: ${new Date().toLocaleDateString("en-IN")}`,
-          doc.internal.pageSize.width - 60,
-          12
-        );
+      autoTable(doc, {
+        head: headers,
+        body: body,
+        startY: 20,
+        margin: { top: 20, left: 10, right: 10, bottom: 20 },
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          overflow: "linebreak",
+          font: "helvetica",
+        },
+        headStyles: {
+          fillColor: [41, 128, 185],
+          textColor: 255,
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [245, 245, 245],
+        },
+        didDrawPage: (data) => {
+          doc.setFontSize(16);
+          doc.text("Enquiries List", data.settings.margin.left, 12);
+          
+          doc.setFontSize(10);
+          doc.text(
+            `Generated: ${new Date().toLocaleDateString("en-IN")}`,
+            doc.internal.pageSize.width - 60,
+            12
+          );
 
-        const pageCount = doc.getNumberOfPages();
-        doc.text(
-          `Page ${data.pageNumber} of ${pageCount}`,
-          data.settings.margin.left,
-          doc.internal.pageSize.height - 8
-        );
-      },
-    });
+          const pageCount = doc.getNumberOfPages();
+          doc.text(
+            `Page ${data.pageNumber} of ${pageCount}`,
+            data.settings.margin.left,
+            doc.internal.pageSize.height - 8
+          );
+        },
+      });
 
-    doc.save("enquiries.pdf");
+      doc.save("enquiries.pdf");
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      alert("Failed to export PDF. Please try again.");
+    } finally {
+      setPdfLoading(false);
+    }
   };
 
-  const exportCSV = () => {
-    const filtered = enquiries;
-    const exportData = filtered.map(enquiry => ({
-      "Date": formatDate(enquiry.enquiry_date),
-      "Enquiry No": enquiry.enquiry_number,
-      "Company": enquiry.company?.name || enquiry.customer_name || "-",
-      "Contact Person": enquiry.contact_name || enquiry.prospect_name || "-",
-      "Quantity": enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
-      "Status": enquiry.status,
-      "Sales Engineer": enquiry.salesman?.name || enquiry.sales_person_name || "-",
-      "Remarks": enquiry.description || "-",
-      "Expected Value": enquiry.expected_value,
-      "Source": enquiry.source,
-      "Brand": enquiry.brand || "-",
-      "State": enquiry.company?.state || "-"
-    }));
+  const exportCSV = async () => {
+    if (csvLoading) return;
+    setCsvLoading(true);
+    try {
+      const filtered = await getExportData();
+      const exportData = filtered.map(enquiry => ({
+        "Date": formatDate(enquiry.enquiry_date),
+        "Enquiry No": enquiry.enquiry_number,
+        "Company": enquiry.company?.name || enquiry.customer_name || "-",
+        "Contact Person": enquiry.contact_name || enquiry.prospect_name || "-",
+        "Quantity": enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
+        "Status": enquiry.status,
+        "Sales Engineer": enquiry.salesman?.name || enquiry.sales_person_name || "-",
+        "Remarks": enquiry.description || "-",
+        "Expected Value": enquiry.expected_value,
+        "Source": enquiry.source,
+        "Brand": enquiry.brand || "-",
+        "State": enquiry.company?.state || "-"
+      }));
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const csv = XLSX.utils.sheet_to_csv(ws);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    saveAs(blob, "enquiries.csv");
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      saveAs(blob, "enquiries.csv");
+    } catch (error) {
+      console.error("CSV export failed:", error);
+      alert("Failed to export CSV. Please try again.");
+    } finally {
+      setCsvLoading(false);
+    }
   };
 
   const toggleColumn = (key: keyof typeof visibleColumns) => {
@@ -469,7 +553,7 @@ export default function EnquiriesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="w-full">
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -519,9 +603,14 @@ export default function EnquiriesPage() {
 
             <button
               onClick={copyToClipboard}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={copyLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Copy className="w-5 h-5" />
+              {copyLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <Copy className="w-5 h-5" />
+              )}
               Copy
             </button>
 
@@ -775,7 +864,7 @@ export default function EnquiriesPage() {
                   </th>
                 )}
                 {visibleColumns.company && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap min-w-[200px]">
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-64">
                     Company / Customer
                   </th>
                 )}
@@ -870,10 +959,10 @@ export default function EnquiriesPage() {
                         </td>
                       )}
                       {visibleColumns.company && (
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             <Building className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                            <div className="min-w-0">
+                            <div className="min-w-0 max-w-[240px]">
                               <div className="font-medium text-gray-900 dark:text-white truncate">
                                 {enquiry.company?.name || enquiry.customer_name || enquiry.prospect_company || "-"}
                               </div>

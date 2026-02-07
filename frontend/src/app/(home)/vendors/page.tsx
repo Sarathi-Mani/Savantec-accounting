@@ -7,7 +7,7 @@ import { saveAs } from "file-saver";
 import { useAuth } from "@/context/AuthContext";
 import { vendorsApi, Vendor, VendorListResponse } from "@/services/api";
 import Link from "next/link";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   Users,
   Plus,
@@ -291,6 +291,14 @@ export default function VendorsPage() {
   const [showPrintView, setShowPrintView] = useState(false);
   const [vendorsToPrint, setVendorsToPrint] = useState<Vendor[]>([]);
 
+  // Export loading states
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [excelLoading, setExcelLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [csvLoading, setCsvLoading] = useState(false);
+
+  const [cachedExportData, setCachedExportData] = useState<Vendor[] | null>(null);
+
   // Column visibility state - match customers list pattern
   const [visibleColumns, setVisibleColumns] = useState({
     vendorId: true,
@@ -330,9 +338,40 @@ export default function VendorsPage() {
     }
   };
 
+  const fetchAllVendorsForExport = useCallback(async (): Promise<Vendor[]> => {
+    if (!company?.id) return [];
+
+    try {
+      const result = await vendorsApi.list(company.id, {
+        page: 1,
+        page_size: 1000,
+        search: search || undefined,
+      });
+
+      const vendors = result.vendors || [];
+      setAllVendors(vendors);
+      setCachedExportData(vendors);
+      return vendors;
+    } catch (error) {
+      console.error("Export fetch failed:", error);
+      return [];
+    }
+  }, [company?.id, search]);
+
+  const getExportData = async (): Promise<Vendor[]> => {
+    if (cachedExportData) return cachedExportData;
+    return await fetchAllVendorsForExport();
+  };
+
+
   useEffect(() => {
     fetchVendors();
+    setCachedExportData(null);
   }, [company?.id, page, search]);
+
+  useEffect(() => {
+    fetchAllVendorsForExport();
+  }, [company?.id, search]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -351,9 +390,9 @@ export default function VendorsPage() {
 
   // Filter vendors based on status filter
   const getFilteredVendors = () => {
-    if (!data?.vendors) return [];
+    const base = allVendors.length > 0 ? allVendors : (data?.vendors || []);
 
-    let filtered = data.vendors;
+    let filtered = base;
 
     // Apply status filter
     if (statusFilter === "active") {
@@ -374,262 +413,312 @@ export default function VendorsPage() {
 
   // Export functions - matching customers list pattern
   const copyToClipboard = async () => {
-    const filtered = getFilteredVendors();
+    if (copyLoading) return;
+    setCopyLoading(true);
+    try {
+      const exportVendors = await getExportData();
+      const filtered = statusFilter
+        ? exportVendors.filter(vendor => statusFilter === 'active' ? vendor.is_active : !vendor.is_active)
+        : exportVendors;
 
-    // Build headers based on visible columns
-    const headers: string[] = [];
-    const rowData = filtered.map(vendor => {
-      const row: string[] = [];
+      // Build headers based on visible columns
+      const headers: string[] = [];
+      const rowData = filtered.map(vendor => {
+        const row: string[] = [];
 
-      if (visibleColumns.vendorId) {
-        if (!headers.includes("Vendor ID")) headers.push("Vendor ID");
-        row.push(vendor.vendor_code || 'N/A');
-      }
+        if (visibleColumns.vendorId) {
+          if (!headers.includes("Vendor ID")) headers.push("Vendor ID");
+          row.push(vendor.vendor_code || 'N/A');
+        }
 
-      if (visibleColumns.name) {
-        if (!headers.includes("Name")) headers.push("Name");
-        row.push(vendor.name);
-      }
+        if (visibleColumns.name) {
+          if (!headers.includes("Name")) headers.push("Name");
+          row.push(vendor.name);
+        }
 
-      if (visibleColumns.contact) {
-        if (!headers.includes("Contact")) headers.push("Contact");
-        row.push(vendor.contact || '-');
-      }
+        if (visibleColumns.contact) {
+          if (!headers.includes("Contact")) headers.push("Contact");
+          row.push(vendor.contact || '-');
+        }
 
-      if (visibleColumns.email) {
-        if (!headers.includes("Email")) headers.push("Email");
-        row.push(vendor.email || '-');
-      }
+        if (visibleColumns.email) {
+          if (!headers.includes("Email")) headers.push("Email");
+          row.push(vendor.email || '-');
+        }
 
-      if (visibleColumns.gstin) {
-        if (!headers.includes("GSTIN")) headers.push("GSTIN");
-        row.push(vendor.tax_number || '-');
-      }
+        if (visibleColumns.gstin) {
+          if (!headers.includes("GSTIN")) headers.push("GSTIN");
+          row.push(vendor.tax_number || '-');
+        }
 
-      if (visibleColumns.pan) {
-        if (!headers.includes("PAN")) headers.push("PAN");
-        row.push(vendor.pan_number || '-');
-      }
+        if (visibleColumns.pan) {
+          if (!headers.includes("PAN")) headers.push("PAN");
+          row.push(vendor.pan_number || '-');
+        }
 
-      if (visibleColumns.openingBalance) {
-        if (!headers.includes("Opening Balance")) headers.push("Opening Balance");
-        row.push(formatCurrency(vendor.opening_balance || 0));
-        if (!headers.includes("Balance Type")) headers.push("Balance Type");
-        row.push(vendor.opening_balance_type || '-');
-      }
+        if (visibleColumns.openingBalance) {
+          if (!headers.includes("Opening Balance")) headers.push("Opening Balance");
+          row.push(formatCurrency(vendor.opening_balance || 0));
+          if (!headers.includes("Balance Type")) headers.push("Balance Type");
+          row.push(vendor.opening_balance_type || '-');
+        }
 
-      if (visibleColumns.status) {
-        if (!headers.includes("Status")) headers.push("Status");
-        row.push(vendor.is_active ? 'Active' : 'Inactive');
-      }
+        if (visibleColumns.status) {
+          if (!headers.includes("Status")) headers.push("Status");
+          row.push(vendor.is_active ? 'Active' : 'Inactive');
+        }
 
-      return row;
-    });
+        return row;
+      });
 
-    const text = [headers.join("\t"), ...rowData.map(r => r.join("\t"))].join("\n");
-    await navigator.clipboard.writeText(text);
-    alert("Vendor data copied to clipboard");
+      const text = [headers.join("	"), ...rowData.map(r => r.join("	"))].join("\n");
+      await navigator.clipboard.writeText(text);
+      alert("Vendor data copied to clipboard");
+    } catch (error) {
+      console.error("Copy failed:", error);
+      alert("Failed to copy data. Please try again.");
+    } finally {
+      setCopyLoading(false);
+    }
   };
 
-  const exportExcel = () => {
-    const filtered = getFilteredVendors();
-    const exportData = filtered.map(vendor => {
-      const row: Record<string, any> = {};
+  const exportExcel = async () => {
+    if (excelLoading) return;
+    setExcelLoading(true);
+    try {
+      const exportVendors = await getExportData();
+      const filtered = statusFilter
+        ? exportVendors.filter(vendor => statusFilter === 'active' ? vendor.is_active : !vendor.is_active)
+        : exportVendors;
 
-      if (visibleColumns.vendorId) {
-        row["Vendor ID"] = vendor.vendor_code || 'N/A';
-      }
+      const exportData = filtered.map(vendor => {
+        const row: Record<string, any> = {};
 
-      if (visibleColumns.name) {
-        row["Name"] = vendor.name;
-      }
+        if (visibleColumns.vendorId) {
+          row["Vendor ID"] = vendor.vendor_code || 'N/A';
+        }
 
-      if (visibleColumns.contact) {
-        row["Contact"] = vendor.contact || '-';
-      }
+        if (visibleColumns.name) {
+          row["Name"] = vendor.name;
+        }
 
-      if (visibleColumns.email) {
-        row["Email"] = vendor.email || '-';
-      }
+        if (visibleColumns.contact) {
+          row["Contact"] = vendor.contact || '-';
+        }
 
-      if (visibleColumns.gstin) {
-        row["GSTIN"] = vendor.tax_number || '-';
-      }
+        if (visibleColumns.email) {
+          row["Email"] = vendor.email || '-';
+        }
 
-      if (visibleColumns.pan) {
-        row["PAN"] = vendor.pan_number || '-';
-      }
+        if (visibleColumns.gstin) {
+          row["GSTIN"] = vendor.tax_number || '-';
+        }
 
-      if (visibleColumns.openingBalance) {
-        row["Opening Balance"] = vendor.opening_balance || 0;
-        row["Balance Type"] = vendor.opening_balance_type || '-';
-      }
+        if (visibleColumns.pan) {
+          row["PAN"] = vendor.pan_number || '-';
+        }
 
-      if (visibleColumns.status) {
-        row["Status"] = vendor.is_active ? 'Active' : 'Inactive';
-      }
+        if (visibleColumns.openingBalance) {
+          row["Opening Balance"] = vendor.opening_balance || 0;
+          row["Balance Type"] = vendor.opening_balance_type || '-';
+        }
 
-      return row;
-    });
+        if (visibleColumns.status) {
+          row["Status"] = vendor.is_active ? 'Active' : 'Inactive';
+        }
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Vendors");
-    XLSX.writeFile(wb, "vendors.xlsx");
+        return row;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Vendors");
+      XLSX.writeFile(wb, "vendors.xlsx");
+    } catch (error) {
+      console.error("Excel export failed:", error);
+      alert("Failed to export Excel. Please try again.");
+    } finally {
+      setExcelLoading(false);
+    }
   };
 
   // Fixed PDF export function to include all visible columns
-  const exportPDF = () => {
-    const filtered = getFilteredVendors();
-    const doc = new jsPDF("landscape");
+  const exportPDF = async () => {
+    if (pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const exportVendors = await getExportData();
+      const filtered = statusFilter
+        ? exportVendors.filter(vendor => statusFilter === 'active' ? vendor.is_active : !vendor.is_active)
+        : exportVendors;
+      const doc = new jsPDF("landscape");
 
-    // PDF-safe currency formatter (NO ₹ symbol)
-    const formatCurrencyForPDF = (amount: number): string => {
-      return `Rs. ${new Intl.NumberFormat("en-IN", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(amount)}`;
-    };
+      // PDF-safe currency formatter (NO ??? symbol)
+      const formatCurrencyForPDF = (amount: number): string => {
+        return `Rs. ${new Intl.NumberFormat("en-IN", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(amount)}`;
+      };
 
-    // Build headers & rows based on visible columns
-    const headers: string[] = [];
-    const body = filtered.map((vendor) => {
-      const row: string[] = [];
+      // Build headers & rows based on visible columns
+      const headers: string[] = [];
+      const body = filtered.map((vendor) => {
+        const row: string[] = [];
 
-      if (visibleColumns.vendorId) {
-        if (!headers.includes("Vendor ID")) headers.push("Vendor ID");
-        row.push(vendor.vendor_code || "N/A");
-      }
+        if (visibleColumns.vendorId) {
+          if (!headers.includes("Vendor ID")) headers.push("Vendor ID");
+          row.push(vendor.vendor_code || "N/A");
+        }
 
-      if (visibleColumns.name) {
-        if (!headers.includes("Name")) headers.push("Name");
-        row.push(vendor.name);
-      }
+        if (visibleColumns.name) {
+          if (!headers.includes("Name")) headers.push("Name");
+          row.push(vendor.name);
+        }
 
-      if (visibleColumns.contact) {
-        if (!headers.includes("Contact")) headers.push("Contact");
-        row.push(vendor.contact || "-");
-      }
+        if (visibleColumns.contact) {
+          if (!headers.includes("Contact")) headers.push("Contact");
+          row.push(vendor.contact || "-");
+        }
 
-      if (visibleColumns.email) {
-        if (!headers.includes("Email")) headers.push("Email");
-        row.push(vendor.email || "-");
-      }
+        if (visibleColumns.email) {
+          if (!headers.includes("Email")) headers.push("Email");
+          row.push(vendor.email || "-");
+        }
 
-      if (visibleColumns.gstin) {
-        if (!headers.includes("GSTIN")) headers.push("GSTIN");
-        row.push(vendor.tax_number || "-");
-      }
+        if (visibleColumns.gstin) {
+          if (!headers.includes("GSTIN")) headers.push("GSTIN");
+          row.push(vendor.tax_number || "-");
+        }
 
-      if (visibleColumns.pan) {
-        if (!headers.includes("PAN")) headers.push("PAN");
-        row.push(vendor.pan_number || "-");
-      }
+        if (visibleColumns.pan) {
+          if (!headers.includes("PAN")) headers.push("PAN");
+          row.push(vendor.pan_number || "-");
+        }
 
-      if (visibleColumns.openingBalance) {
-        if (!headers.includes("Opening Balance")) headers.push("Opening Balance");
-        row.push(formatCurrencyForPDF(vendor.opening_balance || 0));
-      }
+        if (visibleColumns.openingBalance) {
+          if (!headers.includes("Opening Balance")) headers.push("Opening Balance");
+          row.push(formatCurrencyForPDF(vendor.opening_balance || 0));
+        }
 
-      if (visibleColumns.status) {
-        if (!headers.includes("Status")) headers.push("Status");
-        row.push(vendor.is_active ? "Active" : "Inactive");
-      }
+        if (visibleColumns.status) {
+          if (!headers.includes("Status")) headers.push("Status");
+          row.push(vendor.is_active ? "Active" : "Inactive");
+        }
 
-      return row;
-    });
+        return row;
+      });
 
-    autoTable(doc, {
-      head: [headers],
-      body,
-      startY: 20,
-      margin: { top: 20, left: 10, right: 10, bottom: 20 },
-      styles: {
-        fontSize: 9,
-        cellPadding: 3,
-        overflow: "linebreak",
-        font: "helvetica", // default font (safe)
-      },
-      headStyles: {
-        fillColor: [41, 128, 185],
-        textColor: 255,
-        fontStyle: "bold",
-      },
-      alternateRowStyles: {
-        fillColor: [245, 245, 245],
-      },
-      didDrawPage: (data) => {
-        // Title
-        doc.setFontSize(16);
-        doc.text("Vendors List", data.settings.margin.left, 12);
+      autoTable(doc, {
+        head: [headers],
+        body,
+        startY: 20,
+        margin: { top: 20, left: 10, right: 10, bottom: 20 },
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          overflow: "linebreak",
+          font: "helvetica", // default font (safe)
+        },
+        headStyles: {
+          fillColor: [41, 128, 185],
+          textColor: 255,
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [245, 245, 245],
+        },
+        didDrawPage: (data) => {
+          // Title
+          doc.setFontSize(16);
+          doc.text("Vendors List", data.settings.margin.left, 12);
 
-        // Date
-        doc.setFontSize(10);
-        doc.text(
-          `Generated: ${new Date().toLocaleDateString("en-IN")}`,
-          doc.internal.pageSize.width - 60,
-          12
-        );
+          // Date
+          doc.setFontSize(10);
+          doc.text(
+            `Generated: ${new Date().toLocaleDateString("en-IN")}`,
+            doc.internal.pageSize.width - 60,
+            12
+          );
 
-        // Page number
-        const pageCount = doc.getNumberOfPages();
-        doc.text(
-          `Page ${data.pageNumber} of ${pageCount}`,
-          data.settings.margin.left,
-          doc.internal.pageSize.height - 8
-        );
-      },
-    });
+          // Page number
+          const pageCount = doc.getNumberOfPages();
+          doc.text(
+            `Page ${data.pageNumber} of ${pageCount}`,
+            data.settings.margin.left,
+            doc.internal.pageSize.height - 8
+          );
+        },
+      });
 
-    doc.save("vendors.pdf");
+      doc.save("vendors.pdf");
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      alert("Failed to export PDF. Please try again.");
+    } finally {
+      setPdfLoading(false);
+    }
   };
 
 
-  const exportCSV = () => {
-    const filtered = getFilteredVendors();
-    const exportData = filtered.map(vendor => {
-      const row: Record<string, any> = {};
+  const exportCSV = async () => {
+    if (csvLoading) return;
+    setCsvLoading(true);
+    try {
+      const exportVendors = await getExportData();
+      const filtered = statusFilter
+        ? exportVendors.filter(vendor => statusFilter === 'active' ? vendor.is_active : !vendor.is_active)
+        : exportVendors;
 
-      if (visibleColumns.vendorId) {
-        row["Vendor ID"] = vendor.vendor_code || 'N/A';
-      }
+      const exportData = filtered.map(vendor => {
+        const row: Record<string, any> = {};
 
-      if (visibleColumns.name) {
-        row["Name"] = vendor.name;
-      }
+        if (visibleColumns.vendorId) {
+          row["Vendor ID"] = vendor.vendor_code || 'N/A';
+        }
 
-      if (visibleColumns.contact) {
-        row["Contact"] = vendor.contact || '-';
-      }
+        if (visibleColumns.name) {
+          row["Name"] = vendor.name;
+        }
 
-      if (visibleColumns.email) {
-        row["Email"] = vendor.email || '-';
-      }
+        if (visibleColumns.contact) {
+          row["Contact"] = vendor.contact || '-';
+        }
 
-      if (visibleColumns.gstin) {
-        row["GSTIN"] = vendor.tax_number || '-';
-      }
+        if (visibleColumns.email) {
+          row["Email"] = vendor.email || '-';
+        }
 
-      if (visibleColumns.pan) {
-        row["PAN"] = vendor.pan_number || '-';
-      }
+        if (visibleColumns.gstin) {
+          row["GSTIN"] = vendor.tax_number || '-';
+        }
 
-      if (visibleColumns.openingBalance) {
-        row["Opening Balance"] = vendor.opening_balance || 0;
-        row["Balance Type"] = vendor.opening_balance_type || '-';
-      }
+        if (visibleColumns.pan) {
+          row["PAN"] = vendor.pan_number || '-';
+        }
 
-      if (visibleColumns.status) {
-        row["Status"] = vendor.is_active ? 'Active' : 'Inactive';
-      }
+        if (visibleColumns.openingBalance) {
+          row["Opening Balance"] = vendor.opening_balance || 0;
+          row["Balance Type"] = vendor.opening_balance_type || '-';
+        }
 
-      return row;
-    });
+        if (visibleColumns.status) {
+          row["Status"] = vendor.is_active ? 'Active' : 'Inactive';
+        }
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const csv = XLSX.utils.sheet_to_csv(ws);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    saveAs(blob, "vendors.csv");
+        return row;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      saveAs(blob, "vendors.csv");
+    } catch (error) {
+      console.error("CSV export failed:", error);
+      alert("Failed to export CSV. Please try again.");
+    } finally {
+      setCsvLoading(false);
+    }
   };
 
   const toggleColumn = (key: keyof typeof visibleColumns) => {
@@ -712,7 +801,7 @@ export default function VendorsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="w-full">
       {showPrintView && (
         <PrintView
           vendors={vendorsToPrint}
@@ -770,9 +859,14 @@ export default function VendorsPage() {
 
             <button
               onClick={copyToClipboard}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={copyLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Copy className="w-5 h-5" />
+              {copyLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <Copy className="w-5 h-5" />
+              )}
               Copy
             </button>
 
@@ -804,23 +898,38 @@ export default function VendorsPage() {
 
             <button
               onClick={exportExcel}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={excelLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Excel
+              {excelLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "Excel"
+              )}
             </button>
 
             <button
               onClick={exportPDF}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={pdfLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              PDF
+              {pdfLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "PDF"
+              )}
             </button>
 
             <button
               onClick={exportCSV}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={csvLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              CSV
+              {csvLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "CSV"
+              )}
             </button>
 
             <button

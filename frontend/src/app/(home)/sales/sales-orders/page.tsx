@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { ordersApi, payrollApi, invoicesApi, getErrorMessage, SalesOrder, OrderStatus } from "@/services/api";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -67,9 +67,11 @@ interface ExtendedSalesOrder extends Omit<SalesOrder, 'customer' | 'items'> {
   customer_gstin?: string;
   payment_terms?: string;
   customer_name?: string;
+  customer_id?: string;
   sales_person_id?: string;
   subtotal?: number;
   customer?: {
+    id?: string;
     name?: string;
     gstin?: string;
   };
@@ -111,6 +113,14 @@ export default function SalesOrdersPage() {
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
   const [employeeNameById, setEmployeeNameById] = useState<EmployeeMap>({});
   const [convertingOrderId, setConvertingOrderId] = useState<string | null>(null);
+
+  // Export loading states
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [excelLoading, setExcelLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [csvLoading, setCsvLoading] = useState(false);
+
+  const [cachedExportData, setCachedExportData] = useState<ExtendedSalesOrder[] | null>(null);
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
@@ -211,8 +221,41 @@ export default function SalesOrdersPage() {
     }
   };
 
+  const fetchAllOrders = useCallback(async (): Promise<ExtendedSalesOrder[]> => {
+    if (!company?.id) return [];
+
+    try {
+      const result = await ordersApi.listSalesOrders(company.id, {
+        page: 1,
+        page_size: 1000,
+        status: statusFilter ? (statusFilter as OrderStatus) : undefined,
+        search: search || undefined,
+        from_date: fromDate || undefined,
+        to_date: toDate || undefined,
+        customer_id: customerFilter || undefined,
+      }) as any;
+
+      const ordersData: ExtendedSalesOrder[] = Array.isArray(result)
+        ? (result as ExtendedSalesOrder[])
+        : (result?.orders || []);
+
+      setCachedExportData(ordersData);
+      return ordersData;
+    } catch (error) {
+      console.error("Failed to fetch all sales orders for export:", error);
+      return [];
+    }
+  }, [company?.id, search, statusFilter, customerFilter, fromDate, toDate]);
+
+  const getExportData = async (): Promise<ExtendedSalesOrder[]> => {
+    if (cachedExportData) return cachedExportData;
+    return await fetchAllOrders();
+  };
+
+
   useEffect(() => {
     fetchOrders();
+    setCachedExportData(null);
   }, [company?.id, page, search, statusFilter, customerFilter, fromDate, toDate]);
 
   useEffect(() => {
@@ -265,84 +308,124 @@ export default function SalesOrdersPage() {
 
   // Export functions
   const copyToClipboard = async () => {
-    const headers = [
-      "Order #", "Date", "Status", "Expiry Date", "Reference No",
-      "Customer Name", "Total", "Salesman"
-    ];
+    if (copyLoading) return;
+    setCopyLoading(true);
+    try {
+      const exportOrders = await getExportData();
+      const headers = [
+        "Order #", "Date", "Status", "Expiry Date", "Reference No",
+        "Customer Name", "Total", "Salesman"
+      ];
 
-    const rows = orders.map(order => [
-      order.order_number || '-',
-      formatDate(order.order_date),
-      getStatusText(order.status),
-      formatDate(getExpiryDate(order)),
-      getReferenceNo(order),
-      getCustomerDisplayName(order),
-      formatCurrency(order.total_amount || 0),
-      getSalesPersonName(order)
-    ]);
-
-    const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
-
-    await navigator.clipboard.writeText(text);
-    alert("Sales orders data copied to clipboard");
-  };
-
-  const exportExcel = () => {
-    const exportData = orders.map(order => ({
-      "Order Number": order.order_number || '-',
-      "Order Date": formatDate(order.order_date),
-      "Status": getStatusText(order.status),
-      "Expiry Date": formatDate(getExpiryDate(order)),
-      "Reference No": getReferenceNo(order),
-      "Customer Name": getCustomerDisplayName(order),
-      "Customer GSTIN": getCustomerGSTIN(order),
-      "Total Amount": order.total_amount || 0,
-      "Subtotal": getSubtotal(order),
-      "Tax Amount": (order.total_amount || 0) - getSubtotal(order),
-      "Sales Person": getSalesPersonName(order),
-      "Payment Terms": order.payment_terms || '-'
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Sales Orders");
-    XLSX.writeFile(wb, "sales-orders.xlsx");
-  };
-
-  const exportPDF = () => {
-    const doc = new jsPDF();
-
-    autoTable(doc, {
-      head: [["Order #", "Date", "Customer Name", "Total", "Status", "Salesman"]],
-      body: orders.map(order => [
+      const rows = exportOrders.map(order => [
         order.order_number || '-',
         formatDate(order.order_date),
+        getStatusText(order.status),
+        formatDate(getExpiryDate(order)),
+        getReferenceNo(order),
         getCustomerDisplayName(order),
         formatCurrency(order.total_amount || 0),
-        getStatusText(order.status),
         getSalesPersonName(order)
-      ])
-    });
+      ]);
 
-    doc.save("sales-orders.pdf");
+      const text = [headers.join("	"), ...rows.map(r => r.join("	"))].join("\n");
+
+      await navigator.clipboard.writeText(text);
+      alert("Sales orders data copied to clipboard");
+    } catch (error) {
+      console.error("Copy failed:", error);
+      alert("Failed to copy data. Please try again.");
+    } finally {
+      setCopyLoading(false);
+    }
   };
 
-  const exportCSV = () => {
-    const exportData = orders.map(order => ({
-      "Order Number": order.order_number || '-',
-      "Order Date": formatDate(order.order_date),
-      "Status": getStatusText(order.status),
-      "Expiry Date": formatDate(getExpiryDate(order)),
-      "Reference No": getReferenceNo(order),
-      "Customer Name": getCustomerDisplayName(order),
-      "Total Amount": order.total_amount || 0,
-      "Sales Person": getSalesPersonName(order)
-    }));
+  const exportExcel = async () => {
+    if (excelLoading) return;
+    setExcelLoading(true);
+    try {
+      const exportOrders = await getExportData();
+      const exportData = exportOrders.map(order => ({
+        "Order Number": order.order_number || '-',
+        "Order Date": formatDate(order.order_date),
+        "Status": getStatusText(order.status),
+        "Expiry Date": formatDate(getExpiryDate(order)),
+        "Reference No": getReferenceNo(order),
+        "Customer Name": getCustomerDisplayName(order),
+        "Customer GSTIN": getCustomerGSTIN(order),
+        "Total Amount": order.total_amount || 0,
+        "Subtotal": getSubtotal(order),
+        "Tax Amount": (order.total_amount || 0) - getSubtotal(order),
+        "Sales Person": getSalesPersonName(order),
+        "Payment Terms": order.payment_terms || '-'
+      }));
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const csv = XLSX.utils.sheet_to_csv(ws);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    saveAs(blob, "sales-orders.csv");
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Sales Orders");
+      XLSX.writeFile(wb, "sales-orders.xlsx");
+    } catch (error) {
+      console.error("Excel export failed:", error);
+      alert("Failed to export Excel. Please try again.");
+    } finally {
+      setExcelLoading(false);
+    }
+  };
+
+  const exportPDF = async () => {
+    if (pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const exportOrders = await getExportData();
+      const doc = new jsPDF();
+
+      autoTable(doc, {
+        head: [["Order #", "Date", "Customer Name", "Total", "Status", "Salesman"]],
+        body: exportOrders.map(order => [
+          order.order_number || '-',
+          formatDate(order.order_date),
+          getCustomerDisplayName(order),
+          formatCurrency(order.total_amount || 0),
+          getStatusText(order.status),
+          getSalesPersonName(order)
+        ])
+      });
+
+      doc.save("sales-orders.pdf");
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      alert("Failed to export PDF. Please try again.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const exportCSV = async () => {
+    if (csvLoading) return;
+    setCsvLoading(true);
+    try {
+      const exportOrders = await getExportData();
+      const exportData = exportOrders.map(order => ({
+        "Order Number": order.order_number || '-',
+        "Order Date": formatDate(order.order_date),
+        "Status": getStatusText(order.status),
+        "Expiry Date": formatDate(getExpiryDate(order)),
+        "Reference No": getReferenceNo(order),
+        "Customer Name": getCustomerDisplayName(order),
+        "Total Amount": order.total_amount || 0,
+        "Sales Person": getSalesPersonName(order)
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      saveAs(blob, "sales-orders.csv");
+    } catch (error) {
+      console.error("CSV export failed:", error);
+      alert("Failed to export CSV. Please try again.");
+    } finally {
+      setCsvLoading(false);
+    }
   };
 
   const toggleColumn = (key: keyof typeof visibleColumns) => {
@@ -549,19 +632,26 @@ export default function SalesOrdersPage() {
     return '';
   };
 
+  
   // Unique customers for filter
-  const uniqueCustomers = Array.from(new Set(
-    orders
-      .map(order => getCustomerDisplayName(order))
-      .filter(name => name && name !== 'Walk-in Customer')
-  ));
+  const uniqueCustomers = Array.from(
+    new Map(
+      orders
+        .map(order => ({
+          id: order.customer_id || order.customer?.id || "",
+          name: getCustomerDisplayName(order)
+        }))
+        .filter(c => c.id && c.name && c.name !== 'Walk-in Customer')
+        .map(c => [c.id, c])
+    ).values()
+  );
 
   const getTotalPages = () => {
     return Math.ceil(totalRecords / pageSize);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="w-full">
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -710,31 +800,51 @@ export default function SalesOrdersPage() {
 
             <button
               onClick={copyToClipboard}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={copyLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Copy className="w-5 h-5" />
+              {copyLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <Copy className="w-5 h-5" />
+              )}
               Copy
             </button>
 
             <button
               onClick={exportExcel}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={excelLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Excel
+              {excelLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "Excel"
+              )}
             </button>
 
             <button
               onClick={exportPDF}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={pdfLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              PDF
+              {pdfLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "PDF"
+              )}
             </button>
 
             <button
               onClick={exportCSV}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={csvLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              CSV
+              {csvLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "CSV"
+              )}
             </button>
 
             <button className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2">
@@ -775,8 +885,8 @@ export default function SalesOrdersPage() {
             >
               <option value="">All Customers</option>
               {uniqueCustomers.map((customer) => (
-                <option key={customer} value={customer}>
-                  {customer}
+                <option key={customer.id} value={customer.id}>
+                  {customer.name}
                 </option>
               ))}
             </select>
@@ -856,7 +966,7 @@ export default function SalesOrdersPage() {
                       </th>
                     )}
                     {visibleColumns.customerName && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap min-w-[200px]">
+                      <th className="text-left px-6 py-3 whitespace-nowrap w-64">
                         Customer Name
                       </th>
                     )}
@@ -964,10 +1074,10 @@ export default function SalesOrdersPage() {
                             </td>
                           )}
                           {visibleColumns.customerName && (
-                            <td className="px-6 py-4">
+                            <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center gap-2">
                                 <Users className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                                <div className="min-w-0">
+                                <div className="min-w-0 max-w-[240px]">
                                   <div className="font-medium text-gray-900 dark:text-white truncate">
                                     {getCustomerDisplayName(order)}
                                   </div>

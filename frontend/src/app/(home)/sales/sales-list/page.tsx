@@ -1140,7 +1140,7 @@ export default function SalesListPage() {
     .filter(name => name !== 'Walk-in Customer')));
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="w-full">
       {showPrintView && (
         <PrintView
           invoices={invoicesToPrint}
@@ -1468,7 +1468,7 @@ export default function SalesListPage() {
                       </th>
                     )}
                     {visibleColumns.customerName && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap min-w-[200px]">
+                      <th className="text-left px-6 py-3 whitespace-nowrap w-64">
                         Customer Name
                       </th>
                     )}
@@ -1592,10 +1592,10 @@ export default function SalesListPage() {
                             </td>
                           )}
                           {visibleColumns.customerName && (
-                            <td className="px-6 py-4">
+                            <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center gap-2">
                                 <Users className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                                <div className="min-w-0">
+                                <div className="min-w-0 max-w-[240px]">
                                   <div className="font-medium text-gray-900 dark:text-white truncate">
                                     {getCustomerDisplayName(invoice)}
                                   </div>

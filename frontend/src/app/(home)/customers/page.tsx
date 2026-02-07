@@ -7,7 +7,7 @@ import { saveAs } from "file-saver";
 import { useAuth } from "@/context/AuthContext";
 import { customersApi, Customer, CustomerListResponse } from "@/services/api";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Users,
   Plus,
@@ -55,6 +55,14 @@ export default function CustomersPage() {
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
 
+  // Export loading states
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [excelLoading, setExcelLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [csvLoading, setCsvLoading] = useState(false);
+
+  const [cachedExportData, setCachedExportData] = useState<Customer[] | null>(null);
+
   // Column visibility state - match sales list pattern
   const [visibleColumns, setVisibleColumns] = useState({
     customerId: true,
@@ -96,6 +104,7 @@ export default function CustomersPage() {
 
   useEffect(() => {
     fetchCustomers();
+    setCachedExportData(null);
   }, [company?.id, page, search, typeFilter, statusFilter]);
 
   useEffect(() => {
@@ -112,137 +121,184 @@ export default function CustomersPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-const fetchAllCustomersForExport = async (): Promise<Customer[]> => {
-  if (!company?.id) return [];
+  const fetchAllCustomersForExport = useCallback(async (): Promise<Customer[]> => {
+    if (!company?.id) return [];
 
-  try {
-    const result = await customersApi.list(company.id, {
-      page: 1,
-      page_size: 100, // BIG NUMBER (backend safe limit)
-      search: search || undefined,
-      customer_type: typeFilter || undefined,
-    });
+    try {
+      const result = await customersApi.list(company.id, {
+        page: 1,
+        page_size: 1000,
+        search: search || undefined,
+        customer_type: typeFilter || undefined,
+      });
 
-    return result.customers || [];
-  } catch (error) {
-    console.error("Export fetch failed:", error);
-    return [];
-  }
-};
+      const customers = result.customers || [];
+      setCachedExportData(customers);
+      return customers;
+    } catch (error) {
+      console.error("Export fetch failed:", error);
+      return [];
+    }
+  }, [company?.id, search, typeFilter]);
+  const getExportData = async (): Promise<Customer[]> => {
+    if (cachedExportData) return cachedExportData;
+    return await fetchAllCustomersForExport();
+  };
+
 
 
 
   // Export functions - matching sales list pattern
-const copyToClipboard = async () => {
-  const customers = await fetchAllCustomersForExport();
+  const copyToClipboard = async () => {
+    if (copyLoading) return;
+    setCopyLoading(true);
+    try {
+      const customers = await getExportData();
+      const filtered = applyStatusFilter(customers);
 
-  const headers = [
-    "Customer ID",
-    "Name",
-    "Mobile",
-    "Email",
-    "GSTIN",
-    "Type",
-    "Due Amount",
-    "Credit Limit",
-    "Status",
-  ];
+      const headers = [
+        "Customer ID",
+        "Name",
+        "Mobile",
+        "Email",
+        "GSTIN",
+        "Type",
+        "Due Amount",
+        "Credit Limit",
+        "Status",
+      ];
 
-  const rows = customers.map(c => [
-    c.customer_code || "N/A",
-    c.name,
-    c.mobile || c.contact || "-",
-    c.email || "-",
-    c.tax_number || c.gstin || "-",
-    getTypeLabel(c.customer_type || ""),
-    formatCurrency(c.outstanding_balance || 0),
-    formatCurrency(c.credit_limit || 0),
-    getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
-  ]);
+      const rows = filtered.map(c => [
+        c.customer_code || "N/A",
+        c.name,
+        c.mobile || c.contact || "-",
+        c.email || "-",
+        c.tax_number || c.gstin || "-",
+        getTypeLabel(c.customer_type || ""),
+        formatCurrency(c.outstanding_balance || 0),
+        formatCurrency(c.credit_limit || 0),
+        getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
+      ]);
 
-  const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
+    const text = [headers.join("	"), ...rows.map(r => r.join("	"))].join("\n");
 
-  await navigator.clipboard.writeText(text);
-  alert(`Copied ${customers.length} customers`);
-};
-
-
-const exportExcel = async () => {
-  const customers = await fetchAllCustomersForExport();
-
-  const exportData = customers.map(c => ({
-    "Customer ID": c.customer_code || "N/A",
-    "Name": c.name,
-    "Mobile": c.mobile || c.contact || "-",
-    "Email": c.email || "-",
-    "GSTIN": c.tax_number || c.gstin || "-",
-    "Type": getTypeLabel(c.customer_type || ""),
-    "Due Amount": c.outstanding_balance || 0,
-    "Credit Limit": c.credit_limit || 0,
-    "Status": getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
-    "Trade Name": c.trade_name || "-",
-    "State": c.state || "-",
-    "City": c.city || "-",
-  }));
-
-  const ws = XLSX.utils.json_to_sheet(exportData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Customers");
-
-  XLSX.writeFile(wb, `customers_${Date.now()}.xlsx`);
-};
+      await navigator.clipboard.writeText(text);
+      alert(`Copied ${filtered.length} customers`);
+    } catch (error) {
+      console.error("Copy failed:", error);
+      alert("Failed to copy data. Please try again.");
+    } finally {
+      setCopyLoading(false);
+    }
+  };
 
 
-const exportPDF = async () => {
-  const customers = await fetchAllCustomersForExport();
-  const doc = new jsPDF("l", "mm", "a4");
+  const exportExcel = async () => {
+    if (excelLoading) return;
+    setExcelLoading(true);
+    try {
+      const customers = await getExportData();
+      const filtered = applyStatusFilter(customers);
 
-  autoTable(doc, {
-    head: [[
-      "Customer ID",
-      "Name",
-      "Type",
-      "Due Amount",
-      "Credit Limit",
-      "Status"
-    ]],
-    body: customers.map(c => [
-      c.customer_code || "N/A",
-      c.name,
-      getTypeLabel(c.customer_type || ""),
-      formatCurrency(c.outstanding_balance || 0),
-      formatCurrency(c.credit_limit || 0),
-      getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
-    ]),
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [37, 99, 235] },
-  });
+      const exportData = filtered.map(c => ({
+        "Customer ID": c.customer_code || "N/A",
+        "Name": c.name,
+        "Mobile": c.mobile || c.contact || "-",
+        "Email": c.email || "-",
+        "GSTIN": c.tax_number || c.gstin || "-",
+        "Type": getTypeLabel(c.customer_type || ""),
+        "Due Amount": c.outstanding_balance || 0,
+        "Credit Limit": c.credit_limit || 0,
+        "Status": getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
+        "Trade Name": c.trade_name || "-",
+        "State": c.state || "-",
+        "City": c.city || "-",
+      }));
 
-  doc.save(`customers_${Date.now()}.pdf`);
-};
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Customers");
+
+      XLSX.writeFile(wb, `customers_${Date.now()}.xlsx`);
+    } catch (error) {
+      console.error("Excel export failed:", error);
+      alert("Failed to export Excel. Please try again.");
+    } finally {
+      setExcelLoading(false);
+    }
+  };
 
 
-const exportCSV = async () => {
-  const customers = await fetchAllCustomersForExport();
+  const exportPDF = async () => {
+    if (pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const customers = await getExportData();
+      const filtered = applyStatusFilter(customers);
+      const doc = new jsPDF("l", "mm", "a4");
 
-  const exportData = customers.map(c => ({
-    "Customer ID": c.customer_code || "N/A",
-    "Name": c.name,
-    "Mobile": c.mobile || c.contact || "-",
-    "Email": c.email || "-",
-    "GSTIN": c.tax_number || c.gstin || "-",
-    "Type": getTypeLabel(c.customer_type || ""),
-    "Due Amount": c.outstanding_balance || 0,
-    "Credit Limit": c.credit_limit || 0,
-    "Status": getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
-  }));
+      autoTable(doc, {
+        head: [[
+          "Customer ID",
+          "Name",
+          "Type",
+          "Due Amount",
+          "Credit Limit",
+          "Status"
+        ]],
+        body: filtered.map(c => [
+          c.customer_code || "N/A",
+          c.name,
+          getTypeLabel(c.customer_type || ""),
+          formatCurrency(c.outstanding_balance || 0),
+          formatCurrency(c.credit_limit || 0),
+          getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
+        ]),
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [37, 99, 235] },
+      });
 
-  const ws = XLSX.utils.json_to_sheet(exportData);
-  const csv = XLSX.utils.sheet_to_csv(ws);
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      doc.save(`customers_${Date.now()}.pdf`);
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      alert("Failed to export PDF. Please try again.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
 
-  saveAs(blob, `customers_${Date.now()}.csv`);
-};
+
+  const exportCSV = async () => {
+    if (csvLoading) return;
+    setCsvLoading(true);
+    try {
+      const customers = await getExportData();
+      const filtered = applyStatusFilter(customers);
+
+      const exportData = filtered.map(c => ({
+        "Customer ID": c.customer_code || "N/A",
+        "Name": c.name,
+        "Mobile": c.mobile || c.contact || "-",
+        "Email": c.email || "-",
+        "GSTIN": c.tax_number || c.gstin || "-",
+        "Type": getTypeLabel(c.customer_type || ""),
+        "Due Amount": c.outstanding_balance || 0,
+        "Credit Limit": c.credit_limit || 0,
+        "Status": getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+
+      saveAs(blob, `customers_${Date.now()}.csv`);
+    } catch (error) {
+      console.error("CSV export failed:", error);
+      alert("Failed to export CSV. Please try again.");
+    } finally {
+      setCsvLoading(false);
+    }
+  };
 
 
   const toggleColumn = (key: keyof typeof visibleColumns) => {
@@ -260,6 +316,17 @@ const exportCSV = async () => {
     if (outstanding > 0) return 'Pending';
     return 'Paid';
   };
+
+  const applyStatusFilter = (customers: Customer[]): Customer[] => {
+    if (!statusFilter) return customers;
+    return customers.filter((c) => {
+      const status = getStatusText(c.outstanding_balance || 0, c.credit_limit || 0).toLowerCase();
+      return status === statusFilter.toLowerCase();
+    });
+  };
+
+  const displayCustomers = applyStatusFilter(data?.customers || []);
+
 
   const getStatusBadge = (outstanding: number, creditLimit: number) => {
     const text = getStatusText(outstanding, creditLimit);
@@ -338,7 +405,7 @@ const exportCSV = async () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="w-full">
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -487,31 +554,51 @@ const exportCSV = async () => {
 
             <button
               onClick={copyToClipboard}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={copyLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Copy className="w-5 h-5" />
+              {copyLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <Copy className="w-5 h-5" />
+              )}
               Copy
             </button>
 
             <button
               onClick={exportExcel}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={excelLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Excel
+              {excelLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "Excel"
+              )}
             </button>
 
             <button
               onClick={exportPDF}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={pdfLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              PDF
+              {pdfLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "PDF"
+              )}
             </button>
 
             <button
               onClick={exportCSV}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={csvLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              CSV
+              {csvLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                "CSV"
+              )}
             </button>
 
             <button 
@@ -581,7 +668,7 @@ const exportCSV = async () => {
                       </th>
                     )}
                     {visibleColumns.name && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap min-w-[200px]">
+                      <th className="text-left px-6 py-3 whitespace-nowrap w-64">
                         Name
                       </th>
                     )}
@@ -642,7 +729,7 @@ const exportCSV = async () => {
                         No company selected
                       </td>
                     </tr>
-                  ) : !data?.customers || data.customers.length === 0 ? (
+                  ) : displayCustomers.length === 0 ? (
                     <tr>
                       <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
                         <div className="flex flex-col items-center justify-center">
@@ -663,7 +750,7 @@ const exportCSV = async () => {
                       </td>
                     </tr>
                   ) : (
-                    data.customers.map((customer) => {
+                    displayCustomers.map((customer) => {
                       const isOverdue = (customer.outstanding_balance || 0) > (customer.credit_limit || 0);
                       
                       return (
@@ -679,10 +766,10 @@ const exportCSV = async () => {
                             </td>
                           )}
                           {visibleColumns.name && (
-                            <td className="px-6 py-4">
+                            <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center gap-2">
                                 <Users className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                                <div className="min-w-0">
+                                <div className="min-w-0 max-w-[240px]">
                                   <div className="font-medium text-gray-900 dark:text-white truncate">
                                     {customer.name}
                                   </div>
@@ -840,7 +927,7 @@ const exportCSV = async () => {
                     })
                   )}
                 </tbody>
-                {data?.customers && data.customers.length > 0 && visibleColumns.dueAmount && (
+                {displayCustomers.length > 0 && visibleColumns.dueAmount && (
                   <tfoot>
                     <tr className="bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
                       <td
@@ -854,7 +941,7 @@ const exportCSV = async () => {
                         Total Outstanding:
                       </td>
                       <td className="px-6 py-4 font-bold text-gray-900 dark:text-white whitespace-nowrap">
-                        {formatCurrency(data.customers.reduce((sum, customer) => sum + (customer.outstanding_balance || 0), 0))}
+                        {formatCurrency(displayCustomers.reduce((sum, customer) => sum + (customer.outstanding_balance || 0), 0))}
                       </td>
                       {visibleColumns.actions && (
                         <td></td>
@@ -868,11 +955,11 @@ const exportCSV = async () => {
         </div>
 
         {/* Pagination - Matching sales list pattern */}
-        {data && data.total > pageSize && (
+        {(data && (statusFilter ? displayCustomers.length : data.total) > pageSize) && (
           <div className="mt-4 flex items-center justify-between">
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Showing {(page - 1) * pageSize + 1} to{" "}
-              {Math.min(page * pageSize, data.total)} of {data.total} results
+              {Math.min(page * pageSize, statusFilter ? displayCustomers.length : data.total)} of {statusFilter ? displayCustomers.length : data.total} results
             </p>
             <div className="flex gap-2">
               <button

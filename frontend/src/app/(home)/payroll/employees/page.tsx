@@ -863,7 +863,7 @@ export default function EmployeesPage() {
   }));
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="w-full">
       {showPrintView && (
         <PrintView
           employees={employeesToPrint}
@@ -1174,7 +1174,7 @@ export default function EmployeesPage() {
                     </th>
                   )}
                   {visibleColumns.name && (
-                    <th className="text-left px-6 py-3 whitespace-nowrap min-w-[200px]">
+                    <th className="text-left px-6 py-3 whitespace-nowrap w-64">
                       Employee Name
                     </th>
                   )}
@@ -1274,9 +1274,9 @@ export default function EmployeesPage() {
                           </td>
                         )}
                         {visibleColumns.name && (
-                          <td className="px-6 py-4">
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center gap-3">
-                              <div className="min-w-0">
+                              <div className="min-w-0 max-w-[240px]">
                                 <div className="font-medium text-gray-900 dark:text-white truncate">
                                   {employee.full_name || `${employee.first_name} ${employee.last_name || ''}`}
                                 </div>

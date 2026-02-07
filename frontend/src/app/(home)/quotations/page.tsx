@@ -4,7 +4,11 @@ import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 import dayjs from "dayjs";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { saveAs } from "file-saver";
 
 interface Quotation {
   id: string;
@@ -43,10 +47,19 @@ export default function QuotationsPage() {
   const [converting, setConverting] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
+  // Export loading states
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [excelLoading, setExcelLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [csvLoading, setCsvLoading] = useState(false);
+
+  const [cachedExportData, setCachedExportData] = useState<Quotation[] | null>(null);
+
   const getToken = () => typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
   useEffect(() => {
     fetchQuotations();
+    setCachedExportData(null);
   }, [company?.id, page, statusFilter]);
 
   const fetchQuotations = async () => {
@@ -78,6 +91,168 @@ export default function QuotationsPage() {
       console.error("Failed to fetch quotations:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAllQuotationsForExport = useCallback(async (): Promise<Quotation[]> => {
+    const token = getToken();
+    if (!company?.id || !token) return [];
+
+    try {
+      const params = new URLSearchParams();
+      params.append("page", "1");
+      params.append("page_size", "1000");
+      if (statusFilter) params.append("status", statusFilter);
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations?${params}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) throw new Error("Failed to fetch quotations for export");
+
+      const result = await response.json();
+      const list = result?.items || [];
+      setCachedExportData(list);
+      return list;
+    } catch (error) {
+      console.error("Export fetch failed:", error);
+      return [];
+    }
+  }, [company?.id, statusFilter]);
+
+  const getExportData = async (): Promise<Quotation[]> => {
+    if (cachedExportData) return cachedExportData;
+    return await fetchAllQuotationsForExport();
+  };
+
+
+  
+  const copyToClipboard = async () => {
+    if (copyLoading) return;
+    setCopyLoading(true);
+    try {
+      const quotations = await getExportData();
+      const headers = [
+        "Quotation Date",
+        "Quotation Status",
+        "Expire Date",
+        "Quotation Code",
+        "Reference No.",
+        "Customer Name",
+        "Total",
+        "Salesman",
+      ];
+
+      const rows = quotations.map((q) => [
+        dayjs(q.quotation_date).format("DD MMM YYYY"),
+        q.status,
+        q.validity_date ? dayjs(q.validity_date).format("DD MMM YYYY") : "-",
+        q.quotation_number,
+        q.reference_no || "-",
+        q.customer_name || "Walk-in Customer",
+        formatCurrency(q.total_amount),
+        q.sales_person_name || "-",
+      ]);
+
+      const text = [headers.join("\t"), ...rows.map((r) => r.join("\t"))].join("\n");
+      await navigator.clipboard.writeText(text);
+      alert("Quotation data copied to clipboard");
+    } catch (error) {
+      console.error("Copy failed:", error);
+      alert("Failed to copy data. Please try again.");
+    } finally {
+      setCopyLoading(false);
+    }
+  };
+
+  const exportExcel = async () => {
+    if (excelLoading) return;
+    setExcelLoading(true);
+    try {
+      const quotations = await getExportData();
+      const exportData = quotations.map((q) => ({
+        "Quotation Date": dayjs(q.quotation_date).format("DD MMM YYYY"),
+        "Quotation Status": q.status,
+        "Expire Date": q.validity_date ? dayjs(q.validity_date).format("DD MMM YYYY") : "-",
+        "Quotation Code": q.quotation_number,
+        "Reference No.": q.reference_no || "-",
+        "Customer Name": q.customer_name || "Walk-in Customer",
+        "Total": q.total_amount,
+        "Salesman": q.sales_person_name || "-",
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Quotations");
+      XLSX.writeFile(wb, "quotations.xlsx");
+    } catch (error) {
+      console.error("Excel export failed:", error);
+      alert("Failed to export Excel. Please try again.");
+    } finally {
+      setExcelLoading(false);
+    }
+  };
+
+  const exportPDF = async () => {
+    if (pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const quotations = await getExportData();
+      const doc = new jsPDF("landscape");
+
+      autoTable(doc, {
+        head: [["Date", "Status", "Expire", "Code", "Reference", "Customer", "Total", "Salesman"]],
+        body: quotations.map((q) => [
+          dayjs(q.quotation_date).format("DD MMM YYYY"),
+          q.status,
+          q.validity_date ? dayjs(q.validity_date).format("DD MMM YYYY") : "-",
+          q.quotation_number,
+          q.reference_no || "-",
+          q.customer_name || "Walk-in Customer",
+          formatCurrency(q.total_amount),
+          q.sales_person_name || "-",
+        ]),
+      });
+
+      doc.save("quotations.pdf");
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      alert("Failed to export PDF. Please try again.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const exportCSV = async () => {
+    if (csvLoading) return;
+    setCsvLoading(true);
+    try {
+      const quotations = await getExportData();
+      const exportData = quotations.map((q) => ({
+        "Quotation Date": dayjs(q.quotation_date).format("DD MMM YYYY"),
+        "Quotation Status": q.status,
+        "Expire Date": q.validity_date ? dayjs(q.validity_date).format("DD MMM YYYY") : "-",
+        "Quotation Code": q.quotation_number,
+        "Reference No.": q.reference_no || "-",
+        "Customer Name": q.customer_name || "Walk-in Customer",
+        "Total": q.total_amount,
+        "Salesman": q.sales_person_name || "-",
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      saveAs(blob, "quotations.csv");
+    } catch (error) {
+      console.error("CSV export failed:", error);
+      alert("Failed to export CSV. Please try again.");
+    } finally {
+      setCsvLoading(false);
     }
   };
 
@@ -264,8 +439,8 @@ export default function QuotationsPage() {
         </Link>
       </div>
 
-      {/* Status Filter */}
-      <div className="mb-6 flex flex-col gap-4 rounded-lg bg-white p-4 shadow-1 dark:bg-gray-dark sm:flex-row">
+      {/* Filters + Export */}
+      <div className="mb-6 flex flex-col gap-4 rounded-lg bg-white p-4 shadow-1 dark:bg-gray-dark sm:flex-row sm:items-center sm:justify-between">
         <select
           value={statusFilter}
           onChange={(e) => {
@@ -282,6 +457,37 @@ export default function QuotationsPage() {
           <option value="expired">Expired</option>
           <option value="converted">Converted</option>
         </select>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={copyToClipboard}
+            disabled={copyLoading}
+            className="rounded-lg border border-stroke px-4 py-2 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-3 dark:hover:bg-dark-2"
+          >
+            {copyLoading ? "Copying..." : "Copy"}
+          </button>
+          <button
+            onClick={exportExcel}
+            disabled={excelLoading}
+            className="rounded-lg border border-stroke px-4 py-2 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-3 dark:hover:bg-dark-2"
+          >
+            {excelLoading ? "Exporting..." : "Excel"}
+          </button>
+          <button
+            onClick={exportPDF}
+            disabled={pdfLoading}
+            className="rounded-lg border border-stroke px-4 py-2 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-3 dark:hover:bg-dark-2"
+          >
+            {pdfLoading ? "Exporting..." : "PDF"}
+          </button>
+          <button
+            onClick={exportCSV}
+            disabled={csvLoading}
+            className="rounded-lg border border-stroke px-4 py-2 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-3 dark:hover:bg-dark-2"
+          >
+            {csvLoading ? "Exporting..." : "CSV"}
+          </button>
+        </div>
       </div>
 
       {/* Table */}
@@ -305,7 +511,7 @@ export default function QuotationsPage() {
                 <th className="px-4 py-4 text-left font-medium text-dark dark:text-white">
                   Reference No.
                 </th>
-                <th className="px-4 py-4 text-left font-medium text-dark dark:text-white">
+                <th className="px-4 py-4 text-left font-medium text-dark dark:text-white whitespace-nowrap w-64">
                   Customer Name
                 </th>
                 <th className="px-4 py-4 text-left font-medium text-dark dark:text-white">
@@ -371,8 +577,10 @@ export default function QuotationsPage() {
                     <td className="px-4 py-4 text-dark-6">
                       {quotation.reference_no || "-"}
                     </td>
-                    <td className="px-4 py-4 text-dark dark:text-white">
-                      {quotation.customer_name || "Walk-in Customer"}
+                    <td className="px-4 py-4 text-dark dark:text-white whitespace-nowrap">
+                      <span className="inline-block max-w-[240px] truncate">
+                        {quotation.customer_name || "Walk-in Customer"}
+                      </span>
                     </td>
                     <td className="px-4 py-4 font-medium text-dark dark:text-white">
                       {formatCurrency(quotation.total_amount)}
