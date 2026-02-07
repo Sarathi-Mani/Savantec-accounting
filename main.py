@@ -84,6 +84,7 @@ app.add_middleware(
         "https://accounts-demo.sellfiz.com",
         "https://accounts-demo-api.sellfiz.com",
     ],
+    allow_origin_regex=".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

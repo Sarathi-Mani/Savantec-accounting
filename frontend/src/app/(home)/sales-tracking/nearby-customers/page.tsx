@@ -83,12 +83,18 @@ export default function NearbyCustomersPage() {
   const [customers, setCustomers] = useState<NearbyCustomer[]>([]);
   const [radiusKm, setRadiusKm] = useState(10);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchSuggestions, setSearchSuggestions] = useState<
+    { label: string; lat: number; lng: number }[]
+  >([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [searchCenter, setSearchCenter] = useState<[number, number] | null>(null);
   const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [isPageReady, setIsPageReady] = useState(false);
   const [geocodeAttempted, setGeocodeAttempted] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
+  const initialLoadDoneRef = useRef(false);
 
   const [trip, setTrip] = useState<TripState | null>(null);
   const [visitsByCustomer, setVisitsByCustomer] = useState<Record<string, VisitState>>({});
@@ -118,7 +124,32 @@ export default function NearbyCustomersPage() {
     
     if (!company?.id || !user?.id) return;
     loadCurrentTrip();
+    // Try to seed current location (will not block initial list)
     getCurrentLocation();
+    // Show all customers on initial load (without requiring location permission)
+    const loadInitialCustomers = async () => {
+      setLoading(true);
+      try {
+        const allWithLocations = await fetchAllCustomersWithLocations();
+        if (allWithLocations.length > 0) {
+          setCustomers(allWithLocations);
+        }
+        if (allWithLocations.length === 0 && !geocodeAttempted) {
+          setGeocodeAttempted(true);
+          await triggerGeocodeMissing();
+          const refreshed = await fetchAllCustomersWithLocations();
+          if (refreshed.length > 0) {
+            setCustomers(refreshed);
+          }
+        }
+      } catch {
+        // ignore
+      } finally {
+        initialLoadDoneRef.current = true;
+        setLoading(false);
+      }
+    };
+    loadInitialCustomers();
   }, [company?.id, user?.id]);
 
   useEffect(() => {
@@ -135,7 +166,7 @@ export default function NearbyCustomersPage() {
     };
   }, []);
 
-  const getCurrentLocation = () => {
+  const getCurrentLocation = (onSuccess?: (pos: [number, number]) => void) => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -144,6 +175,7 @@ export default function NearbyCustomersPage() {
         if (!searchCenter) {
           setSearchCenter(next);
         }
+        if (onSuccess) onSuccess(next);
       },
       () => {
         // ignore
@@ -259,7 +291,11 @@ export default function NearbyCustomersPage() {
           },
         });
         const normalized = (response.data || []).map(normalizeCustomer);
-        setCustomers(normalized);
+        setCustomers((prev) =>
+          normalized.length === 0 && prev.length > 0 && !initialLoadDoneRef.current
+            ? prev
+            : normalized
+        );
 
         if (normalized.length === 0 && !geocodeAttempted) {
           setGeocodeAttempted(true);
@@ -355,11 +391,41 @@ export default function NearbyCustomersPage() {
     return [parseFloat(data[0].lat), parseFloat(data[0].lon)] as [number, number];
   };
 
+  const loadSearchSuggestions = async (query: string) => {
+    if (!query.trim()) {
+      setSearchSuggestions([]);
+      return;
+    }
+    try {
+      setSearchLoading(true);
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(
+        query.trim()
+      )}`;
+      const res = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!res.ok) {
+        setSearchSuggestions([]);
+        return;
+      }
+      const data = await res.json();
+      const next = (data || []).map((item: any) => ({
+        label: item.display_name as string,
+        lat: parseFloat(item.lat),
+        lng: parseFloat(item.lon),
+      }));
+      setSearchSuggestions(next);
+    } catch {
+      setSearchSuggestions([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     try {
       const center = await geocodeLocation(searchQuery.trim());
       setSearchCenter(center);
+      setSearchOpen(false);
     } catch (error: any) {
       alert(error.message || "Unable to find location");
     }
@@ -412,10 +478,6 @@ export default function NearbyCustomersPage() {
 
   const handleStartTrip = async () => {
     if (!company?.id || !user?.id) return;
-    if (!currentLocation) {
-      alert("Please enable location to start trip");
-      return;
-    }
     if (!tripForm.start_km) {
       alert("Please enter start KM");
       return;
@@ -427,14 +489,30 @@ export default function NearbyCustomersPage() {
       `${tripForm.start_date}T${now.toTimeString().slice(0, 8)}`
     ).toISOString();
 
+    if (!currentLocation) {
+      // Ask for location permission now
+      getCurrentLocation(async (loc) => {
+        await startTripWithLocation(loc, deviceId, startTimestamp);
+      });
+      return;
+    }
+
+    await startTripWithLocation(currentLocation, deviceId, startTimestamp);
+  };
+
+  const startTripWithLocation = async (
+    loc: [number, number],
+    deviceId: string,
+    startTimestamp: string
+  ) => {
     try {
       const response = await api.post(
         `/companies/${company.id}/trips/start?engineer_id=${user.id}`,
         {
           start_km: parseFloat(tripForm.start_km),
           start_location: {
-            latitude: currentLocation[0],
-            longitude: currentLocation[1],
+            latitude: loc[0],
+            longitude: loc[1],
             accuracy: 0,
             device_id: deviceId,
             is_mock_location: false,
@@ -459,9 +537,7 @@ export default function NearbyCustomersPage() {
         notes: "",
       });
       startLocationTracking(response.data.trip_id);
-      if (currentLocation) {
-        setSearchCenter(currentLocation);
-      }
+      setSearchCenter(loc);
     } catch (error: any) {
       alert(error.response?.data?.detail || "Failed to start trip");
     }
@@ -641,6 +717,24 @@ export default function NearbyCustomersPage() {
     });
   }, [customersWithDistance, visitsByCustomer, user?.name]);
 
+  const selectedCustomer = useMemo(() => {
+    return customersWithDistance.find((c) => c.id === selectedCustomerId) || null;
+  }, [customersWithDistance, selectedCustomerId]);
+
+  const selectedDistanceKm = useMemo(() => {
+    if (!currentLocation || !selectedCustomer) return null;
+    if (
+      typeof selectedCustomer.location_lat !== "number" ||
+      typeof selectedCustomer.location_lng !== "number"
+    ) {
+      return null;
+    }
+    return haversineKm(currentLocation, [
+      selectedCustomer.location_lat,
+      selectedCustomer.location_lng,
+    ]);
+  }, [currentLocation, selectedCustomer]);
+
   const sortedCustomers = useMemo(() => {
     return [...customersWithDistance].sort((a, b) => {
       const da = a.distance_km ?? Number.MAX_SAFE_INTEGER;
@@ -648,6 +742,9 @@ export default function NearbyCustomersPage() {
       return da - db;
     });
   }, [customersWithDistance]);
+
+  const showListLoading =
+    loading && !initialLoadDoneRef.current && sortedCustomers.length === 0;
 
   if (!isPageReady) {
     return (
@@ -686,7 +783,7 @@ export default function NearbyCustomersPage() {
               className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-opacity-90 flex items-center gap-2"
             >
               <Play className="w-4 h-4" />
-              Start Trip
+              Start Today Trip
             </button>
           )}
           {trip && (
@@ -702,11 +799,17 @@ export default function NearbyCustomersPage() {
       </div>
 
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 flex items-center gap-2 bg-white rounded-lg border p-3">
+        <div className="lg:col-span-2 flex items-center gap-2 bg-white rounded-lg border p-3 relative">
           <Search className="w-4 h-4 text-gray-500" />
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setSearchOpen(true)}
+            onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+            onKeyUp={(e) => {
+              const value = (e.target as HTMLInputElement).value;
+              loadSearchSuggestions(value);
+            }}
             placeholder="Search location (city / area / pincode)"
             className="flex-1 outline-none text-sm"
           />
@@ -723,6 +826,32 @@ export default function NearbyCustomersPage() {
             <LocateFixed className="w-4 h-4" />
             Use Current
           </button>
+          {searchOpen && (
+            <div className="absolute mt-12 w-[420px] max-w-full bg-white border rounded-md shadow-lg z-20">
+              {searchLoading && (
+                <div className="px-3 py-2 text-xs text-gray-500">Searching...</div>
+              )}
+              {!searchLoading && searchSuggestions.length === 0 && (
+                <div className="px-3 py-2 text-xs text-gray-500">
+                  No suggestions
+                </div>
+              )}
+              {!searchLoading &&
+                searchSuggestions.map((item) => (
+                  <button
+                    key={`${item.lat}-${item.lng}-${item.label}`}
+                    onClick={() => {
+                      setSearchCenter([item.lat, item.lng]);
+                      setSearchQuery(item.label);
+                      setSearchOpen(false);
+                    }}
+                    className="block w-full text-left px-3 py-2 text-xs hover:bg-gray-50"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3 bg-white rounded-lg border p-3">
@@ -773,7 +902,7 @@ export default function NearbyCustomersPage() {
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 bg-white rounded-lg border overflow-hidden h-[600px]">
+        <div className="lg:col-span-2 bg-white rounded-lg border overflow-hidden h-[600px] relative">
           <CustomerMap
             mapId="nearby-customers-map"
             center={mapCenter}
@@ -784,6 +913,14 @@ export default function NearbyCustomersPage() {
             selectedCustomerId={selectedCustomerId}
             focusZoom={16}
           />
+          {selectedCustomer && selectedDistanceKm != null && (
+            <div className="absolute top-4 left-4 z-10 bg-white/90 border rounded-md px-3 py-2 text-sm shadow-sm">
+              <div className="font-medium text-gray-900">{selectedCustomer.name}</div>
+              <div className="text-xs text-gray-600">
+                Distance: {selectedDistanceKm.toFixed(2)} km
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-lg border h-[600px] flex flex-col">
@@ -795,10 +932,10 @@ export default function NearbyCustomersPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {loading && (
+            {showListLoading && (
               <div className="p-6 text-center text-gray-500">Loading...</div>
             )}
-            {!loading && sortedCustomers.length === 0 && (
+            {sortedCustomers.length === 0 && !showListLoading && (
               <div className="p-6 text-center text-gray-500">
                 <MapPin className="w-8 h-8 mx-auto mb-2 text-gray-300" />
                 No customers found

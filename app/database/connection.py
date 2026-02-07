@@ -52,6 +52,7 @@ def ensure_tracking_columns():
         ("engineer_tracking_status", "fraud_reason", "VARCHAR(50)"),
         ("engineer_tracking_status", "fraud_score", "INTEGER"),
         ("location_logs", "network_type", "VARCHAR(50)"),
+        ("location_logs", "uploaded_at", "TIMESTAMP"),
         ("trips", "is_valid", "BOOLEAN"),
         ("trips", "validated_by", "VARCHAR(36)"),
         ("trips", "validated_at", "TIMESTAMP"),
@@ -68,7 +69,9 @@ def ensure_tracking_columns():
                     """
                     SELECT 1
                     FROM information_schema.columns
-                    WHERE table_name = :table AND column_name = :column
+                    WHERE table_name = :table
+                      AND column_name = :column
+                      AND table_schema = current_schema()
                     LIMIT 1
                     """
                 ),

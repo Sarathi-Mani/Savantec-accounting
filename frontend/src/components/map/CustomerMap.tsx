@@ -62,6 +62,8 @@ export default function CustomerMap({
   const [mapSupported, setMapSupported] = useState(true);
   const [isMounted, setIsMounted] = useState(false);
   const maplibreRef = useRef<any>(null);
+  const routeSourceIdRef = useRef(`route-line-${mapId}`);
+  const routeLayerIdRef = useRef(`route-line-layer-${mapId}`);
 
   // Initialize map only once
   useEffect(() => {
@@ -140,6 +142,71 @@ export default function CustomerMap({
       updateCurrentLocationMarker();
     }
   }, [customers, currentLocation, onMarkerClick, isMounted]);
+
+  // Draw line between current location and selected customer
+  useEffect(() => {
+    if (!mapRef.current || !isMounted) return;
+    const map = mapRef.current;
+    if (!map.loaded()) return;
+
+    const sourceId = routeSourceIdRef.current;
+    const layerId = routeLayerIdRef.current;
+
+    const selected = selectedCustomerId
+      ? customers.find((c) => c.id === selectedCustomerId)
+      : null;
+    const hasLine =
+      !!currentLocation &&
+      !!selected?.position &&
+      typeof currentLocation[0] === "number" &&
+      typeof currentLocation[1] === "number";
+
+    const lineGeojson = hasLine
+      ? {
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: {
+                type: "LineString",
+                coordinates: [
+                  [currentLocation![1], currentLocation![0]],
+                  [selected!.position![1], selected!.position![0]],
+                ],
+              },
+              properties: {},
+            },
+          ],
+        }
+      : { type: "FeatureCollection", features: [] };
+
+    if (map.getSource(sourceId)) {
+      (map.getSource(sourceId) as any).setData(lineGeojson);
+    } else {
+      map.addSource(sourceId, {
+        type: "geojson",
+        data: lineGeojson,
+      } as any);
+    }
+
+    if (!map.getLayer(layerId)) {
+      map.addLayer({
+        id: layerId,
+        type: "line",
+        source: sourceId,
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+        },
+        paint: {
+          "line-color": "#ef4444",
+          "line-width": 3,
+          "line-opacity": 0.85,
+          "line-dasharray": [1.5, 1.5],
+        },
+      } as any);
+    }
+  }, [selectedCustomerId, currentLocation, customers, isMounted, mapId]);
 
   // Fly to selected customer or reset to default view
   useEffect(() => {
