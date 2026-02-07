@@ -63,7 +63,7 @@ class TripResponse(BaseModel):
     id: str
     trip_number: str
     engineer_id: str
-    engineer_name: str
+    engineer_name: Optional[str] = None
     start_time: Optional[datetime]
     end_time: Optional[datetime]
     start_km: Optional[Decimal]
@@ -82,11 +82,11 @@ class TripResponse(BaseModel):
 class VisitResponse(BaseModel):
     id: str
     engineer_id: str
-    engineer_name: str
+    engineer_name: Optional[str] = None
     customer_id: Optional[str]
-    customer_name: Optional[str]
-    enquiry_id: Optional[str]
-    enquiry_number: Optional[str]
+    customer_name: Optional[str] = None
+    enquiry_id: Optional[str] = None
+    enquiry_number: Optional[str] = None
     trip_id: str
     in_time: Optional[datetime]
     out_time: Optional[datetime]
@@ -345,10 +345,10 @@ def get_engineer_visit_summary(
     db: Session = Depends(get_db)
 ):
     """Get visit summary for engineer."""
-    visits = db.query(Visit).filter(
-        Visit.company_id == company_id,
-        Visit.engineer_id == engineer_id,
-        Visit.status == VisitStatus.COMPLETED
+    visits = db.query(SalesVisit).filter(
+        SalesVisit.company_id == company_id,
+        SalesVisit.engineer_id == engineer_id,
+        SalesVisit.status == VisitStatus.COMPLETED
     ).all()
     
     # Today's visits
@@ -521,7 +521,7 @@ def create_trip_visits(
         customer = customer_map.get(customer_id)
         if not customer:
             continue
-        visit = Visit(
+        visit = SalesVisit(
             company_id=company_id,
             engineer_id=trip.engineer_id,
             customer_id=customer.id,
@@ -641,9 +641,9 @@ def mark_visit_in(
     db: Session = Depends(get_db)
 ):
     """Mark IN for a visit with geofence validation."""
-    visit = db.query(Visit).filter(
-        Visit.id == visit_id,
-        Visit.company_id == company_id
+    visit = db.query(SalesVisit).filter(
+        SalesVisit.id == visit_id,
+        SalesVisit.company_id == company_id
     ).first()
     
     if not visit:
@@ -715,9 +715,9 @@ def mark_visit_out(
     db: Session = Depends(get_db)
 ):
     """Mark OUT for a visit."""
-    visit = db.query(Visit).filter(
-        Visit.id == visit_id,
-        Visit.company_id == company_id
+    visit = db.query(SalesVisit).filter(
+        SalesVisit.id == visit_id,
+        SalesVisit.company_id == company_id
     ).first()
     
     if not visit:
@@ -794,7 +794,17 @@ def update_location(
     ).first()
     
     if not device_binding:
-        raise HTTPException(status_code=400, detail="Device not bound or inactive")
+        device_binding = SalesEngineerDevice(
+            company_id=company_id,
+            engineer_id=engineer_id,
+            device_id=data.device_id,
+            device_model="web",
+            device_os="web",
+            device_version="browser",
+            background_tracking_enabled=True,
+            is_active=True
+        )
+        db.add(device_binding)
     
     # Get current trip
     tracking_status = db.query(EngineerTrackingStatus).filter(
@@ -802,8 +812,20 @@ def update_location(
         EngineerTrackingStatus.engineer_id == engineer_id
     ).first()
     
-    if not tracking_status or not tracking_status.current_trip_id:
-        raise HTTPException(status_code=400, detail="No active trip")
+    if not tracking_status:
+        tracking_status = EngineerTrackingStatus(
+            company_id=company_id,
+            engineer_id=engineer_id,
+            status=TrackingStatus.IDLE,
+            current_trip_id=None,
+            current_lat=data.latitude,
+            current_lng=data.longitude,
+            last_location_update=data.timestamp,
+            device_id=data.device_id,
+            is_online=True,
+            gps_enabled=True
+        )
+        db.add(tracking_status)
     
     # Create location log
     location_log = LocationLog(
@@ -829,6 +851,7 @@ def update_location(
     tracking_status.current_lng = data.longitude
     tracking_status.last_location_update = data.timestamp
     tracking_status.is_online = True
+    tracking_status.device_id = data.device_id
     
     if data.is_mock_location:
         # Flag for fake GPS
@@ -1173,25 +1196,25 @@ def get_visit_summary_report(
 ):
     """Get visit summary report."""
     query = db.query(
-        Visit.engineer_id,
-        func.count(Visit.id).label("total_visits"),
-        func.count(case((Visit.is_valid == True, 1))).label("valid_visits"),
-        func.count(case((Visit.has_fraud_flag == True, 1))).label("fraud_visits"),
-        func.avg(Visit.duration_minutes).label("avg_duration"),
-        func.sum(case((Visit.is_valid == True, 1), else_=0)).label("productive_visits")
+        SalesVisit.engineer_id,
+        func.count(SalesVisit.id).label("total_visits"),
+        func.count(case((SalesVisit.is_valid == True, 1))).label("valid_visits"),
+        func.count(case((SalesVisit.has_fraud_flag == True, 1))).label("fraud_visits"),
+        func.avg(SalesVisit.duration_minutes).label("avg_duration"),
+        func.sum(case((SalesVisit.is_valid == True, 1), else_=0)).label("productive_visits")
     ).join(
-        Employee, Visit.engineer_id == Employee.id
+        Employee, SalesVisit.engineer_id == Employee.id
     ).filter(
-        Visit.company_id == company_id,
-        func.date(Visit.in_time) >= start_date,
-        func.date(Visit.in_time) <= end_date,
-        Visit.status == VisitStatus.COMPLETED
+        SalesVisit.company_id == company_id,
+        func.date(SalesVisit.in_time) >= start_date,
+        func.date(SalesVisit.in_time) <= end_date,
+        SalesVisit.status == VisitStatus.COMPLETED
     )
     
     if engineer_id:
-        query = query.filter(Visit.engineer_id == engineer_id)
+        query = query.filter(SalesVisit.engineer_id == engineer_id)
     
-    query = query.group_by(Visit.engineer_id)
+    query = query.group_by(SalesVisit.engineer_id)
     
     results = query.all()
     
@@ -1278,15 +1301,15 @@ def get_fraud_detection_report(
     ).all()
     
     # Fraud in visits
-    fraudulent_visits = db.query(Visit, Employee, Customer).join(
-        Employee, Visit.engineer_id == Employee.id
+    fraudulent_visits = db.query(SalesVisit, Employee, Customer).join(
+        Employee, SalesVisit.engineer_id == Employee.id
     ).join(
-        Customer, Visit.customer_id == Customer.id
+        Customer, SalesVisit.customer_id == Customer.id
     ).filter(
-        Visit.company_id == company_id,
-        Visit.has_fraud_flag == True,
-        func.date(Visit.in_time) >= start_date,
-        func.date(Visit.in_time) <= end_date
+        SalesVisit.company_id == company_id,
+        SalesVisit.has_fraud_flag == True,
+        func.date(SalesVisit.in_time) >= start_date,
+        func.date(SalesVisit.in_time) <= end_date
     ).all()
     
     # Fraud in claims

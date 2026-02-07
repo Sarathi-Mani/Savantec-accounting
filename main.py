@@ -141,9 +141,9 @@ app.include_router(alternative_products_router, prefix="/api")
 app.include_router(brands_router, prefix="/api")
 app.include_router(categories_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
+app.include_router(tracking_router)
 app.include_router(visits_router)
 app.include_router(stock_journal_router, prefix="/api")
-app.include_router(tracking_router)
 
 
 @app.on_event("startup")

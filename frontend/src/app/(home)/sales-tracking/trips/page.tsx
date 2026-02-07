@@ -266,7 +266,7 @@ export default function TripsPage() {
               Track and manage engineer trips
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          {/* <div className="flex items-center gap-3">
             <button
               onClick={() => router.push("/sales-tracking/trips/new")}
               className="px-4 py-2 transition bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2"
@@ -274,7 +274,7 @@ export default function TripsPage() {
               <Plus className="w-5 h-5" />
               New Trip
             </button>
-          </div>
+          </div> */}
         </div>
       </div>
 
@@ -475,10 +475,10 @@ export default function TripsPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-gray-900 dark:text-white font-medium">
-                        {trip.system_distance_km?.toFixed(2) || "0.00"} km
+                        {Number(trip.system_distance_km || 0).toFixed(2)} km
                       </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">
-                        Manual: {trip.manual_distance_km?.toFixed(2) || "0.00"} km
+                        Manual: {Number(trip.manual_distance_km || 0).toFixed(2)} km
                       </div>
                     </td>
                     <td className="px-6 py-4">

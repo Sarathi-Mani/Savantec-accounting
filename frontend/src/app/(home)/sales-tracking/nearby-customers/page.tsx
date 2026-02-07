@@ -101,6 +101,7 @@ export default function NearbyCustomersPage() {
   const [showStartTrip, setShowStartTrip] = useState(false);
   const [showEndTrip, setShowEndTrip] = useState(false);
   const [tripEndSummary, setTripEndSummary] = useState<TripEndSummary | null>(null);
+  const [tripElapsedMs, setTripElapsedMs] = useState(0);
 
   const [tripForm, setTripForm] = useState({
     start_km: "",
@@ -165,6 +166,30 @@ export default function NearbyCustomersPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!trip?.start_time) {
+      setTripElapsedMs(0);
+      return;
+    }
+    const start = new Date(trip.start_time).getTime();
+    const tick = () => {
+      const now = Date.now();
+      setTripElapsedMs(Math.max(0, now - start));
+    };
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [trip?.start_time]);
+
+  const formatDuration = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const pad = (v: number) => v.toString().padStart(2, "0");
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+  };
 
   const getCurrentLocation = (onSuccess?: (pos: [number, number]) => void) => {
     if (!navigator.geolocation) return;
@@ -792,7 +817,7 @@ export default function NearbyCustomersPage() {
               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
             >
               <StopCircle className="w-4 h-4" />
-              End Day Trip
+              End Today Trip
             </button>
           )}
         </div>
@@ -876,8 +901,11 @@ export default function NearbyCustomersPage() {
             {geocoding ? "Updating..." : "Update Locations"}
           </button>
           {trip && (
-            <div className="ml-auto text-xs text-green-700 bg-green-50 px-2 py-1 rounded-full">
-              Trip Active: {trip.trip_number}
+            <div className="ml-auto flex items-center gap-2 text-xs text-green-700 bg-green-50 px-2 py-1 rounded-full">
+              <span>Trip Active: {trip.trip_number}</span>
+              <span className="text-green-800 font-semibold">
+                {formatDuration(tripElapsedMs)}
+              </span>
             </div>
           )}
         </div>
@@ -1110,7 +1138,7 @@ export default function NearbyCustomersPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">End Day Trip</h3>
+              <h3 className="text-lg font-semibold">End Today Trip</h3>
               <button onClick={() => setShowEndTrip(false)}>
                 <XCircle className="w-5 h-5 text-gray-500" />
               </button>

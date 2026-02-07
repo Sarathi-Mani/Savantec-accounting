@@ -88,6 +88,12 @@ export default function CustomerMap({
     if (!isMounted || !containerRef.current) return;
 
     const init = async () => {
+      if (!containerRef.current) return;
+      const { offsetWidth, offsetHeight } = containerRef.current;
+      if (offsetWidth === 0 || offsetHeight === 0) {
+        requestAnimationFrame(init);
+        return;
+      }
       try {
         const mod: any = await import("maplibre-gl");
         const maplibre = mod?.default ?? mod;
@@ -339,34 +345,50 @@ const createCustomerElement = (status: CustomerMarker["status"]) => {
   const color = colorMap[status] || "#6b7280";
 
   const el = document.createElement("div");
-  el.style.width = "22px";
-  el.style.height = "22px";
-  el.style.backgroundColor = color;
-  el.style.border = "2px solid white";
-  el.style.borderRadius = "50%";
+  el.style.width = "28px";
+  el.style.height = "28px";
   el.style.display = "flex";
   el.style.alignItems = "center";
   el.style.justifyContent = "center";
-  el.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
+  el.style.transform = "translateY(-2px)";
+  el.style.filter = "drop-shadow(0 2px 4px rgba(0,0,0,0.25))";
   el.style.cursor = "pointer";
-
-  const inner = document.createElement("div");
-  inner.style.width = "8px";
-  inner.style.height = "8px";
-  inner.style.backgroundColor = "white";
-  inner.style.borderRadius = "50%";
-  el.appendChild(inner);
+  el.innerHTML = `
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 22s7-7.36 7-12a7 7 0 1 0-14 0c0 4.64 7 12 7 12z" fill="${color}" />
+      <circle cx="12" cy="10" r="3.2" fill="#ffffff" />
+    </svg>
+  `;
 
   return el;
 };
 
 const createCurrentLocationElement = () => {
   const el = document.createElement("div");
-  el.style.width = "18px";
-  el.style.height = "18px";
-  el.style.backgroundColor = "#111827";
-  el.style.border = "2px solid white";
-  el.style.borderRadius = "50%";
-  el.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
+  el.style.width = "36px";
+  el.style.height = "36px";
+  el.style.display = "flex";
+  el.style.alignItems = "center";
+  el.style.justifyContent = "center";
+  el.style.position = "relative";
+  el.style.filter = "drop-shadow(0 3px 6px rgba(0,0,0,0.3))";
+  el.innerHTML = `
+    <div style="position:absolute; width:36px; height:36px; border-radius:9999px; background:rgba(37,99,235,0.18); animation:pulse-ring 2.2s ease-out infinite;"></div>
+    <div style="position:absolute; width:24px; height:24px; border-radius:9999px; background:rgba(37,99,235,0.25);"></div>
+    <div style="width:14px; height:14px; border-radius:9999px; background:#2563eb; border:2px solid white;"></div>
+  `;
+  const styleId = "current-location-pulse-style";
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.innerHTML = `
+      @keyframes pulse-ring {
+        0% { transform: scale(0.6); opacity: 0.7; }
+        70% { transform: scale(1.3); opacity: 0; }
+        100% { transform: scale(1.3); opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
   return el;
 };

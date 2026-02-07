@@ -70,6 +70,7 @@ export default function AdminLiveTracking() {
   const router = useRouter();
   const { company } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [engineers, setEngineers] = useState<EngineerStatus[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
@@ -89,6 +90,8 @@ export default function AdminLiveTracking() {
   const markersRef = useRef<Map<string, any>>(new Map());
   const [mapSupported, setMapSupported] = useState(true);
   const [isMapReady, setIsMapReady] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapInitAttempt, setMapInitAttempt] = useState(0);
   const maplibreRef = useRef<any>(null);
   const OSM_STYLE = {
     version: 8,
@@ -127,7 +130,7 @@ export default function AdminLiveTracking() {
 
   // Initialize MapLibre map
   useEffect(() => {
-    if (loading) return;
+    if (!company?.id) return;
     if (!mapRef.current || mapInstanceRef.current) return;
 
     const initMap = async () => {
@@ -160,7 +163,12 @@ export default function AdminLiveTracking() {
 
         mapInstanceRef.current.on("load", () => {
           setIsMapReady(true);
+          setMapLoaded(true);
         });
+
+        window.setTimeout(() => mapInstanceRef.current?.resize(), 50);
+        window.setTimeout(() => mapInstanceRef.current?.resize(), 250);
+        window.setTimeout(() => mapInstanceRef.current?.resize(), 1000);
       } catch (error) {
         console.error("Failed to initialize map:", error);
         setMapSupported(false);
@@ -177,7 +185,25 @@ export default function AdminLiveTracking() {
         mapInstanceRef.current = null;
       }
     };
-  }, [loading]);
+  }, [company?.id, mapInitAttempt]);
+
+  useEffect(() => {
+    if (!company?.id) return;
+    if (mapLoaded) return;
+    const timeout = window.setTimeout(() => {
+      setMapInitAttempt((prev) => prev + 1);
+    }, 2500);
+    return () => window.clearTimeout(timeout);
+  }, [company?.id, mapLoaded]);
+
+  useEffect(() => {
+    if (!mapRef.current || !mapInstanceRef.current) return;
+    const observer = new ResizeObserver(() => {
+      mapInstanceRef.current?.resize();
+    });
+    observer.observe(mapRef.current);
+    return () => observer.disconnect();
+  }, [company?.id]);
 
   // Load data
   useEffect(() => {
@@ -234,6 +260,7 @@ export default function AdminLiveTracking() {
       console.error("Error loading data:", error);
     } finally {
       setLoading(false);
+      setInitialLoading(false);
     }
   };
 
@@ -275,17 +302,30 @@ export default function AdminLiveTracking() {
     if (!maplibre) return;
     const bounds = new maplibre.LngLatBounds();
 
+    const createLocationMarker = (color: string) => {
+      const el = document.createElement("div");
+      el.style.width = "28px";
+      el.style.height = "28px";
+      el.style.display = "flex";
+      el.style.alignItems = "center";
+      el.style.justifyContent = "center";
+      el.style.transform = "translateY(-2px)";
+      el.style.filter = "drop-shadow(0 2px 4px rgba(0,0,0,0.25))";
+      el.style.cursor = "pointer";
+      el.innerHTML = `
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 22s7-7.36 7-12a7 7 0 1 0-14 0c0 4.64 7 12 7 12z" fill="${color}" />
+          <circle cx="12" cy="10" r="3.2" fill="#ffffff" />
+        </svg>
+      `;
+      return el;
+    };
+
     // Add engineer markers
     engineersData.forEach((engineer) => {
       if (!engineer.current_lat || !engineer.current_lng) return;
 
-      const markerEl = document.createElement("div");
-      markerEl.style.width = "18px";
-      markerEl.style.height = "18px";
-      markerEl.style.backgroundColor = getStatusColor(engineer.status);
-      markerEl.style.border = "2px solid white";
-      markerEl.style.borderRadius = "50%";
-      markerEl.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
+      const markerEl = createLocationMarker(getStatusColor(engineer.status));
 
       const popupHtml = `
         <div style="padding: 10px; min-width: 240px;">
@@ -346,17 +386,6 @@ export default function AdminLiveTracking() {
 
   if (!company?.id) {
     return null; // Will redirect due to useEffect
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-          <p className="mt-4 text-gray-600">Loading live tracking...</p>
-        </div>
-      </div>
-    );
   }
 
   return (
@@ -467,7 +496,12 @@ export default function AdminLiveTracking() {
             </div>
             
             <div className="overflow-y-auto max-h-[600px]">
-              {engineers.length === 0 ? (
+              {engineers.length === 0 && initialLoading ? (
+                <div className="p-8 text-center text-gray-500">
+                  <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <p>Loading engineers...</p>
+                </div>
+              ) : engineers.length === 0 ? (
                 <div className="p-8 text-center text-gray-500">
                   <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                   <p>No engineers found</p>
@@ -565,7 +599,14 @@ export default function AdminLiveTracking() {
                 Map not supported in this browser/device.
               </div>
             ) : (
-              <div ref={mapRef} className="w-full h-[500px]" />
+              <div className="relative w-full h-[500px] min-h-[500px]">
+                <div ref={mapRef} className="w-full h-full" />
+                {!mapLoaded && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-sm text-gray-600">
+                    Loading map...
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -608,7 +649,9 @@ export default function AdminLiveTracking() {
                         <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                           <div>
                             <p className="text-gray-600">Distance</p>
-                            <p className="font-medium">{trip.system_distance_km.toFixed(2)} km</p>
+                            <p className="font-medium">
+                              {Number(trip.system_distance_km || 0).toFixed(2)} km
+                            </p>
                           </div>
                           <div>
                             <p className="text-gray-600">Duration</p>

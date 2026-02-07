@@ -16,6 +16,15 @@ router = APIRouter(prefix="/api/companies/{company_id}", tags=["visits"])
 
 def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
     """Get company or raise 404."""
+    if isinstance(user, dict) and user.get("is_employee"):
+        company = db.query(Company).filter(
+            Company.id == company_id,
+            Company.is_active == True
+        ).first()
+        if not company or str(company.id) != str(user.get("company_id")):
+            raise HTTPException(status_code=404, detail="Company not found")
+        return company
+
     company = db.query(Company).filter(
         Company.id == company_id,
         Company.user_id == user.id
