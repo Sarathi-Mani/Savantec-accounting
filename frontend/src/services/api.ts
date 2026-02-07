@@ -734,7 +734,14 @@ export const customersApi = {
       customer_type?: string;
     }
   ): Promise<CustomerListResponse> => {
-    const response = await api.get(`/companies/${companyId}/customers`, { params });
+    const safeParams = { ...params };
+    if (safeParams.page_size && safeParams.page_size > 100) {
+      safeParams.page_size = 100;
+    }
+    if (typeof safeParams.search === "string" && safeParams.search.trim() === "") {
+      delete safeParams.search;
+    }
+    const response = await api.get(`/companies/${companyId}/customers`, { params: safeParams });
     return response.data;
   },
 
@@ -1747,6 +1754,15 @@ export const ordersApi = {
 
   createSalesOrder: async (companyId: string, data: SalesOrderCreate): Promise<SalesOrder> => {
     const response = await api.post(`/companies/${companyId}/orders/sales`, data);
+    return response.data;
+  },
+
+  updateSalesOrder: async (
+    companyId: string,
+    orderId: string,
+    data: SalesOrderCreate
+  ): Promise<SalesOrder> => {
+    const response = await api.put(`/companies/${companyId}/orders/sales/${orderId}`, data);
     return response.data;
   },
 
