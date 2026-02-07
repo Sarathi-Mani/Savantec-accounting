@@ -8,8 +8,24 @@ from app.schemas.customer import CustomerCreate, CustomerUpdate, CustomerRespons
 from app.services.customer_service import CustomerService
 from app.services.company_service import CompanyService
 from app.auth.dependencies import get_current_active_user
+import math
 
 router = APIRouter(prefix="/companies/{company_id}/customers", tags=["Customers"])
+
+
+def haversine_distance(lat1, lon1, lat2, lon2):
+    """Calculate distance between two coordinates in meters."""
+    R = 6371000
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
 
 
 def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
@@ -89,6 +105,79 @@ async def search_customers(
     service = CustomerService(db)
     customers = service.search_customers(company, q, limit)
     return [CustomerResponse.model_validate(c) for c in customers]
+
+
+@router.get("/nearby")
+async def get_nearby_customers(
+    company_id: str,
+    latitude: float = Query(..., ge=-90, le=90),
+    longitude: float = Query(..., ge=-180, le=180),
+    radius_km: float = Query(10, ge=0.1, le=200),
+    limit: int = Query(200, ge=1, le=500),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Get nearby customers based on coordinates."""
+    company = get_company_or_404(company_id, current_user, db)
+    service = CustomerService(db)
+    # Fetch all customers with location for this company
+    customers, _ = service.get_customers(company, page=1, page_size=10000)
+
+    results = []
+    for customer in customers:
+        if customer.location_lat is None or customer.location_lng is None:
+            continue
+        distance_m = haversine_distance(
+            latitude, longitude, customer.location_lat, customer.location_lng
+        )
+        if distance_m <= radius_km * 1000:
+            results.append({
+                "id": customer.id,
+                "name": customer.name,
+                "contact": customer.contact,
+                "city": customer.billing_city,
+                "state": customer.billing_state,
+                "district": customer.district,
+                "area": customer.area,
+                "latitude": customer.location_lat,
+                "longitude": customer.location_lng,
+                "location_address": customer.location_address,
+                "distance_km": round(distance_m / 1000, 2),
+            })
+
+    results.sort(key=lambda x: x["distance_km"])
+    return results[:limit]
+
+
+@router.post("/geocode-missing")
+async def geocode_missing_customers(
+    company_id: str,
+    limit: int = Query(50, ge=1, le=500),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Geocode customers that are missing location_lat/lng."""
+    company = get_company_or_404(company_id, current_user, db)
+    service = CustomerService(db)
+
+    customers, _ = service.get_customers(company, page=1, page_size=10000)
+    updated = 0
+    failed = 0
+    total_missing = 0
+    for customer in customers:
+        if updated >= limit:
+            break
+        if customer.location_lat is not None and customer.location_lng is not None:
+            continue
+        total_missing += 1
+        service._try_geocode(customer, customer)
+        if customer.location_lat is not None and customer.location_lng is not None:
+            updated += 1
+        else:
+            failed += 1
+
+    db.commit()
+    return {"updated": updated, "failed": failed, "missing_total": total_missing}
 
 
 @router.get("/{customer_id}", response_model=CustomerResponse)

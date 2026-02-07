@@ -291,5 +291,17 @@ CREATE TABLE IF NOT EXISTS issue_comments (
 );
 CREATE INDEX IF NOT EXISTS idx_issue_comment_issue ON issue_comments(issue_id);
 
+-- ==================== CUSTOMER LOCATION FIELDS ====================
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS district VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS area VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS location_lat DOUBLE PRECISION;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS location_lng DOUBLE PRECISION;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS location_address VARCHAR(500);
+CREATE INDEX IF NOT EXISTS idx_customers_location_lat ON customers(location_lat);
+CREATE INDEX IF NOT EXISTS idx_customers_location_lng ON customers(location_lng);
+
+-- ==================== SALES TRACKING SETTINGS ====================
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS petrol_rate_per_km NUMERIC(10, 2) DEFAULT 0;
+
 -- Done!
 SELECT 'Migration completed successfully!' AS status;

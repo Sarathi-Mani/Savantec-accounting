@@ -2,6 +2,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import type { Map as MapLibreMap } from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { useAuth } from "@/context/AuthContext";
 import api from "@/services/api";
 import {
@@ -64,12 +66,6 @@ interface Stats {
   fraudCases: number;
 }
 
-declare global {
-  interface Window {
-    google: any;
-  }
-}
-
 export default function AdminLiveTracking() {
   const router = useRouter();
   const { company } = useAuth();
@@ -89,8 +85,29 @@ export default function AdminLiveTracking() {
   });
 
   const mapRef = useRef<HTMLDivElement>(null);
-  const googleMapRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
+  const mapInstanceRef = useRef<MapLibreMap | null>(null);
+  const markersRef = useRef<Map<string, any>>(new Map());
+  const [mapSupported, setMapSupported] = useState(true);
+  const [isMapReady, setIsMapReady] = useState(false);
+  const maplibreRef = useRef<any>(null);
+  const OSM_STYLE = {
+    version: 8,
+    sources: {
+      "osm-tiles": {
+        type: "raster",
+        tiles: ["https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"],
+        tileSize: 256,
+        attribution: "&copy; OpenStreetMap contributors",
+      },
+    },
+    layers: [
+      {
+        id: "osm-tiles",
+        type: "raster",
+        source: "osm-tiles",
+      },
+    ],
+  } as const;
 
   // Redirect if no company
   useEffect(() => {
@@ -99,47 +116,68 @@ export default function AdminLiveTracking() {
     }
   }, [company, router]);
 
-  // Load Google Maps
-  useEffect(() => {
-    if (!window.google) {
-      const script = document.createElement("script");
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      document.head.appendChild(script);
-      
-      script.onload = () => {
-        initializeMap();
-      };
-    } else {
-      initializeMap();
+  const hasWebGLSupport = () => {
+    try {
+      const canvas = document.createElement("canvas");
+      return !!(canvas.getContext("webgl2") || canvas.getContext("webgl"));
+    } catch {
+      return false;
     }
-    
-    return () => {
-      markersRef.current.forEach(marker => marker.setMap(null));
-    };
-  }, []);
-
-  // Initialize map
-  const initializeMap = () => {
-    if (!mapRef.current || !window.google) return;
-    
-    googleMapRef.current = new window.google.maps.Map(mapRef.current, {
-      center: { lat: 13.0827, lng: 80.2707 },
-      zoom: 10,
-      mapTypeControl: true,
-      streetViewControl: false,
-      fullscreenControl: true,
-      zoomControl: true,
-      styles: [
-        {
-          featureType: "poi",
-          elementType: "labels",
-          stylers: [{ visibility: "off" }]
-        }
-      ]
-    });
   };
+
+  // Initialize MapLibre map
+  useEffect(() => {
+    if (loading) return;
+    if (!mapRef.current || mapInstanceRef.current) return;
+
+    const initMap = async () => {
+      if (!mapRef.current || mapInstanceRef.current) return;
+      const { offsetWidth, offsetHeight } = mapRef.current;
+      if (offsetWidth === 0 || offsetHeight === 0) {
+        requestAnimationFrame(initMap);
+        return;
+      }
+
+      try {
+        const mod: any = await import("maplibre-gl");
+        const maplibre = mod?.default ?? mod;
+        maplibreRef.current = maplibre;
+        mapInstanceRef.current = new maplibre.Map({
+          container: mapRef.current,
+          style: OSM_STYLE,
+          center: [80.2707, 13.0827],
+          zoom: 10,
+          attributionControl: false,
+        });
+
+        mapInstanceRef.current.addControl(
+          new maplibre.NavigationControl(),
+          "top-right"
+        );
+        mapInstanceRef.current.addControl(
+          new maplibre.AttributionControl({ compact: true })
+        );
+
+        mapInstanceRef.current.on("load", () => {
+          setIsMapReady(true);
+        });
+      } catch (error) {
+        console.error("Failed to initialize map:", error);
+        setMapSupported(false);
+      }
+    };
+
+    requestAnimationFrame(initMap);
+
+    return () => {
+      markersRef.current.forEach((marker) => marker.remove());
+      markersRef.current.clear();
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, [loading]);
 
   // Load data
   useEffect(() => {
@@ -152,6 +190,12 @@ export default function AdminLiveTracking() {
       return () => clearInterval(interval);
     }
   }, [company?.id, timeRange]);
+
+  useEffect(() => {
+    if (isMapReady) {
+      updateMapMarkers(engineers);
+    }
+  }, [isMapReady, engineers]);
 
   const loadData = async () => {
     if (!company?.id) return;
@@ -221,67 +265,54 @@ export default function AdminLiveTracking() {
 
   // Update map markers
   const updateMapMarkers = (engineersData: EngineerStatus[]) => {
-    if (!googleMapRef.current || !window.google) return;
-    
+    if (!mapInstanceRef.current || !isMapReady) return;
+
     // Clear existing markers
-    markersRef.current.forEach(marker => marker.setMap(null));
-    markersRef.current = [];
-    
+    markersRef.current.forEach((marker) => marker.remove());
+    markersRef.current.clear();
+
+    const maplibre = maplibreRef.current;
+    if (!maplibre) return;
+    const bounds = new maplibre.LngLatBounds();
+
     // Add engineer markers
-    engineersData.forEach(engineer => {
-      if (engineer.current_lat && engineer.current_lng) {
-        const icon = {
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: getStatusColor(engineer.status),
-          fillOpacity: 1,
-          strokeColor: "#FFFFFF",
-          strokeWeight: 2,
-        };
-        
-        const marker = new window.google.maps.Marker({
-          position: { lat: engineer.current_lat, lng: engineer.current_lng },
-          map: googleMapRef.current,
-          icon: icon,
-          title: engineer.engineer_name
-        });
-        
-        const infoWindow = new window.google.maps.InfoWindow({
-          content: `
-            <div style="padding: 10px; min-width: 250px;">
-              <h3 style="margin: 0 0 5px 0; color: #1a1a1a;">${engineer.engineer_name}</h3>
-              <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 5px;">
-                <div style="width: 8px; height: 8px; border-radius: 50%; background: ${getStatusColor(engineer.status)}"></div>
-                <span style="font-size: 12px; color: #666;">${engineer.status.replace('_', ' ').toUpperCase()}</span>
-              </div>
-              <p style="margin: 0 0 5px 0; font-size: 12px; color: #666;">${engineer.current_address || 'Location not available'}</p>
-              <p style="margin: 0 0 5px 0; font-size: 11px; color: #999;">Last update: ${new Date(engineer.last_location_update).toLocaleTimeString()}</p>
-              ${engineer.speed ? `<p style="margin: 0; font-size: 11px; color: #666;">Speed: ${engineer.speed.toFixed(1)} km/h</p>` : ''}
-              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee;">
-                <a href="#" onclick="window.openEngineerDetails('${engineer.engineer_id}'); return false;" 
-                   style="font-size: 12px; color: #3b82f6; text-decoration: none;">
-                  View Details →
-                </a>
-              </div>
-            </div>
-          `
-        });
-        
-        marker.addListener("click", () => {
-          infoWindow.open(googleMapRef.current, marker);
-        });
-        
-        markersRef.current.push(marker);
-      }
+    engineersData.forEach((engineer) => {
+      if (!engineer.current_lat || !engineer.current_lng) return;
+
+      const markerEl = document.createElement("div");
+      markerEl.style.width = "18px";
+      markerEl.style.height = "18px";
+      markerEl.style.backgroundColor = getStatusColor(engineer.status);
+      markerEl.style.border = "2px solid white";
+      markerEl.style.borderRadius = "50%";
+      markerEl.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
+
+      const popupHtml = `
+        <div style="padding: 10px; min-width: 240px;">
+          <h3 style="margin: 0 0 5px 0; color: #1a1a1a;">${engineer.engineer_name}</h3>
+          <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 5px;">
+            <div style="width: 8px; height: 8px; border-radius: 50%; background: ${getStatusColor(engineer.status)}"></div>
+            <span style="font-size: 12px; color: #666;">${engineer.status.replace("_", " ").toUpperCase()}</span>
+          </div>
+          <p style="margin: 0 0 5px 0; font-size: 12px; color: #666;">${engineer.current_address || "Location not available"}</p>
+          <p style="margin: 0 0 5px 0; font-size: 11px; color: #999;">Last update: ${new Date(engineer.last_location_update).toLocaleTimeString()}</p>
+          ${engineer.speed ? `<p style="margin: 0; font-size: 11px; color: #666;">Speed: ${engineer.speed.toFixed(1)} km/h</p>` : ""}
+        </div>
+      `;
+
+      const popup = new maplibre.Popup({ offset: 12 }).setHTML(popupHtml);
+      const marker = new maplibre.Marker({ element: markerEl })
+        .setLngLat([engineer.current_lng, engineer.current_lat])
+        .setPopup(popup)
+        .addTo(mapInstanceRef.current);
+
+      markersRef.current.set(engineer.engineer_id, marker);
+      bounds.extend([engineer.current_lng, engineer.current_lat]);
     });
-    
+
     // Fit bounds to show all markers
-    if (markersRef.current.length > 0) {
-      const bounds = new window.google.maps.LatLngBounds();
-      markersRef.current.forEach(marker => {
-        bounds.extend(marker.getPosition());
-      });
-      googleMapRef.current.fitBounds(bounds);
+    if (markersRef.current.size > 0) {
+      mapInstanceRef.current.fitBounds(bounds, { padding: 40, maxZoom: 15 });
     }
   };
 
@@ -529,7 +560,13 @@ export default function AdminLiveTracking() {
                 </button>
               </div>
             </div>
-            <div ref={mapRef} className="w-full h-[500px]" />
+            {!mapSupported ? (
+              <div className="w-full h-[500px] flex items-center justify-center text-sm text-gray-600">
+                Map not supported in this browser/device.
+              </div>
+            ) : (
+              <div ref={mapRef} className="w-full h-[500px]" />
+            )}
           </div>
 
           {/* Recent Activity */}
