@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import api from "@/services/api";
+import api, { customersApi } from "@/services/api";
 import CustomerMap, { CustomerMarker } from "@/components/map/CustomerMap";
 import {
   MapPin,
@@ -87,6 +87,8 @@ export default function NearbyCustomersPage() {
   const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [isPageReady, setIsPageReady] = useState(false);
+  const [geocodeAttempted, setGeocodeAttempted] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
 
   const [trip, setTrip] = useState<TripState | null>(null);
   const [visitsByCustomer, setVisitsByCustomer] = useState<Record<string, VisitState>>({});
@@ -106,6 +108,10 @@ export default function NearbyCustomersPage() {
   });
 
   const locationWatchIdRef = useRef<number | null>(null);
+
+  const handleSelectCustomer = (customerId: string) => {
+    setSelectedCustomerId((prev) => (prev === customerId ? null : customerId));
+  };
 
   useEffect(() => {
     setIsPageReady(true);
@@ -190,22 +196,151 @@ export default function NearbyCustomersPage() {
     }
   };
 
+  const toNumber = (value: any): number | undefined => {
+    if (typeof value === "number" && !Number.isNaN(value)) return value;
+    if (typeof value === "string" && value.trim() !== "") {
+      const parsed = Number(value);
+      return Number.isNaN(parsed) ? undefined : parsed;
+    }
+    return undefined;
+  };
+
+  const normalizeCustomer = (customer: any): NearbyCustomer => {
+    return {
+      id: customer.id,
+      name: customer.name,
+      contact: customer.contact,
+      location_lat: toNumber(customer.location_lat ?? customer.latitude),
+      location_lng: toNumber(customer.location_lng ?? customer.longitude),
+      location_address: customer.location_address,
+      district: customer.district,
+      area: customer.area,
+      distance_km: toNumber(customer.distance_km),
+    };
+  };
+
+  const fetchAllCustomersWithLocations = async (): Promise<NearbyCustomer[]> => {
+    if (!company?.id) return [];
+    const pageSize = 100;
+    let page = 1;
+    let allCustomers: NearbyCustomer[] = [];
+
+    while (true) {
+      const response = await customersApi.list(company.id, {
+        page,
+        page_size: pageSize,
+      });
+      const batch = (response.customers || []).map(normalizeCustomer);
+      allCustomers = allCustomers.concat(batch);
+
+      if (batch.length < pageSize || allCustomers.length >= response.total) {
+        break;
+      }
+      page += 1;
+    }
+
+    return allCustomers.filter(
+      (customer) =>
+        typeof customer.location_lat === "number" &&
+        typeof customer.location_lng === "number"
+    );
+  };
+
   const loadNearbyCustomers = async (lat: number, lng: number) => {
     if (!company?.id) return;
     try {
       setLoading(true);
-      const response = await api.get(`/companies/${company.id}/customers/nearby`, {
-        params: {
-          latitude: lat,
-          longitude: lng,
-          radius_km: radiusKm,
-        },
-      });
-      setCustomers(response.data || []);
+      try {
+        const response = await api.get(`/companies/${company.id}/customers/nearby`, {
+          params: {
+            latitude: lat,
+            longitude: lng,
+            radius_km: radiusKm,
+          },
+        });
+        const normalized = (response.data || []).map(normalizeCustomer);
+        setCustomers(normalized);
+
+        if (normalized.length === 0 && !geocodeAttempted) {
+          setGeocodeAttempted(true);
+          await triggerGeocodeMissing();
+          // Retry once after geocoding
+          const retry = await api.get(`/companies/${company.id}/customers/nearby`, {
+            params: {
+              latitude: lat,
+              longitude: lng,
+              radius_km: radiusKm,
+            },
+          });
+          const retried = (retry.data || []).map(normalizeCustomer);
+          if (retried.length === 0) {
+            const allWithLocations = await fetchAllCustomersWithLocations();
+            setCustomers(allWithLocations);
+          } else {
+            setCustomers(retried);
+          }
+        }
+      } catch (error: any) {
+        // Fallback: load all customers and filter by radius on client
+        let allCustomers = await fetchAllCustomersWithLocations();
+        const filtered = allCustomers.filter((customer) => {
+          if (
+            typeof customer.location_lat !== "number" ||
+            typeof customer.location_lng !== "number"
+          ) {
+            return false;
+          }
+          const km = haversineKm([lat, lng], [
+            customer.location_lat,
+            customer.location_lng,
+          ]);
+          return km <= radiusKm;
+        });
+        setCustomers(filtered);
+
+        if (filtered.length === 0 && !geocodeAttempted) {
+          setGeocodeAttempted(true);
+          await triggerGeocodeMissing();
+          // Retry once after geocoding
+          allCustomers = await fetchAllCustomersWithLocations();
+          const retried = allCustomers.filter((customer) => {
+            if (
+              typeof customer.location_lat !== "number" ||
+              typeof customer.location_lng !== "number"
+            ) {
+              return false;
+            }
+            const km = haversineKm([lat, lng], [
+              customer.location_lat,
+              customer.location_lng,
+            ]);
+            return km <= radiusKm;
+          });
+          if (retried.length === 0) {
+            setCustomers(allCustomers);
+          } else {
+            setCustomers(retried);
+          }
+        }
+      }
     } catch (error) {
       console.error("Failed to load nearby customers:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const triggerGeocodeMissing = async () => {
+    if (!company?.id) return;
+    try {
+      setGeocoding(true);
+      await api.post(`/companies/${company.id}/customers/geocode-missing`, null, {
+        params: { limit: 200 },
+      });
+    } catch (error) {
+      console.error("Failed to geocode customers:", error);
+    } finally {
+      setGeocoding(false);
     }
   };
 
@@ -463,7 +598,11 @@ export default function NearbyCustomersPage() {
 
   const customersWithDistance = useMemo(() => {
     return customers.map((customer) => {
-      if (currentLocation && customer.location_lat && customer.location_lng) {
+      if (
+        currentLocation &&
+        typeof customer.location_lat === "number" &&
+        typeof customer.location_lng === "number"
+      ) {
         const km = haversineKm(currentLocation, [
           customer.location_lat,
           customer.location_lng,
@@ -490,7 +629,8 @@ export default function NearbyCustomersPage() {
         id: customer.id,
         name: customer.name,
         position:
-          customer.location_lat && customer.location_lng
+          typeof customer.location_lat === "number" &&
+          typeof customer.location_lng === "number"
             ? [customer.location_lat, customer.location_lng]
             : null,
         status,
@@ -598,6 +738,14 @@ export default function NearbyCustomersPage() {
             <option value={30}>30 km</option>
             <option value={50}>50 km</option>
           </select>
+          <button
+            onClick={triggerGeocodeMissing}
+            disabled={geocoding}
+            className="ml-auto px-3 py-1.5 border rounded-md text-sm"
+            title="Update customer locations from address"
+          >
+            {geocoding ? "Updating..." : "Update Locations"}
+          </button>
           {trip && (
             <div className="ml-auto text-xs text-green-700 bg-green-50 px-2 py-1 rounded-full">
               Trip Active: {trip.trip_number}
@@ -632,7 +780,9 @@ export default function NearbyCustomersPage() {
             zoom={13}
             customers={markers}
             currentLocation={currentLocation || undefined}
-            onMarkerClick={(id) => setSelectedCustomerId(id)}
+            onMarkerClick={handleSelectCustomer}
+            selectedCustomerId={selectedCustomerId}
+            focusZoom={16}
           />
         </div>
 
@@ -662,10 +812,10 @@ export default function NearbyCustomersPage() {
                 return (
                   <div
                     key={customer.id}
-                    className={`p-4 border-b hover:bg-gray-50 cursor-pointer ${
-                      isSelected ? "bg-blue-50" : ""
-                    }`}
-                    onClick={() => setSelectedCustomerId(customer.id)}
+                  className={`p-4 border-b hover:bg-gray-50 cursor-pointer ${
+                    isSelected ? "bg-blue-50" : ""
+                  }`}
+                    onClick={() => handleSelectCustomer(customer.id)}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">

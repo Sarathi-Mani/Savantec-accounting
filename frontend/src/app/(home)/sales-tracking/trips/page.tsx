@@ -58,14 +58,14 @@ export default function TripsPage() {
   const [engineerFilter, setEngineerFilter] = useState("");
   const [validityFilter, setValidityFilter] = useState<string>("");
   const [showFilters, setShowFilters] = useState(false);
-  const [engineers, setEngineers] = useState<any[]>([]);
+  const [salesmen, setSalesmen] = useState<any[]>([]);
 
   const companyId = typeof window !== "undefined" ? localStorage.getItem("company_id") : null;
 
   useEffect(() => {
     if (companyId) {
       fetchTrips();
-      fetchEngineers();
+      fetchSalesmen();
     }
   }, [companyId]);
 
@@ -75,23 +75,90 @@ export default function TripsPage() {
     }
   }, [statusFilter, engineerFilter, validityFilter, fromDate, toDate]);
 
-  const fetchEngineers = async () => {
+  const fetchSalesmen = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    if (!token || !companyId) return;
+
     try {
       const response = await fetch(
-        `${API_BASE}/companies/${companyId}/employees`,
+        `${API_BASE}/companies/${companyId}/sales-engineers`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${token}`,
           },
         }
       );
-      if (response.ok) {
-        const data = await response.json();
-        setEngineers(data);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data && Array.isArray(data)) {
+        const formattedSalesmen = data.map((engineer: any) => ({
+          id: engineer.id,
+          name: engineer.full_name || engineer.name || "Unnamed Salesman",
+          email: engineer.email || "",
+          phone: engineer.phone || "",
+          designation: engineer.designation_name || engineer.designation || "Sales Engineer",
+        }));
+        setSalesmen(formattedSalesmen);
+      } else {
+        setSalesmen([]);
       }
     } catch (err) {
-      console.error("Failed to fetch engineers:", err);
+      console.error("Failed to fetch salesmen:", err);
+
+      // Fallback to employees API and filter sales roles
+      try {
+        const response = await fetch(
+          `${API_BASE}/companies/${companyId}/employees`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        if (!response.ok) throw new Error("Failed to fetch employees");
+        const data = await response.json();
+        const salesEmployees = (Array.isArray(data) ? data : []).filter((emp: any) => {
+          const designation = emp.designation
+            ? typeof emp.designation === "string"
+              ? emp.designation
+              : String(emp.designation)
+            : "";
+          const employeeType = emp.employee_type
+            ? typeof emp.employee_type === "string"
+              ? emp.employee_type
+              : String(emp.employee_type)
+            : "";
+          return (
+            designation.toLowerCase().includes("sales") ||
+            employeeType.toLowerCase().includes("sales")
+          );
+        });
+        const formattedSalesmen = salesEmployees.map((emp: any) => ({
+          id: emp.id,
+          name: emp.full_name || `${emp.first_name || ""} ${emp.last_name || ""}`.trim() || "Unnamed Salesman",
+          email: emp.email || "",
+          phone: emp.phone || "",
+          designation: emp.designation || emp.employee_type || "Sales Engineer",
+        }));
+        setSalesmen(formattedSalesmen);
+      } catch (fallbackErr) {
+        console.error("Also failed to load employees:", fallbackErr);
+        setSalesmen([]);
+      }
     }
+  };
+
+  const getSalesmanLabel = (salesman: any) => {
+    const name = salesman?.name || "Unnamed Salesman";
+    const metaParts: string[] = [];
+    if (salesman?.designation) metaParts.push(String(salesman.designation));
+    if (salesman?.email) metaParts.push(String(salesman.email));
+    if (salesman?.phone) metaParts.push(String(salesman.phone));
+    return metaParts.length ? `${name} (${metaParts.join(" | ")})` : name;
   };
 
   const fetchTrips = async () => {
@@ -219,7 +286,7 @@ export default function TripsPage() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Search trip number, engineer..."
+                placeholder="Search trip number, salesman..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && fetchTrips()}
@@ -278,17 +345,17 @@ export default function TripsPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Engineer
+                Salesman
               </label>
               <select
                 value={engineerFilter}
                 onChange={(e) => setEngineerFilter(e.target.value)}
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
-                <option value="">All Engineers</option>
-                {engineers.map((engineer) => (
-                  <option key={engineer.id} value={engineer.id}>
-                    {engineer.first_name} {engineer.last_name}
+                <option value="">All Salesmen</option>
+                {salesmen.map((salesman) => (
+                  <option key={salesman.id} value={salesman.id}>
+                    {getSalesmanLabel(salesman)}
                   </option>
                 ))}
               </select>

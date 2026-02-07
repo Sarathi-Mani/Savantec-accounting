@@ -287,10 +287,16 @@ def get_current_trip(
     db: Session = Depends(get_db)
 ):
     """Get engineer's current active trip."""
-    trip = db.query(Trip).filter(
+    trip = db.query(
+        Trip.id,
+        Trip.trip_number,
+        Trip.start_time,
+        Trip.start_km,
+        Trip.status,
+    ).filter(
         Trip.company_id == company_id,
         Trip.engineer_id == engineer_id,
-        Trip.status.in_([TripStatus.STARTED, TripStatus.IN_PROGRESS])
+        Trip.status.in_([TripStatus.STARTED.value, TripStatus.IN_PROGRESS.value])
     ).first()
     
     if not trip:
@@ -322,7 +328,7 @@ def get_engineer_trip_summary(
     trips = db.query(Trip).filter(
         Trip.company_id == company_id,
         Trip.engineer_id == engineer_id,
-        Trip.status == TripStatus.COMPLETED
+        Trip.status == TripStatus.COMPLETED.value
     ).all()
     
     total_distance = sum(trip.system_distance_km for trip in trips if trip.system_distance_km)
@@ -425,7 +431,7 @@ def start_trip(
         start_location_lat=data.start_location.latitude,
         start_location_lng=data.start_location.longitude,
         start_km=data.start_km,
-        status=TripStatus.STARTED,
+        status=TripStatus.STARTED.value,
         is_valid=False
     )
     
@@ -559,7 +565,7 @@ def end_trip(
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
     
-    if trip.status == TripStatus.COMPLETED:
+    if trip.status == TripStatus.COMPLETED.value:
         raise HTTPException(status_code=400, detail="Trip already completed")
     
     # Validation: End KM must be greater than Start KM
@@ -581,7 +587,7 @@ def end_trip(
     
     # Validate trip
     trip.is_valid = True
-    trip.status = TripStatus.COMPLETED
+    trip.status = TripStatus.COMPLETED.value
     
     # Add location log
     location_log = LocationLog(
@@ -900,7 +906,14 @@ def get_trips(
     if end_date:
         query = query.filter(func.date(Trip.start_time) <= end_date)
     if status:
-        query = query.filter(Trip.status == status)
+        # Accept case-insensitive status values from clients
+        normalized_status = status.lower()
+        try:
+            normalized_status = TripStatus(normalized_status).value
+        except Exception:
+            # Fallback: allow raw status if it already matches enum values
+            pass
+        query = query.filter(Trip.status == normalized_status)
     
     trips = query.order_by(Trip.start_time.desc()).offset(skip).limit(limit).all()
     
@@ -1039,7 +1052,7 @@ def create_petrol_claim(
     trip = db.query(Trip).filter(
         Trip.id == trip_id,
         Trip.company_id == company_id,
-        Trip.status == TripStatus.COMPLETED,
+        Trip.status == TripStatus.COMPLETED.value,
         Trip.is_valid == True
     ).first()
     
@@ -1220,7 +1233,7 @@ def get_trip_summary_report(
         Trip.company_id == company_id,
         func.date(Trip.start_time) >= start_date,
         func.date(Trip.start_time) <= end_date,
-        Trip.status == TripStatus.COMPLETED
+        Trip.status == TripStatus.COMPLETED.value
     )
     
     if engineer_id:

@@ -7,6 +7,7 @@ from decimal import Decimal
 import uuid
 import json
 from app.database.models import Customer, Company, OpeningBalanceItem, ContactPerson
+from app.services.geocoding_service import GeocodingService
 from app.schemas.customer import (
     CustomerCreate, CustomerUpdate, OpeningBalanceItemCreate, 
     ContactPersonCreate, OpeningBalanceType, OpeningBalanceMode
@@ -18,6 +19,44 @@ class CustomerService:
     
     def __init__(self, db: Session):
         self.db = db
+        self.geocoder = GeocodingService()
+
+    def _build_address(self, data: Any) -> str:
+        """Build a single-line address from customer data."""
+        parts = []
+        # Prefer explicit billing_address (often full address)
+        if getattr(data, "billing_address", None):
+            parts.append(str(getattr(data, "billing_address")).strip())
+        # Fall back to billing_address_line1/line2 if present
+        for field in ("billing_address_line1", "billing_address_line2"):
+            value = getattr(data, field, None)
+            if value:
+                parts.append(str(value).strip())
+        for field in ("billing_city", "billing_state", "billing_zip", "billing_country"):
+            value = getattr(data, field, None)
+            if value:
+                parts.append(str(value).strip())
+        return ", ".join([p for p in parts if p])
+
+    def _try_geocode(self, customer: Customer, data: Any) -> None:
+        """Fill location_lat/lng/address if missing using Nominatim."""
+        if customer.location_lat is not None and customer.location_lng is not None:
+            return
+
+        # Prefer billing address for geocoding, fallback to location_address if billing is empty
+        address = self._build_address(data) or getattr(data, "location_address", None)
+        if not address:
+            return
+
+        result = self.geocoder.geocode(address, country_codes="in")
+        if not result:
+            return
+
+        lat, lng, display_name = result
+        customer.location_lat = lat
+        customer.location_lng = lng
+        # Store resolved address for later reuse
+        customer.location_address = display_name or address
     
     def create_customer(self, company: Company, data: CustomerCreate) -> Customer:
         """Create a new customer for a company with all fields."""
@@ -94,6 +133,9 @@ class CustomerService:
             total_transactions=0
         )
         
+        # Auto geocode if lat/lng missing
+        self._try_geocode(customer, data)
+
         self.db.add(customer)
         self.db.flush()  # Flush to get customer ID
         
@@ -273,6 +315,26 @@ class CustomerService:
         for field, value in update_data.items():
             if hasattr(customer, field) and value is not None:
                 setattr(customer, field, value)
+
+        # If billing address fields changed and no explicit lat/lng provided, re-geocode from billing
+        billing_fields = {
+            "billing_address",
+            "billing_address_line1",
+            "billing_address_line2",
+            "billing_city",
+            "billing_state",
+            "billing_zip",
+            "billing_country",
+        }
+        if billing_fields.intersection(update_data.keys()) and (
+            "location_lat" not in update_data and "location_lng" not in update_data
+        ):
+            customer.location_lat = None
+            customer.location_lng = None
+            customer.location_address = None
+
+        # Geocode if missing
+        self._try_geocode(customer, data)
         
         customer.updated_at = datetime.utcnow()
         self.db.commit()

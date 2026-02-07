@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import maplibregl, { Map, Marker, Popup } from "maplibre-gl";
+import type { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 export type CustomerMarker = {
@@ -21,6 +21,8 @@ interface CustomerMapProps {
   customers: CustomerMarker[];
   currentLocation?: [number, number] | null;
   onMarkerClick?: (customerId: string) => void;
+  selectedCustomerId?: string | null;
+  focusZoom?: number;
 }
 
 export default function CustomerMap({
@@ -30,21 +32,40 @@ export default function CustomerMap({
   customers,
   currentLocation,
   onMarkerClick,
+  selectedCustomerId,
+  focusZoom = 16,
 }: CustomerMapProps) {
+  const toLngLat = (latLng: [number, number]) =>
+    [latLng[1], latLng[0]] as [number, number];
+  const OSM_STYLE = {
+    version: 8,
+    sources: {
+      "osm-tiles": {
+        type: "raster",
+        tiles: ["https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"],
+        tileSize: 256,
+        attribution: "&copy; OpenStreetMap contributors",
+      },
+    },
+    layers: [
+      {
+        id: "osm-tiles",
+        type: "raster",
+        source: "osm-tiles",
+      },
+    ],
+  } as const;
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<Map | null>(null);
-  const markersRef = useRef<Map<string, Marker>>(new Map());
-  const currentMarkerRef = useRef<Marker | null>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
+  const markersRef = useRef<Map<string, any>>(new Map());
+  const currentMarkerRef = useRef<any | null>(null);
   const [mapSupported, setMapSupported] = useState(true);
   const [isMounted, setIsMounted] = useState(false);
+  const maplibreRef = useRef<any>(null);
 
   // Initialize map only once
   useEffect(() => {
     setIsMounted(true);
-    
-    if (!maplibregl.supported()) {
-      setMapSupported(false);
-    }
 
     return () => {
       // Cleanup on unmount
@@ -62,41 +83,42 @@ export default function CustomerMap({
 
   // Initialize map
   useEffect(() => {
-    if (!isMounted || !containerRef.current || !maplibregl.supported()) return;
+    if (!isMounted || !containerRef.current) return;
 
-    if (!mapRef.current) {
+    const init = async () => {
       try {
-        mapRef.current = new maplibregl.Map({
-          container: containerRef.current,
-          style: "https://demotiles.maplibre.org/style.json",
-          center,
-          zoom,
-          attributionControl: false,
-        });
+        const mod: any = await import("maplibre-gl");
+        const maplibre = mod?.default ?? mod;
+        maplibreRef.current = maplibre;
+        if (!mapRef.current) {
+          mapRef.current = new maplibre.Map({
+            container: containerRef.current!,
+            style: OSM_STYLE,
+            center: toLngLat(center),
+            zoom,
+            attributionControl: false,
+          });
 
-        mapRef.current.addControl(new maplibregl.NavigationControl(), "top-right");
-        
-        // Add attribution control separately
-        mapRef.current.addControl(new maplibregl.AttributionControl({
-          compact: true,
-        }));
+          mapRef.current.addControl(new maplibre.NavigationControl(), "top-right");
+          mapRef.current.addControl(new maplibre.AttributionControl({ compact: true }));
 
-        // Ensure map is loaded before adding markers
-        mapRef.current.on('load', () => {
-          updateMarkers();
-          updateCurrentLocationMarker();
-        });
+          mapRef.current.on("load", () => {
+            updateMarkers();
+            updateCurrentLocationMarker();
+          });
+        }
+
+        if (mapRef.current) {
+          mapRef.current.setCenter(toLngLat(center));
+          mapRef.current.setZoom(zoom);
+        }
       } catch (error) {
         console.error("Failed to initialize map:", error);
         setMapSupported(false);
       }
-    }
+    };
 
-    // Update map center and zoom when props change
-    if (mapRef.current) {
-      mapRef.current.setCenter(center);
-      mapRef.current.setZoom(zoom);
-    }
+    init();
   }, [isMounted, center, zoom]);
 
   // Update markers when customers change
@@ -119,6 +141,28 @@ export default function CustomerMap({
     }
   }, [customers, currentLocation, onMarkerClick, isMounted]);
 
+  // Fly to selected customer or reset to default view
+  useEffect(() => {
+    if (!mapRef.current || !isMounted) return;
+    const map = mapRef.current;
+    if (selectedCustomerId) {
+      const customer = customers.find((c) => c.id === selectedCustomerId);
+      if (customer?.position) {
+        map.flyTo({
+          center: [customer.position[1], customer.position[0]],
+          zoom: focusZoom,
+          essential: true,
+        });
+      }
+      return;
+    }
+    map.flyTo({
+      center: toLngLat(center),
+      zoom,
+      essential: true,
+    });
+  }, [selectedCustomerId, customers, center, zoom, focusZoom, isMounted]);
+
   const updateCurrentLocationMarker = () => {
     if (!mapRef.current || !isMounted) return;
 
@@ -132,7 +176,9 @@ export default function CustomerMap({
     if (currentLocation) {
       try {
         const el = createCurrentLocationElement();
-        currentMarkerRef.current = new maplibregl.Marker({ element: el })
+        const maplibre = maplibreRef.current;
+        if (!maplibre) return;
+        currentMarkerRef.current = new maplibre.Marker({ element: el })
           .setLngLat([currentLocation[1], currentLocation[0]])
           .addTo(mapRef.current);
       } catch (error) {
@@ -178,8 +224,10 @@ export default function CustomerMap({
           </div>
         `;
 
-        const popup = new Popup({ offset: 12 }).setHTML(popupHtml);
-        const marker = new Marker({ element: markerEl })
+        const maplibre = maplibreRef.current;
+        if (!maplibre) return;
+        const popup = new maplibre.Popup({ offset: 12 }).setHTML(popupHtml);
+        const marker = new maplibre.Marker({ element: markerEl })
           .setLngLat([customer.position[1], customer.position[0]])
           .setPopup(popup)
           .addTo(mapRef.current!);
