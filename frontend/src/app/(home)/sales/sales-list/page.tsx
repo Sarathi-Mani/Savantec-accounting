@@ -331,7 +331,7 @@ const PrintView = ({
 };
 
 // Invoice Status Types based on your Enum
-type InvoiceStatus = 'draft' | 'pending' | 'partially_paid' | 'paid' | 'cancelled' | 'refunded' | 'void' | 'write_off';
+type InvoiceStatus = 'draft' | 'pending' | 'partially_paid' | 'paid' | 'cancelled' ;
 type InvoiceVoucher = 'sales' | 'sales_return' | 'purchase' | 'purchase_return';
 
 interface Customer {
@@ -986,10 +986,7 @@ export default function SalesListPage() {
       case 'partially_paid': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
       case 'cancelled': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
       case 'draft': return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400';
-      case 'refunded': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
-      case 'void': return 'bg-gray-200 text-gray-800 dark:bg-gray-800/30 dark:text-gray-300';
-      case 'write_off': return 'bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-300';
-      default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400';
+        default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400';
     }
   };
 
@@ -1000,9 +997,7 @@ export default function SalesListPage() {
       'partially_paid': 'Partially Paid',
       'paid': 'Paid',
       'cancelled': 'Cancelled',
-      'refunded': 'Refunded',
-      'void': 'Void',
-      'write_off': 'Write Off'
+   
     };
     return statusMap[status] || 'Unknown';
   };
@@ -1113,12 +1108,6 @@ export default function SalesListPage() {
           break;
         case 'mark_paid':
           await invoicesApi.markPaid(company.id, invoiceId);
-          break;
-        case 'void':
-          await invoicesApi.void(company.id, invoiceId, { reason: 'Voided by user' });
-          break;
-        case 'refund':
-          await invoicesApi.refund(company.id, invoiceId, { reason: 'Refunded by user' });
           break;
       }
       fetchInvoices();
@@ -1391,10 +1380,7 @@ export default function SalesListPage() {
               <option value="partially_paid">Partially Paid</option>
               <option value="paid">Paid</option>
               <option value="cancelled">Cancelled</option>
-              <option value="refunded">Refunded</option>
-              <option value="void">Void</option>
-              <option value="write_off">Write Off</option>
-            </select>
+              </select>
 
             {/* Customer Dropdown */}
             <select
@@ -1741,7 +1727,7 @@ export default function SalesListPage() {
                                       </button>
                                     )}
 
-                                    {!['cancelled', 'refunded', 'void'].includes(invoice.status) && (
+                                    {!['cancelled'].includes(invoice.status) && (
                                       <button
                                         onClick={() => handleQuickAction('cancel', invoice.id)}
                                         className="flex w-full items-center gap-2 px-4 py-2 text-sm
