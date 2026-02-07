@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { ordersApi, SalesOrder, OrderStatus } from "@/services/api";
+import { ordersApi, payrollApi, invoicesApi, getErrorMessage, SalesOrder, OrderStatus } from "@/services/api";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -86,6 +86,8 @@ interface SalesOrderResponse {
   confirmed_orders: number;
 }
 
+type EmployeeMap = Record<string, string>;
+
 export default function SalesOrdersPage() {
   const router = useRouter();
   const { company } = useAuth();
@@ -107,6 +109,8 @@ export default function SalesOrdersPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
+  const [employeeNameById, setEmployeeNameById] = useState<EmployeeMap>({});
+  const [convertingOrderId, setConvertingOrderId] = useState<string | null>(null);
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
@@ -122,6 +126,27 @@ export default function SalesOrdersPage() {
   });
 
   const pageSize = 10;
+
+  const fetchEmployees = async () => {
+    if (!company?.id) return;
+    try {
+      const employees = await payrollApi.listEmployees(company.id);
+      const map: EmployeeMap = {};
+      employees.forEach((emp: any) => {
+        if (emp?.id) {
+          const name =
+            emp.full_name ||
+            [emp.first_name, emp.last_name].filter(Boolean).join(" ").trim();
+          if (name) {
+            map[emp.id] = name;
+          }
+        }
+      });
+      setEmployeeNameById(map);
+    } catch (error) {
+      console.error("Failed to fetch employees for sales person lookup:", error);
+    }
+  };
 
   const fetchOrders = async () => {
     if (!company?.id) {
@@ -191,6 +216,10 @@ export default function SalesOrdersPage() {
   }, [company?.id, page, search, statusFilter, customerFilter, fromDate, toDate]);
 
   useEffect(() => {
+    fetchEmployees();
+  }, [company?.id]);
+
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (!target.closest('.action-dropdown-container')) {
@@ -215,7 +244,11 @@ export default function SalesOrdersPage() {
   };
 
   const getSalesPersonName = (order: ExtendedSalesOrder): string => {
-    return order.sales_person_name || order.sales_person_id || '-';
+    if (order.sales_person_name) return order.sales_person_name;
+    if (order.sales_person_id && employeeNameById[order.sales_person_id]) {
+      return employeeNameById[order.sales_person_id];
+    }
+    return order.sales_person_id || "-";
   };
 
   const getExpiryDate = (order: ExtendedSalesOrder): string | null => {
@@ -369,8 +402,75 @@ export default function SalesOrdersPage() {
   };
 
   const handleConvertToInvoice = async (orderId: string) => {
-    console.log("Convert to invoice:", orderId);
-    alert("Convert to invoice functionality will be implemented");
+    if (!company?.id || convertingOrderId) return;
+
+    setConvertingOrderId(orderId);
+    try {
+      const order = await ordersApi.getSalesOrder(company.id, orderId) as any;
+
+      if (!order) {
+        alert("Sales order not found.");
+        return;
+      }
+
+      if (!order.items || order.items.length === 0) {
+        alert("Sales order has no items to convert.");
+        return;
+      }
+
+      const invoiceDate = order.order_date ? new Date(order.order_date) : new Date();
+      const dueDate = order.expire_date ? new Date(order.expire_date) : null;
+
+      const invoicePayload = {
+        voucher_type: "sales",
+        customer_id: order.customer_id,
+        invoice_date: invoiceDate.toISOString().split("T")[0],
+        due_date: dueDate ? dueDate.toISOString().split("T")[0] : undefined,
+        invoice_type: "b2b",
+        reference_no: order.reference_no || order.order_number,
+        delivery_note: order.delivery_note || undefined,
+        payment_terms: order.payment_terms || undefined,
+        supplier_ref: order.supplier_ref || undefined,
+        other_references: order.other_references || undefined,
+        buyer_order_no: order.buyer_order_no || undefined,
+        buyer_order_date: order.buyer_order_date
+          ? new Date(order.buyer_order_date).toISOString().split("T")[0]
+          : undefined,
+        despatch_doc_no: order.despatch_doc_no || undefined,
+        delivery_note_date: order.delivery_note_date
+          ? new Date(order.delivery_note_date).toISOString().split("T")[0]
+          : undefined,
+        despatched_through: order.despatched_through || undefined,
+        destination: order.destination || undefined,
+        terms_of_delivery: order.terms_of_delivery || undefined,
+        notes: order.notes || undefined,
+        terms: order.terms || undefined,
+        freight_charges: order.freight_charges ?? 0,
+        packing_forwarding_charges: order.p_and_f_charges ?? 0,
+        round_off: order.round_off ?? 0,
+        discount_on_all: order.discount_on_all ?? 0,
+        sales_person_id: order.sales_person_id || undefined,
+        items: order.items.map((item: any) => ({
+          product_id: item.product_id || undefined,
+          description: item.description,
+          hsn_code: item.hsn_code || undefined,
+          quantity: item.quantity,
+          unit: item.unit || "unit",
+          unit_price: item.unit_price ?? item.rate ?? 0,
+          discount_percent: item.discount_percent ?? 0,
+          gst_rate: item.gst_rate ?? 0,
+        })),
+      };
+
+      const invoice = await invoicesApi.create(company.id, invoicePayload);
+      setActiveActionMenu(null);
+      router.push(`/sales/${invoice.id}`);
+    } catch (error) {
+      console.error("Failed to convert sales order to invoice:", error);
+      alert(getErrorMessage(error, "Failed to convert sales order to invoice"));
+    } finally {
+      setConvertingOrderId(null);
+    }
   };
 
   const handlePrint = (orderId: string) => {
@@ -942,12 +1042,14 @@ export default function SalesOrdersPage() {
                                         </Link>
                                         <button
                                           onClick={() => handleConvertToInvoice(order.id)}
+                                          disabled={convertingOrderId === order.id}
                                           className="flex w-full items-center gap-2 px-4 py-2 text-sm
                                   text-green-600 dark:text-green-400
-                                  hover:bg-green-50 dark:hover:bg-green-900/30"
+                                  hover:bg-green-50 dark:hover:bg-green-900/30
+                                  disabled:opacity-60 disabled:cursor-not-allowed"
                                         >
                                           <FilePlus className="w-4 h-4" />
-                                          Convert to Invoice
+                                          {convertingOrderId === order.id ? "Converting..." : "Convert to Invoice"}
                                         </button>
                                       </>
                                     )}

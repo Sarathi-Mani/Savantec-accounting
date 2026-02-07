@@ -465,6 +465,8 @@ async def get_customer_contact_persons(
     
     return contact_persons
 
+
+
 @router.post("/companies/{company_id}/quotations", response_model=QuotationResponse)
 async def create_quotation(
     company_id: str,
