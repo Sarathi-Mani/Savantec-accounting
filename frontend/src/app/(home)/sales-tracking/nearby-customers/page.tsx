@@ -94,6 +94,7 @@ export default function NearbyCustomersPage() {
   const [isPageReady, setIsPageReady] = useState(false);
   const [geocodeAttempted, setGeocodeAttempted] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
   const initialLoadDoneRef = useRef(false);
 
   const [trip, setTrip] = useState<TripState | null>(null);
@@ -197,13 +198,18 @@ export default function NearbyCustomersPage() {
       (pos) => {
         const next = [pos.coords.latitude, pos.coords.longitude] as [number, number];
         setCurrentLocation(next);
+        setGeoError(null);
         if (!searchCenter) {
           setSearchCenter(next);
         }
         if (onSuccess) onSuccess(next);
       },
-      () => {
-        // ignore
+      (err) => {
+        if (err?.code === 1) {
+          setGeoError("Location permission denied. Enable it to use live tracking.");
+          return;
+        }
+        setGeoError("Unable to fetch current location. Try again.");
       },
       { enableHighAccuracy: true, timeout: 5000 }
     );
@@ -493,7 +499,15 @@ export default function NearbyCustomersPage() {
         }
       },
       (err) => {
-        console.error("Geolocation error:", err);
+        if (err?.code === 1) {
+          setGeoError("Location permission denied. Enable it to use live tracking.");
+          if (locationWatchIdRef.current) {
+            navigator.geolocation.clearWatch(locationWatchIdRef.current);
+            locationWatchIdRef.current = null;
+          }
+          return;
+        }
+        setGeoError("Unable to track location. Please retry.");
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
     );
@@ -823,6 +837,12 @@ export default function NearbyCustomersPage() {
         </div>
       </div>
 
+      {geoError && (
+        <div className="mb-4 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+          {geoError}
+        </div>
+      )}
+
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2 flex items-center gap-2 bg-white rounded-lg border p-3 relative">
           <Search className="w-4 h-4 text-gray-500" />
@@ -1018,7 +1038,7 @@ export default function NearbyCustomersPage() {
                       </div>
 
                       <div className="flex flex-col gap-2">
-                        {!visit && (
+                        {trip && !visit && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1030,7 +1050,7 @@ export default function NearbyCustomersPage() {
                           </button>
                         )}
 
-                        {visit?.status === "planned" && (
+                        {trip && visit?.status === "planned" && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1042,7 +1062,7 @@ export default function NearbyCustomersPage() {
                           </button>
                         )}
 
-                        {visit?.status === "in_progress" && (
+                        {trip && visit?.status === "in_progress" && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1054,7 +1074,7 @@ export default function NearbyCustomersPage() {
                           </button>
                         )}
 
-                        {visit?.status === "completed" && (
+                        {trip && visit?.status === "completed" && (
                           <span className="px-2 py-1 text-xs rounded bg-green-100 text-green-700">
                             Done
                           </span>

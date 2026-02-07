@@ -20,6 +20,16 @@ from app.database.models import Company, Customer, Enquiry
 
 router = APIRouter(prefix="/api/companies/{company_id}", tags=["tracking"])
 
+def normalize_timestamp(ts: Optional[datetime]) -> Optional[datetime]:
+    if ts is None:
+        return None
+    if ts.tzinfo is None:
+        return ts
+    return ts.astimezone().replace(tzinfo=None)
+
+def local_now() -> datetime:
+    return datetime.now()
+
 # ==================== PYDANTIC MODELS ====================
 
 class LocationData(BaseModel):
@@ -423,11 +433,12 @@ def start_trip(
     trip_number = f"TRIP-{year_month}-{count + 1:04d}"
     
     # Create trip
+    start_ts = normalize_timestamp(data.start_location.timestamp)
     trip = Trip(
         company_id=company_id,
         engineer_id=engineer_id,
         trip_number=trip_number,
-        start_time=data.start_location.timestamp,
+        start_time=start_ts,
         start_location_lat=data.start_location.latitude,
         start_location_lng=data.start_location.longitude,
         start_km=data.start_km,
@@ -451,7 +462,7 @@ def start_trip(
         device_id=data.start_location.device_id,
         is_mock_location=data.start_location.is_mock_location,
         is_background=data.start_location.is_background,
-        recorded_at=data.start_location.timestamp
+        recorded_at=start_ts
     )
     
     db.add(location_log)
@@ -470,7 +481,7 @@ def start_trip(
             current_trip_id=trip.id,
             current_lat=data.start_location.latitude,
             current_lng=data.start_location.longitude,
-            last_location_update=data.start_location.timestamp,
+            last_location_update=start_ts,
             device_id=data.start_location.device_id,
             is_online=True,
             gps_enabled=True
@@ -482,7 +493,7 @@ def start_trip(
         tracking_status.current_visit_id = None
         tracking_status.current_lat = data.start_location.latitude
         tracking_status.current_lng = data.start_location.longitude
-        tracking_status.last_location_update = data.start_location.timestamp
+        tracking_status.last_location_update = start_ts
         tracking_status.device_id = data.start_location.device_id
         tracking_status.is_online = True
     
@@ -530,7 +541,9 @@ def create_trip_visits(
             customer_location_lng=customer.location_lng,
             customer_location_address=customer.location_address,
             status=VisitStatus.PLANNED,
-            notes=data.notes
+            notes=data.notes,
+            created_at=local_now(),
+            updated_at=local_now()
         )
         db.add(visit)
         visits.append(visit)
@@ -576,7 +589,8 @@ def end_trip(
         )
     
     # Update trip
-    trip.end_time = data.end_location.timestamp
+    end_ts = normalize_timestamp(data.end_location.timestamp)
+    trip.end_time = end_ts
     trip.end_location_lat = data.end_location.latitude
     trip.end_location_lng = data.end_location.longitude
     trip.end_km = data.end_km
@@ -603,7 +617,7 @@ def end_trip(
         device_id=data.end_location.device_id,
         is_mock_location=data.end_location.is_mock_location,
         is_background=data.end_location.is_background,
-        recorded_at=data.end_location.timestamp
+        recorded_at=end_ts
     )
     
     db.add(location_log)
@@ -620,7 +634,7 @@ def end_trip(
         tracking_status.current_visit_id = None
         tracking_status.current_lat = data.end_location.latitude
         tracking_status.current_lng = data.end_location.longitude
-        tracking_status.last_location_update = data.end_location.timestamp
+        tracking_status.last_location_update = end_ts
         tracking_status.is_online = True
     
     db.commit()
@@ -677,7 +691,8 @@ def mark_visit_in(
         )
     
     # Update visit
-    visit.in_time = data.location.timestamp
+    in_ts = normalize_timestamp(data.location.timestamp)
+    visit.in_time = in_ts
     visit.in_location_lat = data.location.latitude
     visit.in_location_lng = data.location.longitude
     visit.is_within_geofence_in = True
@@ -698,7 +713,7 @@ def mark_visit_in(
         tracking_status.current_visit_id = visit_id
         tracking_status.current_lat = data.location.latitude
         tracking_status.current_lng = data.location.longitude
-        tracking_status.last_location_update = data.location.timestamp
+        tracking_status.last_location_update = in_ts
     
     db.commit()
     
@@ -730,10 +745,11 @@ def mark_visit_out(
         raise HTTPException(status_code=400, detail="Visit already marked OUT")
     
     # Calculate duration
-    duration = (data.location.timestamp - visit.in_time).total_seconds() / 60  # minutes
+    out_ts = normalize_timestamp(data.location.timestamp)
+    duration = (out_ts - visit.in_time).total_seconds() / 60  # minutes
     
     # Update visit
-    visit.out_time = data.location.timestamp
+    visit.out_time = out_ts
     visit.out_location_lat = data.location.latitude
     visit.out_location_lng = data.location.longitude
     visit.duration_minutes = Decimal(str(duration))
@@ -765,7 +781,7 @@ def mark_visit_out(
         tracking_status.current_visit_id = None
         tracking_status.current_lat = data.location.latitude
         tracking_status.current_lng = data.location.longitude
-        tracking_status.last_location_update = data.location.timestamp
+        tracking_status.last_location_update = out_ts
     
     db.commit()
     
@@ -812,6 +828,7 @@ def update_location(
         EngineerTrackingStatus.engineer_id == engineer_id
     ).first()
     
+    loc_ts = normalize_timestamp(data.timestamp)
     if not tracking_status:
         tracking_status = EngineerTrackingStatus(
             company_id=company_id,
@@ -820,7 +837,7 @@ def update_location(
             current_trip_id=None,
             current_lat=data.latitude,
             current_lng=data.longitude,
-            last_location_update=data.timestamp,
+            last_location_update=loc_ts,
             device_id=data.device_id,
             is_online=True,
             gps_enabled=True
@@ -841,7 +858,7 @@ def update_location(
         device_id=data.device_id,
         is_mock_location=data.is_mock_location,
         is_background=data.is_background,
-        recorded_at=data.timestamp
+        recorded_at=loc_ts
     )
     
     db.add(location_log)
@@ -849,7 +866,7 @@ def update_location(
     # Update tracking status
     tracking_status.current_lat = data.latitude
     tracking_status.current_lng = data.longitude
-    tracking_status.last_location_update = data.timestamp
+    tracking_status.last_location_update = loc_ts
     tracking_status.is_online = True
     tracking_status.device_id = data.device_id
     
@@ -1055,8 +1072,10 @@ def get_visits(
         visit_data = VisitResponse.model_validate(visit)
         visit_data.engineer_name = f"{engineer.first_name} {engineer.last_name}"
         visit_data.customer_name = customer.name
-        if visit.enquiry_id:
-            enquiry = db.query(Enquiry).filter(Enquiry.id == visit.enquiry_id).first()
+        enquiry_id = getattr(visit, "enquiry_id", None)
+        if enquiry_id:
+            visit_data.enquiry_id = enquiry_id
+            enquiry = db.query(Enquiry).filter(Enquiry.id == enquiry_id).first()
             if enquiry:
                 visit_data.enquiry_number = enquiry.enquiry_number
         result.append(visit_data)
