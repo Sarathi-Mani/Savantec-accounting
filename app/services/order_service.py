@@ -376,6 +376,7 @@ class OrderService:
                     quantity=qty,
                     unit=item_data.get("unit", "unit"),
                     unit_price=unit_price,
+                    rate=unit_price,
                     gst_rate=gst_rate,
                     tax_amount=tax_amount,
                     total_amount=item_total_amount,

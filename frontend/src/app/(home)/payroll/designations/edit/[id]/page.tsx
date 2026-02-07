@@ -91,8 +91,7 @@ const DEFAULT_PERMISSIONS: Permission[] = [
   { id: "nearby_customers_view", name: "Nearby Customers", description: "View nearby customers map", category: "Sales Tracking" },
   { id: "start_trip", name: "Start Trip", description: "Start new sales trip", category: "Sales Tracking" },
   { id: "mark_visit", name: "Mark Visit", description: "Mark customer visits", category: "Sales Tracking" },
-   { id: "mark_visit", name: "Mark Visit", description: "Mark customer visits", category: "Sales Tracking" },
-];
+  ];
 
 export default function EditRolePage() {
   const { id } = useParams<{ id: string }>();

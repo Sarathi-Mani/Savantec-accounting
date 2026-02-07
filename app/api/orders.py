@@ -7,10 +7,12 @@ from decimal import Decimal
 from sqlalchemy import or_, func
 from pydantic import field_validator, model_validator,BaseModel, Field,ConfigDict
 from app.database.connection import get_db
-from app.database.models import User, Company, OrderStatus
+from app.database.models import User, Company, OrderStatus, Customer
 from app.database.payroll_models import Employee
 
 from app.services.order_service import OrderService
+from app.services.invoice_service import InvoiceService
+from app.schemas.invoice import InvoiceCreate, InvoiceResponse, InvoiceItemCreate, VoucherType
 from app.auth.dependencies import get_current_active_user
 from app.database.models import User, CreatorType  ,Company, OrderStatus, PurchaseOrder, Vendor  # Add PurchaseOrd 
 router = APIRouter(prefix="/companies/{company_id}/orders", tags=["Orders"])
@@ -696,7 +698,6 @@ async def update_sales_order(
             p_and_f_charges=data.p_and_f_charges,
             round_off=data.round_off,
             subtotal=data.subtotal,
-            taxable_amount=item.tax_amount,
             total_tax=data.total_tax,
             total_amount=data.total_amount,
             send_message=data.send_message,
@@ -729,7 +730,7 @@ async def update_sales_order(
                 cgst_rate=item.cgst_rate,
                 sgst_rate=item.sgst_rate,
                 igst_rate=item.igst_rate,
-                taxable_amount=item.taxable_amount,
+                taxable_amount=item.tax_amount,
                 total_amount=item.total_amount,
                 quantity_pending=item.quantity_pending,
             )
