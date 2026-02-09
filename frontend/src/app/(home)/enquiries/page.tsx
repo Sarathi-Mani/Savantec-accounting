@@ -27,6 +27,7 @@ import {
   RefreshCw,
   Plus
 } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768";
 
@@ -114,9 +115,12 @@ const canDeleteEnquiry = (status: string): boolean => {
 
 export default function EnquiriesPage() {
   const router = useRouter();
+  const { company } = useAuth();
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState("");
   
   // Filters state
   const [search, setSearch] = useState("");
@@ -149,6 +153,13 @@ export default function EnquiriesPage() {
   const [engineers, setEngineers] = useState<any[]>([]);
   const [brands, setBrands] = useState<string[]>([]);
   const [states, setStates] = useState<string[]>([]);
+
+  const [brandReport, setBrandReport] = useState<any[]>([]);
+  const [engineerReport, setEngineerReport] = useState<any[]>([]);
+  const [stateReport, setStateReport] = useState<any[]>([]);
+  const [reportEngineerFilter, setReportEngineerFilter] = useState("");
+  const [reportBrandFilter, setReportBrandFilter] = useState("");
+  const [reportStateFilter, setReportStateFilter] = useState("");
   
   // Column visibility
   const [visibleColumns, setVisibleColumns] = useState({
@@ -163,7 +174,8 @@ export default function EnquiriesPage() {
     actions: true,
   });
 
-  const companyId = typeof window !== "undefined" ? localStorage.getItem("company_id") : null;
+  const companyId =
+    company?.id || (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
 
   const buildQueryParams = () => {
     const params = new URLSearchParams();
@@ -177,6 +189,9 @@ export default function EnquiriesPage() {
     if (engineerFilter) params.append("engineer_id", engineerFilter);
     if (brandFilter) params.append("brand", brandFilter);
     if (stateFilter) params.append("state", stateFilter);
+    if (reportEngineerFilter) params.append("sales_person_id", reportEngineerFilter);
+    if (reportBrandFilter) params.append("brand", reportBrandFilter);
+    if (reportStateFilter) params.append("state", reportStateFilter);
     return params;
   };
 
@@ -193,46 +208,97 @@ export default function EnquiriesPage() {
       fetchEnquiries();
       setCachedExportData(null);
     }
-  }, [statusFilter, sourceFilter, salesmanFilter, companyFilter, engineerFilter, brandFilter, stateFilter, fromDate, toDate]);
+  }, [
+    statusFilter,
+    sourceFilter,
+    salesmanFilter,
+    companyFilter,
+    engineerFilter,
+    brandFilter,
+    stateFilter,
+    fromDate,
+    toDate,
+    reportEngineerFilter,
+    reportBrandFilter,
+    reportStateFilter,
+  ]);
+
+  useEffect(() => {
+    if (companyId) {
+      fetchReports();
+    }
+  }, [companyId, fromDate, toDate]);
 
   const fetchDropdownData = async () => {
     try {
-      // Fetch companies
-      const companiesResponse = await fetch(
-        `${API_BASE}/companies`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-          },
-        }
-      );
-      
+      const authHeader = {
+        Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+      };
+
+      // Fetch companies (for company filter)
+      const companiesResponse = await fetch(`${API_BASE}/companies`, { headers: authHeader });
       if (companiesResponse.ok) {
         const companiesData = await companiesResponse.json();
         setCompanies(companiesData);
-        // Extract unique states from companies
-        const uniqueStates = Array.from(new Set(companiesData
-          .filter((c: any) => c.state)
-          .map((c: any) => c.state)
-        ));
-        setStates(uniqueStates);
       }
-      
-      // Fetch employees/salesmen
-      const salesmenResponse = await fetch(
-        `${API_BASE}/companies/${companyId}/employees`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-          },
-        }
+
+      // Fetch Indian states from backend (GST state codes)
+      const statesResponse = await fetch(
+        `${API_BASE}/companies/${companyId}/gst/state-codes`,
+        { headers: authHeader }
       );
-      
-      if (salesmenResponse.ok) {
-        const salesmenData = await salesmenResponse.json();
-        setSalesmen(salesmenData);
-        // Assuming engineers are also employees with a specific role
-        setEngineers(salesmenData);
+      if (statesResponse.ok) {
+        const statesData = await statesResponse.json();
+        const names = (statesData || [])
+          .map((s: any) => s.name)
+          .filter((name: any) => typeof name === "string" && name.trim() !== "");
+        setStates(names);
+      }
+
+      // Fetch sales engineers (dedicated API)
+      const salesEngineersResponse = await fetch(
+        `${API_BASE}/companies/${companyId}/sales-engineers`,
+        { headers: authHeader }
+      );
+
+      if (salesEngineersResponse.ok) {
+        const data = await salesEngineersResponse.json();
+        const list = Array.isArray(data) ? data : [];
+        const formattedSalesmen = list.map((engineer: any) => ({
+          id: engineer.id,
+          name: engineer.full_name || "Unnamed Engineer",
+          email: engineer.email || "",
+          phone: engineer.phone || "",
+          designation: engineer.designation_name || "Sales Engineer",
+          employee_code: engineer.employee_code || "",
+        }));
+        setSalesmen(formattedSalesmen);
+        setEngineers(formattedSalesmen);
+      } else {
+        setSalesmen([]);
+        setEngineers([]);
+      }
+
+      // Fetch brands (from brands table)
+      const brandsResponse = await fetch(
+        `${API_BASE}/companies/${companyId}/brands?page=1&page_size=100`,
+        { headers: authHeader }
+      );
+      const brandsAltResponse = !brandsResponse.ok
+        ? await fetch(`${API_BASE}/companies/${companyId}/brands/?page=1&page_size=100`, {
+            headers: authHeader,
+          })
+        : null;
+
+      if (brandsResponse.ok || brandsAltResponse?.ok) {
+        const brandsData = brandsResponse.ok ? await brandsResponse.json() : await brandsAltResponse!.json();
+        const list = Array.isArray(brandsData?.brands) ? brandsData.brands : [];
+        const names = list
+          .map((b: any) => b.name)
+          .filter((name: any) => typeof name === "string" && name.trim() !== "");
+        setBrands(names);
+      } else {
+        console.error("Brands request failed:", brandsResponse.status, await brandsResponse.text());
       }
     } catch (err) {
       console.error("Failed to fetch dropdown data:", err);
@@ -258,17 +324,55 @@ export default function EnquiriesPage() {
       const data = await response.json();
       setEnquiries(data);
       
-      // Extract unique brands from enquiries
-      const uniqueBrands = Array.from(new Set(data
-        .filter((e: Enquiry) => e.brand)
-        .map((e: Enquiry) => e.brand)
-      ));
-      setBrands(uniqueBrands as string[]);
+      // Brands are loaded from brands table via fetchDropdownData
     } catch (err) {
       setError("Failed to load enquiries");
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchReports = async () => {
+    try {
+      setReportLoading(true);
+      setReportError("");
+
+      const params = new URLSearchParams();
+      if (fromDate) params.append("from_date", fromDate);
+      if (toDate) params.append("to_date", toDate);
+      const qs = params.toString();
+
+      const [engineerRes, stateRes, brandRes] = await Promise.all([
+        fetch(`${API_BASE}/companies/${companyId}/enquiries/reports/by-engineer${qs ? `?${qs}` : ""}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+        }),
+        fetch(`${API_BASE}/companies/${companyId}/enquiries/reports/by-state${qs ? `?${qs}` : ""}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+        }),
+        fetch(`${API_BASE}/companies/${companyId}/enquiries/reports/by-brand${qs ? `?${qs}` : ""}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+        }),
+      ]);
+
+      if (!engineerRes.ok || !stateRes.ok || !brandRes.ok) {
+        throw new Error("Failed to load reports");
+      }
+
+      const [engineerData, stateData, brandData] = await Promise.all([
+        engineerRes.json(),
+        stateRes.json(),
+        brandRes.json(),
+      ]);
+
+      setEngineerReport(Array.isArray(engineerData) ? engineerData : []);
+      setStateReport(Array.isArray(stateData) ? stateData : []);
+      setBrandReport(Array.isArray(brandData) ? brandData : []);
+    } catch (err) {
+      console.error("Failed to fetch reports:", err);
+      setReportError("Failed to load reports");
+    } finally {
+      setReportLoading(false);
     }
   };
 
@@ -348,6 +452,7 @@ export default function EnquiriesPage() {
     setBrandFilter("");
     setStateFilter("");
     fetchEnquiries();
+    fetchReports();
   };
 
   const formatDate = (dateStr: string) => {
@@ -846,6 +951,126 @@ export default function EnquiriesPage() {
           <p className="text-red-800 dark:text-red-400">{error}</p>
         </div>
       )}
+
+      {/* Reports */}
+      <div className="mx-6 mt-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="text-sm font-semibold text-gray-900 dark:text-white">Reports</div>
+          {reportLoading && <span className="text-xs text-gray-500">Loading...</span>}
+          {reportError && <span className="text-xs text-red-600">{reportError}</span>}
+          <div className="ml-auto flex flex-wrap gap-2">
+            <select
+              value={reportEngineerFilter}
+              onChange={(e) => setReportEngineerFilter(e.target.value)}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+            >
+              <option value="">All Sales Engineers</option>
+              {salesmen.map((s: any) => (
+                <option key={s.id} value={s.id}>
+                  {s.first_name ? `${s.first_name} ${s.last_name || ""}`.trim() : s.name || s.email || s.id}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={reportBrandFilter}
+              onChange={(e) => setReportBrandFilter(e.target.value)}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+            >
+              <option value="">All Brands</option>
+              {brands.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={reportStateFilter}
+              onChange={(e) => setReportStateFilter(e.target.value)}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+            >
+              <option value="">All States</option>
+              {states.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Engineer Wise</h3>
+          </div>
+          {engineerReport.length === 0 ? (
+            <p className="text-xs text-gray-500">No data</p>
+          ) : (
+            <div className="space-y-2">
+              {engineerReport
+                .filter((row: any) => !reportEngineerFilter || row.sales_person_id === reportEngineerFilter)
+                .slice(0, 6)
+                .map((row: any) => (
+                <div key={row.sales_person_id || row.sales_person_name} className="flex items-center justify-between text-xs">
+                  <span className="truncate pr-2 text-gray-700 dark:text-gray-300">
+                    {row.sales_person_name || "Unassigned"}
+                  </span>
+                  <span className="text-gray-900 dark:text-white">{row.total_count || 0}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">State Wise</h3>
+          </div>
+          {stateReport.length === 0 ? (
+            <p className="text-xs text-gray-500">No data</p>
+          ) : (
+            <div className="space-y-2">
+              {stateReport
+                .filter((row: any) => !reportStateFilter || row.state === reportStateFilter)
+                .slice(0, 6)
+                .map((row: any) => (
+                <div key={`${row.state}-${row.state_code}`} className="flex items-center justify-between text-xs">
+                  <span className="truncate pr-2 text-gray-700 dark:text-gray-300">
+                    {row.state || "Unknown"}
+                  </span>
+                  <span className="text-gray-900 dark:text-white">{row.total_count || 0}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Brand Wise</h3>
+          </div>
+          {brandReport.length === 0 ? (
+            <p className="text-xs text-gray-500">No data</p>
+          ) : (
+            <div className="space-y-2">
+              {brandReport
+                .filter((row: any) => !reportBrandFilter || row.brand_name === reportBrandFilter)
+                .slice(0, 6)
+                .map((row: any) => (
+                <div key={row.brand_id || row.brand_name} className="flex items-center justify-between text-xs">
+                  <span className="truncate pr-2 text-gray-700 dark:text-gray-300">
+                    {row.brand_name || "Unknown"}
+                  </span>
+                  <span className="text-gray-900 dark:text-white">{row.total_count || 0}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      </div>
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 mx-6 mt-4 rounded-lg overflow-hidden">

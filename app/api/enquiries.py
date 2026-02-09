@@ -2,6 +2,7 @@
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Form, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from pydantic import BaseModel
 from datetime import datetime, date
 from decimal import Decimal
@@ -12,7 +13,7 @@ import os
 from app.database.connection import get_db
 from app.database.models import (
     Enquiry, EnquiryStatus, EnquirySource, EnquiryItem,
-    Company, Customer, Contact, Product, SalesTicket,
+    Company, Customer, Contact, Product, Brand, SalesTicket,
     SalesTicketLog, SalesTicketLogAction, SalesTicketStage
 )
 from app.database.payroll_models import Employee
@@ -264,6 +265,14 @@ class SimpleEnquiryService:
             query = query.filter(Enquiry.customer_id == kwargs['customer_id'])
         if kwargs.get('sales_person_id'):
             query = query.filter(Enquiry.sales_person_id == kwargs['sales_person_id'])
+        if kwargs.get('state'):
+            query = query.join(Customer, Enquiry.customer_id == Customer.id, isouter=True)
+            query = query.filter(Customer.billing_state == kwargs['state'])
+        if kwargs.get('brand'):
+            query = query.join(EnquiryItem, Enquiry.id == EnquiryItem.enquiry_id, isouter=True)
+            query = query.join(Product, EnquiryItem.product_id == Product.id, isouter=True)
+            query = query.join(Brand, Product.brand_id == Brand.id, isouter=True)
+            query = query.filter(Brand.name == kwargs['brand'])
         
         return query.order_by(Enquiry.enquiry_date.desc()).offset(kwargs.get('skip', 0)).limit(kwargs.get('limit', 50)).all()
     
@@ -500,9 +509,12 @@ def list_enquiries(
     source: Optional[EnquirySource] = Query(None),
     customer_id: Optional[str] = Query(None),
     sales_person_id: Optional[str] = Query(None),
+    engineer_id: Optional[str] = Query(None),
     from_date: Optional[date] = Query(None),
     to_date: Optional[date] = Query(None),
     priority: Optional[str] = Query(None),
+    brand: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
@@ -517,10 +529,12 @@ def list_enquiries(
         status=status,
         source=source,
         customer_id=customer_id,
-        sales_person_id=sales_person_id,
+        sales_person_id=sales_person_id or engineer_id,
         from_date=from_date,
         to_date=to_date,
         priority=priority,
+        brand=brand,
+        state=state,
         search=search,
         skip=skip,
         limit=limit,

@@ -632,7 +632,7 @@ class EnquiryService:
             func.sum(Enquiry.expected_value).label("total_value"),
             func.count(case((Enquiry.status == EnquiryStatus.CONVERTED_TO_QUOT, 1))).label("converted_count"),
             func.avg(
-                func.julianday(func.current_date()) - func.julianday(Enquiry.enquiry_date)
+                func.extract("epoch", func.current_date() - Enquiry.enquiry_date) / 86400.0
             ).label("avg_age_days")
         ).filter(Enquiry.company_id == company_id)
         
