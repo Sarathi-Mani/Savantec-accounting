@@ -4550,13 +4550,15 @@ class DeliveryChallan(Base):
     sales_ticket_id = Column(String(36), ForeignKey("sales_tickets.id", ondelete="SET NULL"))
     contact_id = Column(String(36), ForeignKey("contacts.id", ondelete="SET NULL"))
     
-    # DC identification
+      # DC identification
     dc_number = Column(String(50), nullable=False, index=True)
     dc_date = Column(DateTime, nullable=False, default=datetime.utcnow)
     dc_type = Column(Enum(DeliveryChallanType), nullable=False, default=DeliveryChallanType.DC_OUT)
+    reference_no = Column(String(100))
     
-    # Status
+      # Status
     status = Column(Enum(DeliveryChallanStatus), default=DeliveryChallanStatus.DRAFT)
+    custom_status = Column(String(50))
     
     # Linked documents
     invoice_id = Column(String(36), ForeignKey("invoices.id", ondelete="SET NULL"))
@@ -4574,7 +4576,7 @@ class DeliveryChallan(Base):
     eway_bill_date = Column(DateTime)
     eway_bill_valid_until = Column(DateTime)
     
-    # Transport details
+      # Transport details
     transporter_name = Column(String(255))
     transporter_id = Column(String(20))  # GSTIN of transporter
     transport_mode = Column(String(20))  # road, rail, air, ship
@@ -4582,6 +4584,10 @@ class DeliveryChallan(Base):
     vehicle_type = Column(String(50))
     lr_number = Column(String(50))  # Lorry Receipt / Consignment Note
     lr_date = Column(DateTime)
+      
+      # Bill details
+    bill_title = Column(String(200))
+    bill_description = Column(Text)
     
     # Dispatch/Delivery addresses
     dispatch_from_address = Column(Text)

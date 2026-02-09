@@ -50,6 +50,7 @@ export default function NewDeliveryChallanPage() {
   const searchParams = useSearchParams();
   const dcType = searchParams.get("type") || "dc_out";
   const invoiceId = searchParams.get("invoice_id");
+  const fromQuotation = searchParams.get("fromQuotation");
 
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -59,6 +60,9 @@ export default function NewDeliveryChallanPage() {
   const [selectedContactPerson, setSelectedContactPerson] = useState<ContactPerson | null>(null);
   const [salesmen, setSalesmen] = useState<Salesman[]>([]);
   const [nextDcNumber, setNextDcNumber] = useState<string>("");
+  const [prefillCustomerName, setPrefillCustomerName] = useState<string>("");
+  const [prefillContactName, setPrefillContactName] = useState<string>("");
+  const [prefillSalesmanName, setPrefillSalesmanName] = useState<string>("");
 
   const [formData, setFormData] = useState({
     customer_id: "",
@@ -147,6 +151,140 @@ export default function NewDeliveryChallanPage() {
     fetchData();
   }, [company?.id]);
 
+  useEffect(() => {
+    const prefillFromQuotation = async () => {
+      if (!company?.id || !fromQuotation) return;
+      const token = getToken();
+      if (!token) return;
+
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/quotations/${fromQuotation}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        if (!response.ok) {
+          console.error("Failed to fetch quotation for DC prefill");
+          return;
+        }
+
+        const quotation = await response.json();
+
+        setFormData(prev => ({
+          ...prev,
+          customer_id: quotation.customer_id || prev.customer_id,
+          contact_person: quotation.contact_id || prev.contact_person,
+          salesman_id: quotation.sales_person_id || prev.salesman_id,
+          notes: quotation.notes || prev.notes,
+          bill_title: quotation.subject || prev.bill_title,
+          bill_description: quotation.remarks || quotation.notes || prev.bill_description,
+          reference_no: quotation.reference_no || quotation.reference || "",
+        }));
+
+        setPrefillCustomerName(quotation.customer_name || "");
+        setPrefillContactName(quotation.contact_person || "");
+        setPrefillSalesmanName(quotation.sales_person_name || "");
+
+        if (quotation.customer_id) {
+          try {
+            const customerRes = await fetch(
+              `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/customers/${quotation.customer_id}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+            if (customerRes.ok) {
+              const customer = await customerRes.json();
+              setCustomers(prev => {
+                const exists = prev.some(c => c.id === customer.id);
+                return exists ? prev : [...prev, customer];
+              });
+              if (Array.isArray(customer.contact_persons)) {
+                setContactPersons(customer.contact_persons);
+                if (!formData.contact_person && customer.contact_persons.length > 0) {
+                  const matchedByName = prefillContactName
+                    ? customer.contact_persons.find((p: any) => p.name === prefillContactName)
+                    : null;
+                  const selected = matchedByName || customer.contact_persons[0];
+                  setSelectedContactPerson(selected);
+                  setFormData(prev => ({
+                    ...prev,
+                    contact_person: selected?.id || "",
+                  }));
+                }
+              }
+            }
+          } catch (error) {
+            console.error("Failed to fetch customer for DC prefill:", error);
+          }
+        }
+
+        const mappedItems: DCItem[] = (quotation.items || []).map((item: any, index: number) => {
+          const quantity = Number(item.quantity || 1);
+          const unitPrice = Number(item.unit_price || 0);
+          const discountPercent = Number(item.discount_percent || 0);
+          const itemTotal = quantity * unitPrice;
+          const discountAmount = discountPercent > 0 ? itemTotal * (discountPercent / 100) : 0;
+          const taxableAmount = itemTotal - discountAmount;
+          const gstRate = Number(item.gst_rate || 0);
+          const totalAmount = taxableAmount + taxableAmount * (gstRate / 100);
+          const halfGst = gstRate / 2;
+
+          return {
+            id: Date.now() + index,
+            product_id: item.product_id,
+            description: item.description || item.product_name || "",
+            hsn_code: item.hsn_code || "",
+            quantity,
+            unit: item.unit || "unit",
+            unit_price: unitPrice,
+            discount_percent: discountPercent,
+            discount_amount: discountAmount,
+            gst_rate: gstRate,
+            cgst_rate: halfGst,
+            sgst_rate: halfGst,
+            igst_rate: 0,
+            taxable_amount: taxableAmount,
+            total_amount: totalAmount,
+            godown_id: item.godown_id || undefined,
+          };
+        });
+
+        if (mappedItems.length > 0) {
+          setItems(mappedItems);
+        }
+      } catch (error) {
+        console.error("Failed to prefill DC from quotation:", error);
+      }
+    };
+
+    prefillFromQuotation();
+  }, [company?.id, fromQuotation]);
+
+  useEffect(() => {
+    if (!formData.customer_id && prefillCustomerName && customers.length > 0) {
+      const matched = customers.find(c => c.name === prefillCustomerName);
+      if (matched) {
+        setFormData(prev => ({
+          ...prev,
+          customer_id: matched.id,
+        }));
+      }
+    }
+  }, [prefillCustomerName, customers, formData.customer_id]);
+
+  useEffect(() => {
+    if (!formData.salesman_id && prefillSalesmanName && salesmen.length > 0) {
+      const matched = salesmen.find(s => s.name === prefillSalesmanName);
+      if (matched) {
+        setFormData(prev => ({
+          ...prev,
+          salesman_id: matched.id,
+        }));
+      }
+    }
+  }, [prefillSalesmanName, salesmen, formData.salesman_id]);
+
 
  // Fetch next DC number
 const fetchNextDcNumber = async () => {
@@ -221,20 +359,26 @@ const fetchNextDcNumber = async () => {
         
         setContactPersons(persons);
         
-        if (persons.length > 0) {
-          const firstPerson = persons[0];
-          setSelectedContactPerson(firstPerson);
-          setFormData(prev => ({
-            ...prev,
-            contact_person: firstPerson.name || ""
-          }));
-        } else {
-          setSelectedContactPerson(null);
-          setFormData(prev => ({
-            ...prev,
-            contact_person: ""
-          }));
-        }
+          if (persons.length > 0) {
+            const matchedById = persons.find(p => p.id === formData.contact_person);
+            const matchedByName = prefillContactName
+              ? persons.find(p => p.name === prefillContactName)
+              : null;
+            const selected = matchedById || matchedByName || persons[0];
+            setSelectedContactPerson(selected);
+            if (!matchedById) {
+              setFormData(prev => ({
+                ...prev,
+                contact_person: selected?.id || ""
+              }));
+            }
+          } else {
+            setSelectedContactPerson(null);
+            setFormData(prev => ({
+              ...prev,
+              contact_person: ""
+            }));
+          }
       }
     } catch (error) {
       console.error("Failed to fetch contact persons:", error);
@@ -453,8 +597,9 @@ const fetchNextDcNumber = async () => {
 
   try {
     const endpoint = dcType === "dc_out" ? "dc-out" : "dc-in";
+    const { reference_no, ...formPayload } = formData;
     const body: any = {
-      ...formData,
+      ...formPayload,
       items: validItems.map(item => ({
         product_id: item.product_id,
         description: item.description,
@@ -470,9 +615,8 @@ const fetchNextDcNumber = async () => {
         godown_id: dcType === "dc_out" ? formData.from_godown_id : formData.to_godown_id,
       })),
       // FIX: Include all the new fields
-      dc_number: formData.dc_number,
-       reference_no: formData.reference_no,
-      status: formData.status,
+        dc_number: formData.dc_number,
+        status: formData.status,
       bill_title: formData.bill_title,
       bill_description: formData.bill_description,
       contact_person: formData.contact_person, // This should map to contact_id
@@ -529,7 +673,7 @@ const fetchNextDcNumber = async () => {
 
     // If contact person dropdown changes
     if (field === 'contact_person') {
-      const selectedPerson = contactPersons.find(p => p.name === value);
+      const selectedPerson = contactPersons.find(p => p.id === value);
       if (selectedPerson) {
         setSelectedContactPerson(selectedPerson);
       }
@@ -675,9 +819,9 @@ const fetchNextDcNumber = async () => {
                   >
                     <option value="">Select Contact Person</option>
                     {contactPersons.map((person) => (
-                      <option key={person.id} value={person.name}>
-                        {person.name} {person.designation ? `(${person.designation})` : ''}
-                      </option>
+                        <option key={person.id} value={person.id}>
+                          {person.name} {person.designation ? `(${person.designation})` : ''}
+                        </option>
                     ))}
                   </select>
                   {formData.customer_id && contactPersons.length === 0 && (
