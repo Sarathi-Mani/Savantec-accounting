@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { vendorsApi, Vendor, VendorListResponse } from "@/services/api";
 import Link from "next/link";
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Users,
   Plus,
@@ -34,7 +35,15 @@ import {
   CreditCard,
   Receipt,
   Wallet,
+  RefreshCw,
+  Hash,
+  Calendar,
+  MapPin,
+  Globe,
+  Shield,
 } from "lucide-react";
+
+type VendorWithMeta = Vendor;
 
 // Fixed formatCurrency function for proper INR formatting
 const formatCurrency = (amount: number): string => {
@@ -43,18 +52,27 @@ const formatCurrency = (amount: number): string => {
     currency: 'INR',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
-  }).format(amount).replace('₹', '₹ '); // Add space after ₹ for better readability
+  }).format(amount);
 };
 
-// Print component
+const formatAmountPlain = (value: number | string | undefined | null): string => {
+  if (value === undefined || value === null) return "0.00";
+  if (typeof value === "number") return value.toFixed(2);
+  const numeric = parseFloat(value.replace(/[^\d.-]/g, ""));
+  return Number.isFinite(numeric) ? numeric.toFixed(2) : "0.00";
+};
+
+// Print component - Matching products pattern
 const PrintView = ({
   vendors,
   visibleColumns,
-  formatCurrency
+  formatCurrency,
+  companyName,
 }: {
-  vendors: Vendor[];
+  vendors: VendorWithMeta[];
   visibleColumns: Record<string, boolean>;
   formatCurrency: (amount: number) => string;
+  companyName: string;
 }) => {
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -77,6 +95,7 @@ const PrintView = ({
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '5px' }}>
             Vendors List
           </h1>
+          <p style={{ fontSize: '14px', color: '#666' }}>{companyName}</p>
           <p style={{ color: '#666', fontSize: '14px' }}>
             Generated on: {new Date().toLocaleDateString('en-IN')}
           </p>
@@ -92,6 +111,14 @@ const PrintView = ({
               backgroundColor: '#f3f4f6',
               borderBottom: '2px solid #ddd'
             }}>
+              <th style={{
+                padding: '12px',
+                textAlign: 'left',
+                borderRight: '1px solid #ddd',
+                fontWeight: 'bold'
+              }}>
+                S.No
+              </th>
               {visibleColumns.vendorId && (
                 <th style={{
                   padding: '12px',
@@ -152,6 +179,16 @@ const PrintView = ({
                   PAN
                 </th>
               )}
+              {visibleColumns.location && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Location
+                </th>
+              )}
               {visibleColumns.openingBalance && (
                 <th style={{
                   padding: '12px',
@@ -179,12 +216,18 @@ const PrintView = ({
                 borderBottom: '1px solid #ddd',
                 backgroundColor: index % 2 === 0 ? '#fff' : '#f9f9f9'
               }}>
+                <td style={{
+                  padding: '12px',
+                  borderRight: '1px solid #ddd'
+                }}>
+                  {index + 1}
+                </td>
                 {visibleColumns.vendorId && (
                   <td style={{
                     padding: '12px',
                     borderRight: '1px solid #ddd'
                   }}>
-                    {vendor.vendor_code || 'N/A'}
+                    {vendor.vendor_code || '-'}
                   </td>
                 )}
                 {visibleColumns.name && (
@@ -192,7 +235,10 @@ const PrintView = ({
                     padding: '12px',
                     borderRight: '1px solid #ddd'
                   }}>
-                    {vendor.name}
+                    <div>
+                      <strong>{vendor.name}</strong>
+                      {/* company_name not available in Vendor type */}
+                    </div>
                   </td>
                 )}
                 {visibleColumns.contact && (
@@ -227,14 +273,35 @@ const PrintView = ({
                     {vendor.pan_number || '-'}
                   </td>
                 )}
+                {visibleColumns.location && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {vendor.billing_city ? `${vendor.billing_city}, ${vendor.billing_state || ''}`.trim() : '-'}
+                  </td>
+                )}
                 {visibleColumns.openingBalance && (
                   <td style={{
                     padding: '12px',
                     borderRight: '1px solid #ddd',
-                    color: vendor.opening_balance_type === 'outstanding' ? '#dc2626' : '#059669',
                     fontFamily: '"Segoe UI", Tahoma, Geneva, Verdana, sans-serif'
                   }}>
-                    {formatCurrency(vendor.opening_balance || 0)}
+                    <div>
+                      <div style={{
+                        fontWeight: 'bold',
+                        color: vendor.opening_balance_type === 'outstanding' ? '#dc2626' : '#059669'
+                      }}>
+                        {formatCurrency(vendor.opening_balance || 0)}
+                      </div>
+                      <div style={{
+                        fontSize: '11px',
+                        color: '#888',
+                        marginTop: '2px'
+                      }}>
+                        {vendor.opening_balance_type === 'outstanding' ? 'You Owe' : 'You Paid'}
+                      </div>
+                    </div>
                   </td>
                 )}
                 {visibleColumns.status && (
@@ -278,28 +345,33 @@ const PrintView = ({
 };
 
 export default function VendorsPage() {
+  const router = useRouter();
   const { company } = useAuth();
   const [data, setData] = useState<VendorListResponse | null>(null);
-  const [allVendors, setAllVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
+  const [error, setError] = useState("");
+  
+  // Filters state
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [stateFilter, setStateFilter] = useState<string>("");
+  
+  // UI state
   const [showFilters, setShowFilters] = useState(false);
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
   const [showPrintView, setShowPrintView] = useState(false);
-  const [vendorsToPrint, setVendorsToPrint] = useState<Vendor[]>([]);
-
+  const [vendorsToPrint, setVendorsToPrint] = useState<VendorWithMeta[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  
   // Export loading states
   const [copyLoading, setCopyLoading] = useState(false);
   const [excelLoading, setExcelLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [csvLoading, setCsvLoading] = useState(false);
-
-  const [cachedExportData, setCachedExportData] = useState<Vendor[] | null>(null);
-
-  // Column visibility state - match customers list pattern
+  const [printLoading, setPrintLoading] = useState(false);
+  
+  // Column visibility - matching products pattern
   const [visibleColumns, setVisibleColumns] = useState({
     vendorId: true,
     name: true,
@@ -307,171 +379,177 @@ export default function VendorsPage() {
     email: true,
     gstin: true,
     pan: true,
+    location: true,
     openingBalance: true,
     status: true,
     actions: true,
   });
 
-  const pageSize = 10;
+  const companyId = company?.id || (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
+
+  useEffect(() => {
+    if (companyId) {
+      fetchVendors();
+    }
+  }, [companyId, currentPage, search]);
 
   const fetchVendors = async () => {
-    if (!company?.id) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
     try {
+      setLoading(true);
+      if (!company?.id) {
+        setLoading(false);
+        return;
+      }
+
       const result = await vendorsApi.list(company.id, {
-        page,
+        page: currentPage,
         page_size: pageSize,
         search: search || undefined,
       });
+      
       setData(result);
-      setAllVendors(result.vendors);
-    } catch (error) {
-      console.error("Failed to fetch vendors:", error);
-      setData(null);
-      setAllVendors([]);
+      setError("");
+    } catch (err) {
+      setError("Failed to load vendors");
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchAllVendorsForExport = useCallback(async (): Promise<Vendor[]> => {
-    if (!company?.id) return [];
-
+  const fetchAllVendorsForExport = async (): Promise<VendorWithMeta[]> => {
     try {
-      const result = await vendorsApi.list(company.id, {
-        page: 1,
-        page_size: 1000,
-        search: search || undefined,
-      });
+      if (!company?.id) return [];
 
-      const vendors = result.vendors || [];
-      setAllVendors(vendors);
-      setCachedExportData(vendors);
-      return vendors;
+      const pageSize = 100;
+      let pageNum = 1;
+      let allVendors: VendorWithMeta[] = [];
+      while (true) {
+        const result = await vendorsApi.list(company.id, {
+          page: pageNum,
+          page_size: pageSize,
+          search: search || undefined,
+        });
+        const batch = (result?.vendors || []) as VendorWithMeta[];
+        allVendors = allVendors.concat(batch);
+        if (batch.length < pageSize) break;
+        pageNum += 1;
+      }
+
+      if (stateFilter) {
+        return allVendors.filter((vendor) => (vendor.billing_state || "") === stateFilter);
+      }
+      return allVendors;
     } catch (error) {
       console.error("Export fetch failed:", error);
       return [];
     }
-  }, [company?.id, search]);
-
-  const getExportData = async (): Promise<Vendor[]> => {
-    if (cachedExportData) return cachedExportData;
-    return await fetchAllVendorsForExport();
   };
 
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCurrentPage(1);
+  };
 
-  useEffect(() => {
-    fetchVendors();
-    setCachedExportData(null);
-  }, [company?.id, page, search]);
+  const handleReset = () => {
+    setSearch("");
+    setStateFilter("");
+    setCurrentPage(1);
+  };
 
-  useEffect(() => {
-    fetchAllVendorsForExport();
-  }, [company?.id, search]);
+  const getStatusBadgeClass = (isActive: boolean): string => {
+    return isActive 
+      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+      : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
+  };
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.action-dropdown-container')) {
-        setActiveActionMenu(null);
-      }
-      if (!target.closest('.column-dropdown-container')) {
-        setShowColumnDropdown(false);
-      }
-    };
+  const getBalanceBadgeClass = (type: string): string => {
+    return type === 'outstanding' 
+      ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+      : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
+  };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Filter vendors based on status filter
-  const getFilteredVendors = () => {
-    const base = allVendors.length > 0 ? allVendors : (data?.vendors || []);
-
-    let filtered = base;
-
-    // Apply status filter
-    if (statusFilter === "active") {
-      filtered = filtered.filter(vendor => vendor.is_active);
-    } else if (statusFilter === "inactive") {
-      filtered = filtered.filter(vendor => !vendor.is_active);
+  const filteredVendors = (data?.vendors || []).filter((vendor) => {
+    if (stateFilter) {
+      return (vendor.billing_state || "") === stateFilter;
     }
+    return true;
+  });
+  const availableStates = Array.from(
+    new Set(
+      (data?.vendors || [])
+        .map((vendor) => vendor.billing_state)
+        .filter((state): state is string => typeof state === "string" && state.trim() !== "")
+    )
+  ).sort();
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / pageSize)) : 1;
 
-    return filtered;
-  };
-
-  // Handle print
-  const handlePrint = () => {
-    const filteredVendors = getFilteredVendors();
-    setVendorsToPrint(filteredVendors);
-    setShowPrintView(true);
-  };
-
-  // Export functions - matching customers list pattern
+  // Export functions - matching products pattern
   const copyToClipboard = async () => {
     if (copyLoading) return;
     setCopyLoading(true);
     try {
-      const exportVendors = await getExportData();
-      const filtered = statusFilter
-        ? exportVendors.filter(vendor => statusFilter === 'active' ? vendor.is_active : !vendor.is_active)
-        : exportVendors;
-
-      // Build headers based on visible columns
-      const headers: string[] = [];
-      const rowData = filtered.map(vendor => {
-        const row: string[] = [];
+      const allVendors = await fetchAllVendorsForExport();
+      
+      const headers: string[] = ["S.No"];
+      const rows = allVendors.map((vendor, index) => {
+        const row: string[] = [(index + 1).toString()];
 
         if (visibleColumns.vendorId) {
           if (!headers.includes("Vendor ID")) headers.push("Vendor ID");
-          row.push(vendor.vendor_code || 'N/A');
+          row.push(vendor.vendor_code || "-");
         }
 
         if (visibleColumns.name) {
           if (!headers.includes("Name")) headers.push("Name");
           row.push(vendor.name);
+          // company_name not available in Vendor type
         }
 
         if (visibleColumns.contact) {
           if (!headers.includes("Contact")) headers.push("Contact");
-          row.push(vendor.contact || '-');
+          row.push(vendor.contact || "-");
         }
 
         if (visibleColumns.email) {
           if (!headers.includes("Email")) headers.push("Email");
-          row.push(vendor.email || '-');
+          row.push(vendor.email || "-");
         }
 
         if (visibleColumns.gstin) {
           if (!headers.includes("GSTIN")) headers.push("GSTIN");
-          row.push(vendor.tax_number || '-');
+          row.push(vendor.tax_number || "-");
         }
 
         if (visibleColumns.pan) {
           if (!headers.includes("PAN")) headers.push("PAN");
-          row.push(vendor.pan_number || '-');
+          row.push(vendor.pan_number || "-");
+        }
+
+        if (visibleColumns.location) {
+          if (!headers.includes("Location")) headers.push("Location");
+          row.push(vendor.billing_city ? `${vendor.billing_city}, ${vendor.billing_state || ''}`.trim() : "-");
         }
 
         if (visibleColumns.openingBalance) {
           if (!headers.includes("Opening Balance")) headers.push("Opening Balance");
-          row.push(formatCurrency(vendor.opening_balance || 0));
+          row.push((vendor.opening_balance || 0).toFixed(2));
           if (!headers.includes("Balance Type")) headers.push("Balance Type");
-          row.push(vendor.opening_balance_type || '-');
+          row.push(vendor.opening_balance_type || "-");
         }
 
         if (visibleColumns.status) {
           if (!headers.includes("Status")) headers.push("Status");
-          row.push(vendor.is_active ? 'Active' : 'Inactive');
+          row.push(vendor.is_active ? "Active" : "Inactive");
         }
 
         return row;
       });
 
-      const text = [headers.join("	"), ...rowData.map(r => r.join("	"))].join("\n");
+      // Add S.No to headers
+      headers.unshift("S.No");
+      
+      const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
       await navigator.clipboard.writeText(text);
       alert("Vendor data copied to clipboard");
     } catch (error) {
@@ -486,16 +564,15 @@ export default function VendorsPage() {
     if (excelLoading) return;
     setExcelLoading(true);
     try {
-      const exportVendors = await getExportData();
-      const filtered = statusFilter
-        ? exportVendors.filter(vendor => statusFilter === 'active' ? vendor.is_active : !vendor.is_active)
-        : exportVendors;
-
-      const exportData = filtered.map(vendor => {
-        const row: Record<string, any> = {};
+      const allVendors = await fetchAllVendorsForExport();
+      
+      const exportData = allVendors.map((vendor, index) => {
+        const row: Record<string, any> = {
+          "S.No": index + 1,
+        };
 
         if (visibleColumns.vendorId) {
-          row["Vendor ID"] = vendor.vendor_code || 'N/A';
+          row["Vendor ID"] = vendor.vendor_code || "";
         }
 
         if (visibleColumns.name) {
@@ -503,30 +580,36 @@ export default function VendorsPage() {
         }
 
         if (visibleColumns.contact) {
-          row["Contact"] = vendor.contact || '-';
+          row["Contact"] = vendor.contact || "";
         }
 
         if (visibleColumns.email) {
-          row["Email"] = vendor.email || '-';
+          row["Email"] = vendor.email || "";
         }
 
         if (visibleColumns.gstin) {
-          row["GSTIN"] = vendor.tax_number || '-';
+          row["GSTIN"] = vendor.tax_number || "";
         }
 
         if (visibleColumns.pan) {
-          row["PAN"] = vendor.pan_number || '-';
+          row["PAN"] = vendor.pan_number || "";
+        }
+
+        if (visibleColumns.location) {
+          row["Location"] = vendor.billing_city ? `${vendor.billing_city}, ${vendor.billing_state || ''}`.trim() : "";
         }
 
         if (visibleColumns.openingBalance) {
           row["Opening Balance"] = vendor.opening_balance || 0;
-          row["Balance Type"] = vendor.opening_balance_type || '-';
+          row["Balance Type"] = vendor.opening_balance_type || "";
         }
 
         if (visibleColumns.status) {
-          row["Status"] = vendor.is_active ? 'Active' : 'Inactive';
+          row["Status"] = vendor.is_active ? "Active" : "Inactive";
         }
 
+        row["Company"] = company?.name || "";
+        
         return row;
       });
 
@@ -542,33 +625,21 @@ export default function VendorsPage() {
     }
   };
 
-  // Fixed PDF export function to include all visible columns
   const exportPDF = async () => {
     if (pdfLoading) return;
     setPdfLoading(true);
     try {
-      const exportVendors = await getExportData();
-      const filtered = statusFilter
-        ? exportVendors.filter(vendor => statusFilter === 'active' ? vendor.is_active : !vendor.is_active)
-        : exportVendors;
+      const allVendors = await fetchAllVendorsForExport();
+      
       const doc = new jsPDF("landscape");
-
-      // PDF-safe currency formatter (NO ??? symbol)
-      const formatCurrencyForPDF = (amount: number): string => {
-        return `Rs. ${new Intl.NumberFormat("en-IN", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }).format(amount)}`;
-      };
-
-      // Build headers & rows based on visible columns
-      const headers: string[] = [];
-      const body = filtered.map((vendor) => {
-        const row: string[] = [];
+      
+      const headers: string[] = ["S.No"];
+      const body = allVendors.map((vendor, index) => {
+        const row: string[] = [(index + 1).toString()];
 
         if (visibleColumns.vendorId) {
           if (!headers.includes("Vendor ID")) headers.push("Vendor ID");
-          row.push(vendor.vendor_code || "N/A");
+          row.push(vendor.vendor_code || "-");
         }
 
         if (visibleColumns.name) {
@@ -596,9 +667,14 @@ export default function VendorsPage() {
           row.push(vendor.pan_number || "-");
         }
 
+        if (visibleColumns.location) {
+          if (!headers.includes("Location")) headers.push("Location");
+          row.push(vendor.billing_city ? `${vendor.billing_city}, ${vendor.billing_state || ''}`.trim() : "-");
+        }
+
         if (visibleColumns.openingBalance) {
           if (!headers.includes("Opening Balance")) headers.push("Opening Balance");
-          row.push(formatCurrencyForPDF(vendor.opening_balance || 0));
+          row.push(formatAmountPlain(vendor.opening_balance));
         }
 
         if (visibleColumns.status) {
@@ -611,14 +687,14 @@ export default function VendorsPage() {
 
       autoTable(doc, {
         head: [headers],
-        body,
+        body: body,
         startY: 20,
         margin: { top: 20, left: 10, right: 10, bottom: 20 },
         styles: {
           fontSize: 9,
           cellPadding: 3,
           overflow: "linebreak",
-          font: "helvetica", // default font (safe)
+          font: "helvetica",
         },
         headStyles: {
           fillColor: [41, 128, 185],
@@ -629,19 +705,18 @@ export default function VendorsPage() {
           fillColor: [245, 245, 245],
         },
         didDrawPage: (data) => {
-          // Title
           doc.setFontSize(16);
           doc.text("Vendors List", data.settings.margin.left, 12);
-
-          // Date
+          
           doc.setFontSize(10);
+          doc.text(company?.name || '', data.settings.margin.left, 18);
+          
           doc.text(
             `Generated: ${new Date().toLocaleDateString("en-IN")}`,
             doc.internal.pageSize.width - 60,
             12
           );
 
-          // Page number
           const pageCount = doc.getNumberOfPages();
           doc.text(
             `Page ${data.pageNumber} of ${pageCount}`,
@@ -660,21 +735,19 @@ export default function VendorsPage() {
     }
   };
 
-
   const exportCSV = async () => {
     if (csvLoading) return;
     setCsvLoading(true);
     try {
-      const exportVendors = await getExportData();
-      const filtered = statusFilter
-        ? exportVendors.filter(vendor => statusFilter === 'active' ? vendor.is_active : !vendor.is_active)
-        : exportVendors;
-
-      const exportData = filtered.map(vendor => {
-        const row: Record<string, any> = {};
+      const allVendors = await fetchAllVendorsForExport();
+      
+      const exportData = allVendors.map((vendor, index) => {
+        const row: Record<string, any> = {
+          "S.No": index + 1,
+        };
 
         if (visibleColumns.vendorId) {
-          row["Vendor ID"] = vendor.vendor_code || 'N/A';
+          row["Vendor ID"] = vendor.vendor_code || "";
         }
 
         if (visibleColumns.name) {
@@ -682,28 +755,32 @@ export default function VendorsPage() {
         }
 
         if (visibleColumns.contact) {
-          row["Contact"] = vendor.contact || '-';
+          row["Contact"] = vendor.contact || "";
         }
 
         if (visibleColumns.email) {
-          row["Email"] = vendor.email || '-';
+          row["Email"] = vendor.email || "";
         }
 
         if (visibleColumns.gstin) {
-          row["GSTIN"] = vendor.tax_number || '-';
+          row["GSTIN"] = vendor.tax_number || "";
         }
 
         if (visibleColumns.pan) {
-          row["PAN"] = vendor.pan_number || '-';
+          row["PAN"] = vendor.pan_number || "";
+        }
+
+        if (visibleColumns.location) {
+          row["Location"] = vendor.billing_city ? `${vendor.billing_city}, ${vendor.billing_state || ''}`.trim() : "";
         }
 
         if (visibleColumns.openingBalance) {
           row["Opening Balance"] = vendor.opening_balance || 0;
-          row["Balance Type"] = vendor.opening_balance_type || '-';
+          row["Balance Type"] = vendor.opening_balance_type || "";
         }
 
         if (visibleColumns.status) {
-          row["Status"] = vendor.is_active ? 'Active' : 'Inactive';
+          row["Status"] = vendor.is_active ? "Active" : "Inactive";
         }
 
         return row;
@@ -721,84 +798,48 @@ export default function VendorsPage() {
     }
   };
 
+  const handlePrint = async () => {
+    if (printLoading) return;
+    setPrintLoading(true);
+    try {
+      const allVendors = await fetchAllVendorsForExport();
+      setVendorsToPrint(allVendors);
+      setShowPrintView(true);
+    } catch (error) {
+      console.error("Print failed:", error);
+      alert("Failed to prepare print view. Please try again.");
+    } finally {
+      setPrintLoading(false);
+    }
+  };
+
   const toggleColumn = (key: keyof typeof visibleColumns) => {
     setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const getStatusColor = (isActive: boolean) => {
-    return isActive
-      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-      : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
-  };
-
-  const getStatusBadge = (isActive: boolean) => {
-    const text = isActive ? 'Active' : 'Inactive';
-    const colorClass = getStatusColor(isActive);
-
-    const icon = isActive
-      ? <CheckCircle className="w-3 h-3 mr-1" />
-      : <XCircle className="w-3 h-3 mr-1" />;
-
-    return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
-        {icon}
-        {text}
-      </span>
-    );
-  };
-
-  const getBalanceBadge = (amount: number, type: string) => {
-    const isOutstanding = type === 'outstanding';
-    const colorClass = isOutstanding
-      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-      : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-
-    return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
-        {isOutstanding ? 'You Owe' : 'You Paid'}
-      </span>
-    );
-  };
-
-  const handleDelete = async (vendorId: string) => {
-    if (!company?.id || !confirm("Are you sure you want to delete this vendor?")) return;
-    try {
-      await vendorsApi.delete(company.id, vendorId);
-      fetchVendors();
-    } catch (error) {
-      console.error("Failed to delete vendor:", error);
-      alert("Failed to delete vendor. Please try again.");
+  const handleDelete = async (vendorId: string, vendorName: string) => {
+    if (window.confirm(`Are you sure you want to delete vendor "${vendorName}"? This action cannot be undone.`)) {
+      try {
+        if (company?.id) {
+          await vendorsApi.delete(company.id, vendorId);
+          fetchVendors();
+        }
+      } catch (error) {
+        console.error("Error deleting vendor:", error);
+        alert("Failed to delete vendor");
+      }
     }
   };
 
-  const handleSearch = () => {
-    setPage(1);
-    fetchVendors();
-  };
-
-  const clearFilters = () => {
-    setSearch("");
-    setStatusFilter("");
-    setPage(1);
-  };
-
-  const handleStatusFilterChange = (value: string) => {
-    setStatusFilter(value);
-    setPage(1);
-  };
-
-  const getDisplayVendors = () => {
-    const filtered = getFilteredVendors();
-    // Apply pagination
-    const startIndex = (page - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    return filtered.slice(startIndex, endIndex);
-  };
-
-  const getTotalFilteredCount = () => {
-    const filtered = getFilteredVendors();
-    return filtered.length;
-  };
+  if (!companyId) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 dark:bg-yellow-900/20 dark:border-yellow-800">
+          <p className="text-yellow-800 dark:text-yellow-400">Please select a company first.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">
@@ -807,6 +848,7 @@ export default function VendorsPage() {
           vendors={vendorsToPrint}
           visibleColumns={visibleColumns}
           formatCurrency={formatCurrency}
+          companyName={company?.name || ''}
         />
       )}
 
@@ -815,23 +857,23 @@ export default function VendorsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-              Vendors
+              Vendors & Suppliers
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Manage and track all your vendors and suppliers
+              Manage your vendors and suppliers • Track payments and balances
             </p>
           </div>
           <button
-            onClick={() => window.location.href = '/vendors/new'}
+            onClick={() => router.push('/vendors/new')}
             className="px-4 py-2 transition bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2"
           >
             <Plus className="w-5 h-5" />
-            New Vendor
+            Add Vendor
           </button>
         </div>
       </div>
 
-      {/* Filters - Matching customers list pattern */}
+      {/* Filters Section */}
       <div className="px-6 py-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="flex flex-wrap gap-4">
           <div className="flex-1 min-w-[200px]">
@@ -839,10 +881,10 @@ export default function VendorsPage() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Search vendors, email, phone, GSTIN..."
+                placeholder="Search vendors by name, email, phone, GSTIN..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                onKeyPress={(e) => e.key === 'Enter' && handleSearch(e)}
                 className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -881,7 +923,9 @@ export default function VendorsPage() {
 
               {showColumnDropdown && (
                 <div className="absolute right-0 mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-3 z-10 min-w-[150px]">
-                  {Object.entries(visibleColumns).map(([key, value]) => (
+                  {Object.entries(visibleColumns)
+                    .filter(([key]) => key !== 'actions')
+                    .map(([key, value]) => (
                     <label key={key} className="flex items-center gap-2 text-sm mb-2 last:mb-0 cursor-pointer text-gray-700 dark:text-gray-300">
                       <input
                         type="checkbox"
@@ -889,7 +933,13 @@ export default function VendorsPage() {
                         onChange={() => toggleColumn(key as keyof typeof visibleColumns)}
                         className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
                       />
-                      <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                      <span className="capitalize">
+                        {key === 'vendorId' ? 'Vendor ID' : 
+                         key === 'gstin' ? 'GSTIN' : 
+                         key === 'pan' ? 'PAN' :
+                         key === 'openingBalance' ? 'Opening Balance' : 
+                         key.charAt(0).toUpperCase() + key.slice(1)}
+                      </span>
                     </label>
                   ))}
                 </div>
@@ -904,7 +954,10 @@ export default function VendorsPage() {
               {excelLoading ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
               ) : (
-                "Excel"
+                <>
+                  <FileText className="w-5 h-5" />
+                  Excel
+                </>
               )}
             </button>
 
@@ -916,7 +969,10 @@ export default function VendorsPage() {
               {pdfLoading ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
               ) : (
-                "PDF"
+                <>
+                  <Download className="w-5 h-5" />
+                  PDF
+                </>
               )}
             </button>
 
@@ -928,57 +984,86 @@ export default function VendorsPage() {
               {csvLoading ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
               ) : (
-                "CSV"
+                <>
+                  <FileText className="w-5 h-5" />
+                  CSV
+                </>
               )}
             </button>
 
             <button
               onClick={handlePrint}
+              disabled={printLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {printLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <>
+                  <Printer className="w-5 h-5" />
+                  Print
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleReset}
               className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
             >
-              <Printer className="w-5 h-5" />
-              Print
+              <RefreshCw className="w-5 h-5" />
+              Reset
             </button>
           </div>
         </div>
 
         {showFilters && (
-          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex flex-wrap gap-4">
-            {/* Status Dropdown */}
-            <select
-              value={statusFilter}
-              onChange={(e) => handleStatusFilterChange(e.target.value)}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-
-            <button
-              onClick={clearFilters}
-              className="text-sm text-blue-600 hover:underline dark:text-blue-400"
-            >
-              Clear filters
-            </button>
+          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* State Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                State
+              </label>
+              <select
+                value={stateFilter}
+                onChange={(e) => setStateFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">All States</option>
+                {availableStates.map((state) => (
+                  <option key={state} value={state}>
+                    {state}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Table - Matching customers list pattern */}
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-        <table className="w-full table-fixed">
-          <div className="overflow-x-auto">
+      {/* Error */}
+      {error && (
+        <div className="mx-6 mt-4 bg-red-50 border border-red-200 rounded-lg p-4 dark:bg-red-900/20 dark:border-red-800">
+          <p className="text-red-800 dark:text-red-400">{error}</p>
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
               <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+                <th className="text-left px-6 py-3 whitespace-nowrap w-20">
+                  S.No
+                </th>
                 {visibleColumns.vendorId && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
                     Vendor ID
                   </th>
                 )}
                 {visibleColumns.name && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap min-w-[200px]">
-                    Name
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-80">
+                    Vendor Name
                   </th>
                 )}
                 {visibleColumns.contact && (
@@ -992,13 +1077,18 @@ export default function VendorsPage() {
                   </th>
                 )}
                 {visibleColumns.gstin && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
                     GSTIN
                   </th>
                 )}
                 {visibleColumns.pan && (
                   <th className="text-left px-6 py-3 whitespace-nowrap w-32">
                     PAN
+                  </th>
+                )}
+                {visibleColumns.location && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                    Location
                   </th>
                 )}
                 {visibleColumns.openingBalance && (
@@ -1027,13 +1117,7 @@ export default function VendorsPage() {
                     </div>
                   </td>
                 </tr>
-              ) : !company ? (
-                <tr>
-                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                    No company selected
-                  </td>
-                </tr>
-              ) : getDisplayVendors().length === 0 ? (
+              ) : filteredVendors.length === 0 ? (
                 <tr>
                   <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
                     <div className="flex flex-col items-center justify-center">
@@ -1042,208 +1126,189 @@ export default function VendorsPage() {
                         No vendors found
                       </p>
                       <p className="text-gray-500 dark:text-gray-400 mb-4">
-                        {statusFilter ?
-                          `No ${statusFilter} vendors found. Try adjusting your filters.` :
-                          "Try adjusting your filters or add a new vendor"}
+                        {stateFilter || search ?
+                          "No vendors found matching your filters. Try adjusting your search criteria." :
+                          "Add your first vendor to start managing your suppliers."}
                       </p>
                       <button
-                        onClick={() => window.location.href = '/vendors/new'}
+                        onClick={() => router.push('/vendors/new')}
                         className="text-blue-600 hover:underline dark:text-blue-400"
                       >
-                        Create your first vendor
+                        Add your first vendor
                       </button>
                     </div>
                   </td>
                 </tr>
               ) : (
-                getDisplayVendors().map((vendor) => {
-                  const isOutstanding = vendor.opening_balance_type === 'outstanding';
-
-                  return (
-                    <tr
-                      key={vendor.id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                    >
-                      {visibleColumns.vendorId && (
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="font-medium text-blue-600 dark:text-blue-400">
-                            {vendor.vendor_code || <span className="text-gray-500">N/A</span>}
+                filteredVendors.map((vendor, index) => (
+                  <tr
+                    key={vendor.id}
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                      {(currentPage - 1) * pageSize + index + 1}
+                    </td>
+                    {visibleColumns.vendorId && (
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="font-medium text-blue-600 dark:text-blue-400">
+                          {vendor.vendor_code || '-'}
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.name && (
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="min-w-0 max-w-[240px]">
+                          <div className="font-medium text-gray-900 dark:text-white">
+                            {vendor.name}
                           </div>
-                        </td>
-                      )}
-                      {visibleColumns.name && (
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                            <div className="min-w-0">
-                              <div className="font-medium text-gray-900 dark:text-white truncate">
-                                {vendor.name}
-                              </div>
-                              {vendor.billing_city && (
-                                <div className="text-xs text-gray-500 truncate">
-                                  {vendor.billing_city}, {vendor.billing_state}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      )}
-                      {visibleColumns.contact && (
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <Phone className="w-4 h-4 text-gray-400" />
-                            <span>{vendor.contact || '-'}</span>
-                          </div>
-                        </td>
-                      )}
-                      {visibleColumns.email && (
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <Mail className="w-4 h-4 text-gray-400" />
-                            <span className="truncate">{vendor.email || '-'}</span>
-                          </div>
-                        </td>
-                      )}
-                      {visibleColumns.gstin && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                          {/* company_name not available in Vendor type */}
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.contact && (
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-4 h-4 text-gray-400" />
+                          <span>{vendor.contact || '-'}</span>
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.email && (
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <Mail className="w-4 h-4 text-gray-400" />
+                          <span className="truncate">{vendor.email || '-'}</span>
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.gstin && (
+                      <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <div className="flex items-center gap-2">
+                          <Shield className="w-4 h-4 text-gray-400" />
                           {vendor.tax_number || '-'}
-                        </td>
-                      )}
-                      {visibleColumns.pan && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                          {vendor.pan_number || '-'}
-                        </td>
-                      )}
-                      {visibleColumns.openingBalance && (
-                        <td className="px-6 py-4">
-                          <div className="flex flex-col gap-1">
-                            <div className={`font-medium ${isOutstanding ? 'text-red-600' : 'text-green-600'}`}>
-                              {formatCurrency(vendor.opening_balance || 0)}
-                            </div>
-                            {vendor.opening_balance_type && (
-                              <div>
-                                {getBalanceBadge(vendor.opening_balance || 0, vendor.opening_balance_type)}
-                              </div>
-                            )}
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.pan && (
+                      <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        {vendor.pan_number || '-'}
+                      </td>
+                    )}
+                    {visibleColumns.location && (
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {vendor.billing_city ? (
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-4 h-4 text-gray-400" />
+                            <span>{`${vendor.billing_city}, ${vendor.billing_state || ''}`.trim()}</span>
                           </div>
-                        </td>
-                      )}
-                      {visibleColumns.status && (
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {getStatusBadge(vendor.is_active)}
-                        </td>
-                      )}
-                      {visibleColumns.actions && (
-                        <td className="px-6 py-4 text-right whitespace-nowrap">
-                          <div className="relative action-dropdown-container inline-block">
-                            <button
-                              onClick={() =>
-                                setActiveActionMenu(
-                                  activeActionMenu === vendor.id ? null : vendor.id
-                                )
-                              }
-                              className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:text-gray-300 dark:hover:bg-gray-700/50 transition-all duration-200"
+                        ) : (
+                          <span className="text-gray-500 dark:text-gray-400">-</span>
+                        )}
+                      </td>
+                    )}
+                    {visibleColumns.openingBalance && (
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex flex-col gap-1">
+                          <div className={`font-bold ${vendor.opening_balance_type === 'outstanding' ? 'text-red-600' : 'text-green-600'}`}>
+                            {formatCurrency(vendor.opening_balance || 0)}
+                          </div>
+                          {vendor.opening_balance_type && (
+                            <span
+                              className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${getBalanceBadgeClass(vendor.opening_balance_type)}`}
                             >
-                              <MoreVertical className="w-4 h-4" />
-                            </button>
+                              {vendor.opening_balance_type === 'outstanding' ? 'You Owe' : 'You Paid'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.status && (
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span
+                          className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(vendor.is_active)}`}
+                        >
+                          {vendor.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                    )}
+                    {visibleColumns.actions && (
+                      <td className="px-6 py-4 text-right whitespace-nowrap">
+                        <div className="relative action-dropdown-container inline-block">
+                          <button
+                            onClick={() =>
+                              setActiveActionMenu(
+                                activeActionMenu === vendor.id ? null : vendor.id
+                              )
+                            }
+                            className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:text-gray-300 dark:hover:bg-gray-700/50 transition-all duration-200"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
 
-                            {activeActionMenu === vendor.id && (
-                              <div className="absolute right-0 mt-1 w-52 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                                <Link
-                                  href={`/vendors/${vendor.id}`}
-                                  onClick={() => setActiveActionMenu(null)}
-                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                                >
-                                  <Eye className="w-4 h-4 text-gray-400" />
-                                  <span>View Details</span>
-                                </Link>
+                          {activeActionMenu === vendor.id && (
+                            <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                              <Link
+                                href={`/vendors/${vendor.id}`}
+                                onClick={() => setActiveActionMenu(null)}
+                                className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                              >
+                                <Eye className="w-4 h-4 text-gray-400" />
+                                <span>View Details</span>
+                              </Link>
 
-                                <Link
-                                  href={`/vendors/${vendor.id}/edit`}
-                                  onClick={() => setActiveActionMenu(null)}
-                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                                >
-                                  <Edit className="w-4 h-4 text-gray-400" />
-                                  <span>Edit</span>
-                                </Link>
+                              <Link
+                                href={`/vendors/${vendor.id}/edit`}
+                                onClick={() => setActiveActionMenu(null)}
+                                className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                              >
+                                <Edit className="w-4 h-4 text-gray-400" />
+                                <span>Edit</span>
+                              </Link>
 
-                                <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
-
-                                <Link
-                                  href={`/vendors/${vendor.id}/advance`}
-                                  onClick={() => setActiveActionMenu(null)}
-                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
-                                >
-                                  <CreditCard className="w-4 h-4 text-green-500" />
-                                  <span>Advance Payments</span>
-                                </Link>
-
-                                <Link
-                                  href={`/vendors/${vendor.id}/payments`}
-                                  onClick={() => setActiveActionMenu(null)}
-                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
-                                >
-                                  <Receipt className="w-4 h-4 text-purple-500" />
-                                  <span>View Payments</span>
-                                </Link>
-
-                                <Link
-                                  href={`/vendors/${vendor.id}/make-payment`}
-                                  onClick={() => setActiveActionMenu(null)}
-                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors"
-                                >
-                                  <Wallet className="w-4 h-4 text-orange-500" />
-                                  <span>Make Payment</span>
-                                </Link>
-
-                                <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
-
-                                <button
-                                  onClick={() => {
-                                    if (confirm("Are you sure you want to delete this vendor?")) {
-                                      handleDelete(vendor.id);
-                                      setActiveActionMenu(null);
-                                    }
-                                  }}
-                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                  <span>Delete Vendor</span>
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })
+                              <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                              <button
+                                onClick={() => {
+                                  handleDelete(vendor.id, vendor.name);
+                                  setActiveActionMenu(null);
+                                }}
+                                className="flex w-full items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                <span>Delete Vendor</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))
               )}
             </tbody>
-          </div>
-        </table>
+          </table>
+        </div>
       </div>
 
-      {/* Pagination - Matching customers list pattern */}
-      {getTotalFilteredCount() > pageSize && (
-        <div className="mt-4 px-6 py-4 flex items-center justify-between">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Showing {(page - 1) * pageSize + 1} to{" "}
-            {Math.min(page * pageSize, getTotalFilteredCount())} of {getTotalFilteredCount()} results
-          </p>
-          <div className="flex gap-2">
+      {!loading && filteredVendors.length > 0 && (
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, data?.total || 0)} of {data?.total || 0}
+          </div>
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
             >
               Previous
             </button>
-
+            <div className="text-sm text-gray-700 dark:text-gray-300">
+              Page {currentPage} of {totalPages}
+            </div>
             <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={page * pageSize >= getTotalFilteredCount()}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
             >
               Next
             </button>

@@ -31,6 +31,12 @@ import {
   ChevronDown,
   ChevronUp,
   Building,
+  Download,
+  FileText,
+  RefreshCw,
+  User,
+  CreditCard,
+  MapPin,
 } from "lucide-react";
 
 // Print component for employees
@@ -302,28 +308,34 @@ export default function EmployeesPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [designations, setDesignations] = useState<Designation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
+  const [error, setError] = useState("");
+  
+  // Filters state
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("");
-  const [departmentFilter, setDepartmentFilter] = useState<string>("");
-  const [fromDate, setFromDate] = useState<string>("");
-  const [toDate, setToDate] = useState<string>("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("");
+  
+  // UI state
   const [showFilters, setShowFilters] = useState(false);
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
   const [showPrintView, setShowPrintView] = useState(false);
   const [employeesToPrint, setEmployeesToPrint] = useState<Employee[]>([]);
-
-  // Separate loading states for each export button
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  
+  // Export loading states
   const [copyLoading, setCopyLoading] = useState(false);
   const [excelLoading, setExcelLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [csvLoading, setCsvLoading] = useState(false);
   const [printLoading, setPrintLoading] = useState(false);
-
+  
   const [cachedExportData, setCachedExportData] = useState<Employee[] | null>(null);
-
-  // Column visibility state
+  
+  // Column visibility
   const [visibleColumns, setVisibleColumns] = useState({
     employeeCode: true,
     name: true,
@@ -336,16 +348,58 @@ export default function EmployeesPage() {
     actions: true,
   });
 
-  const pageSize = 10;
+  const companyId = company?.id || (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
+
+  useEffect(() => {
+    if (companyId) {
+      fetchEmployees();
+      fetchDropdownData();
+    }
+  }, [companyId]);
+
+  useEffect(() => {
+    if (companyId) {
+      fetchEmployees();
+      setCachedExportData(null);
+    }
+  }, [statusFilter, departmentFilter, fromDate, toDate]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, departmentFilter, fromDate, toDate, search]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (!target) return;
+      if (!target.closest(".action-dropdown-container")) {
+        setActiveActionMenu(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const fetchDropdownData = async () => {
+    try {
+      // Departments are already fetched in fetchEmployees
+      // Add any additional dropdown data here if needed
+    } catch (err) {
+      console.error("Failed to fetch dropdown data:", err);
+    }
+  };
 
   const fetchEmployees = async () => {
-    if (!company?.id) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
     try {
+      setLoading(true);
+      if (!company?.id) {
+        setLoading(false);
+        return;
+      }
+
       const employeesList = await payrollApi.listEmployees(company.id);
       const deptList = await payrollApi.listDepartments(company.id);
       const desgList = await payrollApi.listDesignations(company.id);
@@ -353,111 +407,182 @@ export default function EmployeesPage() {
       setEmployees(employeesList || []);
       setDepartments(deptList || []);
       setDesignations(desgList || []);
-    } catch (error) {
-      console.error("Failed to fetch employees:", error);
-      setEmployees([]);
+      setError("");
+    } catch (err) {
+      setError("Failed to load employees");
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Memoized function to fetch all employees for export
-  const fetchAllEmployees = useCallback(async (): Promise<Employee[]> => {
-    if (!company?.id) return [];
-
+  const fetchAllEmployeesForExport = useCallback(async (): Promise<Employee[]> => {
     try {
+      if (!company?.id) return [];
+
       const employeesList = await payrollApi.listEmployees(company.id);
       const allEmployees = employeesList || [];
       setCachedExportData(allEmployees);
       return allEmployees;
     } catch (error) {
-      console.error("Failed to fetch all employees:", error);
+      console.error("Export fetch failed:", error);
       return [];
     }
   }, [company?.id]);
 
-  // Function to get export data (with cache check)
   const getExportData = async (): Promise<Employee[]> => {
-    if (cachedExportData) {
-      return cachedExportData;
-    }
-    return await fetchAllEmployees();
+    if (cachedExportData) return cachedExportData;
+    return await fetchAllEmployeesForExport();
   };
 
-  useEffect(() => {
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
     fetchEmployees();
-    setCachedExportData(null);
-  }, [company?.id, page]);
+  };
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.action-dropdown-container')) {
-        setActiveActionMenu(null);
-      }
-      if (!target.closest('.column-dropdown-container')) {
-        setShowColumnDropdown(false);
-      }
+  const handleReset = () => {
+    setSearch("");
+    setFromDate("");
+    setToDate("");
+    setStatusFilter("");
+    setDepartmentFilter("");
+    fetchEmployees();
+  };
+
+  const getStatusText = (status: string) => {
+    const statusMap: Record<string, string> = {
+      'active': 'Active',
+      'inactive': 'Inactive',
     };
+    return statusMap[status] || status.charAt(0).toUpperCase() + status.slice(1);
+  };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  const getStatusBadgeClass = (status: string): string => {
+    const statusColors: Record<string, string> = {
+      active: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+      inactive: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300",
+      on_notice: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+      terminated: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+    };
+    return statusColors[status] || "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
+  };
 
-  // Apply filters
-  const applyFilters = (employeesList: Employee[] = employees): Employee[] => {
-    return employeesList.filter(emp => {
-      const matchesSearch =
-        emp.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-        emp.employee_code.toLowerCase().includes(search.toLowerCase()) ||
-        emp.email?.toLowerCase().includes(search.toLowerCase()) ||
-        emp.phone?.includes(search);
+  const getDepartmentName = (id?: string): string => {
+    if (!id) return '-';
+    const dept = departments.find((d) => d.id === id);
+    return dept?.name || '-';
+  };
 
-      const matchesStatus = !statusFilter || emp.status === statusFilter;
-      const matchesDepartment = !departmentFilter || emp.department_id === departmentFilter;
+  const getDesignationName = (id?: string): string => {
+    if (!id) return '-';
+    const desg = designations.find((d) => d.id === id);
+    return desg?.name || '-';
+  };
 
-      // Date filters
-      let matchesFromDate = true;
-      let matchesToDate = true;
-
-      if (fromDate && emp.date_of_joining) {
-        const empDate = new Date(emp.date_of_joining);
-        const from = new Date(fromDate);
-        matchesFromDate = empDate >= from;
-      }
-
-      if (toDate && emp.date_of_joining) {
-        const empDate = new Date(emp.date_of_joining);
-        const to = new Date(toDate);
-        matchesToDate = empDate <= to;
-      }
-
-      return matchesSearch && matchesStatus && matchesDepartment && matchesFromDate && matchesToDate;
+  // Apply search filter locally for export data
+  const applySearchFilter = (data: Employee[]): Employee[] => {
+    if (!search) return data;
+    
+    const searchLower = search.toLowerCase();
+    return data.filter(employee => {
+      return (
+        employee.employee_code?.toLowerCase().includes(searchLower) ||
+        employee.full_name?.toLowerCase().includes(searchLower) ||
+        `${employee.first_name} ${employee.last_name || ''}`.toLowerCase().includes(searchLower) ||
+        employee.email?.toLowerCase().includes(searchLower) ||
+        employee.phone?.includes(search) ||
+        false
+      );
     });
   };
 
-  const filteredEmployees = applyFilters();
-  const paginatedEmployees = filteredEmployees.slice(
-    (page - 1) * pageSize,
-    page * pageSize
+  // Apply filters locally
+  const applyFilters = (data: Employee[]): Employee[] => {
+    let filtered = data;
+    
+    if (statusFilter) {
+      filtered = filtered.filter(employee => employee.status === statusFilter);
+    }
+    
+    if (departmentFilter) {
+      filtered = filtered.filter(employee => employee.department_id === departmentFilter);
+    }
+    
+    // Date filters
+    if (fromDate) {
+      filtered = filtered.filter(employee => {
+        if (!employee.date_of_joining) return false;
+        const empDate = new Date(employee.date_of_joining);
+        const from = new Date(fromDate);
+        return empDate >= from;
+      });
+    }
+    
+    if (toDate) {
+      filtered = filtered.filter(employee => {
+        if (!employee.date_of_joining) return false;
+        const empDate = new Date(employee.date_of_joining);
+        const to = new Date(toDate);
+        return empDate <= to;
+      });
+    }
+    
+    return filtered;
+  };
+
+  const filteredEmployees = employees.filter(employee => {
+    if (statusFilter && employee.status !== statusFilter) return false;
+    if (departmentFilter && employee.department_id !== departmentFilter) return false;
+    
+    if (fromDate && employee.date_of_joining) {
+      const empDate = new Date(employee.date_of_joining);
+      const from = new Date(fromDate);
+      if (empDate < from) return false;
+    }
+    
+    if (toDate && employee.date_of_joining) {
+      const empDate = new Date(employee.date_of_joining);
+      const to = new Date(toDate);
+      if (empDate > to) return false;
+    }
+    
+    if (search) {
+      const searchLower = search.toLowerCase();
+      return (
+        employee.employee_code?.toLowerCase().includes(searchLower) ||
+        employee.full_name?.toLowerCase().includes(searchLower) ||
+        `${employee.first_name} ${employee.last_name || ''}`.toLowerCase().includes(searchLower) ||
+        employee.email?.toLowerCase().includes(searchLower) ||
+        employee.phone?.includes(search) ||
+        false
+      );
+    }
+    
+    return true;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
+  const pagedEmployees = filteredEmployees.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
   );
 
-  // Export functions with individual loading states
+  // Export functions
   const copyToClipboard = async () => {
     if (copyLoading) return;
-
     setCopyLoading(true);
     try {
-      const allEmployees = await getExportData();
-      const filtered = applyFilters(allEmployees);
-
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyFilters(filtered);
+      
       const headers: string[] = [];
-      const rowData = filtered.map(employee => {
+      const rows = filtered.map(employee => {
         const row: string[] = [];
 
         if (visibleColumns.employeeCode) {
           if (!headers.includes("Employee Code")) headers.push("Employee Code");
-          row.push(employee.employee_code);
+          row.push(employee.employee_code || "-");
         }
 
         if (visibleColumns.name) {
@@ -467,12 +592,12 @@ export default function EmployeesPage() {
 
         if (visibleColumns.phone) {
           if (!headers.includes("Phone")) headers.push("Phone");
-          row.push(employee.phone || '-');
+          row.push(employee.phone || "-");
         }
 
         if (visibleColumns.email) {
           if (!headers.includes("Email")) headers.push("Email");
-          row.push(employee.email || '-');
+          row.push(employee.email || "-");
         }
 
         if (visibleColumns.department) {
@@ -498,7 +623,7 @@ export default function EmployeesPage() {
         return row;
       });
 
-      const text = [headers.join("\t"), ...rowData.map(r => r.join("\t"))].join("\n");
+      const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
       await navigator.clipboard.writeText(text);
       alert("Employee data copied to clipboard");
     } catch (error) {
@@ -511,31 +636,31 @@ export default function EmployeesPage() {
 
   const exportExcel = async () => {
     if (excelLoading) return;
-
     setExcelLoading(true);
     try {
-      const allEmployees = await getExportData();
-      const filtered = applyFilters(allEmployees);
-
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyFilters(filtered);
+      
       const exportData = filtered.map(employee => {
         const row: Record<string, any> = {};
 
         if (visibleColumns.employeeCode) {
-          row["Employee Code"] = employee.employee_code;
+          row["Employee Code"] = employee.employee_code || "-";
         }
 
         if (visibleColumns.name) {
           row["Employee Name"] = employee.full_name || `${employee.first_name} ${employee.last_name || ''}`;
           row["First Name"] = employee.first_name;
-          row["Last Name"] = employee.last_name;
+          row["Last Name"] = employee.last_name || "";
         }
 
         if (visibleColumns.phone) {
-          row["Phone"] = employee.phone || '';
+          row["Phone"] = employee.phone || "";
         }
 
         if (visibleColumns.email) {
-          row["Email"] = employee.email || '';
+          row["Email"] = employee.email || "";
         }
 
         if (visibleColumns.department) {
@@ -548,18 +673,16 @@ export default function EmployeesPage() {
 
         if (visibleColumns.joiningDate) {
           row["Joining Date"] = formatDate(employee.date_of_joining);
-          row["Created Date"] = formatDate(employee.created_at);
         }
 
         if (visibleColumns.status) {
           row["Status"] = getStatusText(employee.status);
         }
 
-        row["Company"] = company?.name || '';
-        row["Address"] = employee.current_address || employee.permanent_address || '';
-        row["PAN"] = employee.pan || '';
-        row["Aadhaar"] = employee.aadhaar || '';
-
+        row["Company"] = company?.name || "";
+        row["PAN"] = employee.pan || "";
+        row["Aadhaar"] = employee.aadhaar || "";
+        
         return row;
       });
 
@@ -577,17 +700,16 @@ export default function EmployeesPage() {
 
   const exportPDF = async () => {
     if (pdfLoading) return;
-
     setPdfLoading(true);
     try {
-      const allEmployees = await getExportData();
-      const filtered = applyFilters(allEmployees);
-
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyFilters(filtered);
+      
       const doc = new jsPDF("landscape");
-
-      // Build headers & rows based on visible columns
+      
       const headers: string[] = [];
-      const body = filtered.map((employee) => {
+      const body = filtered.map(employee => {
         const row: string[] = [];
 
         if (visibleColumns.employeeCode) {
@@ -635,7 +757,7 @@ export default function EmployeesPage() {
 
       autoTable(doc, {
         head: [headers],
-        body,
+        body: body,
         startY: 20,
         margin: { top: 20, left: 10, right: 10, bottom: 20 },
         styles: {
@@ -653,22 +775,18 @@ export default function EmployeesPage() {
           fillColor: [245, 245, 245],
         },
         didDrawPage: (data) => {
-          // Title
           doc.setFontSize(16);
           doc.text("Employees List", data.settings.margin.left, 12);
-
-          // Company name
+          
           doc.setFontSize(10);
           doc.text(company?.name || '', data.settings.margin.left, 18);
-
-          // Date
+          
           doc.text(
             `Generated: ${new Date().toLocaleDateString("en-IN")}`,
             doc.internal.pageSize.width - 60,
             12
           );
 
-          // Page number
           const pageCount = doc.getNumberOfPages();
           doc.text(
             `Page ${data.pageNumber} of ${pageCount}`,
@@ -689,17 +807,17 @@ export default function EmployeesPage() {
 
   const exportCSV = async () => {
     if (csvLoading) return;
-
     setCsvLoading(true);
     try {
-      const allEmployees = await getExportData();
-      const filtered = applyFilters(allEmployees);
-
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyFilters(filtered);
+      
       const exportData = filtered.map(employee => {
         const row: Record<string, any> = {};
 
         if (visibleColumns.employeeCode) {
-          row["Employee Code"] = employee.employee_code;
+          row["Employee Code"] = employee.employee_code || "-";
         }
 
         if (visibleColumns.name) {
@@ -707,11 +825,11 @@ export default function EmployeesPage() {
         }
 
         if (visibleColumns.phone) {
-          row["Phone"] = employee.phone || '';
+          row["Phone"] = employee.phone || "";
         }
 
         if (visibleColumns.email) {
-          row["Email"] = employee.email || '';
+          row["Email"] = employee.email || "";
         }
 
         if (visibleColumns.department) {
@@ -745,14 +863,13 @@ export default function EmployeesPage() {
     }
   };
 
-  // Handle print
   const handlePrint = async () => {
     if (printLoading) return;
-
     setPrintLoading(true);
     try {
-      const allEmployees = await getExportData();
-      const filtered = applyFilters(allEmployees);
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyFilters(filtered);
       setEmployeesToPrint(filtered);
       setShowPrintView(true);
     } catch (error) {
@@ -767,66 +884,8 @@ export default function EmployeesPage() {
     setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-      case 'inactive': return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400';
-      case 'on_notice': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
-      case 'terminated': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
-      default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400';
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    const statusMap: Record<string, string> = {
-      'active': 'Active',
-      'inactive': 'Inactive',
-    };
-    return statusMap[status] || status.charAt(0).toUpperCase() + status.slice(1);
-  };
-
-  const getStatusBadge = (status: string) => {
-    const text = getStatusText(status);
-    const colorClass = getStatusColor(status);
-
-    let icon = null;
-    switch (status) {
-      case 'active':
-        icon = <CheckCircle className="w-3 h-3 mr-1" />;
-        break;
-      case 'terminated':
-        icon = <XCircle className="w-3 h-3 mr-1" />;
-        break;
-      case 'on_notice':
-        icon = <Clock className="w-3 h-3 mr-1" />;
-        break;
-      case 'inactive':
-        icon = <AlertCircle className="w-3 h-3 mr-1" />;
-        break;
-    }
-
-    return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
-        {icon}
-        {text}
-      </span>
-    );
-  };
-
-  const getDepartmentName = (id?: string): string => {
-    if (!id) return '-';
-    const dept = departments.find((d) => d.id === id);
-    return dept?.name || '-';
-  };
-
-  const getDesignationName = (id?: string): string => {
-    if (!id) return '-';
-    const desg = designations.find((d) => d.id === id);
-    return desg?.name || '-';
-  };
-
-  const handleDelete = async (employeeId: string) => {
-    if (window.confirm("Are you sure you want to delete this employee?")) {
+  const handleDelete = async (employeeId: string, employeeName: string) => {
+    if (window.confirm(`Are you sure you want to delete employee ${employeeName}? This action cannot be undone.`)) {
       try {
         if (company?.id) {
           await payrollApi.deactivateEmployee(company.id, employeeId);
@@ -839,28 +898,15 @@ export default function EmployeesPage() {
     }
   };
 
-  const clearFilters = () => {
-    setSearch("");
-    setStatusFilter("");
-    setDepartmentFilter("");
-    setFromDate("");
-    setToDate("");
-    setPage(1);
-  };
-
-  const handleSearch = () => {
-    setPage(1);
-  };
-
-  const getTotalPages = () => {
-    return Math.ceil(filteredEmployees.length / pageSize);
-  };
-
-  // Unique departments for filter
-  const uniqueDepartments = departments.map(dept => ({
-    id: dept.id,
-    name: dept.name
-  }));
+  if (!companyId) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 dark:bg-yellow-900/20 dark:border-yellow-800">
+          <p className="text-yellow-800 dark:text-yellow-400">Please select a company first.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">
@@ -889,7 +935,7 @@ export default function EmployeesPage() {
           </div>
           <button
             onClick={() => router.push('/payroll/employees/new')}
-            className="px-4 py-2 transition bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2"
+            className="px-4 py-2 transition bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2"
           >
             <Plus className="w-5 h-5" />
             Add Employee
@@ -897,8 +943,8 @@ export default function EmployeesPage() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="px-6 py-6">
+            {/* Summary Cards */}
+      <div className="px-6 py-6 bg-gray-50 dark:bg-gray-900">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
           {/* Total Employees */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
@@ -970,7 +1016,7 @@ export default function EmployeesPage() {
         </div>
       </div>
 
-      {/* Filters - Updated with proper export buttons */}
+      {/* Filters Section */}
       <div className="px-6 py-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="flex flex-wrap gap-4">
           <div className="flex-1 min-w-[200px]">
@@ -981,8 +1027,8 @@ export default function EmployeesPage() {
                 placeholder="Search by name, code, email, or phone..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onKeyPress={(e) => e.key === 'Enter' && handleSearch(e)}
+                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               />
             </div>
           </div>
@@ -1026,7 +1072,7 @@ export default function EmployeesPage() {
                         type="checkbox"
                         checked={value}
                         onChange={() => toggleColumn(key as keyof typeof visibleColumns)}
-                        className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                        className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
                       />
                       <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
                     </label>
@@ -1043,7 +1089,10 @@ export default function EmployeesPage() {
               {excelLoading ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
               ) : (
-                "Excel"
+                <>
+                  <FileText className="w-5 h-5" />
+                  Excel
+                </>
               )}
             </button>
 
@@ -1055,7 +1104,10 @@ export default function EmployeesPage() {
               {pdfLoading ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
               ) : (
-                "PDF"
+                <>
+                  <Download className="w-5 h-5" />
+                  PDF
+                </>
               )}
             </button>
 
@@ -1067,7 +1119,10 @@ export default function EmployeesPage() {
               {csvLoading ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
               ) : (
-                "CSV"
+                <>
+                  <FileText className="w-5 h-5" />
+                  CSV
+                </>
               )}
             </button>
 
@@ -1079,179 +1134,187 @@ export default function EmployeesPage() {
               {printLoading ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
               ) : (
-                <Printer className="w-5 h-5" />
+                <>
+                  <Printer className="w-5 h-5" />
+                  Print
+                </>
               )}
-              Print
+            </button>
+
+            <button
+              onClick={handleReset}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+            >
+              <RefreshCw className="w-5 h-5" />
+              Reset
             </button>
           </div>
         </div>
 
         {showFilters && (
-          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex flex-wrap gap-4">
-            {/* Status Dropdown */}
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
+          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Status Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Status
+              </label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
 
-            </select>
-
-            {/* Department Dropdown */}
-            <select
-              value={departmentFilter}
-              onChange={(e) => {
-                setDepartmentFilter(e.target.value);
-                setPage(1);
-              }}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Departments</option>
-              {uniqueDepartments.map((dept) => (
-                <option key={dept.id} value={dept.id}>
-                  {dept.name}
-                </option>
-              ))}
-            </select>
+            {/* Department Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Department
+              </label>
+              <select
+                value={departmentFilter}
+                onChange={(e) => setDepartmentFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">All Departments</option>
+                {departments.map((dept) => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             {/* From Date */}
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                From Date
+              </label>
               <input
                 type="date"
                 value={fromDate}
-                onChange={(e) => {
-                  setFromDate(e.target.value);
-                  setPage(1);
-                }}
-                className="pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="From Date"
+                onChange={(e) => setFromDate(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               />
             </div>
 
             {/* To Date */}
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                To Date
+              </label>
               <input
                 type="date"
                 value={toDate}
-                onChange={(e) => {
-                  setToDate(e.target.value);
-                  setPage(1);
-                }}
-                className="pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="To Date"
+                onChange={(e) => setToDate(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               />
             </div>
-
-            <button
-              onClick={clearFilters}
-              className="text-sm text-blue-600 hover:underline dark:text-blue-400"
-            >
-              Clear filters
-            </button>
           </div>
         )}
       </div>
 
-      {/* Table */}
-      <div>
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <table className="w-full table-fixed">
-            <div className="overflow-x-auto">
+      {/* Error */}
+      {error && (
+        <div className="mx-6 mt-4 bg-red-50 border border-red-200 rounded-lg p-4 dark:bg-red-900/20 dark:border-red-800">
+          <p className="text-red-800 dark:text-red-400">{error}</p>
+        </div>
+      )}
 
-              <thead className="bg-gray-200 dark:bg-gray-700/50">
-                <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                  {visibleColumns.employeeCode && (
-                    <th className="text-left px-6 py-3 whitespace-nowrap">
-                      Employee Code
-                    </th>
-                  )}
-                  {visibleColumns.name && (
-                    <th className="text-left px-6 py-3 whitespace-nowrap w-64">
-                      Employee Name
-                    </th>
-                  )}
-                  {visibleColumns.phone && (
-                    <th className="text-left px-6 py-3 whitespace-nowrap">
-                      Phone
-                    </th>
-                  )}
-                  {visibleColumns.email && (
-                    <th className="text-left px-6 py-3 whitespace-nowrap">
-                      Email
-                    </th>
-                  )}
-                  {visibleColumns.department && (
-                    <th className="text-left px-6 py-3 whitespace-nowrap">
-                      Department
-                    </th>
-                  )}
-                  {visibleColumns.designation && (
-                    <th className="text-left px-6 py-3 whitespace-nowrap">
-                      Designation
-                    </th>
-                  )}
-                  {visibleColumns.joiningDate && (
-                    <th className="text-left px-6 py-3 whitespace-nowrap">
-                      Joining Date
-                    </th>
-                  )}
-                  {visibleColumns.status && (
-                    <th className="text-left px-6 py-3 whitespace-nowrap">
-                      Status
-                    </th>
-                  )}
-                  {visibleColumns.actions && (
-                    <th className="text-right px-6 py-3 whitespace-nowrap">
-                      Actions
-                    </th>
-                  )}
+
+
+      {/* Table */}
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-200 dark:bg-gray-700/50">
+              <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+                <th className="text-left px-6 py-3 whitespace-nowrap w-20">
+                  S.No
+                </th>
+                {visibleColumns.employeeCode && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                    Employee Code
+                  </th>
+                )}
+                {visibleColumns.name && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-64">
+                    Employee Name
+                  </th>
+                )}
+                {visibleColumns.phone && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                    Phone
+                  </th>
+                )}
+                {visibleColumns.email && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                    Email
+                  </th>
+                )}
+                {visibleColumns.department && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                    Department
+                  </th>
+                )}
+                {visibleColumns.designation && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                    Designation
+                  </th>
+                )}
+                {visibleColumns.joiningDate && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                    Joining Date
+                  </th>
+                )}
+                {visibleColumns.status && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                    Status
+                  </th>
+                )}
+                {visibleColumns.actions && (
+                  <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                    Actions
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-sm text-gray-700 dark:text-gray-300">
+              {loading ? (
+                <tr>
+                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                    <div className="flex items-center justify-center">
+                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-sm text-gray-700 dark:text-gray-300">
-                {loading ? (
-                  <tr>
-                    <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
-                      <div className="flex items-center justify-center">
-                        <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
-                      </div>
-                    </td>
-                  </tr>
-                ) : !company ? (
-                  <tr>
-                    <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                      No company selected
-                    </td>
-                  </tr>
-                ) : paginatedEmployees.length === 0 ? (
-                  <tr>
-                    <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
-                      <div className="flex flex-col items-center justify-center">
-                        <Users className="w-12 h-12 text-gray-400 mb-2" />
-                        <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
-                          No employees found
-                        </p>
-                        <p className="text-gray-500 dark:text-gray-400 mb-4">
-                          Try adjusting your filters or add a new employee
-                        </p>
-                        <button
-                          onClick={() => router.push('/payroll/employees/new')}
-                          className="text-blue-600 hover:underline dark:text-blue-400"
-                        >
-                          Add your first employee
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedEmployees.map((employee) => {
+              ) : filteredEmployees.length === 0 ? (
+                <tr>
+                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                    <div className="flex flex-col items-center justify-center">
+                      <Users className="w-12 h-12 text-gray-400 mb-2" />
+                      <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
+                        No employees found
+                      </p>
+                      <p className="text-gray-500 dark:text-gray-400 mb-4">
+                        {statusFilter || search || departmentFilter ?
+                          "No employees found matching your filters. Try adjusting your search criteria." :
+                          "Add your first employee to start managing your workforce."}
+                      </p>
+                      <button
+                        onClick={() => router.push('/payroll/employees/new')}
+                        className="text-indigo-600 hover:underline dark:text-indigo-400"
+                      >
+                        Add your first employee
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                pagedEmployees.map((employee, index) => {
                     const profileInitials = `${employee.first_name.charAt(0)}${employee.last_name?.charAt(0) || ''}`;
 
                     return (
@@ -1259,6 +1322,9 @@ export default function EmployeesPage() {
                         key={employee.id}
                         className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                       >
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                          {(currentPage - 1) * pageSize + index + 1}
+                        </td>
                         {visibleColumns.employeeCode && (
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center gap-3">
@@ -1275,14 +1341,12 @@ export default function EmployeesPage() {
                         )}
                         {visibleColumns.name && (
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-3">
-                              <div className="min-w-0 max-w-[240px]">
-                                <div className="font-medium text-gray-900 dark:text-white truncate">
-                                  {employee.full_name || `${employee.first_name} ${employee.last_name || ''}`}
-                                </div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                                  {employee.first_name} {employee.last_name}
-                                </div>
+                            <div className="min-w-0 max-w-[240px]">
+                              <div className="font-medium text-gray-900 dark:text-white truncate">
+                                {employee.full_name || `${employee.first_name} ${employee.last_name || ''}`}
+                              </div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                {employee.first_name} {employee.last_name}
                               </div>
                             </div>
                           </td>
@@ -1305,24 +1369,41 @@ export default function EmployeesPage() {
                         )}
                         {visibleColumns.department && (
                           <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                            {getDepartmentName(employee.department_id)}
+                            <div className="flex items-center gap-2">
+                              <Building className="w-4 h-4 text-gray-400" />
+                              {getDepartmentName(employee.department_id)}
+                            </div>
                           </td>
                         )}
                         {visibleColumns.designation && (
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="font-medium text-gray-900 dark:text-white">
+                            <div className="flex items-center gap-2 font-medium text-gray-900 dark:text-white">
+                              <Briefcase className="w-4 h-4 text-gray-400" />
                               {getDesignationName(employee.designation_id)}
                             </div>
                           </td>
                         )}
                         {visibleColumns.joiningDate && (
                           <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                            {formatDate(employee.date_of_joining)}
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-4 h-4 text-gray-400" />
+                              {formatDate(employee.date_of_joining)}
+                            </div>
                           </td>
                         )}
                         {visibleColumns.status && (
                           <td className="px-6 py-4 whitespace-nowrap">
-                            {getStatusBadge(employee.status)}
+                            <span
+                              className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                getStatusBadgeClass(employee.status)
+                              }`}
+                            >
+                              {employee.status === 'active' && <CheckCircle className="w-3 h-3 mr-1" />}
+                              {employee.status === 'inactive' && <AlertCircle className="w-3 h-3 mr-1" />}
+                              {employee.status === 'on_notice' && <Clock className="w-3 h-3 mr-1" />}
+                              {employee.status === 'terminated' && <XCircle className="w-3 h-3 mr-1" />}
+                              {getStatusText(employee.status)}
+                            </span>
                           </td>
                         )}
                         {visibleColumns.actions && (
@@ -1334,55 +1415,44 @@ export default function EmployeesPage() {
                                     activeActionMenu === employee.id ? null : employee.id
                                   )
                                 }
-                                className="p-2 rounded-lg text-gray-500 hover:text-gray-700
-                            dark:text-gray-400 dark:hover:text-white
-                            hover:bg-gray-100 dark:hover:bg-gray-700"
+                                className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:text-gray-300 dark:hover:bg-gray-700/50 transition-all duration-200"
                               >
-                                <MoreVertical className="w-5 h-5" />
+                                <MoreVertical className="w-4 h-4" />
                               </button>
 
                               {activeActionMenu === employee.id && (
-                                <div
-                                  className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800
-                              border border-gray-200 dark:border-gray-700
-                              rounded-lg shadow-lg z-20"
-                                >
+                                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                                   <Link
                                     href={`/payroll/employees/${employee.id}`}
                                     onClick={() => setActiveActionMenu(null)}
-                                    className="flex items-center gap-2 px-4 py-2 text-sm
-                                text-gray-700 dark:text-gray-300
-                                hover:bg-gray-100 dark:hover:bg-gray-700"
+                                    className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                                   >
-                                    <Eye className="w-4 h-4" />
-                                    View Details
+                                    <Eye className="w-4 h-4 text-gray-400" />
+                                    <span>View Details</span>
                                   </Link>
 
                                   <Link
                                     href={`/payroll/employees/edit/${employee.id}`}
                                     onClick={() => setActiveActionMenu(null)}
-                                    className="flex items-center gap-2 px-4 py-2 text-sm
-                                text-gray-700 dark:text-gray-300
-                                hover:bg-gray-100 dark:hover:bg-gray-700"
+                                    className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                                   >
-                                    <Edit className="w-4 h-4" />
-                                    Edit
+                                    <Edit className="w-4 h-4 text-gray-400" />
+                                    <span>Edit</span>
                                   </Link>
 
-                                  {employee.status !== "inactive" && (
-                                    <button
-                                      onClick={() => {
+                                  <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                                  <button
+                                    onClick={() => {
+                                      if (confirm(`Are you sure you want to delete employee ${employee.full_name || employee.first_name}?`)) {
+                                        handleDelete(employee.id, employee.full_name || employee.first_name);
                                         setActiveActionMenu(null);
-                                        handleDelete(employee.id);
-                                      }}
-                                      className="flex w-full items-center gap-2 px-4 py-2 text-sm
-                                text-red-600 dark:text-red-400
-                                hover:bg-red-50 dark:hover:bg-red-900/30"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                      Delete
-                                    </button>
-                                  )}
+                                      }
+                                    }}
+                                    className="flex w-full items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                    <span>Delete Employee</span>
+                                  </button>
                                 </div>
                               )}
                             </div>
@@ -1391,60 +1461,38 @@ export default function EmployeesPage() {
                       </tr>
                     );
                   })
-                )}
-              </tbody>
-              {paginatedEmployees.length > 0 && (
-                <tfoot>
-                  <tr className="bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
-                    <td
-                      colSpan={
-                        Object.values(visibleColumns).filter(Boolean).length -
-                        (visibleColumns.actions ? 1 : 0)
-                      }
-                      className="px-6 py-4 text-right font-semibold text-gray-900 dark:text-white whitespace-nowrap"
-                    >
-                      Total Employees:
-                    </td>
-                    <td className="px-6 py-4 font-bold text-gray-900 dark:text-white whitespace-nowrap">
-                      {filteredEmployees.length}
-                    </td>
-                    {visibleColumns.actions && (
-                      <td></td>
-                    )}
-                  </tr>
-                </tfoot>
               )}
-            </div>
+            </tbody>
           </table>
         </div>
-
-        {/* Pagination */}
-        {filteredEmployees.length > pageSize && (
-          <div className="mt-4 flex items-center justify-between">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Showing {(page - 1) * pageSize + 1} to{" "}
-              {Math.min(page * pageSize, filteredEmployees.length)} of {filteredEmployees.length} results
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Previous
-              </button>
-
-              <button
-                onClick={() => setPage((p) => p + 1)}
-                disabled={page * pageSize >= filteredEmployees.length}
-                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
       </div>
+
+      {!loading && filteredEmployees.length > 0 && (
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filteredEmployees.length)} of {filteredEmployees.length}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              Previous
+            </button>
+            <div className="text-sm text-gray-700 dark:text-gray-300">
+              Page {currentPage} of {totalPages}
+            </div>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
