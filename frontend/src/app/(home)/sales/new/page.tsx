@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
-import { customersApi, productsApi, invoicesApi } from "@/services/api";
+import { customersApi, productsApi, invoicesApi, ordersApi } from "@/services/api";
 import { salesmenApi } from "@/services/api"; // Add this import
 import { employeesApi } from "@/services/api"; // Add this import
 import Select from 'react-select';
@@ -177,6 +177,8 @@ function ProductSelectField({
 
 export default function AddSalesPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const fromSalesOrderId = searchParams.get("fromSalesOrder");
     const { company, user } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showTerms, setShowTerms] = useState(false);
@@ -184,6 +186,8 @@ export default function AddSalesPage() {
     const [showOtherFields, setShowOtherFields] = useState(false);
     const [nextInvoiceNumber, setNextInvoiceNumber] = useState("");
     const [loadingInvoiceNumber, setLoadingInvoiceNumber] = useState(false);
+    const [prefillLoading, setPrefillLoading] = useState(false);
+    const [prefillError, setPrefillError] = useState("");
 
     const [productSearch, setProductSearch] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -366,6 +370,98 @@ export default function AddSalesPage() {
             loadSalesmen();
         }
     }, [company?.id]);
+
+    useEffect(() => {
+        if (!company?.id || !fromSalesOrderId) return;
+        prefillFromSalesOrder(fromSalesOrderId);
+    }, [company?.id, fromSalesOrderId]);
+
+    useEffect(() => {
+        if (!products.length || !items.length) return;
+        let didUpdate = false;
+        const nextItems = items.map((item) => {
+            if (item.hsn_code || !item.product_id) return item;
+            const product = products.find((p) => String(p.id) === String(item.product_id));
+            if (!product?.hsn_code) return item;
+            didUpdate = true;
+            return { ...item, hsn_code: product.hsn_code };
+        });
+        if (didUpdate) {
+            setItems(nextItems);
+        }
+    }, [products, items]);
+
+    const prefillFromSalesOrder = async (orderId: string) => {
+        if (!company?.id) return;
+        setPrefillLoading(true);
+        setPrefillError("");
+        try {
+            const order = await ordersApi.getSalesOrder(company.id, orderId) as any;
+            if (!order) {
+                setPrefillError("Sales order not found");
+                return;
+            }
+
+            const orderDate = order.order_date ? new Date(order.order_date) : new Date();
+            const dueDate = order.expire_date ? new Date(order.expire_date) : null;
+
+            setFormData(prev => ({
+                ...prev,
+                customer_id: order.customer_id || prev.customer_id,
+                invoice_date: orderDate.toISOString().split("T")[0],
+                due_date: dueDate ? dueDate.toISOString().split("T")[0] : "",
+                invoice_type: order.customer_gstin ? "b2b" : "b2c",
+                voucher_type: "sales",
+                place_of_supply: order.place_of_supply || order.customer_state_code || prev.place_of_supply,
+                sales_person_id: order.sales_person_id || prev.sales_person_id,
+                referenceNo: order.reference_no || order.order_number || prev.referenceNo,
+                paymentTerms: order.payment_terms || prev.paymentTerms,
+                notes: order.notes || prev.notes,
+                terms: order.terms || prev.terms,
+                freightCharges: Number(order.freight_charges ?? prev.freightCharges) || 0,
+                freightType: order.freight_type || prev.freightType,
+                pfCharges: Number(order.p_and_f_charges ?? prev.pfCharges) || 0,
+                pfType: order.pf_type || prev.pfType,
+                roundOff: Number(order.round_off ?? prev.roundOff) || 0,
+                deliveryNote: order.delivery_note || prev.deliveryNote,
+                supplierRef: order.supplier_ref || prev.supplierRef,
+                otherReferences: order.other_references || prev.otherReferences,
+                buyerOrderNo: order.buyer_order_no || prev.buyerOrderNo,
+                buyerOrderDate: order.buyer_order_date ? new Date(order.buyer_order_date).toISOString().split("T")[0] : prev.buyerOrderDate,
+                despatchDocNo: order.despatch_doc_no || prev.despatchDocNo,
+                deliveryNoteDate: order.delivery_note_date ? new Date(order.delivery_note_date).toISOString().split("T")[0] : prev.deliveryNoteDate,
+                despatchedThrough: order.despatched_through || prev.despatchedThrough,
+                destination: order.destination || prev.destination,
+                termsOfDelivery: order.terms_of_delivery || prev.termsOfDelivery,
+            }));
+
+            if (order.items && Array.isArray(order.items) && order.items.length > 0) {
+                setItems(order.items.map((item: any) => ({
+                    id: Date.now() + Math.random(),
+                    product_id: item.product_id || "",
+                    description: item.description || "",
+                    item_code: item.item_code || "",
+                    hsn_code: item.hsn_code || item.hsn || "",
+                    quantity: Number(item.quantity || 1),
+                    unit: item.unit || "unit",
+                    unit_price: Number(item.unit_price ?? item.rate ?? 0),
+                    discount_percent: Number(item.discount_percent || 0),
+                    discount_amount: Number(item.discount_amount || 0),
+                    gst_rate: Number(item.gst_rate || 0),
+                    cgst_rate: Number(item.cgst_rate || 0),
+                    sgst_rate: Number(item.sgst_rate || 0),
+                    igst_rate: Number(item.igst_rate || 0),
+                    taxable_amount: Number(item.taxable_amount || 0),
+                    total_amount: Number(item.total_amount || 0),
+                })));
+            }
+        } catch (error) {
+            console.error("Failed to load sales order for invoice prefill:", error);
+            setPrefillError("Failed to load sales order data");
+        } finally {
+            setPrefillLoading(false);
+        }
+    };
 
     useEffect(() => {
         const loadNextInvoiceNumber = async () => {
@@ -1002,6 +1098,13 @@ export default function AddSalesPage() {
                 <h1 className="text-2xl font-bold text-dark dark:text-white">Sales – Add / Update Sales</h1>
                 <p className="text-dark-6">Create new sales invoice with customer details and items</p>
             </div>
+
+            {(prefillLoading || prefillError) && (
+                <div className="mb-6 rounded-lg border border-stroke bg-white p-4 text-sm dark:border-dark-3 dark:bg-gray-dark">
+                    {prefillLoading && <p className="text-dark-6">Loading sales order data...</p>}
+                    {prefillError && <p className="text-red-600">{prefillError}</p>}
+                </div>
+            )}
 
             <form onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

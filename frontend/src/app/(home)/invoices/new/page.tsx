@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { invoicesApi, customersApi, productsApi, inventoryApi, Customer, Product, Godown, getErrorMessage } from "@/services/api";
+import { invoicesApi, customersApi, productsApi, inventoryApi, ordersApi, Customer, Product, Godown, getErrorMessage } from "@/services/api";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -28,8 +28,9 @@ export default function NewInvoicePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const duplicateId = searchParams.get("duplicate");
+  const fromSalesOrderId = searchParams.get("fromSalesOrder");
   const [loading, setLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(!!duplicateId);
+  const [initialLoading, setInitialLoading] = useState(!!duplicateId || !!fromSalesOrderId);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [godowns, setGodowns] = useState<Godown[]>([]);
@@ -69,8 +70,42 @@ export default function NewInvoicePage() {
         setProducts(productsData.products);
         setGodowns(godownsData);
 
-        // If duplicating an invoice, load its data
-        if (duplicateId) {
+        // If converting from sales order, load its data
+        if (fromSalesOrderId) {
+          try {
+            const order = await ordersApi.getSalesOrder(company.id, fromSalesOrderId) as any;
+            const orderDate = order?.order_date ? new Date(order.order_date) : new Date();
+            const dueDate = order?.expire_date ? new Date(order.expire_date) : null;
+
+            setFormData({
+              customer_id: order?.customer_id || "",
+              invoice_date: orderDate.toISOString().split("T")[0],
+              due_date: dueDate ? dueDate.toISOString().split("T")[0] : "",
+              invoice_type: order?.customer_gstin ? "b2b" : "b2c",
+              place_of_supply: order?.place_of_supply || order?.customer_state_code || company.state_code || "",
+              notes: order?.notes || "",
+              terms: order?.terms || "",
+            });
+
+            if (order?.items && order.items.length > 0) {
+              setItems(
+                order.items.map((item: any) => ({
+                  product_id: item.product_id || undefined,
+                  description: item.description || "",
+                  hsn_code: item.hsn_code || "",
+                  quantity: item.quantity || 1,
+                  unit: item.unit || "unit",
+                  unit_price: item.unit_price ?? item.rate ?? 0,
+                  discount_percent: item.discount_percent || 0,
+                  gst_rate: item.gst_rate || 18,
+                  is_inclusive: false,
+                }))
+              );
+            }
+          } catch (err) {
+            console.error("Failed to load sales order for conversion:", err);
+          }
+        } else if (duplicateId) {
           try {
             const sourceInvoice = await invoicesApi.get(company.id, duplicateId);
             

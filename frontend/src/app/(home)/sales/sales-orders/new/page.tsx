@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 import { customersApi, productsApi, salesOrdersApi } from "@/services/api";
@@ -159,6 +159,7 @@ function ProductSelectField({
 
 export default function AddSalesOrderPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { company, user } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showTerms, setShowTerms] = useState(true);
@@ -173,6 +174,9 @@ export default function AddSalesOrderPage() {
     const [salesmen, setSalesmen] = useState<any[]>([]);
     const [contactPersons, setContactPersons] = useState<any[]>([]);
     const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+    const [prefillLoading, setPrefillLoading] = useState(false);
+    const [prefillError, setPrefillError] = useState("");
+    const [prefillContactPerson, setPrefillContactPerson] = useState("");
 
     const [loading, setLoading] = useState({
         customers: false,
@@ -187,8 +191,7 @@ export default function AddSalesOrderPage() {
         customer_id: "",
         sales_order_date: new Date().toISOString().split('T')[0],
         expire_date: "",
-        status: "pending" as "pending" | "approved" | "cancelled" | "completed",
-
+    
         // Reference details
         reference_no: "",
         reference_date: "",
@@ -265,6 +268,28 @@ export default function AddSalesOrderPage() {
             loadSalesmen();
         }
     }, [company?.id]);
+
+    useEffect(() => {
+        const quotationId = searchParams?.get("fromQuotation");
+        if (!company?.id || !quotationId) return;
+        prefillFromQuotation(quotationId);
+    }, [company?.id, searchParams]);
+
+    useEffect(() => {
+        if (!prefillContactPerson || contactPersons.length === 0) return;
+        const byId = contactPersons.find((p) => String(p.id) === String(prefillContactPerson));
+        const byName = contactPersons.find((p) =>
+            p.name && p.name.toLowerCase() === prefillContactPerson.toLowerCase()
+        );
+        const match = byId || byName;
+        if (match) {
+            setFormData(prev => ({ ...prev, contact_person: match.id || match.name }));
+            setPrefillContactPerson("");
+            return;
+        }
+        setFormData(prev => ({ ...prev, contact_person: prefillContactPerson }));
+        setPrefillContactPerson("");
+    }, [prefillContactPerson, contactPersons]);
 
     const loadCustomers = async () => {
         try {
@@ -356,6 +381,123 @@ export default function AddSalesOrderPage() {
             }
         } finally {
             setLoading(prev => ({ ...prev, salesmen: false }));
+        }
+    };
+
+    const toDateInput = (value?: string | null) => {
+        if (!value) return "";
+        try {
+            return new Date(value).toISOString().split("T")[0];
+        } catch {
+            return "";
+        }
+    };
+
+    const mapQuotationItem = (item: any) => {
+        const unitPrice = Number(item.unit_price ?? item.rate ?? item.unitPrice ?? 0);
+        const quantity = Number(item.quantity ?? 1);
+        const discountPercent = Number(item.discount_percent ?? item.discountPercent ?? 0);
+        const gstRate = Number(item.gst_rate ?? item.gstRate ?? 0);
+
+        const itemTotal = quantity * unitPrice;
+        const discountAmount = discountPercent > 0 ? itemTotal * (discountPercent / 100) : 0;
+        const taxableAmount = itemTotal - discountAmount;
+        const taxAmount = taxableAmount * (gstRate / 100);
+        const totalAmount = taxableAmount + taxAmount;
+
+        return {
+            id: Date.now() + Math.random(),
+            product_id: item.product_id || item.productId || "",
+            description: item.description || item.product_name || item.product?.name || "",
+            quantity,
+            unit: item.unit || "unit",
+            unit_price: unitPrice,
+            rate: unitPrice,
+            item_code: item.item_code || "",
+            discount_percent: discountPercent,
+            discount_amount: discountAmount,
+            gst_rate: gstRate || 18,
+            cgst_rate: Number(item.cgst_rate ?? gstRate / 2) || 0,
+            sgst_rate: Number(item.sgst_rate ?? gstRate / 2) || 0,
+            igst_rate: Number(item.igst_rate ?? 0) || 0,
+            taxable_amount: taxableAmount,
+            tax_amount: taxAmount,
+            total_amount: totalAmount,
+        };
+    };
+
+    const prefillFromQuotation = async (quotationId: string) => {
+        if (!company?.id) return;
+        const token = localStorage.getItem("access_token");
+        if (!token) return;
+
+        setPrefillLoading(true);
+        setPrefillError("");
+        try {
+            const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${quotationId}`,
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch quotation (${response.status})`);
+            }
+
+            const quotation = await response.json();
+
+            if (quotation?.customer_id) {
+                await handleCustomerChange(quotation.customer_id);
+            }
+
+            if (quotation.contact_person) {
+                setPrefillContactPerson(String(quotation.contact_person));
+            }
+
+            setFormData(prev => ({
+                ...prev,
+                customer_id: quotation.customer_id || prev.customer_id,
+                sales_order_date: toDateInput(quotation.quotation_date) || prev.sales_order_date,
+                expire_date: toDateInput(quotation.validity_date) || prev.expire_date,
+                reference_no: quotation.reference_no || quotation.quotation_number || prev.reference_no,
+                reference_date: toDateInput(quotation.reference_date || quotation.quotation_date) || prev.reference_date,
+                payment_terms: quotation.payment_terms || prev.payment_terms,
+                sales_person_id: quotation.sales_person_id || prev.sales_person_id,
+                contact_person: quotation.contact_person_id || prev.contact_person,
+                notes: quotation.notes || prev.notes,
+                terms: quotation.terms || prev.terms,
+                freight_charges: Number(quotation.freight_charges ?? prev.freight_charges) || 0,
+                freight_type: quotation.freight_type || prev.freight_type,
+                p_and_f_charges: Number(quotation.p_and_f_charges ?? prev.p_and_f_charges) || 0,
+                pf_type: quotation.pf_type || prev.pf_type,
+                deliveryNote: quotation.delivery_note || prev.deliveryNote,
+                supplierRef: quotation.supplier_ref || prev.supplierRef,
+                otherReferences: quotation.other_references || prev.otherReferences,
+                buyerOrderNo: quotation.buyer_order_no || prev.buyerOrderNo,
+                buyerOrderDate: toDateInput(quotation.buyer_order_date) || prev.buyerOrderDate,
+                despatchDocNo: quotation.despatch_doc_no || prev.despatchDocNo,
+                deliveryNoteDate: toDateInput(quotation.delivery_note_date) || prev.deliveryNoteDate,
+                despatchedThrough: quotation.despatched_through || prev.despatchedThrough,
+                destination: quotation.destination || prev.destination,
+                termsOfDelivery: quotation.terms_of_delivery || prev.termsOfDelivery,
+            }));
+
+            const incomingItems = Array.isArray(quotation.items) ? quotation.items : [];
+            if (incomingItems.length > 0) {
+                setItems(incomingItems.map(mapQuotationItem));
+            }
+
+            if (typeof quotation.round_off === "number") {
+                const ro = quotation.round_off;
+                setRoundOff({
+                    type: ro > 0 ? "plus" : ro < 0 ? "minus" : "none",
+                    amount: Math.abs(ro),
+                });
+            }
+        } catch (error: any) {
+            console.error("Failed to prefill from quotation:", error);
+            setPrefillError("Failed to load quotation data");
+        } finally {
+            setPrefillLoading(false);
         }
     };
 
@@ -579,7 +721,7 @@ export default function AddSalesOrderPage() {
                 customer_id: formData.customer_id,
                 sales_order_date: formData.sales_order_date + "T00:00:00Z",
                 expire_date: formData.expire_date ? formData.expire_date + "T00:00:00Z" : null,
-                status: formData.status,
+           
                 reference_no: formData.reference_no || null,
                 reference_date: formData.reference_date ? formData.reference_date + "T00:00:00Z" : null,
                 payment_terms: formData.payment_terms || null,
@@ -707,7 +849,6 @@ export default function AddSalesOrderPage() {
                     company_id: company?.id,
                     customer_id: formData.customer_id,
                     sales_order_date: formData.sales_order_date + "T00:00:00Z",
-                    status: "pending",
                     items: [{
                         product_id: items[0]?.product_id,
                         description: "Test item",
@@ -726,8 +867,7 @@ export default function AddSalesOrderPage() {
                     company_id: company?.id,
                     customer_id: formData.customer_id,
                     sales_order_date: formData.sales_order_date + "T00:00:00Z",
-                    status: "pending",
-                    items: [{
+                     items: [{
                         product_id: items[0]?.product_id,
                         description: "Test item",
                         quantity: 1,
@@ -745,7 +885,7 @@ export default function AddSalesOrderPage() {
                     company_id: company?.id,
                     customer_id: formData.customer_id,
                     sales_order_date: formData.sales_order_date + "T00:00:00Z",
-                    status: "pending",
+              
                     items: [{
                         product_id: items[0]?.product_id,
                         description: "Test item",
@@ -945,6 +1085,13 @@ export default function AddSalesOrderPage() {
                 <p className="text-dark-6">Create new sales order with customer details and items</p>
             </div>
 
+            {(prefillLoading || prefillError) && (
+                <div className="mb-6 rounded-lg border border-stroke bg-white p-4 text-sm dark:border-dark-3 dark:bg-gray-dark">
+                    {prefillLoading && <p className="text-dark-6">Loading quotation data...</p>}
+                    {prefillError && <p className="text-red-600">{prefillError}</p>}
+                </div>
+            )}
+
             <form onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                     {/* Left Column - Main Form */}
@@ -1048,22 +1195,7 @@ export default function AddSalesOrderPage() {
                                         className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                     />
                                 </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Status <span className="text-red-500">*</span>
-                                    </label>
-                                    <select
-                                        value={formData.status}
-                                        onChange={(e) => handleFormChange('status', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                        required
-                                    >
-                                        <option value="pending">Pending</option>
-                                        <option value="approved">Approved</option>
-                                        <option value="cancelled">Cancelled</option>
-                                        <option value="completed">Completed</option>
-                                    </select>
-                                </div>
+                              
                                 {/* Salesman Dropdown */}
                                 <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
@@ -1166,8 +1298,7 @@ export default function AddSalesOrderPage() {
                                     </label>
                                     <input
                                         type="text"
-                                        value={formData.payment_terms}
-                                        onChange={(e) => handleFormChange('payment_terms', e.target.value)}
+                                            onChange={(e) => handleFormChange('payment_terms', e.target.value)}
                                         className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                     />
                                 </div>

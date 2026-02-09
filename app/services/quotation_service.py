@@ -188,6 +188,11 @@ class QuotationService:
         currency_code: str = "INR",
         exchange_rate: Decimal = Decimal("1.0"),
         show_images_in_pdf: bool = True,
+        freight_charges: Optional[Decimal] = Decimal("0"),
+        freight_type: Optional[str] = "fixed",
+        p_and_f_charges: Optional[Decimal] = Decimal("0"),
+        pf_type: Optional[str] = "fixed",
+        round_off: Optional[Decimal] = Decimal("0"),
         sales_ticket_id: Optional[str] = None,
         contact_id: Optional[str] = None,
         cess_amount: Optional[Decimal] = Decimal("0"),
@@ -269,7 +274,7 @@ class QuotationService:
             contact_person=contact_person,
             sales_person_id=sales_person_id,
             sales_person_name=sales_person_name,
-            show_images=show_images,  # Ensure this is set
+            show_images=show_images,
             quotation_type=quotation_type,  # Ensure this is set
             quotation_date=quote_date,
             validity_date=validity_date,
@@ -282,7 +287,14 @@ class QuotationService:
             
             # PDF options
             show_images_in_pdf=show_images_in_pdf,
-            
+
+            # Charges
+            freight_charges=freight_charges or Decimal("0"),
+            freight_type=freight_type or "fixed",
+            p_and_f_charges=p_and_f_charges or Decimal("0"),
+            pf_type=pf_type or "fixed",
+            round_off=round_off or Decimal("0"),
+
             # Additional fields from model
             sales_ticket_id=sales_ticket_id,
             contact_id=contact_id,
@@ -426,8 +438,8 @@ class QuotationService:
         
         # Debug output
         print(f"DEBUG: Created quotation {quotation.quotation_number}")
-        print(f"DEBUG: Show images: {quotation.show_images}")
-        print(f"DEBUG: Show images in PDF: {quotation.show_images_in_pdf}")
+        print(f"DEBUG: Show images: {getattr(quotation, 'show_images', True)}")
+        print(f"DEBUG: Show images in PDF: {getattr(quotation, 'show_images_in_pdf', True)}")
         print(f"DEBUG: Quotation type: {quotation.quotation_type}")
         print(f"DEBUG: Is project: {quotation.is_project}")
         print(f"DEBUG: Total items: {len(quotation.items)}")
@@ -462,6 +474,11 @@ class QuotationService:
         exchange_rate: Optional[Decimal] = None,
         # PDF options
         show_images_in_pdf: Optional[bool] = None,
+        freight_charges: Optional[Decimal] = None,
+        freight_type: Optional[str] = None,
+        p_and_f_charges: Optional[Decimal] = None,
+        pf_type: Optional[str] = None,
+        round_off: Optional[Decimal] = None,
         # Additional fields
         sales_ticket_id: Optional[str] = None,
         contact_id: Optional[str] = None,
@@ -502,6 +519,16 @@ class QuotationService:
             quotation.show_images = show_images
         if show_images_in_pdf is not None:
             quotation.show_images_in_pdf = show_images_in_pdf
+        if freight_charges is not None:
+            quotation.freight_charges = freight_charges
+        if freight_type is not None:
+            quotation.freight_type = freight_type
+        if p_and_f_charges is not None:
+            quotation.p_and_f_charges = p_and_f_charges
+        if pf_type is not None:
+            quotation.pf_type = pf_type
+        if round_off is not None:
+            quotation.round_off = round_off
         if sales_ticket_id is not None:
             quotation.sales_ticket_id = sales_ticket_id
         if contact_id is not None:
@@ -939,7 +966,12 @@ class QuotationService:
             place_of_supply=quotation.place_of_supply,
             place_of_supply_name=quotation.place_of_supply_name,
             show_images=quotation.show_images,
-            show_images_in_pdf=quotation.show_images_in_pdf,
+            show_images_in_pdf=getattr(quotation, "show_images_in_pdf", True),
+            freight_charges=getattr(quotation, "freight_charges", 0),
+            freight_type=getattr(quotation, "freight_type", "fixed"),
+            p_and_f_charges=getattr(quotation, "p_and_f_charges", 0),
+            pf_type=getattr(quotation, "pf_type", "fixed"),
+            round_off=getattr(quotation, "round_off", 0),
             quotation_type=quotation.quotation_type,
             is_project=quotation.is_project,
             subtotal=quotation.subtotal,

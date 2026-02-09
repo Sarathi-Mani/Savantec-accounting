@@ -120,6 +120,11 @@ class QuotationCreateRequest(BaseModel):
     show_images_in_pdf: bool = True
     # New fields
     show_images: bool = True  # Add this
+    freight_charges: float = 0.0
+    freight_type: str = "fixed"
+    p_and_f_charges: float = 0.0
+    pf_type: str = "fixed"
+    round_off: float = 0.0
     quotation_type: str = "item"  # Add this - "item" or "project"
     sales_ticket_id: Optional[str] = None  # Add this
     contact_id: Optional[str] = None  # Add this
@@ -151,6 +156,11 @@ class QuotationUpdateRequest(BaseModel):
     show_images_in_pdf: Optional[bool] = None
     # New fields
     show_images: Optional[bool] = None  # Add this
+    freight_charges: Optional[float] = None
+    freight_type: Optional[str] = None
+    p_and_f_charges: Optional[float] = None
+    pf_type: Optional[str] = None
+    round_off: Optional[float] = None
     quotation_type: Optional[str] = None  # Add this
     sales_ticket_id: Optional[str] = None  # Add this
     contact_id: Optional[str] = None  # Add this
@@ -174,6 +184,7 @@ class SubItemResponse(BaseModel):  # Add this schema
 class QuotationItemResponse(BaseModel):
     id: str
     product_id: Optional[str]
+    item_code: Optional[str] = None
     description: str
     hsn_code: Optional[str]
     quantity: float
@@ -215,6 +226,11 @@ class QuotationResponse(BaseModel):
     show_images_in_pdf: bool = True
     # New fields
     show_images: bool = True  # Add this
+    freight_charges: float = 0.0
+    freight_type: str = "fixed"
+    p_and_f_charges: float = 0.0
+    pf_type: str = "fixed"
+    round_off: float = 0.0
     quotation_type: str = "item"  # Add this
     is_project: bool = False  # Add this
     cess_amount: float = 0.0  # Add this
@@ -583,6 +599,11 @@ async def create_quotation(
             # PDF options
             show_images_in_pdf=quotation_data.get("show_images_in_pdf", True),  # Add this
             # New fields
+            freight_charges=Decimal(str(quotation_data.get("freight_charges", 0) or 0)),
+            freight_type=quotation_data.get("freight_type", "fixed"),
+            p_and_f_charges=Decimal(str(quotation_data.get("p_and_f_charges", 0) or 0)),
+            pf_type=quotation_data.get("pf_type", "fixed"),
+            round_off=Decimal(str(quotation_data.get("round_off", 0) or 0)),
             sales_ticket_id=quotation_data.get("sales_ticket_id"),  # Add this
             contact_id=quotation_data.get("contact_id"),  # Add this
             cess_amount=Decimal(str(quotation_data.get("cess_amount", 0))),  # Add this
@@ -851,6 +872,11 @@ async def update_quotation(
             show_images_in_pdf=update_data.get("show_images_in_pdf"),  # Add this
             # New fields
             show_images=update_data.get("show_images"),  # Add this
+            freight_charges=Decimal(str(update_data.get("freight_charges"))) if update_data.get("freight_charges") is not None else None,
+            freight_type=update_data.get("freight_type"),
+            p_and_f_charges=Decimal(str(update_data.get("p_and_f_charges"))) if update_data.get("p_and_f_charges") is not None else None,
+            pf_type=update_data.get("pf_type"),
+            round_off=Decimal(str(update_data.get("round_off"))) if update_data.get("round_off") is not None else None,
             sales_ticket_id=update_data.get("sales_ticket_id"),  # Add this
             contact_id=update_data.get("contact_id"),  # Add this
             cess_amount=Decimal(str(update_data.get("cess_amount"))) if update_data.get("cess_amount") is not None else None,  # Add this
@@ -1119,9 +1145,14 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
         "exchange_rate": float(quotation.exchange_rate or 1.0),
         "base_currency_total": float(quotation.base_currency_total or quotation.total_amount or 0),
         # PDF options
-        "show_images_in_pdf": quotation.show_images_in_pdf if quotation.show_images_in_pdf is not None else True,
+        "show_images_in_pdf": getattr(quotation, "show_images_in_pdf", True) if getattr(quotation, "show_images_in_pdf", None) is not None else True,
         # New fields
-        "show_images": quotation.show_images if quotation.show_images is not None else True,
+        "show_images": getattr(quotation, "show_images", True) if getattr(quotation, "show_images", None) is not None else True,
+        "freight_charges": float(getattr(quotation, "freight_charges", 0) or 0),
+        "freight_type": getattr(quotation, "freight_type", "fixed") or "fixed",
+        "p_and_f_charges": float(getattr(quotation, "p_and_f_charges", 0) or 0),
+        "pf_type": getattr(quotation, "pf_type", "fixed") or "fixed",
+        "round_off": float(getattr(quotation, "round_off", 0) or 0),
         "quotation_type": quotation.quotation_type or "item",
         "is_project": quotation.is_project or False,
         "cess_amount": float(quotation.cess_amount or 0),
@@ -1156,6 +1187,7 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
             item_data = {
                 "id": item.id,
                 "product_id": item.product_id,
+                "item_code": getattr(item, "item_code", None),
                 "description": item.description,
                 "hsn_code": item.hsn_code,
                 "quantity": float(item.quantity),

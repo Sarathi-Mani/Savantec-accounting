@@ -290,14 +290,36 @@ class CompanyService:
             "linked_account_id": linked_account.id if linked_account else None,
         }
     
-    def get_next_invoice_number(self, company: Company) -> str:
-        """Get the next invoice number for a company."""
-        counter = company.invoice_counter
-        invoice_number = f"{company.invoice_prefix}-{counter:05d}"
-        
-        # Increment counter
-        company.invoice_counter = counter + 1
-        self.db.commit()
-        
-        return invoice_number
+    def get_next_invoice_number(self, company: Company, voucher_type: Optional[str] = None) -> str:
+        """Get the next invoice number for a company based on voucher type."""
+        from app.database.models import InvoiceVoucher
+
+        base_prefix = company.invoice_prefix or "INV-"
+
+        if voucher_type and (voucher_type == InvoiceVoucher.SERVICE or voucher_type == "service"):
+            if "SER" not in base_prefix:
+                prefix = base_prefix.rstrip('-') + "SER-"
+            else:
+                prefix = base_prefix
+        else:
+            prefix = base_prefix
+
+        last_invoice = self.db.query(Invoice).filter(
+            Invoice.company_id == company.id,
+            Invoice.invoice_number.isnot(None),
+            Invoice.invoice_number.like(f"{prefix}%"),
+            Invoice.status.in_(["pending", "paid", "partially_paid", "draft"])
+        ).order_by(
+            Invoice.invoice_date.desc(),
+            Invoice.created_at.desc()
+        ).first()
+
+        if last_invoice and last_invoice.invoice_number:
+            import re
+            matches = re.search(r'\d+$', last_invoice.invoice_number)
+            if matches:
+                last_num = int(matches.group())
+                return f"{prefix}{last_num + 1:05d}"
+
+        return f"{prefix}00001"
 

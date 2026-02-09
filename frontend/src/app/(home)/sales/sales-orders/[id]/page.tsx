@@ -1,7 +1,7 @@
  "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { ordersApi, getErrorMessage } from "@/services/api";
@@ -18,6 +18,10 @@ type SalesOrderItem = {
   discount_percent?: number;
   discount_amount?: number;
   gst_rate?: number;
+  cgst_rate?: number;
+  sgst_rate?: number;
+  igst_rate?: number;
+  taxable_amount?: number;
   tax_amount?: number;
   total_amount?: number;
 };
@@ -31,17 +35,30 @@ type SalesOrder = {
   customer_name?: string;
   status: string;
   reference_no?: string | null;
+  reference_date?: string | null;
   payment_terms?: string | null;
   sales_person_id?: string | null;
   contact_person?: string | null;
+  contact_person_name?: string | null;
   notes?: string | null;
   terms?: string | null;
   freight_charges?: number;
   p_and_f_charges?: number;
+  send_message?: boolean;
   round_off?: number;
   subtotal?: number;
   total_tax?: number;
   total_amount?: number;
+  delivery_note?: string | null;
+  supplier_ref?: string | null;
+  other_references?: string | null;
+  buyer_order_no?: string | null;
+  buyer_order_date?: string | null;
+  despatch_doc_no?: string | null;
+  delivery_note_date?: string | null;
+  despatched_through?: string | null;
+  destination?: string | null;
+  terms_of_delivery?: string | null;
   items?: SalesOrderItem[];
 };
 
@@ -85,8 +102,10 @@ const getStatusColor = (status: string) => {
 export default function SalesOrderViewPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const orderId = params?.id as string;
   const { company } = useAuth();
+  const shouldPrint = searchParams?.get("print") === "1";
 
   const [order, setOrder] = useState<SalesOrder | null>(null);
   const [loading, setLoading] = useState(true);
@@ -109,6 +128,15 @@ export default function SalesOrderViewPage() {
 
     loadOrder();
   }, [company?.id, orderId]);
+
+  useEffect(() => {
+    if (shouldPrint && order && !loading) {
+      const timer = window.setTimeout(() => {
+        window.print();
+      }, 300);
+      return () => window.clearTimeout(timer);
+    }
+  }, [shouldPrint, order, loading]);
 
   if (loading) {
     return (
@@ -171,13 +199,16 @@ export default function SalesOrderViewPage() {
         </ol>
       </nav>
 
-      <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+      <div className="rounded-2xl bg-white p-6 shadow-1 dark:bg-gray-dark md:p-8">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
+            <div className="text-sm text-dark-6">Sales Order</div>
             <h1 className="text-2xl font-bold text-dark dark:text-white">
-              Sales Order {order.order_number}
+              {order.order_number}
             </h1>
-            <p className="text-sm text-dark-6">Created on {formatDate(order.order_date)}</p>
+            <div className="mt-1 text-sm text-dark-6">
+              Created on {formatDate(order.order_date)}
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <span className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${getStatusColor(order.status)}`}>
@@ -192,30 +223,73 @@ export default function SalesOrderViewPage() {
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
-          <div className="rounded-lg border border-stroke p-4 dark:border-dark-3">
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="rounded-xl border border-stroke p-4 dark:border-dark-3">
             <h2 className="mb-3 text-sm font-semibold text-dark dark:text-white">Customer</h2>
-            <p className="text-sm text-dark dark:text-white">{order.customer_name || "Walk-in Customer"}</p>
-            <p className="text-xs text-dark-6">Contact Person: {order.contact_person || "-"}</p>
+            <div className="space-y-2 text-sm text-dark-6">
+              <div className="text-base font-semibold text-dark dark:text-white">
+                {order.customer_name || "Walk-in Customer"}
+              </div>
+              <div>
+                Contact Person:{" "}
+                <span className="text-dark dark:text-white">
+                  {order.contact_person_name || order.contact_person || "-"}
+                </span>
+              </div>
+              <div>
+                Reference:{" "}
+                <span className="text-dark dark:text-white">{order.reference_no || "-"}</span>
+              </div>
+            </div>
           </div>
-          <div className="rounded-lg border border-stroke p-4 dark:border-dark-3">
+          <div className="rounded-xl border border-stroke p-4 dark:border-dark-3">
             <h2 className="mb-3 text-sm font-semibold text-dark dark:text-white">Order Details</h2>
-            <p className="text-sm text-dark-6">Order Date: {formatDate(order.order_date)}</p>
-            <p className="text-sm text-dark-6">Expiry Date: {formatDate(order.expire_date)}</p>
-            <p className="text-sm text-dark-6">Reference: {order.reference_no || "-"}</p>
-            <p className="text-sm text-dark-6">Payment Terms: {order.payment_terms || "-"}</p>
+            <div className="space-y-2 text-sm text-dark-6">
+              <div>Order Date: {formatDate(order.order_date)}</div>
+              <div>Expiry Date: {formatDate(order.expire_date)}</div>
+              <div>Reference Date: {formatDate(order.reference_date)}</div>
+              <div>Payment Terms: {order.payment_terms || "-"}</div>
+              <div>Sales Person: {order.sales_person_id || "-"}</div>
+            </div>
+          </div>
+       
+        </div>
+
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="rounded-xl border border-stroke p-4 dark:border-dark-3">
+            <h2 className="mb-3 text-sm font-semibold text-dark dark:text-white">Delivery & Dispatch</h2>
+            <div className="space-y-2 text-sm text-dark-6">
+              <div>Delivery Note: {order.delivery_note || "-"}</div>
+              <div>Delivery Note Date: {formatDate(order.delivery_note_date)}</div>
+              <div>Despatch Doc No: {order.despatch_doc_no || "-"}</div>
+              <div>Despatched Through: {order.despatched_through || "-"}</div>
+              <div>Destination: {order.destination || "-"}</div>
+              <div>Terms of Delivery: {order.terms_of_delivery || "-"}</div>
+            </div>
+          </div>
+          <div className="rounded-xl border border-stroke p-4 dark:border-dark-3">
+            <h2 className="mb-3 text-sm font-semibold text-dark dark:text-white">Other References</h2>
+            <div className="space-y-2 text-sm text-dark-6">
+              <div>Supplier Ref: {order.supplier_ref || "-"}</div>
+              <div>Other References: {order.other_references || "-"}</div>
+              <div>Buyer Order No: {order.buyer_order_no || "-"}</div>
+              <div>Buyer Order Date: {formatDate(order.buyer_order_date)}</div>
+              <div>Send Message: {order.send_message ? "Yes" : "No"}</div>
+            </div>
           </div>
         </div>
 
-        <div className="mt-6 overflow-x-auto">
+        <div className="mt-6 overflow-x-auto rounded-xl border border-stroke dark:border-dark-3">
           <table className="w-full">
-            <thead>
+            <thead className="bg-gray-50 dark:bg-dark-2">
               <tr className="border-b border-stroke dark:border-dark-3">
                 <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Qty</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Rate</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Discount</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Taxable</th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">GST</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Total</th>
               </tr>
             </thead>
@@ -231,7 +305,17 @@ export default function SalesOrderViewPage() {
                   <td className="px-4 py-3 text-sm text-dark-6">
                     {formatCurrency(item.unit_price ?? item.rate ?? 0)}
                   </td>
-                  <td className="px-4 py-3 text-sm text-dark-6">{item.gst_rate || 0}%</td>
+                  <td className="px-4 py-3 text-sm text-dark-6">
+                    {item.discount_percent || 0}% ({formatCurrency(item.discount_amount || 0)})
+                  </td>
+                  <td className="px-4 py-3 text-sm text-dark-6">
+                    {formatCurrency(item.taxable_amount || 0)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-dark-6">
+                    {item.gst_rate || 0}%
+                 
+                  
+                  </td>
                   <td className="px-4 py-3 text-sm text-dark dark:text-white">
                     {formatCurrency(item.total_amount || 0)}
                   </td>
@@ -239,7 +323,7 @@ export default function SalesOrderViewPage() {
               ))}
               {(order.items || []).length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-dark-6">
+                  <td colSpan={8} className="px-4 py-6 text-center text-sm text-dark-6">
                     No items found.
                   </td>
                 </tr>
@@ -248,38 +332,49 @@ export default function SalesOrderViewPage() {
           </table>
         </div>
 
-        <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-3">
-          <div className="md:col-span-2">
-            <div className="rounded-lg border border-stroke p-4 dark:border-dark-3">
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="rounded-xl border border-stroke p-4 dark:border-dark-3">
               <h3 className="mb-2 text-sm font-semibold text-dark dark:text-white">Notes</h3>
-              <p className="text-sm text-dark-6">{order.notes || "—"}</p>
+              <p className="text-sm text-dark-6">{order.notes || "-"}</p>
             </div>
-            <div className="mt-4 rounded-lg border border-stroke p-4 dark:border-dark-3">
+            <div className="rounded-xl border border-stroke p-4 dark:border-dark-3">
               <h3 className="mb-2 text-sm font-semibold text-dark dark:text-white">Terms</h3>
-              <p className="whitespace-pre-wrap text-sm text-dark-6">{order.terms || "—"}</p>
+              <p className="whitespace-pre-wrap text-sm text-dark-6">{order.terms || "-"}</p>
             </div>
           </div>
-          <div className="rounded-lg border border-stroke p-4 dark:border-dark-3">
-            <div className="flex items-center justify-between text-sm text-dark-6">
-              <span>Subtotal</span>
-              <span className="font-medium text-dark dark:text-white">{formatCurrency(order.subtotal)}</span>
-            </div>
-            <div className="mt-2 flex items-center justify-between text-sm text-dark-6">
-              <span>Total Tax</span>
-              <span className="font-medium text-dark dark:text-white">{formatCurrency(order.total_tax)}</span>
-            </div>
-            <div className="mt-2 flex items-center justify-between text-sm text-dark-6">
-              <span>Round Off</span>
-              <span className="font-medium text-dark dark:text-white">{formatCurrency(order.round_off)}</span>
-            </div>
-            <div className="mt-3 border-t border-stroke pt-3 text-sm font-semibold text-dark dark:text-white">
+          <div className="rounded-xl border border-stroke p-4 dark:border-dark-3 lg:col-start-3">
+            <h2 className="mb-3 text-sm font-semibold text-dark dark:text-white">Totals</h2>
+            <div className="space-y-2 text-sm text-dark-6">
               <div className="flex items-center justify-between">
+                <span>Subtotal</span>
+                <span className="font-medium text-dark dark:text-white">{formatCurrency(order.subtotal)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Tax</span>
+                <span className="font-medium text-dark dark:text-white">{formatCurrency(order.total_tax)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Freight</span>
+                <span className="font-medium text-dark dark:text-white">{formatCurrency(order.freight_charges)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>P &amp; F</span>
+                <span className="font-medium text-dark dark:text-white">{formatCurrency(order.p_and_f_charges)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Round Off</span>
+                <span className="font-medium text-dark dark:text-white">{formatCurrency(order.round_off)}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-stroke pt-3 text-sm font-semibold text-dark dark:text-white">
                 <span>Total</span>
                 <span>{formatCurrency(order.total_amount)}</span>
               </div>
             </div>
           </div>
         </div>
+
+        
 
         <div className="mt-6 flex gap-3">
           <button

@@ -295,6 +295,7 @@ class CustomerResponse(BaseModel):
     billing_address: Optional[str] = None
     billing_city: Optional[str] = None
     billing_state: Optional[str] = None
+    billing_state_code: Optional[str] = None
     billing_country: Optional[str] = "India"
     billing_zip: Optional[str] = None
     district: Optional[str] = None
@@ -305,6 +306,7 @@ class CustomerResponse(BaseModel):
     shipping_address: Optional[str] = None
     shipping_city: Optional[str] = None
     shipping_state: Optional[str] = None
+    shipping_state_code: Optional[str] = None
     shipping_country: Optional[str] = "India"
     shipping_zip: Optional[str] = None
     customer_type: Optional[str] = "b2b"

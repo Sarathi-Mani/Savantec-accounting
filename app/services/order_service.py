@@ -158,6 +158,7 @@ class OrderService:
                 product_id=item_data.get("product_id"),
                 item_code=item_code_value,  # Non-empty string
                 description=item_data.get("description", ""),
+                hsn_code=item_data.get("hsn_code"),
                 quantity=qty,
                 unit=item_data.get("unit", "unit"),
                 unit_price=unit_price,
@@ -373,6 +374,7 @@ class OrderService:
                     product_id=item_data.get("product_id"),
                     item_code=item_data.get("item_code", ""),
                     description=item_data.get("description", ""),
+                    hsn_code=item_data.get("hsn_code"),
                     quantity=qty,
                     unit=item_data.get("unit", "unit"),
                     unit_price=unit_price,

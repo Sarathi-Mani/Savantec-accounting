@@ -98,7 +98,7 @@ class InvoiceItemResponse(BaseModel):
     warehouse_allocation: Optional[List[dict]] = None
     stock_reserved: bool = False
     stock_reduced: bool = False
-    
+
     created_at: datetime
 
     class Config:
@@ -392,7 +392,30 @@ class InvoiceResponse(BaseModel):
     due_date: Optional[datetime] = None
 
     reference_no: Optional[str] = None
-    
+    delivery_note: Optional[str] = None
+    payment_terms: Optional[str] = None
+    supplier_ref: Optional[str] = None
+    other_references: Optional[str] = None
+    buyer_order_no: Optional[str] = None
+    buyer_order_date: Optional[date] = None
+    despatch_doc_no: Optional[str] = None
+    delivery_note_date: Optional[date] = None
+    despatched_through: Optional[str] = None
+    destination: Optional[str] = None
+    terms_of_delivery: Optional[str] = None
+    coupon_code: Optional[str] = None
+    coupon_value: Optional[Decimal] = None
+    discount_on_all: Optional[Decimal] = None
+    discount_type: Optional[str] = None
+    payment_type: Optional[str] = None
+    payment_account: Optional[str] = None
+    payment_note: Optional[str] = None
+    adjust_advance_payment: Optional[bool] = None
+    voucher_type: Optional[str] = None
+    courier_docket_number: Optional[str] = None
+    courier_tracking_url: Optional[str] = None
+    courier_company: Optional[str] = None
+
     invoice_type: str
     place_of_supply: Optional[str] = None
     place_of_supply_name: Optional[str] = None
@@ -407,10 +430,13 @@ class InvoiceResponse(BaseModel):
     cess_amount: Decimal
     total_tax: Decimal
     total_amount: Decimal
-    
-    amount_paid: Decimal
-    balance_due: Decimal
-    
+    round_off: Optional[Decimal] = None
+    freight_charges: Optional[Decimal] = None
+    packing_forwarding_charges: Optional[Decimal] = None
+    amount_paid: Optional[Decimal] = None
+    balance_due: Optional[Decimal] = None
+    outstanding_amount: Optional[Decimal] = None
+
     status: str
     
     payment_link: Optional[str] = None
@@ -418,8 +444,11 @@ class InvoiceResponse(BaseModel):
     
     notes: Optional[str] = None
     terms: Optional[str] = None
-    
+    signed_qr: Optional[str] = None
     irn: Optional[str] = None
+    ack_number: Optional[str] = None
+    ack_date: Optional[datetime] = None
+
     pdf_url: Optional[str] = None
     
     created_at: datetime
@@ -433,6 +462,20 @@ class InvoiceResponse(BaseModel):
     customer_gstin: Optional[str] = None
     customer_email: Optional[str] = None
     customer_phone: Optional[str] = None
+    customer_state: Optional[str] = None
+    customer_state_code: Optional[str] = None
+
+    # Shipping details
+    shipping_address: Optional[str] = None
+    shipping_city: Optional[str] = None
+    shipping_state: Optional[str] = None
+    shipping_country: Optional[str] = None
+    shipping_zip: Optional[str] = None
+
+    # Sales pipeline
+    sales_ticket_id: Optional[str] = None
+    contact_id: Optional[str] = None
+    sales_person_id: Optional[str] = None
 
     class Config:
         from_attributes = True

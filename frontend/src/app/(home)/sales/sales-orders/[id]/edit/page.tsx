@@ -747,7 +747,6 @@ export default function EditSalesOrderPage() {
                 customer_id: formData.customer_id,
                 sales_order_date: formData.sales_order_date + "T00:00:00Z",
                 expire_date: formData.expire_date ? formData.expire_date + "T00:00:00Z" : null,
-                status: formData.status,
                 reference_no: formData.reference_no || null,
                 reference_date: formData.reference_date ? formData.reference_date + "T00:00:00Z" : null,
                 payment_terms: formData.payment_terms || null,
@@ -874,7 +873,6 @@ export default function EditSalesOrderPage() {
                     company_id: company?.id,
                     customer_id: formData.customer_id,
                     sales_order_date: formData.sales_order_date + "T00:00:00Z",
-                    status: "pending",
                     items: [{
                         product_id: items[0]?.product_id,
                         description: "Test item",
@@ -893,7 +891,6 @@ export default function EditSalesOrderPage() {
                     company_id: company?.id,
                     customer_id: formData.customer_id,
                     sales_order_date: formData.sales_order_date + "T00:00:00Z",
-                    status: "pending",
                     items: [{
                         product_id: items[0]?.product_id,
                         description: "Test item",
@@ -912,8 +909,7 @@ export default function EditSalesOrderPage() {
                     company_id: company?.id,
                     customer_id: formData.customer_id,
                     sales_order_date: formData.sales_order_date + "T00:00:00Z",
-                    status: "pending",
-                    items: [{
+                     items: [{
                         product_id: items[0]?.product_id,
                         description: "Test item",
                         quantity: 1,
@@ -1228,22 +1224,7 @@ export default function EditSalesOrderPage() {
                                         className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                     />
                                 </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Status <span className="text-red-500">*</span>
-                                    </label>
-                                    <select
-                                        value={formData.status}
-                                        onChange={(e) => handleFormChange('status', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                        required
-                                    >
-                                        <option value="pending">Pending</option>
-                                        <option value="approved">Approved</option>
-                                        <option value="cancelled">Cancelled</option>
-                                        <option value="completed">Completed</option>
-                                    </select>
-                                </div>
+                               
                                 {/* Salesman Dropdown */}
                                 <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">

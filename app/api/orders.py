@@ -7,7 +7,7 @@ from decimal import Decimal
 from sqlalchemy import or_, func
 from pydantic import field_validator, model_validator,BaseModel, Field,ConfigDict
 from app.database.connection import get_db
-from app.database.models import User, Company, OrderStatus, Customer
+from app.database.models import User, Company, OrderStatus, Customer, ContactPerson
 from app.database.payroll_models import Employee
 
 from app.services.order_service import OrderService
@@ -29,6 +29,13 @@ def get_company_or_404(company_id: str, current_user: User, db: Session) -> Comp
     return company
 
 
+def get_contact_person_name(db: Session, contact_person_id: Optional[str]) -> Optional[str]:
+    if not contact_person_id:
+        return None
+    contact = db.query(ContactPerson).filter(ContactPerson.id == contact_person_id).first()
+    return contact.name if contact else None
+
+
 # ============== Schemas ==============
 
 class OrderItemInput(BaseModel):
@@ -36,6 +43,7 @@ class OrderItemInput(BaseModel):
     item_code: Optional[str] = None # New field
   
     description: str
+    hsn_code: Optional[str] = None
     quantity: Decimal
     unit: str = "unit"
     unit_price: Optional[Decimal] = None  # Make optional, remove alias
@@ -72,6 +80,7 @@ class OrderItemResponse(BaseModel):
     product_name: Optional[str] = None
     item_code: Optional[str]
     description: str
+    hsn_code: Optional[str] = None
     quantity: Decimal
     unit: str
     unit_price: Decimal
@@ -182,6 +191,7 @@ class SalesOrderResponse(BaseModel):
     payment_terms: Optional[str]
     sales_person_id: Optional[str]
     contact_person: Optional[str]
+    contact_person_name: Optional[str] = None
     notes: Optional[str]
     terms: Optional[str]
     freight_charges: Decimal
@@ -450,6 +460,7 @@ async def create_sales_order(
             payment_terms=order.payment_terms,
             sales_person_id=order.sales_person_id,
             contact_person=order.contact_person,
+            contact_person_name=get_contact_person_name(db, order.contact_person),
             notes=order.notes,
             terms=order.terms,
             freight_charges=order.freight_charges or Decimal("0"),
@@ -552,6 +563,7 @@ async def list_sales_orders(
             payment_terms=order.payment_terms,
             sales_person_id=order.sales_person_id,
             contact_person=order.contact_person,
+            contact_person_name=get_contact_person_name(db, order.contact_person),
             notes=order.notes,
             terms=order.terms,
             freight_charges=order.freight_charges or Decimal("0"),
@@ -632,6 +644,7 @@ async def get_sales_order(
         payment_terms=order.payment_terms,
         sales_person_id=order.sales_person_id,
         contact_person=order.contact_person,
+        contact_person_name=get_contact_person_name(db, order.contact_person),
         notes=order.notes,
         terms=order.terms,
         freight_charges=order.freight_charges or Decimal("0"),
@@ -749,6 +762,7 @@ async def update_sales_order(
             payment_terms=updated_order.payment_terms,
             sales_person_id=updated_order.sales_person_id,
             contact_person=updated_order.contact_person,
+            contact_person_name=get_contact_person_name(db, updated_order.contact_person),
             notes=updated_order.notes,
             terms=updated_order.terms,
             freight_charges=updated_order.freight_charges or Decimal("0"),

@@ -4,6 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 import dayjs from "dayjs";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -40,6 +41,7 @@ interface QuotationListResponse {
 
 export default function QuotationsPage() {
   const { company } = useAuth();
+  const router = useRouter();
   const [data, setData] = useState<QuotationListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -384,6 +386,11 @@ export default function QuotationsPage() {
     }
   };
 
+  const handleConvertToSalesOrder = (quotationId: string) => {
+    if (!confirm("Convert this quotation to a sales order?")) return;
+    router.push(`/sales/sales-orders/new?fromQuotation=${quotationId}`);
+  };
+
   const handlePrint = (quotationId: string) => {
     window.open(`/quotations/${quotationId}/print`, "_blank");
   };
@@ -633,6 +640,19 @@ export default function QuotationsPage() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                               </svg>
                             )}
+                          </button>
+                        )}
+
+                        {/* Convert to Sales Order Button */}
+                        {quotation.status !== "converted" && (
+                          <button
+                            onClick={() => handleConvertToSalesOrder(quotation.id)}
+                            className="rounded p-1.5 text-dark-6 transition hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/20"
+                            title="Convert to Sales Order"
+                          >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5h6m-6 4h6m-6 4h6m2 6H7a2 2 0 01-2-2V5a2 2 0 012-2h6l5 5v11a2 2 0 01-2 2z" />
+                            </svg>
                           </button>
                         )}
 

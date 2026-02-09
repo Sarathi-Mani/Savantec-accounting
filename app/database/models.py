@@ -1993,6 +1993,7 @@ class SalesOrderItem(Base):
     item_code = Column(String(100), nullable=True) 
 
     description = Column(String(500), nullable=False)
+    hsn_code = Column(String(50), nullable=True)
     quantity = Column(Numeric(14, 3), nullable=False)
     unit = Column(String(20))
     rate = Column(Numeric(14, 2), nullable=False)
@@ -4441,6 +4442,13 @@ class Quotation(Base):
     
     # PDF generation options
     show_images_in_pdf = Column(Boolean, default=True)  # Toggle to show/hide images in PDF
+    show_images = Column(Boolean, default=True)  # Toggle to show/hide images in UI
+
+    # Charges
+    freight_charges = Column(Numeric(14, 2), default=0)
+    freight_type = Column(String(20), default="fixed")
+    p_and_f_charges = Column(Numeric(14, 2), default=0)
+    pf_type = Column(String(20), default="fixed")
     
     # Amounts (in selected currency)
     subtotal = Column(Numeric(14, 2), default=0)
@@ -4454,6 +4462,7 @@ class Quotation(Base):
     
     total_tax = Column(Numeric(14, 2), default=0)
     total_amount = Column(Numeric(14, 2), default=0)
+    round_off = Column(Numeric(14, 2), default=0)
     
     # Status
     status = Column(Enum(QuotationStatus), default=QuotationStatus.DRAFT)

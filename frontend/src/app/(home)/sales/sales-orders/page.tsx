@@ -484,80 +484,16 @@ export default function SalesOrdersPage() {
     );
   };
 
-  const handleConvertToInvoice = async (orderId: string) => {
+  const handleConvertToInvoice = (orderId: string) => {
     if (!company?.id || convertingOrderId) return;
-
     setConvertingOrderId(orderId);
-    try {
-      const order = await ordersApi.getSalesOrder(company.id, orderId) as any;
-
-      if (!order) {
-        alert("Sales order not found.");
-        return;
-      }
-
-      if (!order.items || order.items.length === 0) {
-        alert("Sales order has no items to convert.");
-        return;
-      }
-
-      const invoiceDate = order.order_date ? new Date(order.order_date) : new Date();
-      const dueDate = order.expire_date ? new Date(order.expire_date) : null;
-
-      const invoicePayload = {
-        voucher_type: "sales",
-        customer_id: order.customer_id,
-        invoice_date: invoiceDate.toISOString().split("T")[0],
-        due_date: dueDate ? dueDate.toISOString().split("T")[0] : undefined,
-        invoice_type: "b2b",
-        reference_no: order.reference_no || order.order_number,
-        delivery_note: order.delivery_note || undefined,
-        payment_terms: order.payment_terms || undefined,
-        supplier_ref: order.supplier_ref || undefined,
-        other_references: order.other_references || undefined,
-        buyer_order_no: order.buyer_order_no || undefined,
-        buyer_order_date: order.buyer_order_date
-          ? new Date(order.buyer_order_date).toISOString().split("T")[0]
-          : undefined,
-        despatch_doc_no: order.despatch_doc_no || undefined,
-        delivery_note_date: order.delivery_note_date
-          ? new Date(order.delivery_note_date).toISOString().split("T")[0]
-          : undefined,
-        despatched_through: order.despatched_through || undefined,
-        destination: order.destination || undefined,
-        terms_of_delivery: order.terms_of_delivery || undefined,
-        notes: order.notes || undefined,
-        terms: order.terms || undefined,
-        freight_charges: order.freight_charges ?? 0,
-        packing_forwarding_charges: order.p_and_f_charges ?? 0,
-        round_off: order.round_off ?? 0,
-        discount_on_all: order.discount_on_all ?? 0,
-        sales_person_id: order.sales_person_id || undefined,
-        items: order.items.map((item: any) => ({
-          product_id: item.product_id || undefined,
-          description: item.description,
-          hsn_code: item.hsn_code || undefined,
-          quantity: item.quantity,
-          unit: item.unit || "unit",
-          unit_price: item.unit_price ?? item.rate ?? 0,
-          discount_percent: item.discount_percent ?? 0,
-          gst_rate: item.gst_rate ?? 0,
-        })),
-      };
-
-      const invoice = await invoicesApi.create(company.id, invoicePayload);
-      setActiveActionMenu(null);
-      router.push(`/sales/${invoice.id}`);
-    } catch (error) {
-      console.error("Failed to convert sales order to invoice:", error);
-      alert(getErrorMessage(error, "Failed to convert sales order to invoice"));
-    } finally {
-      setConvertingOrderId(null);
-    }
+    setActiveActionMenu(null);
+    router.push(`/sales/new?fromSalesOrder=${orderId}`);
+    setConvertingOrderId(null);
   };
 
   const handlePrint = (orderId: string) => {
-    window.open(`/sales/sales-orders/${orderId}/print`, "_blank");
+    window.open(`/sales/sales-orders/${orderId}?print=1`, "_blank");
   };
 
   const handleDownloadPDF = async (orderId: string) => {
