@@ -111,6 +111,7 @@ class EnquiryItemResponse(BaseModel):
     # Product details if available
     product_name: Optional[str] = None
     product_sku: Optional[str] = None
+    product_brand: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -194,6 +195,12 @@ def enrich_enquiry(enquiry: Enquiry, db: Session) -> EnquiryResponse:
         if item.product:
             item_response.product_name = item.product.name
             item_response.product_sku = item.product.sku
+            if getattr(item.product, "brand", None):
+                product_brand = item.product.brand
+                if hasattr(product_brand, "name"):
+                    item_response.product_brand = product_brand.name
+                elif isinstance(product_brand, str):
+                    item_response.product_brand = product_brand
         response.items.append(item_response)
     
     return response
@@ -265,6 +272,12 @@ class SimpleEnquiryService:
             query = query.filter(Enquiry.customer_id == kwargs['customer_id'])
         if kwargs.get('sales_person_id'):
             query = query.filter(Enquiry.sales_person_id == kwargs['sales_person_id'])
+        if kwargs.get('from_date'):
+            from_dt = datetime.combine(kwargs['from_date'], datetime.min.time())
+            query = query.filter(Enquiry.enquiry_date >= from_dt)
+        if kwargs.get('to_date'):
+            to_dt = datetime.combine(kwargs['to_date'], datetime.max.time())
+            query = query.filter(Enquiry.enquiry_date <= to_dt)
         if kwargs.get('state'):
             query = query.join(Customer, Enquiry.customer_id == Customer.id, isouter=True)
             query = query.filter(Customer.billing_state == kwargs['state'])
@@ -273,6 +286,21 @@ class SimpleEnquiryService:
             query = query.join(Product, EnquiryItem.product_id == Product.id, isouter=True)
             query = query.join(Brand, Product.brand_id == Brand.id, isouter=True)
             query = query.filter(Brand.name == kwargs['brand'])
+        if kwargs.get('search'):
+            search = f"%{kwargs['search']}%"
+            query = query.join(Customer, Enquiry.customer_id == Customer.id, isouter=True)
+            query = query.join(Contact, Enquiry.contact_id == Contact.id, isouter=True)
+            query = query.filter(
+                or_(
+                    Enquiry.enquiry_number.ilike(search),
+                    Enquiry.subject.ilike(search),
+                    Enquiry.description.ilike(search),
+                    Customer.name.ilike(search),
+                    Contact.name.ilike(search),
+                    Enquiry.prospect_name.ilike(search),
+                    Enquiry.prospect_company.ilike(search),
+                )
+            )
         
         return query.order_by(Enquiry.enquiry_date.desc()).offset(kwargs.get('skip', 0)).limit(kwargs.get('limit', 50)).all()
     

@@ -40,6 +40,7 @@ interface EnquiryItem {
   image_url?: string;
   notes?: string;
   product_id?: string;
+  product_brand?: string;
 }
 
 interface Enquiry {
@@ -49,7 +50,6 @@ interface Enquiry {
   subject: string;
   status: string;
   priority: string;
-  source: string;
   totalQty?: string;
   products_interested?: EnquiryItem[];
   items?: EnquiryItem[];
@@ -127,7 +127,6 @@ export default function EnquiriesPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [sourceFilter, setSourceFilter] = useState("");
   const [salesmanFilter, setSalesmanFilter] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [engineerFilter, setEngineerFilter] = useState("");
@@ -144,6 +143,7 @@ export default function EnquiriesPage() {
   const [excelLoading, setExcelLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [csvLoading, setCsvLoading] = useState(false);
+  const [printLoading, setPrintLoading] = useState(false);
 
   const [cachedExportData, setCachedExportData] = useState<Enquiry[] | null>(null);
   
@@ -177,11 +177,10 @@ export default function EnquiriesPage() {
   const companyId =
     company?.id || (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
 
-  const buildQueryParams = () => {
+  const buildQueryParams = (forExport = false) => {
     const params = new URLSearchParams();
     if (statusFilter) params.append("status", statusFilter);
-    if (sourceFilter) params.append("source", sourceFilter);
-    if (search) params.append("search", search);
+    if (search && !forExport) params.append("search", search);
     if (fromDate) params.append("from_date", fromDate);
     if (toDate) params.append("to_date", toDate);
     if (salesmanFilter) params.append("sales_person_id", salesmanFilter);
@@ -189,12 +188,18 @@ export default function EnquiriesPage() {
     if (engineerFilter) params.append("engineer_id", engineerFilter);
     if (brandFilter) params.append("brand", brandFilter);
     if (stateFilter) params.append("state", stateFilter);
-    if (reportEngineerFilter) params.append("sales_person_id", reportEngineerFilter);
-    if (reportBrandFilter) params.append("brand", reportBrandFilter);
-    if (reportStateFilter) params.append("state", reportStateFilter);
+    if (reportEngineerFilter && !forExport) params.append("sales_person_id", reportEngineerFilter);
+    if (reportBrandFilter && !forExport) params.append("brand", reportBrandFilter);
+    if (reportStateFilter && !forExport) params.append("state", reportStateFilter);
+    
+    // Add pagination for export if needed
+    if (forExport) {
+      params.append("page", "1");
+      params.append("page_size", "1000");
+    }
+    
     return params;
   };
-
 
   useEffect(() => {
     if (companyId) {
@@ -210,7 +215,6 @@ export default function EnquiriesPage() {
     }
   }, [
     statusFilter,
-    sourceFilter,
     salesmanFilter,
     companyFilter,
     engineerFilter,
@@ -323,8 +327,6 @@ export default function EnquiriesPage() {
 
       const data = await response.json();
       setEnquiries(data);
-      
-      // Brands are loaded from brands table via fetchDropdownData
     } catch (err) {
       setError("Failed to load enquiries");
       console.error(err);
@@ -378,9 +380,7 @@ export default function EnquiriesPage() {
 
   const fetchAllEnquiriesForExport = useCallback(async (): Promise<Enquiry[]> => {
     try {
-      const params = buildQueryParams();
-      params.append("page", "1");
-      params.append("page_size", "1000");
+      const params = buildQueryParams(true);
 
       const response = await fetch(
         `${API_BASE}/companies/${companyId}/enquiries?${params.toString()}`,
@@ -401,13 +401,12 @@ export default function EnquiriesPage() {
       console.error("Export fetch failed:", error);
       return [];
     }
-  }, [companyId, search, statusFilter, sourceFilter, salesmanFilter, companyFilter, engineerFilter, brandFilter, stateFilter, fromDate, toDate]);
+  }, [companyId, statusFilter, fromDate, toDate, salesmanFilter, companyFilter, engineerFilter, brandFilter, stateFilter]);
 
   const getExportData = async (): Promise<Enquiry[]> => {
     if (cachedExportData) return cachedExportData;
     return await fetchAllEnquiriesForExport();
   };
-
 
   const handleDeleteEnquiry = async (enquiryId: string, enquiryNumber: string) => {
     if (window.confirm(`Are you sure you want to delete enquiry ${enquiryNumber}? This action cannot be undone.`)) {
@@ -445,7 +444,6 @@ export default function EnquiriesPage() {
     setFromDate("");
     setToDate("");
     setStatusFilter("");
-    setSourceFilter("");
     setSalesmanFilter("");
     setCompanyFilter("");
     setEngineerFilter("");
@@ -471,24 +469,115 @@ export default function EnquiriesPage() {
     }).format(amount);
   };
 
+  const getEnquiryBrand = (enquiry: Enquiry): string => {
+    if (enquiry.brand && enquiry.brand.trim() !== "") return enquiry.brand;
+    const itemBrands = (enquiry.items || [])
+      .map((item) => item.product_brand)
+      .filter((brand): brand is string => typeof brand === "string" && brand.trim() !== "");
+    if (itemBrands.length > 0) {
+      return Array.from(new Set(itemBrands)).join(", ");
+    }
+    if (brandFilter) return brandFilter;
+    return "-";
+  };
+
+  // Apply search filter locally for export data
+  const applySearchFilter = (data: Enquiry[]): Enquiry[] => {
+    if (!search) return data;
+    
+    const searchLower = search.toLowerCase();
+    return data.filter(enquiry => {
+      return (
+        enquiry.enquiry_number?.toLowerCase().includes(searchLower) ||
+        enquiry.company?.name?.toLowerCase().includes(searchLower) ||
+        enquiry.customer_name?.toLowerCase().includes(searchLower) ||
+        enquiry.prospect_company?.toLowerCase().includes(searchLower) ||
+        enquiry.contact_name?.toLowerCase().includes(searchLower) ||
+        enquiry.prospect_name?.toLowerCase().includes(searchLower) ||
+        enquiry.description?.toLowerCase().includes(searchLower) ||
+        enquiry.ticket_number?.toLowerCase().includes(searchLower) ||
+        false
+      );
+    });
+  };
+
+  // Apply report filters locally
+  const applyReportFilters = (data: Enquiry[]): Enquiry[] => {
+    let filtered = data;
+    
+    if (reportEngineerFilter) {
+      filtered = filtered.filter(enquiry => enquiry.salesman?.id === reportEngineerFilter);
+    }
+    
+    if (reportBrandFilter) {
+      filtered = filtered.filter(enquiry => enquiry.brand === reportBrandFilter);
+    }
+    
+    if (reportStateFilter) {
+      filtered = filtered.filter(enquiry => enquiry.company?.state === reportStateFilter);
+    }
+    
+    return filtered;
+  };
+
   // Export functions
   const copyToClipboard = async () => {
     if (copyLoading) return;
     setCopyLoading(true);
     try {
-      const filtered = await getExportData();
-      const headers = ["Date", "Enquiry No", "Company", "Contact Person", "Quantity", "Status", "Sales Engineer", "Remarks"];
-      const rows = filtered.map(enquiry => [
-        formatDate(enquiry.enquiry_date),
-        enquiry.enquiry_number,
-        enquiry.company?.name || enquiry.customer_name || "-",
-        enquiry.contact_name || enquiry.prospect_name || "-",
-        enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
-        enquiry.status,
-        enquiry.salesman?.name || enquiry.sales_person_name || "-",
-        enquiry.description || "-"
-      ]);
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyReportFilters(filtered);
       
+      const headers: string[] = [];
+      const rows = filtered.map(enquiry => {
+        const row: string[] = [];
+
+        if (visibleColumns.date) {
+          if (!headers.includes("Date")) headers.push("Date");
+          row.push(formatDate(enquiry.enquiry_date));
+        }
+
+        if (visibleColumns.enquiryNo) {
+          if (!headers.includes("Enquiry No")) headers.push("Enquiry No");
+          row.push(enquiry.enquiry_number);
+        }
+
+        if (visibleColumns.company) {
+          if (!headers.includes("Company")) headers.push("Company");
+          row.push(enquiry.company?.name || enquiry.customer_name || enquiry.prospect_company || "-");
+        }
+
+        if (visibleColumns.contactPerson) {
+          if (!headers.includes("Contact Person")) headers.push("Contact Person");
+          row.push(enquiry.contact_name || enquiry.prospect_name || "-");
+        }
+
+        if (visibleColumns.quantity) {
+          if (!headers.includes("Quantity")) headers.push("Quantity");
+          const totalQty = enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 
+                         enquiry.items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
+          row.push(totalQty.toString());
+        }
+
+        if (visibleColumns.status) {
+          if (!headers.includes("Status")) headers.push("Status");
+          row.push(enquiry.status.replace("_", " "));
+        }
+
+        if (visibleColumns.salesEngineer) {
+          if (!headers.includes("Sales Engineer")) headers.push("Sales Engineer");
+          row.push(enquiry.salesman?.name || enquiry.sales_person_name || "-");
+        }
+
+        if (visibleColumns.remarks) {
+          if (!headers.includes("Remarks")) headers.push("Remarks");
+          row.push(enquiry.description || "-");
+        }
+
+        return row;
+      });
+
       const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
       await navigator.clipboard.writeText(text);
       alert("Enquiry data copied to clipboard");
@@ -504,21 +593,55 @@ export default function EnquiriesPage() {
     if (excelLoading) return;
     setExcelLoading(true);
     try {
-      const filtered = await getExportData();
-      const exportData = filtered.map(enquiry => ({
-        "Date": formatDate(enquiry.enquiry_date),
-        "Enquiry No": enquiry.enquiry_number,
-        "Company": enquiry.company?.name || enquiry.customer_name || "-",
-        "Contact Person": enquiry.contact_name || enquiry.prospect_name || "-",
-        "Quantity": enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
-        "Status": enquiry.status,
-        "Sales Engineer": enquiry.salesman?.name || enquiry.sales_person_name || "-",
-        "Remarks": enquiry.description || "-",
-        "Expected Value": enquiry.expected_value,
-        "Source": enquiry.source,
-        "Brand": enquiry.brand || "-",
-        "State": enquiry.company?.state || "-"
-      }));
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyReportFilters(filtered);
+      
+      const exportData = filtered.map(enquiry => {
+        const row: Record<string, any> = {};
+
+        if (visibleColumns.date) {
+          row["Date"] = formatDate(enquiry.enquiry_date);
+        }
+
+        if (visibleColumns.enquiryNo) {
+          row["Enquiry No"] = enquiry.enquiry_number;
+        }
+
+        if (visibleColumns.company) {
+          row["Company"] = enquiry.company?.name || enquiry.customer_name || enquiry.prospect_company || "-";
+          if (enquiry.company?.state) {
+            row["State"] = enquiry.company.state;
+          }
+        }
+
+        if (visibleColumns.contactPerson) {
+          row["Contact Person"] = enquiry.contact_name || enquiry.prospect_name || "-";
+        }
+
+        if (visibleColumns.quantity) {
+          const totalQty = enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 
+                         enquiry.items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
+          row["Quantity"] = totalQty;
+        }
+
+        if (visibleColumns.status) {
+          row["Status"] = enquiry.status.replace("_", " ");
+        }
+
+        if (visibleColumns.salesEngineer) {
+          row["Sales Engineer"] = enquiry.salesman?.name || enquiry.sales_person_name || "-";
+        }
+
+        if (visibleColumns.remarks) {
+          row["Remarks"] = enquiry.description || "-";
+        }
+
+        // row["Expected Value"] = enquiry.expected_value || 0;
+        row["Brand"] = getEnquiryBrand(enquiry);
+        
+        return row;
+      });
 
       const ws = XLSX.utils.json_to_sheet(exportData);
       const wb = XLSX.utils.book_new();
@@ -536,23 +659,63 @@ export default function EnquiriesPage() {
     if (pdfLoading) return;
     setPdfLoading(true);
     try {
-      const filtered = await getExportData();
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyReportFilters(filtered);
+      
       const doc = new jsPDF("landscape");
       
-      const headers = [["Date", "Enquiry No", "Company", "Contact Person", "Quantity", "Status", "Sales Engineer", "Remarks"]];
-      const body = filtered.map(enquiry => [
-        formatDate(enquiry.enquiry_date),
-        enquiry.enquiry_number,
-        enquiry.company?.name || enquiry.customer_name || "-",
-        enquiry.contact_name || enquiry.prospect_name || "-",
-        enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
-        enquiry.status,
-        enquiry.salesman?.name || enquiry.sales_person_name || "-",
-        enquiry.description || "-"
-      ]);
+      const headers: string[] = [];
+      const body = filtered.map(enquiry => {
+        const row: string[] = [];
+
+        if (visibleColumns.date) {
+          if (!headers.includes("Date")) headers.push("Date");
+          row.push(formatDate(enquiry.enquiry_date));
+        }
+
+        if (visibleColumns.enquiryNo) {
+          if (!headers.includes("Enquiry No")) headers.push("Enquiry No");
+          row.push(enquiry.enquiry_number);
+        }
+
+        if (visibleColumns.company) {
+          if (!headers.includes("Company")) headers.push("Company");
+          row.push(enquiry.company?.name || enquiry.customer_name || enquiry.prospect_company || "-");
+        }
+
+        if (visibleColumns.contactPerson) {
+          if (!headers.includes("Contact Person")) headers.push("Contact Person");
+          row.push(enquiry.contact_name || enquiry.prospect_name || "-");
+        }
+
+        if (visibleColumns.quantity) {
+          if (!headers.includes("Quantity")) headers.push("Quantity");
+          const totalQty = enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 
+                         enquiry.items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
+          row.push(totalQty.toString());
+        }
+
+        if (visibleColumns.status) {
+          if (!headers.includes("Status")) headers.push("Status");
+          row.push(enquiry.status.replace("_", " "));
+        }
+
+        if (visibleColumns.salesEngineer) {
+          if (!headers.includes("Sales Engineer")) headers.push("Sales Engineer");
+          row.push(enquiry.salesman?.name || enquiry.sales_person_name || "-");
+        }
+
+        if (visibleColumns.remarks) {
+          if (!headers.includes("Remarks")) headers.push("Remarks");
+          row.push(enquiry.description || "-");
+        }
+
+        return row;
+      });
 
       autoTable(doc, {
-        head: headers,
+        head: [headers],
         body: body,
         startY: 20,
         margin: { top: 20, left: 10, right: 10, bottom: 20 },
@@ -603,21 +766,55 @@ export default function EnquiriesPage() {
     if (csvLoading) return;
     setCsvLoading(true);
     try {
-      const filtered = await getExportData();
-      const exportData = filtered.map(enquiry => ({
-        "Date": formatDate(enquiry.enquiry_date),
-        "Enquiry No": enquiry.enquiry_number,
-        "Company": enquiry.company?.name || enquiry.customer_name || "-",
-        "Contact Person": enquiry.contact_name || enquiry.prospect_name || "-",
-        "Quantity": enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0,
-        "Status": enquiry.status,
-        "Sales Engineer": enquiry.salesman?.name || enquiry.sales_person_name || "-",
-        "Remarks": enquiry.description || "-",
-        "Expected Value": enquiry.expected_value,
-        "Source": enquiry.source,
-        "Brand": enquiry.brand || "-",
-        "State": enquiry.company?.state || "-"
-      }));
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyReportFilters(filtered);
+      
+      const exportData = filtered.map(enquiry => {
+        const row: Record<string, any> = {};
+
+        if (visibleColumns.date) {
+          row["Date"] = formatDate(enquiry.enquiry_date);
+        }
+
+        if (visibleColumns.enquiryNo) {
+          row["Enquiry No"] = enquiry.enquiry_number;
+        }
+
+        if (visibleColumns.company) {
+          row["Company"] = enquiry.company?.name || enquiry.customer_name || enquiry.prospect_company || "-";
+          if (enquiry.company?.state) {
+            row["State"] = enquiry.company.state;
+          }
+        }
+
+        if (visibleColumns.contactPerson) {
+          row["Contact Person"] = enquiry.contact_name || enquiry.prospect_name || "-";
+        }
+
+        if (visibleColumns.quantity) {
+          const totalQty = enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 
+                         enquiry.items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
+          row["Quantity"] = totalQty;
+        }
+
+        if (visibleColumns.status) {
+          row["Status"] = enquiry.status.replace("_", " ");
+        }
+
+        if (visibleColumns.salesEngineer) {
+          row["Sales Engineer"] = enquiry.salesman?.name || enquiry.sales_person_name || "-";
+        }
+
+        if (visibleColumns.remarks) {
+          row["Remarks"] = enquiry.description || "-";
+        }
+
+        // row["Expected Value"] = enquiry.expected_value || 0;
+        row["Brand"] = getEnquiryBrand(enquiry);
+        
+        return row;
+      });
 
       const ws = XLSX.utils.json_to_sheet(exportData);
       const csv = XLSX.utils.sheet_to_csv(ws);
@@ -628,6 +825,96 @@ export default function EnquiriesPage() {
       alert("Failed to export CSV. Please try again.");
     } finally {
       setCsvLoading(false);
+    }
+  };
+
+  const handlePrint = async () => {
+    if (printLoading) return;
+    setPrintLoading(true);
+    try {
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyReportFilters(filtered);
+      
+      // Prepare print content
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Please allow popups to print.');
+        return;
+      }
+
+      const printContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Enquiries Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            h1 { text-align: center; margin-bottom: 10px; }
+            .company { text-align: center; color: #666; margin-bottom: 20px; }
+            .date { text-align: right; font-size: 12px; color: #666; margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background-color: #f3f4f6; text-align: left; padding: 12px; border: 1px solid #ddd; font-weight: bold; }
+            td { padding: 10px; border: 1px solid #ddd; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; 
+                      display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #666; }
+          </style>
+        </head>
+        <body>
+          <h1>Enquiries List</h1>
+          <div class="company">${company?.name || 'Company Name'}</div>
+          <div class="date">Generated on: ${new Date().toLocaleDateString('en-IN')}</div>
+          
+          <table>
+            <thead>
+              <tr>
+                ${visibleColumns.date ? '<th>Date</th>' : ''}
+                ${visibleColumns.enquiryNo ? '<th>Enquiry No</th>' : ''}
+                ${visibleColumns.company ? '<th>Company</th>' : ''}
+                ${visibleColumns.contactPerson ? '<th>Contact Person</th>' : ''}
+                ${visibleColumns.quantity ? '<th>Quantity</th>' : ''}
+                ${visibleColumns.status ? '<th>Status</th>' : ''}
+                ${visibleColumns.salesEngineer ? '<th>Sales Engineer</th>' : ''}
+                ${visibleColumns.remarks ? '<th>Remarks</th>' : ''}
+              </tr>
+            </thead>
+            <tbody>
+              ${filtered.map(enquiry => `
+                <tr>
+                  ${visibleColumns.date ? `<td>${formatDate(enquiry.enquiry_date)}</td>` : ''}
+                  ${visibleColumns.enquiryNo ? `<td>${enquiry.enquiry_number}</td>` : ''}
+                  ${visibleColumns.company ? `<td>${enquiry.company?.name || enquiry.customer_name || enquiry.prospect_company || '-'}</td>` : ''}
+                  ${visibleColumns.contactPerson ? `<td>${enquiry.contact_name || enquiry.prospect_name || '-'}</td>` : ''}
+                  ${visibleColumns.quantity ? `<td>${enquiry.products_interested?.reduce((sum, item) => sum + (item.quantity || 0), 0) || enquiry.items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0}</td>` : ''}
+                  ${visibleColumns.status ? `<td>${enquiry.status.replace('_', ' ')}</td>` : ''}
+                  ${visibleColumns.salesEngineer ? `<td>${enquiry.salesman?.name || enquiry.sales_person_name || '-'}</td>` : ''}
+                  ${visibleColumns.remarks ? `<td>${enquiry.description || '-'}</td>` : ''}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          
+          <div class="footer">
+            <div>Total Enquiries: ${filtered.length}</div>
+            <div>Page 1 of 1</div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 250);
+    } catch (error) {
+      console.error("Print failed:", error);
+      alert("Failed to print. Please try again.");
+    } finally {
+      setPrintLoading(false);
     }
   };
 
@@ -747,34 +1034,62 @@ export default function EnquiriesPage() {
 
             <button
               onClick={exportExcel}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={excelLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <FileText className="w-5 h-5" />
-              Excel
+              {excelLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <>
+                  <FileText className="w-5 h-5" />
+                  Excel
+                </>
+              )}
             </button>
 
             <button
               onClick={exportPDF}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={pdfLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Download className="w-5 h-5" />
-              PDF
+              {pdfLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <>
+                  <Download className="w-5 h-5" />
+                  PDF
+                </>
+              )}
             </button>
 
             <button
               onClick={exportCSV}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              disabled={csvLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <FileText className="w-5 h-5" />
-              CSV
+              {csvLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <>
+                  <FileText className="w-5 h-5" />
+                  CSV
+                </>
+              )}
             </button>
 
             <button
-              onClick={() => window.print()}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              onClick={handlePrint}
+              disabled={printLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Printer className="w-5 h-5" />
-              Print
+              {printLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <>
+                  <Printer className="w-5 h-5" />
+                  Print
+                </>
+              )}
             </button>
 
             <button
@@ -843,48 +1158,6 @@ export default function EnquiriesPage() {
               </select>
             </div>
 
-            {/* Source Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Source
-              </label>
-              <select
-                value={sourceFilter}
-                onChange={(e) => setSourceFilter(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              >
-                <option value="">All Sources</option>
-                <option value="website">Website</option>
-                <option value="phone_call">Phone Call</option>
-                <option value="email">Email</option>
-                <option value="referral">Referral</option>
-                <option value="walk_in">Walk In</option>
-                <option value="trade_show">Trade Show</option>
-                <option value="social_media">Social Media</option>
-                <option value="advertisement">Advertisement</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-
-            {/* Company Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Company
-              </label>
-              <select
-                value={companyFilter}
-                onChange={(e) => setCompanyFilter(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              >
-                <option value="">All Companies</option>
-                {companies.map((company) => (
-                  <option key={company.id} value={company.id}>
-                    {company.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             {/* Engineer-wise Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -898,7 +1171,7 @@ export default function EnquiriesPage() {
                 <option value="">All Engineers</option>
                 {engineers.map((engineer) => (
                   <option key={engineer.id} value={engineer.id}>
-                    {engineer.first_name} {engineer.last_name}
+                    {engineer.name}
                   </option>
                 ))}
               </select>
@@ -952,128 +1225,8 @@ export default function EnquiriesPage() {
         </div>
       )}
 
-      {/* Reports */}
-      <div className="mx-6 mt-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="text-sm font-semibold text-gray-900 dark:text-white">Reports</div>
-          {reportLoading && <span className="text-xs text-gray-500">Loading...</span>}
-          {reportError && <span className="text-xs text-red-600">{reportError}</span>}
-          <div className="ml-auto flex flex-wrap gap-2">
-            <select
-              value={reportEngineerFilter}
-              onChange={(e) => setReportEngineerFilter(e.target.value)}
-              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
-            >
-              <option value="">All Sales Engineers</option>
-              {salesmen.map((s: any) => (
-                <option key={s.id} value={s.id}>
-                  {s.first_name ? `${s.first_name} ${s.last_name || ""}`.trim() : s.name || s.email || s.id}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={reportBrandFilter}
-              onChange={(e) => setReportBrandFilter(e.target.value)}
-              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
-            >
-              <option value="">All Brands</option>
-              {brands.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={reportStateFilter}
-              onChange={(e) => setReportStateFilter(e.target.value)}
-              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
-            >
-              <option value="">All States</option>
-              {states.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Engineer Wise</h3>
-          </div>
-          {engineerReport.length === 0 ? (
-            <p className="text-xs text-gray-500">No data</p>
-          ) : (
-            <div className="space-y-2">
-              {engineerReport
-                .filter((row: any) => !reportEngineerFilter || row.sales_person_id === reportEngineerFilter)
-                .slice(0, 6)
-                .map((row: any) => (
-                <div key={row.sales_person_id || row.sales_person_name} className="flex items-center justify-between text-xs">
-                  <span className="truncate pr-2 text-gray-700 dark:text-gray-300">
-                    {row.sales_person_name || "Unassigned"}
-                  </span>
-                  <span className="text-gray-900 dark:text-white">{row.total_count || 0}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">State Wise</h3>
-          </div>
-          {stateReport.length === 0 ? (
-            <p className="text-xs text-gray-500">No data</p>
-          ) : (
-            <div className="space-y-2">
-              {stateReport
-                .filter((row: any) => !reportStateFilter || row.state === reportStateFilter)
-                .slice(0, 6)
-                .map((row: any) => (
-                <div key={`${row.state}-${row.state_code}`} className="flex items-center justify-between text-xs">
-                  <span className="truncate pr-2 text-gray-700 dark:text-gray-300">
-                    {row.state || "Unknown"}
-                  </span>
-                  <span className="text-gray-900 dark:text-white">{row.total_count || 0}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Brand Wise</h3>
-          </div>
-          {brandReport.length === 0 ? (
-            <p className="text-xs text-gray-500">No data</p>
-          ) : (
-            <div className="space-y-2">
-              {brandReport
-                .filter((row: any) => !reportBrandFilter || row.brand_name === reportBrandFilter)
-                .slice(0, 6)
-                .map((row: any) => (
-                <div key={row.brand_id || row.brand_name} className="flex items-center justify-between text-xs">
-                  <span className="truncate pr-2 text-gray-700 dark:text-gray-300">
-                    {row.brand_name || "Unknown"}
-                  </span>
-                  <span className="text-gray-900 dark:text-white">{row.total_count || 0}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      </div>
-
       {/* Table */}
-      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 mx-6 mt-4 rounded-lg overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
@@ -1143,7 +1296,7 @@ export default function EnquiriesPage() {
                         No enquiries found
                       </p>
                       <p className="text-gray-500 dark:text-gray-400 mb-4">
-                        {statusFilter || sourceFilter || search ?
+                        {statusFilter || search ?
                           "No enquiries found matching your filters. Try adjusting your search criteria." :
                           "Create your first enquiry to start tracking sales leads."}
                       </p>
@@ -1280,7 +1433,7 @@ export default function EnquiriesPage() {
                                   >
                                     <Edit className="w-4 h-4 text-gray-400" />
                                     <span>Edit / Assign</span>
-                                  </Link>
+                                </Link>
                                 )}
 
                                 {canDeleteEnquiry(enquiry.status) && (
