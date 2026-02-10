@@ -21,7 +21,7 @@ from sqlalchemy import (
     Index,
     UniqueConstraint,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, synonym
 from app.database.connection import Base
 import uuid
 from sqlalchemy.sql import func
@@ -688,27 +688,52 @@ class PurchaseRequest(Base):
     customer_id = Column(String(36), ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
     customer_name = Column(String(255), nullable=False)
     
-    # Simple request number
+    # Request numbers
     request_number = Column(String(50), unique=True, nullable=False, index=True)
+    purchase_req_no = Column(String(50), unique=True, nullable=True, index=True)
     request_date = Column(DateTime, default=func.now(), nullable=False)
     
     # Items: [{"item": "Product Name", "quantity": 5, "make": "Brand Name"}]
     items = Column(JSON, nullable=False)
     
-    # Simple status
+    # Status fields
+    overall_status = Column(String(50), nullable=True)
     status = Column(
-        Enum('pending', 'approved', 'hold', 'rejected', name='purchase_request_status'),
+        Enum(
+            'pending',
+            'approved',
+            'hold',
+            'rejected',
+            'open',
+            'in_progress',
+            'closed',
+            name='purchase_request_status'
+        ),
         default='pending',
         nullable=False
     )
     
     # Approval details
     approved_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_by_user = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_by_employee = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    approved_by_name = Column(String(255), nullable=True)
+    approved_by_email = Column(String(255), nullable=True)
     approved_at = Column(DateTime, nullable=True)
     approval_notes = Column(Text, nullable=True)
     
     # Request notes
+    store_remarks = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
+    additional_notes = Column(Text, nullable=True)
+
+    # Creator/Updater details
+    created_by_user = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_by_employee = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
+    created_by_name = Column(String(255), nullable=True)
+    created_by_email = Column(String(255), nullable=True)
+    updated_by_user = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_employee = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
     
     # Basic timestamps
     created_at = Column(DateTime, default=func.now(), nullable=False)
@@ -719,6 +744,8 @@ class PurchaseRequest(Base):
     company = relationship("Company")
     customer = relationship("Customer")
     approver = relationship("User", foreign_keys=[approved_by])
+    approval_status = synonym("status")
+    general_notes = synonym("notes")
     
     def __repr__(self):
         return f"<PurchaseRequest {self.request_number} - {self.customer_name}>"
@@ -4537,7 +4564,6 @@ class DeliveryChallanStatus(str, PyEnum):
     RETURNED = "returned"
     CANCELLED = "cancelled"
 
-
 class DeliveryChallan(Base):
     """Delivery Challan model - Document for goods dispatch (DC Out) and returns (DC In)."""
     __tablename__ = "delivery_challans"
@@ -4588,7 +4614,10 @@ class DeliveryChallan(Base):
       # Bill details
     bill_title = Column(String(200))
     bill_description = Column(Text)
-    
+    expiry_date = Column(DateTime)
+    salesman_id = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"))
+    discount_percent = Column(Numeric(5, 2), default=0)
+
     # Dispatch/Delivery addresses
     dispatch_from_address = Column(Text)
     dispatch_from_city = Column(String(100))
@@ -4667,7 +4696,15 @@ class DeliveryChallanItem(Base):
     delivery_challan_id = Column(String(36), ForeignKey("delivery_challans.id", ondelete="CASCADE"), nullable=False)
     product_id = Column(String(36), ForeignKey("items.id", ondelete="SET NULL"))
     batch_id = Column(String(36), ForeignKey("batches.id", ondelete="SET NULL"))
-    
+    discount_percent = Column(Numeric(5, 2), default=0)
+    discount_amount = Column(Numeric(12, 2), default=0)
+    gst_rate = Column(Numeric(5, 2), default=0)
+    cgst_rate = Column(Numeric(5, 2), default=0)
+    sgst_rate = Column(Numeric(5, 2), default=0)
+    igst_rate = Column(Numeric(5, 2), default=0)
+    taxable_amount = Column(Numeric(14, 2), default=0)
+    total_amount = Column(Numeric(14, 2), default=0)
+
     # Invoice item reference (if created from invoice)
     invoice_item_id = Column(String(36), ForeignKey("invoice_items.id", ondelete="SET NULL"))
     
@@ -4713,8 +4750,7 @@ class DeliveryChallanItem(Base):
 
     def __repr__(self):
         return f"<DeliveryChallanItem {self.description[:30]}>"
-
-
+        
 # ============== SALES PIPELINE MODELS ==============
 
 class Contact(Base):

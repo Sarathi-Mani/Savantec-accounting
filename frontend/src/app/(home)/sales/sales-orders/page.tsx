@@ -2,10 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { ordersApi, payrollApi, invoicesApi, getErrorMessage, SalesOrder, OrderStatus } from "@/services/api";
-import { cn } from "@/lib/utils";
+import { ordersApi, payrollApi, SalesOrder, OrderStatus } from "@/services/api";
 import Link from "next/link";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -33,7 +32,16 @@ import {
   Copy,
   ChevronDown,
   ChevronUp,
+  RefreshCw,
+  Hash,
+  MapPin,
+  Package,
+  TrendingUp,
+  Receipt,
   FilePlus,
+  Truck,
+  Archive,
+  Shield,
 } from "lucide-react";
 
 // Local formatter functions
@@ -58,7 +66,295 @@ const formatDate = (dateString: Date | string | null | undefined): string => {
   });
 };
 
+// Print component for sales orders - Matching pattern
+const PrintView = ({
+  orders,
+  visibleColumns,
+  formatCurrency,
+  formatDate,
+  getStatusText,
+  getCustomerDisplayName,
+  getCustomerGSTIN,
+  getSalesPersonName,
+  getExpiryDate,
+  companyName,
+}: {
+  orders: ExtendedSalesOrder[];
+  visibleColumns: Record<string, boolean>;
+  formatCurrency: (amount: number | undefined) => string;
+  formatDate: (dateString: Date | string | null | undefined) => string;
+  getStatusText: (status: string) => string;
+  getCustomerDisplayName: (order: ExtendedSalesOrder) => string;
+  getCustomerGSTIN: (order: ExtendedSalesOrder) => string;
+  getSalesPersonName: (order: ExtendedSalesOrder) => string;
+  getExpiryDate: (order: ExtendedSalesOrder) => string | null;
+  companyName: string;
+}) => {
+  const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (printRef.current) {
+      const printContents = printRef.current.innerHTML;
+      const originalContents = document.body.innerHTML;
+
+      document.body.innerHTML = printContents;
+      window.print();
+      document.body.innerHTML = originalContents;
+      window.location.reload();
+    }
+  }, []);
+
+  return (
+    <div style={{ display: 'none' }}>
+      <div ref={printRef} style={{ fontFamily: 'Arial, sans-serif', padding: '20px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '5px' }}>
+            Sales Orders List
+          </h1>
+          <p style={{ fontSize: '14px', color: '#666' }}>{companyName}</p>
+          <p style={{ color: '#666', fontSize: '14px' }}>
+            Generated on: {new Date().toLocaleDateString('en-IN')}
+          </p>
+        </div>
+
+        <table style={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          border: '1px solid #ddd'
+        }}>
+          <thead>
+            <tr style={{
+              backgroundColor: '#f3f4f6',
+              borderBottom: '2px solid #ddd'
+            }}>
+              <th style={{
+                padding: '12px',
+                textAlign: 'left',
+                borderRight: '1px solid #ddd',
+                fontWeight: 'bold'
+              }}>
+                S.No
+              </th>
+              {visibleColumns.orderNumber && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Order #
+                </th>
+              )}
+              {visibleColumns.orderDate && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Date
+                </th>
+              )}
+              {visibleColumns.status && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Status
+                </th>
+              )}
+              {visibleColumns.expiryDate && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Expiry Date
+                </th>
+              )}
+              {visibleColumns.referenceNo && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Reference No
+                </th>
+              )}
+              {visibleColumns.customerName && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Customer Name
+                </th>
+              )}
+              {visibleColumns.total && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Total
+                </th>
+              )}
+              {visibleColumns.salesman && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  fontWeight: 'bold'
+                }}>
+                  Salesman
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((order, index) => {
+              const expiryDate = getExpiryDate(order);
+              const isExpired = expiryDate ? new Date(expiryDate) < new Date() : false;
+              
+              return (
+                <tr key={order.id} style={{
+                  borderBottom: '1px solid #ddd',
+                  backgroundColor: index % 2 === 0 ? '#fff' : '#f9f9f9'
+                }}>
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {index + 1}
+                  </td>
+                  {visibleColumns.orderNumber && (
+                    <td style={{
+                      padding: '12px',
+                      borderRight: '1px solid #ddd'
+                    }}>
+                      <div>
+                        <strong>{order.order_number || 'N/A'}</strong>
+                      </div>
+                    </td>
+                  )}
+                  {visibleColumns.orderDate && (
+                    <td style={{
+                      padding: '12px',
+                      borderRight: '1px solid #ddd'
+                    }}>
+                      {formatDate(order.order_date)}
+                    </td>
+                  )}
+                  {visibleColumns.status && (
+                    <td style={{
+                      padding: '12px',
+                      borderRight: '1px solid #ddd'
+                    }}>
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '4px 8px',
+                        borderRadius: '12px',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        backgroundColor: 
+                          order.status === 'completed' ? '#d1fae5' :
+                          order.status === 'confirmed' ? '#dbeafe' :
+                          order.status === 'processing' ? '#fef3c7' :
+                          order.status === 'partially_delivered' ? '#fde68a' :
+                          order.status === 'cancelled' ? '#fee2e2' :
+                          '#f3f4f6',
+                        color:
+                          order.status === 'completed' ? '#065f46' :
+                          order.status === 'confirmed' ? '#1e40af' :
+                          order.status === 'processing' ? '#92400e' :
+                          order.status === 'partially_delivered' ? '#92400e' :
+                          order.status === 'cancelled' ? '#991b1b' :
+                          '#374151'
+                      }}>
+                        {getStatusText(order.status)}
+                      </span>
+                    </td>
+                  )}
+                  {visibleColumns.expiryDate && (
+                    <td style={{
+                      padding: '12px',
+                      borderRight: '1px solid #ddd',
+                      color: isExpired ? '#dc2626' : '#666'
+                    }}>
+                      {formatDate(expiryDate) || '-'}
+                    </td>
+                  )}
+                  {visibleColumns.referenceNo && (
+                    <td style={{
+                      padding: '12px',
+                      borderRight: '1px solid #ddd'
+                    }}>
+                      {order.reference_no || '-'}
+                    </td>
+                  )}
+                  {visibleColumns.customerName && (
+                    <td style={{
+                      padding: '12px',
+                      borderRight: '1px solid #ddd'
+                    }}>
+                      <div>
+                        <strong>{getCustomerDisplayName(order)}</strong>
+                        {getCustomerGSTIN(order) && (
+                          <div style={{ fontSize: '11px', color: '#666', marginTop: '2px' }}>
+                            GSTIN: {getCustomerGSTIN(order)}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  )}
+                  {visibleColumns.total && (
+                    <td style={{
+                      padding: '12px',
+                      borderRight: '1px solid #ddd',
+                      fontWeight: 'bold'
+                    }}>
+                      {formatCurrency(order.total_amount)}
+                    </td>
+                  )}
+                  {visibleColumns.salesman && (
+                    <td style={{ padding: '12px' }}>
+                      {getSalesPersonName(order)}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        <div style={{
+          marginTop: '30px',
+          paddingTop: '20px',
+          borderTop: '1px solid #ddd',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            Total Orders: {orders.length}
+          </div>
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            Page 1 of 1
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Type extension for missing properties
+type SalesOrderStatus = OrderStatus | "processing" | "partially_delivered";
+
 interface ExtendedSalesOrder extends Omit<SalesOrder, 'customer' | 'items'> {
   reference_no?: string;
   sales_person_name?: string;
@@ -69,7 +365,8 @@ interface ExtendedSalesOrder extends Omit<SalesOrder, 'customer' | 'items'> {
   customer_name?: string;
   customer_id?: string;
   sales_person_id?: string;
-  subtotal?: number;
+  subtotal: number;
+  status: SalesOrderStatus;
   customer?: {
     id?: string;
     name?: string;
@@ -95,34 +392,44 @@ export default function SalesOrdersPage() {
   const { company } = useAuth();
   const [orders, setOrders] = useState<ExtendedSalesOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
+  const [error, setError] = useState("");
+  
+  // Filters state
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
   const [customerFilter, setCustomerFilter] = useState<string>("");
-  const [totalRecords, setTotalRecords] = useState(0);
+  
+  // UI state
+  const [showFilters, setShowFilters] = useState(false);
+  const [showColumnDropdown, setShowColumnDropdown] = useState(false);
+  const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
+  const [showPrintView, setShowPrintView] = useState(false);
+  const [ordersToPrint, setOrdersToPrint] = useState<ExtendedSalesOrder[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+  
+  // Export loading states
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [excelLoading, setExcelLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [csvLoading, setCsvLoading] = useState(false);
+  const [printLoading, setPrintLoading] = useState(false);
+  
+  // Other states
+  const [employeeNameById, setEmployeeNameById] = useState<EmployeeMap>({});
+  const [convertingOrderId, setConvertingOrderId] = useState<string | null>(null);
+  
+  // Summary data
   const [summary, setSummary] = useState({
     total_amount: 0,
     total_orders: 0,
     draft_orders: 0,
     confirmed_orders: 0
   });
-  const [showFilters, setShowFilters] = useState(false);
-  const [showColumnDropdown, setShowColumnDropdown] = useState(false);
-  const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
-  const [employeeNameById, setEmployeeNameById] = useState<EmployeeMap>({});
-  const [convertingOrderId, setConvertingOrderId] = useState<string | null>(null);
-
-  // Export loading states
-  const [copyLoading, setCopyLoading] = useState(false);
-  const [excelLoading, setExcelLoading] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false);
-  const [csvLoading, setCsvLoading] = useState(false);
-
-  const [cachedExportData, setCachedExportData] = useState<ExtendedSalesOrder[] | null>(null);
-
-  // Column visibility state
+  
+  // Column visibility - matching pattern
   const [visibleColumns, setVisibleColumns] = useState({
     orderNumber: true,
     orderDate: true,
@@ -135,7 +442,14 @@ export default function SalesOrdersPage() {
     actions: true,
   });
 
-  const pageSize = 10;
+  const companyId = company?.id || (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
+
+  useEffect(() => {
+    if (companyId) {
+      fetchOrders();
+      fetchEmployees();
+    }
+  }, [companyId, currentPage, search, statusFilter, customerFilter, fromDate, toDate]);
 
   const fetchEmployees = async () => {
     if (!company?.id) return;
@@ -159,42 +473,37 @@ export default function SalesOrdersPage() {
   };
 
   const fetchOrders = async () => {
-    if (!company?.id) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
     try {
-      const result = await ordersApi.listSalesOrders(company.id, {
-        page,
+      setLoading(true);
+      if (!company?.id) {
+        setLoading(false);
+        return;
+      }
+
+      const params = {
+        page: currentPage,
         page_size: pageSize,
-        status: statusFilter ? (statusFilter as OrderStatus) : undefined,
+        status: statusFilter || undefined,
         search: search || undefined,
         from_date: fromDate || undefined,
         to_date: toDate || undefined,
-        customer_id: customerFilter || undefined
-      }) as any;
+        customer_id: customerFilter || undefined,
+      };
+      const result = await ordersApi.listSalesOrders(company.id, params as any) as any;
 
       // Handle both response formats
       let ordersData: ExtendedSalesOrder[] = [];
-      let total = 0;
       let totalAmount = 0;
 
       if (Array.isArray(result)) {
-        // If API returns array directly
         ordersData = result as ExtendedSalesOrder[];
-        total = result.length;
         totalAmount = ordersData.reduce((sum, order) => sum + (order.total_amount || 0), 0);
       } else if (result && result.orders) {
-        // If API returns response object
         ordersData = result.orders || [];
-        total = result.total || ordersData.length;
         totalAmount = result.total_amount || ordersData.reduce((sum, order) => sum + (order.total_amount || 0), 0);
       }
 
       setOrders(ordersData);
-      setTotalRecords(total);
 
       // Calculate summary
       const draftOrders = ordersData.filter(order => order.status === 'draft').length;
@@ -206,10 +515,11 @@ export default function SalesOrdersPage() {
         draft_orders: draftOrders,
         confirmed_orders: confirmedOrders
       });
-    } catch (error) {
-      console.error("Failed to fetch sales orders:", error);
+      setError("");
+    } catch (err) {
+      setError("Failed to load sales orders");
+      console.error(err);
       setOrders([]);
-      setTotalRecords(0);
       setSummary({
         total_amount: 0,
         total_orders: 0,
@@ -221,63 +531,82 @@ export default function SalesOrdersPage() {
     }
   };
 
-  const fetchAllOrders = useCallback(async (): Promise<ExtendedSalesOrder[]> => {
-    if (!company?.id) return [];
-
+  const fetchAllOrdersForExport = async (): Promise<ExtendedSalesOrder[]> => {
     try {
-      const result = await ordersApi.listSalesOrders(company.id, {
-        page: 1,
-        page_size: 1000,
-        status: statusFilter ? (statusFilter as OrderStatus) : undefined,
-        search: search || undefined,
-        from_date: fromDate || undefined,
-        to_date: toDate || undefined,
-        customer_id: customerFilter || undefined,
-      }) as any;
+      if (!company?.id) return [];
 
-      const ordersData: ExtendedSalesOrder[] = Array.isArray(result)
-        ? (result as ExtendedSalesOrder[])
-        : (result?.orders || []);
+      const pageSize = 100;
+      let pageNum = 1;
+      let allOrders: ExtendedSalesOrder[] = [];
+      while (true) {
+        const params = {
+          page: pageNum,
+          page_size: pageSize,
+          status: statusFilter || undefined,
+          search: search || undefined,
+          from_date: fromDate || undefined,
+          to_date: toDate || undefined,
+          customer_id: customerFilter || undefined,
+        };
+        const result = await ordersApi.listSalesOrders(company.id, params as any) as any;
 
-      setCachedExportData(ordersData);
-      return ordersData;
+        const batch: ExtendedSalesOrder[] = Array.isArray(result)
+          ? (result as ExtendedSalesOrder[])
+          : (result?.orders || []);
+        
+        allOrders = allOrders.concat(batch);
+        if (batch.length < pageSize) break;
+        pageNum += 1;
+      }
+
+      return allOrders;
     } catch (error) {
-      console.error("Failed to fetch all sales orders for export:", error);
+      console.error("Export fetch failed:", error);
       return [];
     }
-  }, [company?.id, search, statusFilter, customerFilter, fromDate, toDate]);
-
-  const getExportData = async (): Promise<ExtendedSalesOrder[]> => {
-    if (cachedExportData) return cachedExportData;
-    return await fetchAllOrders();
   };
 
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCurrentPage(1);
+  };
 
-  useEffect(() => {
-    fetchOrders();
-    setCachedExportData(null);
-  }, [company?.id, page, search, statusFilter, customerFilter, fromDate, toDate]);
+  const handleReset = () => {
+    setSearch("");
+    setStatusFilter("");
+    setCustomerFilter("");
+    setFromDate("");
+    setToDate("");
+    setCurrentPage(1);
+  };
 
-  useEffect(() => {
-    fetchEmployees();
-  }, [company?.id]);
+  const getStatusColor = (status: string) => {
+    switch (status.toLowerCase()) {
+      case "draft":
+        return "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400";
+      case "confirmed":
+        return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
+      case "processing":
+        return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400";
+      case "completed":
+        return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
+      case "cancelled":
+        return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
+      case "partially_delivered":
+        return "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400";
+      default:
+        return "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400";
+    }
+  };
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.action-dropdown-container')) {
-        setActiveActionMenu(null);
-      }
-      if (!target.closest('.column-dropdown-container')) {
-        setShowColumnDropdown(false);
-      }
-    };
+  const getStatusText = (status: string) => {
+    return status.replace("_", " ");
+  };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  const filteredOrders = orders || [];
+  const totalPages = Math.max(1, Math.ceil(summary.total_orders / pageSize));
 
-  // Helper functions to safely access properties
+  // Helper functions
   const getCustomerDisplayName = (order: ExtendedSalesOrder): string => {
     return order.customer_name || order.customer?.name || 'Walk-in Customer';
   };
@@ -306,245 +635,6 @@ export default function SalesOrdersPage() {
     return order.subtotal || order.total_amount || 0;
   };
 
-  // Export functions
-  const copyToClipboard = async () => {
-    if (copyLoading) return;
-    setCopyLoading(true);
-    try {
-      const exportOrders = await getExportData();
-      const headers = [
-        "Order #", "Date", "Status", "Expiry Date", "Reference No",
-        "Customer Name", "Total", "Salesman"
-      ];
-
-      const rows = exportOrders.map(order => [
-        order.order_number || '-',
-        formatDate(order.order_date),
-        getStatusText(order.status),
-        formatDate(getExpiryDate(order)),
-        getReferenceNo(order),
-        getCustomerDisplayName(order),
-        formatCurrency(order.total_amount || 0),
-        getSalesPersonName(order)
-      ]);
-
-      const text = [headers.join("	"), ...rows.map(r => r.join("	"))].join("\n");
-
-      await navigator.clipboard.writeText(text);
-      alert("Sales orders data copied to clipboard");
-    } catch (error) {
-      console.error("Copy failed:", error);
-      alert("Failed to copy data. Please try again.");
-    } finally {
-      setCopyLoading(false);
-    }
-  };
-
-  const exportExcel = async () => {
-    if (excelLoading) return;
-    setExcelLoading(true);
-    try {
-      const exportOrders = await getExportData();
-      const exportData = exportOrders.map(order => ({
-        "Order Number": order.order_number || '-',
-        "Order Date": formatDate(order.order_date),
-        "Status": getStatusText(order.status),
-        "Expiry Date": formatDate(getExpiryDate(order)),
-        "Reference No": getReferenceNo(order),
-        "Customer Name": getCustomerDisplayName(order),
-        "Customer GSTIN": getCustomerGSTIN(order),
-        "Total Amount": order.total_amount || 0,
-        "Subtotal": getSubtotal(order),
-        "Tax Amount": (order.total_amount || 0) - getSubtotal(order),
-        "Sales Person": getSalesPersonName(order),
-        "Payment Terms": order.payment_terms || '-'
-      }));
-
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Sales Orders");
-      XLSX.writeFile(wb, "sales-orders.xlsx");
-    } catch (error) {
-      console.error("Excel export failed:", error);
-      alert("Failed to export Excel. Please try again.");
-    } finally {
-      setExcelLoading(false);
-    }
-  };
-
-  const exportPDF = async () => {
-    if (pdfLoading) return;
-    setPdfLoading(true);
-    try {
-      const exportOrders = await getExportData();
-      const doc = new jsPDF();
-
-      autoTable(doc, {
-        head: [["Order #", "Date", "Customer Name", "Total", "Status", "Salesman"]],
-        body: exportOrders.map(order => [
-          order.order_number || '-',
-          formatDate(order.order_date),
-          getCustomerDisplayName(order),
-          formatCurrency(order.total_amount || 0),
-          getStatusText(order.status),
-          getSalesPersonName(order)
-        ])
-      });
-
-      doc.save("sales-orders.pdf");
-    } catch (error) {
-      console.error("PDF export failed:", error);
-      alert("Failed to export PDF. Please try again.");
-    } finally {
-      setPdfLoading(false);
-    }
-  };
-
-  const exportCSV = async () => {
-    if (csvLoading) return;
-    setCsvLoading(true);
-    try {
-      const exportOrders = await getExportData();
-      const exportData = exportOrders.map(order => ({
-        "Order Number": order.order_number || '-',
-        "Order Date": formatDate(order.order_date),
-        "Status": getStatusText(order.status),
-        "Expiry Date": formatDate(getExpiryDate(order)),
-        "Reference No": getReferenceNo(order),
-        "Customer Name": getCustomerDisplayName(order),
-        "Total Amount": order.total_amount || 0,
-        "Sales Person": getSalesPersonName(order)
-      }));
-
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      const csv = XLSX.utils.sheet_to_csv(ws);
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      saveAs(blob, "sales-orders.csv");
-    } catch (error) {
-      console.error("CSV export failed:", error);
-      alert("Failed to export CSV. Please try again.");
-    } finally {
-      setCsvLoading(false);
-    }
-  };
-
-  const toggleColumn = (key: keyof typeof visibleColumns) => {
-    setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case "draft":
-        return "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400";
-      case "confirmed":
-        return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
-      case "processing":
-        return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400";
-      case "completed":
-        return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
-      case "cancelled":
-        return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
-      case "partially_delivered":
-        return "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400";
-      default:
-        return "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400";
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    return status.replace("_", " ");
-  };
-
-  const getStatusBadge = (status: string) => {
-    const text = getStatusText(status);
-    const colorClass = getStatusColor(status);
-
-    let icon = null;
-    switch (status.toLowerCase()) {
-      case 'completed':
-        icon = <CheckCircle className="w-3 h-3 mr-1" />;
-        break;
-      case 'confirmed':
-      case 'processing':
-        icon = <Clock className="w-3 h-3 mr-1" />;
-        break;
-      case 'cancelled':
-        icon = <XCircle className="w-3 h-3 mr-1" />;
-        break;
-      case 'partially_delivered':
-        icon = <AlertCircle className="w-3 h-3 mr-1" />;
-        break;
-    }
-
-    return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${colorClass}`}>
-        {icon}
-        {text}
-      </span>
-    );
-  };
-
-  const handleConvertToInvoice = (orderId: string) => {
-    if (!company?.id || convertingOrderId) return;
-    setConvertingOrderId(orderId);
-    setActiveActionMenu(null);
-    router.push(`/sales/new?fromSalesOrder=${orderId}`);
-    setConvertingOrderId(null);
-  };
-
-  const handlePrint = (orderId: string) => {
-    window.open(`/sales/sales-orders/${orderId}?print=1`, "_blank");
-  };
-
-  const handleDownloadPDF = async (orderId: string) => {
-    if (!company?.id) return;
-
-    try {
-      // Check if the API method exists or use a fallback
-      const response = await fetch(`/api/sales-orders/${orderId}/pdf`);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      window.open(url, '_blank');
-    } catch (error) {
-      console.error("Failed to download PDF:", error);
-      alert("Failed to generate PDF. Please try again.");
-    }
-  };
-
-  const handleDelete = async (orderId: string) => {
-    if (!confirm("Are you sure you want to delete this sales order?")) return;
-
-    try {
-      // Check if the API method exists
-      if ('deleteSalesOrder' in ordersApi) {
-        await (ordersApi as any).deleteSalesOrder(company!.id, orderId);
-      } else {
-        console.log("Delete method not available in API");
-        // Simulate deletion for now
-        alert("Delete functionality will be implemented");
-      }
-      setOrders(orders.filter(order => order.id !== orderId));
-      fetchOrders(); // Refresh the list
-    } catch (error) {
-      console.error("Failed to delete sales order:", error);
-      alert("Failed to delete sales order");
-    }
-  };
-
-  const handleSearch = () => {
-    setPage(1);
-    fetchOrders();
-  };
-
-  const clearFilters = () => {
-    setSearch("");
-    setStatusFilter("");
-    setCustomerFilter("");
-    setFromDate("");
-    setToDate("");
-    setPage(1);
-  };
-
   const getDaysUntilExpiry = (expiryDate?: string | Date | null): number => {
     if (!expiryDate) return 0;
     const today = new Date();
@@ -568,7 +658,375 @@ export default function SalesOrdersPage() {
     return '';
   };
 
-  
+  // Export functions - matching pattern
+  const copyToClipboard = async () => {
+    if (copyLoading) return;
+    setCopyLoading(true);
+    try {
+      const allOrders = await fetchAllOrdersForExport();
+      
+      const headers: string[] = ["S.No"];
+      const rows = allOrders.map((order, index) => {
+        const row: string[] = [(index + 1).toString()];
+
+        if (visibleColumns.orderNumber) {
+          if (!headers.includes("Order #")) headers.push("Order #");
+          row.push(order.order_number || '-');
+        }
+
+        if (visibleColumns.orderDate) {
+          if (!headers.includes("Date")) headers.push("Date");
+          row.push(formatDate(order.order_date));
+        }
+
+        if (visibleColumns.status) {
+          if (!headers.includes("Status")) headers.push("Status");
+          row.push(getStatusText(order.status));
+        }
+
+        if (visibleColumns.expiryDate) {
+          if (!headers.includes("Expiry Date")) headers.push("Expiry Date");
+          row.push(formatDate(getExpiryDate(order)) || "-");
+        }
+
+        if (visibleColumns.referenceNo) {
+          if (!headers.includes("Reference No")) headers.push("Reference No");
+          row.push(getReferenceNo(order));
+        }
+
+        if (visibleColumns.customerName) {
+          if (!headers.includes("Customer Name")) headers.push("Customer Name");
+          row.push(getCustomerDisplayName(order));
+        }
+
+        if (visibleColumns.total) {
+          if (!headers.includes("Total")) headers.push("Total");
+          row.push(formatCurrency(order.total_amount).replace('₹', 'Rs. '));
+        }
+
+        if (visibleColumns.salesman) {
+          if (!headers.includes("Salesman")) headers.push("Salesman");
+          row.push(getSalesPersonName(order));
+        }
+
+        return row;
+      });
+
+      // Add S.No to headers
+      headers.unshift("S.No");
+      
+      const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
+      await navigator.clipboard.writeText(text);
+      alert("Sales orders data copied to clipboard");
+    } catch (error) {
+      console.error("Copy failed:", error);
+      alert("Failed to copy data. Please try again.");
+    } finally {
+      setCopyLoading(false);
+    }
+  };
+
+  const exportExcel = async () => {
+    if (excelLoading) return;
+    setExcelLoading(true);
+    try {
+      const allOrders = await fetchAllOrdersForExport();
+      
+      const exportData = allOrders.map((order, index) => {
+        const row: Record<string, any> = {
+          "S.No": index + 1,
+        };
+
+        if (visibleColumns.orderNumber) {
+          row["Order Number"] = order.order_number || '-';
+        }
+
+        if (visibleColumns.orderDate) {
+          row["Order Date"] = formatDate(order.order_date);
+        }
+
+        if (visibleColumns.status) {
+          row["Status"] = getStatusText(order.status);
+        }
+
+        if (visibleColumns.expiryDate) {
+          row["Expiry Date"] = formatDate(getExpiryDate(order));
+          row["Days Until Expiry"] = getDaysUntilExpiry(getExpiryDate(order));
+        }
+
+        if (visibleColumns.referenceNo) {
+          row["Reference No"] = getReferenceNo(order);
+        }
+
+        if (visibleColumns.customerName) {
+          row["Customer Name"] = getCustomerDisplayName(order);
+          row["Customer GSTIN"] = getCustomerGSTIN(order);
+        }
+
+        if (visibleColumns.total) {
+          row["Total Amount"] = order.total_amount || 0;
+          row["Subtotal"] = getSubtotal(order);
+        }
+
+        if (visibleColumns.salesman) {
+          row["Sales Person"] = getSalesPersonName(order);
+        }
+
+        row["Payment Terms"] = order.payment_terms || '-';
+        row["Company"] = company?.name || "";
+        
+        return row;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Sales Orders");
+      XLSX.writeFile(wb, "sales-orders.xlsx");
+    } catch (error) {
+      console.error("Excel export failed:", error);
+      alert("Failed to export Excel. Please try again.");
+    } finally {
+      setExcelLoading(false);
+    }
+  };
+
+  const exportPDF = async () => {
+    if (pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const allOrders = await fetchAllOrdersForExport();
+      
+      const doc = new jsPDF("landscape");
+      
+      const headers: string[] = ["S.No"];
+      const body = allOrders.map((order, index) => {
+        const row: string[] = [(index + 1).toString()];
+
+        if (visibleColumns.orderNumber) {
+          if (!headers.includes("Order #")) headers.push("Order #");
+          row.push(order.order_number || '-');
+        }
+
+        if (visibleColumns.orderDate) {
+          if (!headers.includes("Date")) headers.push("Date");
+          row.push(formatDate(order.order_date));
+        }
+
+        if (visibleColumns.status) {
+          if (!headers.includes("Status")) headers.push("Status");
+          row.push(getStatusText(order.status));
+        }
+
+        if (visibleColumns.expiryDate) {
+          if (!headers.includes("Expiry Date")) headers.push("Expiry Date");
+          row.push(formatDate(getExpiryDate(order)) || "-");
+        }
+
+        if (visibleColumns.customerName) {
+          if (!headers.includes("Customer Name")) headers.push("Customer Name");
+          row.push(getCustomerDisplayName(order));
+        }
+
+        if (visibleColumns.total) {
+          if (!headers.includes("Total")) headers.push("Total");
+          row.push(`Rs. ${new Intl.NumberFormat("en-IN", {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(order.total_amount || 0)}`);
+        }
+
+        if (visibleColumns.salesman) {
+          if (!headers.includes("Salesman")) headers.push("Salesman");
+          row.push(getSalesPersonName(order));
+        }
+
+        return row;
+      });
+
+      autoTable(doc, {
+        head: [headers],
+        body: body,
+        startY: 20,
+        margin: { top: 20, left: 10, right: 10, bottom: 20 },
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          overflow: "linebreak",
+          font: "helvetica",
+        },
+        headStyles: {
+          fillColor: [41, 128, 185],
+          textColor: 255,
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [245, 245, 245],
+        },
+        didDrawPage: (data) => {
+          doc.setFontSize(16);
+          doc.text("Sales Orders List", data.settings.margin.left, 12);
+          
+          doc.setFontSize(10);
+          doc.text(company?.name || '', data.settings.margin.left, 18);
+          
+          doc.text(
+            `Generated: ${new Date().toLocaleDateString("en-IN")}`,
+            doc.internal.pageSize.width - 60,
+            12
+          );
+
+          const pageCount = doc.getNumberOfPages();
+          doc.text(
+            `Page ${data.pageNumber} of ${pageCount}`,
+            data.settings.margin.left,
+            doc.internal.pageSize.height - 8
+          );
+        },
+      });
+
+      doc.save("sales-orders.pdf");
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      alert("Failed to export PDF. Please try again.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const exportCSV = async () => {
+    if (csvLoading) return;
+    setCsvLoading(true);
+    try {
+      const allOrders = await fetchAllOrdersForExport();
+      
+      const exportData = allOrders.map((order, index) => {
+        const row: Record<string, any> = {
+          "S.No": index + 1,
+        };
+
+        if (visibleColumns.orderNumber) {
+          row["Order Number"] = order.order_number || '-';
+        }
+
+        if (visibleColumns.orderDate) {
+          row["Order Date"] = formatDate(order.order_date);
+        }
+
+        if (visibleColumns.status) {
+          row["Status"] = getStatusText(order.status);
+        }
+
+        if (visibleColumns.expiryDate) {
+          row["Expiry Date"] = formatDate(getExpiryDate(order));
+        }
+
+        if (visibleColumns.referenceNo) {
+          row["Reference No"] = getReferenceNo(order);
+        }
+
+        if (visibleColumns.customerName) {
+          row["Customer Name"] = getCustomerDisplayName(order);
+        }
+
+        if (visibleColumns.total) {
+          row["Total Amount"] = order.total_amount || 0;
+        }
+
+        if (visibleColumns.salesman) {
+          row["Sales Person"] = getSalesPersonName(order);
+        }
+
+        return row;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      saveAs(blob, "sales-orders.csv");
+    } catch (error) {
+      console.error("CSV export failed:", error);
+      alert("Failed to export CSV. Please try again.");
+    } finally {
+      setCsvLoading(false);
+    }
+  };
+
+  const handlePrint = async () => {
+    if (printLoading) return;
+    setPrintLoading(true);
+    try {
+      const allOrders = await fetchAllOrdersForExport();
+      setOrdersToPrint(allOrders);
+      setShowPrintView(true);
+    } catch (error) {
+      console.error("Print failed:", error);
+      alert("Failed to prepare print view. Please try again.");
+    } finally {
+      setPrintLoading(false);
+    }
+  };
+
+  const toggleColumn = (key: keyof typeof visibleColumns) => {
+    setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleDelete = async (orderId: string, orderNumber: string) => {
+    if (window.confirm(`Are you sure you want to delete sales order "${orderNumber}"? This action cannot be undone.`)) {
+      try {
+        if (company?.id) {
+          // Check if the API method exists
+          if ('deleteSalesOrder' in ordersApi) {
+            await (ordersApi as any).deleteSalesOrder(company.id, orderId);
+          } else {
+            console.log("Delete method not available in API");
+            // Simulate deletion for now
+            alert("Delete functionality will be implemented");
+          }
+          fetchOrders();
+        }
+      } catch (error) {
+        console.error("Error deleting sales order:", error);
+        alert("Failed to delete sales order");
+      }
+    }
+  };
+
+  const handleConvertToInvoice = (orderId: string) => {
+    if (!company?.id || convertingOrderId) return;
+    setConvertingOrderId(orderId);
+    setActiveActionMenu(null);
+    router.push(`/sales/new?fromSalesOrder=${orderId}`);
+    setConvertingOrderId(null);
+  };
+
+  const handlePrintOrder = (orderId: string) => {
+    window.open(`/sales/sales-orders/${orderId}?print=1`, "_blank");
+  };
+
+  const handleDownloadPDF = async (orderId: string) => {
+    if (!company?.id) return;
+
+    try {
+      const response = await fetch(`/api/sales-orders/${orderId}/pdf`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    } catch (error) {
+      console.error("Failed to download PDF:", error);
+      alert("Failed to generate PDF. Please try again.");
+    }
+  };
+
+  if (!companyId) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 dark:bg-yellow-900/20 dark:border-yellow-800">
+          <p className="text-yellow-800 dark:text-yellow-400">Please select a company first.</p>
+        </div>
+      </div>
+    );
+  }
+
   // Unique customers for filter
   const uniqueCustomers = Array.from(
     new Map(
@@ -582,12 +1040,23 @@ export default function SalesOrdersPage() {
     ).values()
   );
 
-  const getTotalPages = () => {
-    return Math.ceil(totalRecords / pageSize);
-  };
-
   return (
     <div className="w-full">
+      {showPrintView && (
+        <PrintView
+          orders={ordersToPrint}
+          visibleColumns={visibleColumns}
+          formatCurrency={formatCurrency}
+          formatDate={formatDate}
+          getStatusText={getStatusText}
+          getCustomerDisplayName={getCustomerDisplayName}
+          getCustomerGSTIN={getCustomerGSTIN}
+          getSalesPersonName={getSalesPersonName}
+          getExpiryDate={getExpiryDate}
+          companyName={company?.name || ''}
+        />
+      )}
+
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -596,7 +1065,7 @@ export default function SalesOrdersPage() {
               Sales Orders
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Manage and track all your sales orders
+              Manage your sales orders • Track deliveries and convert to invoices
             </p>
           </div>
           <Link
@@ -609,22 +1078,23 @@ export default function SalesOrdersPage() {
         </div>
       </div>
 
+
       {/* Summary Cards */}
-      <div className="px-6 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="px-6 py-6 bg-gray-50 dark:bg-gray-900">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
           {/* Total Orders */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {summary.total_orders.toLocaleString()}
+                  {summary.total_orders}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Total Orders
                 </p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
-                <FileText className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                <Receipt className="w-6 h-6 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
           </div>
@@ -633,15 +1103,15 @@ export default function SalesOrdersPage() {
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                <p className="text-2xl font-bold text-blue-600">
                   {formatCurrency(summary.total_amount)}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Total Order Amount
+                  Total Amount
                 </p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                <TrendingUp className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
           </div>
@@ -651,14 +1121,14 @@ export default function SalesOrdersPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-yellow-600">
-                  {summary.draft_orders.toLocaleString()}
+                  {summary.draft_orders}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Draft Orders
                 </p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-yellow-100 dark:bg-yellow-900/20 flex items-center justify-center">
-                <AlertCircle className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+                <FileText className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
               </div>
             </div>
           </div>
@@ -668,7 +1138,7 @@ export default function SalesOrdersPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-green-600">
-                  {summary.confirmed_orders.toLocaleString()}
+                  {summary.confirmed_orders}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Confirmed Orders
@@ -682,7 +1152,7 @@ export default function SalesOrdersPage() {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters Section */}
       <div className="px-6 py-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="flex flex-wrap gap-4">
           <div className="flex-1 min-w-[200px]">
@@ -693,7 +1163,7 @@ export default function SalesOrdersPage() {
                 placeholder="Search orders, customers, reference no..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                onKeyPress={(e) => e.key === 'Enter' && handleSearch(e)}
                 className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -708,32 +1178,6 @@ export default function SalesOrdersPage() {
               Filters
             </button>
 
-            <div className="relative column-dropdown-container">
-              <button
-                onClick={() => setShowColumnDropdown(!showColumnDropdown)}
-                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
-              >
-                Columns
-                {showColumnDropdown ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
-
-              {showColumnDropdown && (
-                <div className="absolute right-0 mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-3 z-10 min-w-[150px]">
-                  {Object.entries(visibleColumns).map(([key, value]) => (
-                    <label key={key} className="flex items-center gap-2 text-sm mb-2 last:mb-0 cursor-pointer text-gray-700 dark:text-gray-300">
-                      <input
-                        type="checkbox"
-                        checked={value}
-                        onChange={() => toggleColumn(key as keyof typeof visibleColumns)}
-                        className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-
             <button
               onClick={copyToClipboard}
               disabled={copyLoading}
@@ -747,6 +1191,41 @@ export default function SalesOrdersPage() {
               Copy
             </button>
 
+            <div className="relative column-dropdown-container">
+              <button
+                onClick={() => setShowColumnDropdown(!showColumnDropdown)}
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              >
+                Columns
+                {showColumnDropdown ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+
+              {showColumnDropdown && (
+                <div className="absolute right-0 mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-3 z-10 min-w-[150px]">
+                  {Object.entries(visibleColumns)
+                    .filter(([key]) => key !== 'actions')
+                    .map(([key, value]) => (
+                    <label key={key} className="flex items-center gap-2 text-sm mb-2 last:mb-0 cursor-pointer text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={value}
+                        onChange={() => toggleColumn(key as keyof typeof visibleColumns)}
+                        className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="capitalize">
+                        {key === 'orderNumber' ? 'Order #' : 
+                         key === 'orderDate' ? 'Order Date' : 
+                         key === 'expiryDate' ? 'Expiry Date' : 
+                         key === 'referenceNo' ? 'Reference No' : 
+                         key === 'customerName' ? 'Customer Name' : 
+                         key.charAt(0).toUpperCase() + key.slice(1)}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <button
               onClick={exportExcel}
               disabled={excelLoading}
@@ -755,7 +1234,10 @@ export default function SalesOrdersPage() {
               {excelLoading ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
               ) : (
-                "Excel"
+                <>
+                  <FileText className="w-5 h-5" />
+                  Excel
+                </>
               )}
             </button>
 
@@ -767,7 +1249,10 @@ export default function SalesOrdersPage() {
               {pdfLoading ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
               ) : (
-                "PDF"
+                <>
+                  <Download className="w-5 h-5" />
+                  PDF
+                </>
               )}
             </button>
 
@@ -779,423 +1264,401 @@ export default function SalesOrdersPage() {
               {csvLoading ? (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
               ) : (
-                "CSV"
+                <>
+                  <FileText className="w-5 h-5" />
+                  CSV
+                </>
               )}
             </button>
 
-            <button className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2">
-              <Printer className="w-5 h-5" />
-              Print
+            <button
+              onClick={handlePrint}
+              disabled={printLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {printLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <>
+                  <Printer className="w-5 h-5" />
+                  Print
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleReset}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+            >
+              <RefreshCw className="w-5 h-5" />
+              Reset
             </button>
           </div>
         </div>
 
         {showFilters && (
-          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex flex-wrap gap-4">
-            {/* Status Dropdown */}
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Status</option>
-              <option value="draft">Draft</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="processing">Processing</option>
-              <option value="partially_delivered">Partially Delivered</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
+          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Status Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Status
+              </label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="processing">Processing</option>
+                <option value="partially_delivered">Partially Delivered</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
 
-            {/* Customer Dropdown */}
-            <select
-              value={customerFilter}
-              onChange={(e) => {
-                setCustomerFilter(e.target.value);
-                setPage(1);
-              }}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="">All Customers</option>
-              {uniqueCustomers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </select>
+            {/* Customer Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Customer
+              </label>
+              <select
+                value={customerFilter}
+                onChange={(e) => setCustomerFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">All Customers</option>
+                {uniqueCustomers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             {/* From Date */}
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => {
-                  setFromDate(e.target.value);
-                  setPage(1);
-                }}
-                className="pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="From Date"
-              />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                From Date
+              </label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
 
             {/* To Date */}
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="date"
-                value={toDate}
-                onChange={(e) => {
-                  setToDate(e.target.value);
-                  setPage(1);
-                }}
-                className="pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="To Date"
-              />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                To Date
+              </label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
-
-            <button
-              onClick={clearFilters}
-              className="text-sm text-blue-600 hover:underline dark:text-blue-400"
-            >
-              Clear filters
-            </button>
           </div>
         )}
       </div>
+
+      {/* Error */}
+      {error && (
+        <div className="mx-6 mt-4 bg-red-50 border border-red-200 rounded-lg p-4 dark:bg-red-900/20 dark:border-red-800">
+          <p className="text-red-800 dark:text-red-400">{error}</p>
+        </div>
+      )}
 
       {/* Table */}
-      <div className="p-6">
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="w-full">
-            <table className="w-full table-fixed">
-              <div className="overflow-x-auto">
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-200 dark:bg-gray-700/50">
+              <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+                <th className="text-left px-6 py-3 whitespace-nowrap w-20">
+                  S.No
+                </th>
+                {visibleColumns.orderNumber && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                    Order #
+                  </th>
+                )}
+                {visibleColumns.orderDate && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                    Date
+                  </th>
+                )}
+                {visibleColumns.status && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                    Status
+                  </th>
+                )}
+                {visibleColumns.expiryDate && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                    Expiry Date
+                  </th>
+                )}
+                {visibleColumns.referenceNo && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                    Reference No
+                  </th>
+                )}
+                {visibleColumns.customerName && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-80">
+                    Customer Name
+                  </th>
+                )}
+                {visibleColumns.total && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                    Total
+                  </th>
+                )}
+                {visibleColumns.salesman && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                    Salesman
+                  </th>
+                )}
+                {visibleColumns.actions && (
+                  <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                    Actions
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-sm text-gray-700 dark:text-gray-300">
+              {loading ? (
+                <tr>
+                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                    <div className="flex items-center justify-center">
+                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                    <div className="flex flex-col items-center justify-center">
+                      <ShoppingBag className="w-12 h-12 text-gray-400 mb-2" />
+                      <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
+                        No sales orders found
+                      </p>
+                      <p className="text-gray-500 dark:text-gray-400 mb-4">
+                        {statusFilter || search || fromDate || toDate ?
+                          "No orders found matching your filters. Try adjusting your search criteria." :
+                          "Add your first sales order to start managing your orders."}
+                      </p>
+                      <Link
+                        href="/sales/sales-orders/new"
+                        className="text-blue-600 hover:underline dark:text-blue-400"
+                      >
+                        Create your first sales order
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredOrders.map((order, index) => {
+                  const expiryDate = getExpiryDate(order);
+                  const isExpired = expiryDate ? new Date(expiryDate) < new Date() : false;
+                  const expiryStatus = getExpiryStatus(order);
 
-                <thead className="bg-gray-200 dark:bg-gray-700/50">
-                  <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                    {visibleColumns.orderNumber && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap">
-                        Order #
-                      </th>
-                    )}
-                    {visibleColumns.orderDate && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap">
-                        Date
-                      </th>
-                    )}
-                    {visibleColumns.status && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap">
-                        Status
-                      </th>
-                    )}
-                    {visibleColumns.expiryDate && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap">
-                        Expiry Date
-                      </th>
-                    )}
-                    {visibleColumns.referenceNo && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap">
-                        Reference No
-                      </th>
-                    )}
-                    {visibleColumns.customerName && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap w-64">
-                        Customer Name
-                      </th>
-                    )}
-                    {visibleColumns.total && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap">
-                        Total
-                      </th>
-                    )}
-                    {visibleColumns.salesman && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap">
-                        Salesman
-                      </th>
-                    )}
-                    {visibleColumns.actions && (
-                      <th className="text-right px-6 py-3 whitespace-nowrap">
-                        Actions
-                      </th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-sm text-gray-700 dark:text-gray-300">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
-                        <div className="flex items-center justify-center">
-                          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
-                        </div>
+                  return (
+                    <tr
+                      key={order.id}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        {(currentPage - 1) * pageSize + index + 1}
                       </td>
-                    </tr>
-                  ) : !company ? (
-                    <tr>
-                      <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                        No company selected
-                      </td>
-                    </tr>
-                  ) : orders.length === 0 ? (
-                    <tr>
-                      <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
-                        <div className="flex flex-col items-center justify-center">
-                          <ShoppingBag className="w-12 h-12 text-gray-400 mb-2" />
-                          <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
-                            No sales orders found
-                          </p>
-                          <p className="text-gray-500 dark:text-gray-400 mb-4">
-                            Try adjusting your filters or create a new sales order
-                          </p>
-                          <Link
-                            href="/sales/sales-orders/new"
-                            className="text-blue-600 hover:underline dark:text-blue-400"
+                      {visibleColumns.orderNumber && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="min-w-0 max-w-[240px]">
+                            <div className="font-medium text-blue-600 dark:text-blue-400">
+                              <Link href={`/sales/sales-orders/${order.id}`} className="hover:underline">
+                                {order.order_number || 'N/A'}
+                              </Link>
+                            </div>
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.orderDate && (
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                          {formatDate(order.order_date)}
+                        </td>
+                      )}
+                      {visibleColumns.status && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${getStatusColor(order.status)}`}
                           >
-                            Create your first sales order
-                          </Link>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    orders.map((order) => {
-                      const expiryStatus = getExpiryStatus(order);
-                      const isExpired = getDaysUntilExpiry(getExpiryDate(order)) < 0;
+                            {getStatusText(order.status)}
+                          </span>
+                        </td>
+                      )}
+                      {visibleColumns.expiryDate && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex flex-col gap-1">
+                            <span className={`${isExpired ? 'text-red-600 font-medium' : 'text-gray-700 dark:text-gray-300'}`}>
+                              {formatDate(expiryDate) || '-'}
+                            </span>
+                            {expiryStatus && (
+                              <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${isExpired ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
+                                {expiryStatus}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.referenceNo && (
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                          {getReferenceNo(order)}
+                        </td>
+                      )}
+                      {visibleColumns.customerName && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="min-w-0 max-w-[240px]">
+                            <div className="font-medium text-gray-900 dark:text-white">
+                              {getCustomerDisplayName(order)}
+                            </div>
+                            {getCustomerGSTIN(order) && (
+                              <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-1">
+                                GSTIN: {getCustomerGSTIN(order)}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.total && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="font-bold text-gray-900 dark:text-white">
+                            {formatCurrency(order.total_amount)}
+                          </div>
+                          {getSubtotal(order) > 0 && (
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              Subtotal: {formatCurrency(getSubtotal(order))}
+                            </div>
+                          )}
+                        </td>
+                      )}
+                      {visibleColumns.salesman && (
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                          {getSalesPersonName(order)}
+                        </td>
+                      )}
+                      {visibleColumns.actions && (
+                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                          <div className="relative action-dropdown-container inline-block">
+                            <button
+                              onClick={() =>
+                                setActiveActionMenu(
+                                  activeActionMenu === order.id ? null : order.id
+                                )
+                              }
+                              className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:text-gray-300 dark:hover:bg-gray-700/50 transition-all duration-200"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
 
-                      return (
-                        <tr
-                          key={order.id}
-                          className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                        >
-                          {visibleColumns.orderNumber && (
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex flex-col">
+                            {activeActionMenu === order.id && (
+                              <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                                 <Link
                                   href={`/sales/sales-orders/${order.id}`}
-                                  className="font-medium text-blue-600 hover:underline dark:text-blue-400 whitespace-nowrap"
+                                  onClick={() => setActiveActionMenu(null)}
+                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                                 >
-                                  {order.order_number || 'N/A'}
+                                  <Eye className="w-4 h-4 text-gray-400" />
+                                  <span>View Details</span>
                                 </Link>
-                              </div>
-                            </td>
-                          )}
-                          {visibleColumns.orderDate && (
-                            <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                              {formatDate(order.order_date)}
-                            </td>
-                          )}
-                          {visibleColumns.status && (
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              {getStatusBadge(order.status)}
-                            </td>
-                          )}
-                          {visibleColumns.expiryDate && (
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex flex-col gap-1">
-                                <span className={`${isExpired ? 'text-red-600 font-medium' : 'text-gray-700 dark:text-gray-300'}`}>
-                                  {formatDate(getExpiryDate(order)) || '-'}
-                                </span>
-                                {expiryStatus && (
-                                  <span className={`inline-flex w-fit items-center px-2 py-0.5 rounded-full text-xs font-medium ${isExpired ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'} whitespace-nowrap`}>
-                                    {expiryStatus}
-                                  </span>
+
+                                {order.status === 'draft' && (
+                                  <>
+                                    <Link
+                                      href={`/sales/sales-orders/${order.id}/edit`}
+                                      onClick={() => setActiveActionMenu(null)}
+                                      className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                    >
+                                      <Edit className="w-4 h-4 text-gray-400" />
+                                      <span>Edit</span>
+                                    </Link>
+                                    <button
+                                      onClick={() => handleConvertToInvoice(order.id)}
+                                      disabled={convertingOrderId === order.id}
+                                      className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                    >
+                                      <FilePlus className="w-4 h-4 text-gray-400" />
+                                      <span>Convert to Invoice</span>
+                                    </button>
+                                  </>
                                 )}
-                              </div>
-                            </td>
-                          )}
-                          {visibleColumns.referenceNo && (
-                            <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                              {getReferenceNo(order)}
-                            </td>
-                          )}
-                          {visibleColumns.customerName && (
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                <Users className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                                <div className="min-w-0 max-w-[240px]">
-                                  <div className="font-medium text-gray-900 dark:text-white truncate">
-                                    {getCustomerDisplayName(order)}
-                                  </div>
-                                  {getCustomerGSTIN(order) && (
-                                    <div className="text-xs text-gray-500 truncate">GSTIN: {getCustomerGSTIN(order)}</div>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                          )}
-                          {visibleColumns.total && (
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="font-medium text-gray-900 dark:text-white">
-                                {formatCurrency(order.total_amount)}
-                              </div>
-                              {getSubtotal(order) > 0 && (
-                                <div className="text-xs text-gray-500">
-                                  Subtotal: {formatCurrency(getSubtotal(order))}
-                                </div>
-                              )}
-                            </td>
-                          )}
-                          {visibleColumns.salesman && (
-                            <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                              {getSalesPersonName(order)}
-                            </td>
-                          )}
-                          {visibleColumns.actions && (
-                            <td className="px-6 py-4 text-right whitespace-nowrap">
-                              <div className="relative action-dropdown-container inline-block">
+
                                 <button
-                                  onClick={() =>
-                                    setActiveActionMenu(
-                                      activeActionMenu === order.id ? null : order.id
-                                    )
-                                  }
-                                  className="p-2 rounded-lg text-gray-500 hover:text-gray-700
-                            dark:text-gray-400 dark:hover:text-white
-                            hover:bg-gray-100 dark:hover:bg-gray-700"
+                                  onClick={() => handlePrintOrder(order.id)}
+                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                                 >
-                                  <MoreVertical className="w-5 h-5" />
+                                  <Printer className="w-4 h-4 text-gray-400" />
+                                  <span>Print</span>
                                 </button>
 
-                                {activeActionMenu === order.id && (
-                                  <div
-                                    className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800
-                              border border-gray-200 dark:border-gray-700
-                              rounded-lg shadow-lg z-20"
+                                <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                                {order.status === 'draft' && (
+                                  <button
+                                    onClick={() => handleDelete(order.id, order.order_number || 'N/A')}
+                                    className="flex w-full items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                                   >
-                                    <Link
-                                      href={`/sales/sales-orders/${order.id}`}
-                                      onClick={() => setActiveActionMenu(null)}
-                                      className="flex items-center gap-2 px-4 py-2 text-sm
-                                text-gray-700 dark:text-gray-300
-                                hover:bg-gray-100 dark:hover:bg-gray-700"
-                                    >
-                                      <Eye className="w-4 h-4" />
-                                      View Details
-                                    </Link>
-
-                                    {order.status === 'draft' && (
-                                      <>
-                                        <Link
-                                          href={`/sales/sales-orders/${order.id}/edit`}
-                                          onClick={() => setActiveActionMenu(null)}
-                                          className="flex items-center gap-2 px-4 py-2 text-sm
-                                  text-gray-700 dark:text-gray-300
-                                  hover:bg-gray-100 dark:hover:bg-gray-700"
-                                        >
-                                          <Edit className="w-4 h-4" />
-                                          Edit
-                                        </Link>
-                                        <button
-                                          onClick={() => handleConvertToInvoice(order.id)}
-                                          disabled={convertingOrderId === order.id}
-                                          className="flex w-full items-center gap-2 px-4 py-2 text-sm
-                                  text-green-600 dark:text-green-400
-                                  hover:bg-green-50 dark:hover:bg-green-900/30
-                                  disabled:opacity-60 disabled:cursor-not-allowed"
-                                        >
-                                          <FilePlus className="w-4 h-4" />
-                                          {convertingOrderId === order.id ? "Converting..." : "Convert to Invoice"}
-                                        </button>
-                                      </>
-                                    )}
-
-                                    <button
-                                      onClick={() => handlePrint(order.id)}
-                                      className="flex items-center gap-2 px-4 py-2 text-sm
-                                text-gray-700 dark:text-gray-300
-                                hover:bg-gray-100 dark:hover:bg-gray-700"
-                                    >
-                                      <Printer className="w-4 h-4" />
-                                      Print
-                                    </button>
-
-                                    <button
-                                      onClick={() => handleDownloadPDF(order.id)}
-                                      className="flex items-center gap-2 px-4 py-2 text-sm
-                                text-gray-700 dark:text-gray-300
-                                hover:bg-gray-100 dark:hover:bg-gray-700"
-                                    >
-                                      <Download className="w-4 h-4" />
-                                      Download PDF
-                                    </button>
-
-                                    {order.status === 'draft' && (
-                                      <button
-                                        onClick={() => handleDelete(order.id)}
-                                        className="flex w-full items-center gap-2 px-4 py-2 text-sm
-                                  text-red-600 dark:text-red-400
-                                  hover:bg-red-50 dark:hover:bg-red-900/30"
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                        Delete
-                                      </button>
-                                    )}
-                                  </div>
+                                    <Trash2 className="w-4 h-4" />
+                                    <span>Delete Order</span>
+                                  </button>
                                 )}
                               </div>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-                {orders.length > 0 && visibleColumns.total && (
-                  <tfoot>
-                    <tr className="bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
-                      <td
-                        colSpan={
-                          Object.values(visibleColumns).filter(Boolean).length -
-                          (visibleColumns.total ? 1 : 0) -
-                          (visibleColumns.actions ? 1 : 0)
-                        }
-                        className="px-6 py-4 text-right font-semibold text-gray-900 dark:text-white whitespace-nowrap"
-                      >
-                        Total Amount:
-                      </td>
-                      <td className="px-6 py-4 font-bold text-gray-900 dark:text-white whitespace-nowrap">
-                        {formatCurrency(summary.total_amount)}
-                      </td>
-                      {visibleColumns.actions && (
-                        <td></td>
+                            )}
+                          </div>
+                        </td>
                       )}
                     </tr>
-                  </tfoot>
-                )}
-              </div>
-            </table>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
+      {!loading && filteredOrders.length > 0 && (
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, summary.total_orders)} of {summary.total_orders}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              Previous
+            </button>
+            <div className="text-sm text-gray-700 dark:text-gray-300">
+              Page {currentPage} of {totalPages}
+            </div>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              Next
+            </button>
           </div>
         </div>
-
-        {/* Pagination - Fixed similar to sales list */}
-        {orders.length > 0 && totalRecords > pageSize && (
-          <div className="mt-4 flex items-center justify-between">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Showing {(page - 1) * pageSize + 1} to{" "}
-              {Math.min(page * pageSize, totalRecords)} of {totalRecords} results
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Previous
-              </button>
-
-              <button
-                onClick={() => setPage((p) => p + 1)}
-                disabled={page * pageSize >= totalRecords}
-                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
