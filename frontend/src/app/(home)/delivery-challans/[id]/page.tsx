@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
+import { inventoryApi, payrollApi, Employee, Godown } from "@/services/api";
 import dayjs from "dayjs";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
@@ -9,14 +10,21 @@ import { useEffect, useState } from "react";
 
 interface DCItem {
   id: string;
-  product_id: string;
+  product_id?: string;
   description: string;
-  hsn_code: string;
+  hsn_code?: string;
   quantity: number;
   unit: string;
   unit_price: number;
-  godown_id: string;
-  
+  godown_id?: string;
+  discount_percent: number;
+  discount_amount: number;
+  gst_rate: number;
+  cgst_rate: number;
+  sgst_rate: number;
+  igst_rate: number;
+  taxable_amount: number;
+  total_amount: number;
 }
 
 interface DeliveryChallan {
@@ -25,28 +33,40 @@ interface DeliveryChallan {
   dc_date: string;
   dc_type: string;
   status: string;
-  customer_id: string;
-  customer_name: string;
-  invoice_id: string;
-  invoice_number: string;
-  quotation_id: string;
-  original_dc_id: string;
-  return_reason: string;
-  from_godown_id: string;
-  to_godown_id: string;
-  transporter_name: string;
-  vehicle_number: string;
-  eway_bill_number: string;
-  delivery_to_address: string;
-  delivery_to_city: string;
-  delivery_to_state: string;
-  delivery_to_pincode: string;
+  custom_status?: string;
+  customer_id?: string;
+  customer_name?: string;
+  reference_no?: string;
+  invoice_id?: string;
+  invoice_number?: string;
+  quotation_id?: string;
+  original_dc_id?: string;
+  return_reason?: string;
+  from_godown_id?: string;
+  to_godown_id?: string;
+  transporter_name?: string;
+  vehicle_number?: string;
+  eway_bill_number?: string;
+  lr_number?: string;
+  delivery_to_address?: string;
+  delivery_to_city?: string;
+  delivery_to_state?: string;
+  delivery_to_pincode?: string;
+  dispatch_from_address?: string;
+  dispatch_from_city?: string;
+  dispatch_from_state?: string;
+  dispatch_from_pincode?: string;
+  bill_title?: string;
+  bill_description?: string;
+  contact_person?: string;
+  expiry_date?: string;
+  salesman_id?: string;
   stock_updated: boolean;
-  delivered_at: string;
-  received_by: string;
-  notes: string;
-  created_at: string;
-  items: DCItem[];
+  delivered_at?: string;
+  received_by?: string;
+  notes?: string;
+  created_at?: string;
+  items?: DCItem[];
 }
 
 export default function DeliveryChallanDetailPage() {
@@ -58,6 +78,8 @@ export default function DeliveryChallanDetailPage() {
   const [dc, setDc] = useState<DeliveryChallan | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [godowns, setGodowns] = useState<Godown[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
 
   const getToken = () => typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
@@ -90,6 +112,23 @@ export default function DeliveryChallanDetailPage() {
 
     fetchDC();
   }, [company?.id, dcId]);
+
+  useEffect(() => {
+    const fetchRefs = async () => {
+      if (!company?.id) return;
+      try {
+        const [godownsData, employeesData] = await Promise.all([
+          inventoryApi.listGodowns(company.id),
+          payrollApi.listEmployees(company.id),
+        ]);
+        setGodowns(godownsData || []);
+        setEmployees(employeesData || []);
+      } catch (error) {
+        console.error("Failed to load godowns/employees:", error);
+      }
+    };
+    fetchRefs();
+  }, [company?.id]);
 
   const performAction = async (action: string, body: any = {}) => {
     const token = getToken();
@@ -201,6 +240,28 @@ export default function DeliveryChallanDetailPage() {
   const isDcOut = dc.dc_type === "dc_out";
   const isDcIn = dc.dc_type === "dc_in";
   
+  const formatMoney = (value?: number) => {
+    if (value === null || value === undefined || Number.isNaN(value)) return "-";
+    return `INR ${Number(value).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
+  const itemSubtotal = (dc.items || []).reduce((sum, item) => sum + (item.taxable_amount || 0), 0);
+  const itemTax = (dc.items || []).reduce(
+    (sum, item) => sum + ((item.total_amount || 0) - (item.taxable_amount || 0)),
+    0
+  );
+  const itemGrandTotal = (dc.items || []).reduce((sum, item) => sum + (item.total_amount || 0), 0);
+  const godownMap = new Map(godowns.map((g) => [g.id, g.name]));
+  const employeeMap = new Map(
+    employees.map((e) => [
+      e.id,
+      e.full_name || [e.first_name, e.last_name].filter(Boolean).join(" ").trim() || e.employee_code,
+    ])
+  );
+
   // DC Out workflow: Draft -> Dispatched -> In Transit -> Delivered
   const canDispatch = isDcOut && dc.status === "draft";
   const canMarkInTransit = isDcOut && dc.status === "dispatched";
@@ -358,6 +419,18 @@ export default function DeliveryChallanDetailPage() {
               <span className="text-dark-6">Date:</span>
               <span className="text-dark dark:text-white">{dayjs(dc.dc_date).format("DD MMM YYYY")}</span>
             </div>
+            {dc.reference_no && (
+              <div className="flex justify-between">
+                <span className="text-dark-6">Reference No:</span>
+                <span className="text-dark dark:text-white">{dc.reference_no}</span>
+              </div>
+            )}
+            {dc.custom_status && (
+              <div className="flex justify-between">
+                <span className="text-dark-6">Custom Status:</span>
+                <span className="text-dark dark:text-white">{dc.custom_status}</span>
+              </div>
+            )}
             {dc.invoice_number && (
               <div className="flex justify-between">
                 <span className="text-dark-6">Invoice:</span>
@@ -380,6 +453,14 @@ export default function DeliveryChallanDetailPage() {
                 </span>
               </div>
             )}
+            {dc.expiry_date && (
+              <div className="flex justify-between">
+                <span className="text-dark-6">Expiry Date:</span>
+                <span className="text-dark dark:text-white">
+                  {dayjs(dc.expiry_date).format("DD MMM YYYY")}
+                </span>
+              </div>
+            )}
             {dc.original_dc_id && (
               <div className="flex justify-between">
                 <span className="text-dark-6">Original DC:</span>
@@ -394,6 +475,33 @@ export default function DeliveryChallanDetailPage() {
                 <span className="text-dark dark:text-white">{dc.return_reason}</span>
               </div>
             )}
+            {dc.from_godown_id && (
+              <div className="flex justify-between">
+                <span className="text-dark-6">From Godown:</span>
+                <span className="text-dark dark:text-white">
+                  {godownMap.get(dc.from_godown_id) || dc.from_godown_id}
+                </span>
+              </div>
+            )}
+            {dc.to_godown_id && (
+              <div className="flex justify-between">
+                <span className="text-dark-6">To Godown:</span>
+                <span className="text-dark dark:text-white">
+                  {godownMap.get(dc.to_godown_id) || dc.to_godown_id}
+                </span>
+              </div>
+            )}
+            {dc.dispatch_from_address && (
+              <div>
+                <span className="text-dark-6">Dispatch From:</span>
+                <p className="mt-1 text-dark dark:text-white">
+                  {dc.dispatch_from_address}
+                  {dc.dispatch_from_city && `, ${dc.dispatch_from_city}`}
+                  {dc.dispatch_from_state && `, ${dc.dispatch_from_state}`}
+                  {dc.dispatch_from_pincode && ` - ${dc.dispatch_from_pincode}`}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -404,6 +512,20 @@ export default function DeliveryChallanDetailPage() {
               <span className="text-dark-6">Name:</span>
               <span className="text-dark dark:text-white">{dc.customer_name || "-"}</span>
             </div>
+            {dc.contact_person && (
+              <div className="flex justify-between">
+                <span className="text-dark-6">Contact Person:</span>
+                <span className="text-dark dark:text-white">{dc.contact_person}</span>
+              </div>
+            )}
+            {dc.salesman_id && (
+              <div className="flex justify-between">
+                <span className="text-dark-6">Salesman:</span>
+                <span className="text-dark dark:text-white">
+                  {employeeMap.get(dc.salesman_id) || dc.salesman_id}
+                </span>
+              </div>
+            )}
             {dc.delivery_to_address && (
               <div>
                 <span className="text-dark-6">Delivery Address:</span>
@@ -415,12 +537,24 @@ export default function DeliveryChallanDetailPage() {
                 </p>
               </div>
             )}
+            {dc.bill_title && (
+              <div className="flex justify-between">
+                <span className="text-dark-6">Bill Title:</span>
+                <span className="text-dark dark:text-white">{dc.bill_title}</span>
+              </div>
+            )}
+            {dc.bill_description && (
+              <div>
+                <span className="text-dark-6">Bill Description:</span>
+                <p className="mt-1 text-dark dark:text-white">{dc.bill_description}</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Transport Details */}
-      {(dc.transporter_name || dc.vehicle_number || dc.eway_bill_number) && (
+      {(dc.transporter_name || dc.vehicle_number || dc.eway_bill_number || dc.lr_number) && (
         <div className="mb-6 rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
           <h3 className="mb-4 font-semibold text-dark dark:text-white">Transport Details</h3>
           <div className="grid gap-4 sm:grid-cols-3">
@@ -440,6 +574,12 @@ export default function DeliveryChallanDetailPage() {
               <div>
                 <span className="text-sm text-dark-6">E-Way Bill:</span>
                 <p className="text-dark dark:text-white">{dc.eway_bill_number}</p>
+              </div>
+            )}
+            {dc.lr_number && (
+              <div>
+                <span className="text-sm text-dark-6">LR Number:</span>
+                <p className="text-dark dark:text-white">{dc.lr_number}</p>
               </div>
             )}
           </div>
@@ -465,6 +605,12 @@ export default function DeliveryChallanDetailPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-dark dark:text-white">HSN</th>
                 <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Quantity</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-dark dark:text-white">Unit</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Unit Price</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Discount %</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Discount Amt</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">GST %</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Taxable</th>
+                <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Total</th>
               </tr>
             </thead>
             <tbody>
@@ -475,10 +621,47 @@ export default function DeliveryChallanDetailPage() {
                   <td className="px-4 py-3 text-dark-6">{item.hsn_code || "-"}</td>
                   <td className="px-4 py-3 text-right text-dark dark:text-white">{item.quantity}</td>
                   <td className="px-4 py-3 text-dark-6">{item.unit}</td>
+                  <td className="px-4 py-3 text-right text-dark dark:text-white">
+                    {formatMoney(item.unit_price)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-dark-6">
+                    {item.discount_percent || 0}
+                  </td>
+                  <td className="px-4 py-3 text-right text-dark dark:text-white">
+                    {formatMoney(item.discount_amount)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-dark-6">
+                    {item.gst_rate || 0}
+                  </td>
+                  <td className="px-4 py-3 text-right text-dark dark:text-white">
+                    {formatMoney(item.taxable_amount)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-dark dark:text-white">
+                    {formatMoney(item.total_amount)}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Item Totals */}
+      <div className="mb-6 rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+        <h3 className="mb-4 font-semibold text-dark dark:text-white">Item Totals</h3>
+        <div className="grid gap-3 text-sm sm:grid-cols-3">
+          <div className="flex items-center justify-between">
+            <span className="text-dark-6">Subtotal</span>
+            <span className="text-dark dark:text-white">{formatMoney(itemSubtotal)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-dark-6">Total Tax</span>
+            <span className="text-dark dark:text-white">{formatMoney(itemTax)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-dark-6">Grand Total</span>
+            <span className="text-dark dark:text-white">{formatMoney(itemGrandTotal)}</span>
+          </div>
         </div>
       </div>
 

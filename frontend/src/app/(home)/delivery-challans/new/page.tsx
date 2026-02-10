@@ -615,11 +615,14 @@ const fetchNextDcNumber = async () => {
         godown_id: dcType === "dc_out" ? formData.from_godown_id : formData.to_godown_id,
       })),
       // FIX: Include all the new fields
-        dc_number: formData.dc_number,
-        status: formData.status,
+      dc_number: formData.dc_number,
+      status: formData.status,
+      custom_status: formData.status,
+      reference_no,
+      contact_id: formData.contact_person || undefined,
       bill_title: formData.bill_title,
       bill_description: formData.bill_description,
-      contact_person: formData.contact_person, // This should map to contact_id
+      contact_person: selectedContactPerson?.name || undefined,
       expiry_date: formData.expiry_date,
       salesman_id: formData.salesman_id,
       // Include totals for reference
