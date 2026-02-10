@@ -1908,7 +1908,7 @@ export const purchaseRequestsApi = {
     params?: {
       page?: number;
       page_size?: number;
-      status?: 'pending' | 'approved' | 'hold' | 'rejected';
+      status?: 'pending' | 'approved' | 'hold' | 'rejected' | 'open' | 'in_progress' | 'closed';
       customer_id?: string;
       search?: string;
       start_date?: string;
@@ -1933,7 +1933,7 @@ export const purchaseRequestsApi = {
     companyId: string,
     requestId: string,
     data: {
-      approval_status: 'pending' | 'approved' | 'hold' | 'rejected';  // Use approval_status for API request
+      approval_status: 'pending' | 'approved' | 'hold' | 'rejected' | 'open' | 'in_progress' | 'closed';  // Use approval_status for API request
       approval_notes?: string;
     }
   ): Promise<any> => {

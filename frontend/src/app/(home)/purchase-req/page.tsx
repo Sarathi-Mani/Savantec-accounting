@@ -1,10 +1,42 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { purchaseRequestsApi, getErrorMessage } from "@/services/api";
 import Link from "next/link";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { saveAs } from "file-saver";
+import {
+  Search,
+  Filter,
+  Plus,
+  Users,
+  Calendar,
+  Package,
+  CheckCircle,
+  XCircle,
+  Clock,
+  AlertCircle,
+  MoreVertical,
+  Eye,
+  Edit,
+  Trash2,
+  Printer,
+  Copy,
+  ChevronDown,
+  ChevronUp,
+  Building,
+  Download,
+  FileText,
+  RefreshCw,
+  FileDigit,
+  ShoppingCart,
+  CheckSquare,
+  Square,
+} from "lucide-react";
 
 interface PurchaseRequest {
   id: string;
@@ -20,6 +52,238 @@ interface PurchaseRequest {
   updated_at: string;
 }
 
+interface Customer {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+}
+
+// Print component for purchase requests
+const PrintView = ({
+  purchaseRequests,
+  visibleColumns,
+  formatDate,
+  getStatusText,
+  getStatusBadgeClass,
+  companyName,
+}: {
+  purchaseRequests: PurchaseRequest[];
+  visibleColumns: Record<string, boolean>;
+  formatDate: (dateString: string | null | undefined) => string;
+  getStatusText: (status: string) => string;
+  getStatusBadgeClass: (status: string) => string;
+  companyName: string;
+}) => {
+  const printRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (printRef.current) {
+      const printContents = printRef.current.innerHTML;
+      const originalContents = document.body.innerHTML;
+
+      document.body.innerHTML = printContents;
+      window.print();
+      document.body.innerHTML = originalContents;
+      window.location.reload();
+    }
+  }, []);
+
+  return (
+    <div style={{ display: 'none' }}>
+      <div ref={printRef} style={{ fontFamily: 'Arial, sans-serif', padding: '20px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '5px' }}>
+            Purchase Requests List
+          </h1>
+          <p style={{ fontSize: '14px', color: '#666' }}>{companyName}</p>
+          <p style={{ color: '#666', fontSize: '14px' }}>
+            Generated on: {new Date().toLocaleDateString('en-IN')}
+          </p>
+        </div>
+
+        <table style={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          border: '1px solid #ddd'
+        }}>
+          <thead>
+            <tr style={{
+              backgroundColor: '#f3f4f6',
+              borderBottom: '2px solid #ddd'
+            }}>
+              {visibleColumns.requestNumber && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Request #
+                </th>
+              )}
+              {visibleColumns.customer && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Customer
+                </th>
+              )}
+              {visibleColumns.requestDate && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Request Date
+                </th>
+              )}
+              {visibleColumns.items && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Items
+                </th>
+              )}
+              {visibleColumns.quantity && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Quantity
+                </th>
+              )}
+              {visibleColumns.status && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  fontWeight: 'bold'
+                }}>
+                  Status
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {purchaseRequests.map((request, index) => (
+              <tr key={request.id} style={{
+                borderBottom: '1px solid #ddd',
+                backgroundColor: index % 2 === 0 ? '#fff' : '#f9f9f9'
+              }}>
+                {visibleColumns.requestNumber && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd',
+                    fontWeight: '500'
+                  }}>
+                    {request.purchase_req_no || `PR-${request.id.slice(0, 8)}`}
+                  </td>
+                )}
+                {visibleColumns.customer && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {request.customer_name || '-'}
+                  </td>
+                )}
+                {visibleColumns.requestDate && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {formatDate(request.request_date || request.created_at)}
+                  </td>
+                )}
+                {visibleColumns.items && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {request.total_items || 0}
+                  </td>
+                )}
+                {visibleColumns.quantity && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {request.total_quantity || 0}
+                  </td>
+                )}
+                {visibleColumns.status && (
+                  <td style={{ padding: '12px' }}>
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '4px 8px',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      backgroundColor: request.status === 'open' ? '#d1fae5' :
+                        request.status === 'pending' ? '#fef3c7' :
+                          request.status === 'in_progress' ? '#dbeafe' :
+                            request.status === 'closed' ? '#fee2e2' :
+                              '#f3f4f6',
+                      color: request.status === 'open' ? '#065f46' :
+                        request.status === 'pending' ? '#92400e' :
+                          request.status === 'in_progress' ? '#1e40af' :
+                            request.status === 'closed' ? '#991b1b' :
+                              '#374151'
+                    }}>
+                      {getStatusText(request.status)}
+                    </span>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div style={{
+          marginTop: '30px',
+          paddingTop: '20px',
+          borderTop: '1px solid #ddd',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            Total Requests: {purchaseRequests.length}
+          </div>
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            Page 1 of 1
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Local formatter functions
+const formatDate = (dateString: string | null | undefined): string => {
+  if (!dateString) return '-';
+  try {
+    const date = new Date(dateString.includes('T') ? dateString : dateString + 'T00:00:00');
+    if (isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  } catch {
+    return '-';
+  }
+};
+
 export default function PurchaseRequestsPage() {
   const { company } = useAuth();
   const router = useRouter();
@@ -32,34 +296,172 @@ export default function PurchaseRequestsPage() {
     currentStatus: string;
     newStatus: string;
   } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string>("");
   const [purchaseRequests, setPurchaseRequests] = useState<PurchaseRequest[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  
+  // Filters state
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [customerFilter, setCustomerFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  
+  // UI state
+  const [showFilters, setShowFilters] = useState(false);
+  const [showColumnDropdown, setShowColumnDropdown] = useState(false);
+  const [showPrintView, setShowPrintView] = useState(false);
+  const [requestsToPrint, setRequestsToPrint] = useState<PurchaseRequest[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [showAlert, setShowAlert] = useState(false);
-  const [alertMessage, setAlertMessage] = useState("");
-  const [alertType, setAlertType] = useState<"success" | "error">("success");
-  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
   const pageSize = 10;
+  
+  // Export loading states
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [excelLoading, setExcelLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [csvLoading, setCsvLoading] = useState(false);
+  const [printLoading, setPrintLoading] = useState(false);
+  
+  const [cachedExportData, setCachedExportData] = useState<PurchaseRequest[] | null>(null);
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  
+  // Column visibility
+  const [visibleColumns, setVisibleColumns] = useState({
+    requestNumber: true,
+    customer: true,
+    requestDate: true,
+    items: true,
+    quantity: true,
+    status: true,
+    actions: true,
+  });
+
+  const companyId = company?.id || (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
 
   const statusColors: Record<string, string> = {
-    pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300",
-    open: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
-    in_progress: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
-    closed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
+    pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+    open: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+    in_progress: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+    closed: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
   };
 
   const statusLabels: Record<string, string> = {
     pending: "Pending",
     open: "Open",
-    in_progress: "In Progress ",
+    in_progress: "In Progress",
     closed: "Closed"
   };
 
-  // ADDED: Function to show confirmation modal
+  const getStatusText = (status: string) => {
+    return statusLabels[status] || status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  const getStatusBadgeClass = (status: string): string => {
+    return statusColors[status] || "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
+  };
+
+  useEffect(() => {
+    if (companyId) {
+      fetchPurchaseRequests();
+    }
+  }, [companyId]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest(".action-dropdown-container")) {
+        setActiveActionMenu(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (companyId) {
+      fetchPurchaseRequests();
+      setCachedExportData(null);
+    }
+  }, [statusFilter, customerFilter, fromDate, toDate]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, customerFilter, fromDate, toDate, search]);
+
+  const fetchCustomers = (source: PurchaseRequest[]) => {
+    try {
+      const uniqueCustomers = Array.from(
+        new Map(
+          source
+            .filter(req => req.customer_id)
+            .map(req => [req.customer_id, req.customer_name || "Unknown Customer"])
+        )
+      ).map(([id, name]) => ({ id, name }));
+      setCustomers(uniqueCustomers);
+    } catch (err) {
+      console.error("Failed to build customers list:", err);
+    }
+  };
+
+  const fetchPurchaseRequests = async () => {
+    try {
+      setLoading(true);
+      if (!company?.id) {
+        setLoading(false);
+        return;
+      }
+
+      const params: any = {
+        page: currentPage,
+        page_size: pageSize
+      };
+      
+      if (search) {
+        params.search = search;
+      }
+      
+      if (statusFilter !== "all" && statusFilter) {
+        params.status = statusFilter;
+      }
+      
+      const response = await purchaseRequestsApi.list(company.id, params);
+      const nextRequests = response.purchase_requests || [];
+      setPurchaseRequests(nextRequests);
+      fetchCustomers(nextRequests);
+      setError("");
+    } catch (err: any) {
+      setError(getErrorMessage(err, "Failed to load purchase requests"));
+      console.error("Error fetching purchase requests:", err);
+      setPurchaseRequests([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAllPurchaseRequestsForExport = useCallback(async (): Promise<PurchaseRequest[]> => {
+    try {
+      if (!companyId) return [];
+
+      const response = await purchaseRequestsApi.list(companyId, { page_size: 1000 });
+      const allRequests = Array.isArray(response)
+        ? response
+        : (response.purchase_requests || []);
+      setCachedExportData(allRequests);
+      return allRequests;
+    } catch (error) {
+      console.error("Export fetch failed:", error);
+      return [];
+    }
+  }, [companyId]);
+
+  const getExportData = async (): Promise<PurchaseRequest[]> => {
+    if (cachedExportData) return cachedExportData;
+    if (purchaseRequests.length > 0) return purchaseRequests;
+    return await fetchAllPurchaseRequestsForExport();
+  };
+
   const showStatusUpdateConfirmation = (
     id: string,
     purchase_req_no: string,
@@ -77,7 +479,6 @@ export default function PurchaseRequestsPage() {
     setShowConfirmModal(true);
   };
 
-  // ADDED: Function to execute status update after confirmation
   const executeStatusUpdate = async () => {
     if (!selectedRequest || !company?.id) return;
     
@@ -90,78 +491,28 @@ export default function PurchaseRequestsPage() {
     setSelectedRequest(null);
   };
 
-  const fetchPurchaseRequests = async () => {
-    if (!company?.id) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const params: any = {
-        page: currentPage,
-        page_size: pageSize
-      };
-      
-      if (searchTerm) {
-        params.search = searchTerm;
-      }
-      
-      if (statusFilter !== "all") {
-        params.status = statusFilter;
-      }
-      
-      const response = await purchaseRequestsApi.list(company.id, params);
-      setPurchaseRequests(response.purchase_requests || []);
-      setTotalPages(Math.ceil(response.total / pageSize));
-      setTotalCount(response.total);
-    } catch (error: any) {
-      console.error("Error fetching purchase requests:", error);
-      setError(getErrorMessage(error, "Failed to load purchase requests"));
-      setPurchaseRequests([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const updateRequestStatus = async (requestId: string, status: "pending" | "open" | "in_progress" | "closed") => {
     if (!company?.id) return;
     
     setUpdatingStatusId(requestId);
     
     try {
-      // FIX: Use approval_status instead of status for API request
       await purchaseRequestsApi.updateStatus(company.id, requestId, { 
-        approval_status: status  // Changed from 'status' to 'approval_status'
+        approval_status: status
       });
       
-      // Update local state - use status for local state (matches API response)
       setPurchaseRequests(prev =>
         prev.map(req =>
           req.id === requestId ? { ...req, status, updated_at: new Date().toISOString() } : req
         )
       );
       
-      // Show success alert
-      const newStatusLabel = statusLabels[status];
-      setAlertMessage(`Request status updated to "${newStatusLabel}" successfully!`);
-      setAlertType("success");
-      setShowAlert(true);
-      
-      // Hide alert after 3 seconds
-      setTimeout(() => {
-        setShowAlert(false);
-      }, 3000);
+      // Show success message (you can add a toast notification here)
+      console.log(`Request status updated to "${status}" successfully!`);
       
     } catch (error: any) {
       console.error("Error updating request status:", error);
-      setAlertMessage(getErrorMessage(error, "Failed to update status"));
-      setAlertType("error");
-      setShowAlert(true);
-      
-      // Hide alert after 5 seconds for errors
-      setTimeout(() => {
-        setShowAlert(false);
-      }, 5000);
+      alert(getErrorMessage(error, "Failed to update status"));
     } finally {
       setUpdatingStatusId(null);
     }
@@ -169,84 +520,476 @@ export default function PurchaseRequestsPage() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    setCurrentPage(1);
     fetchPurchaseRequests();
   };
 
-  const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setStatusFilter(e.target.value);
-    setCurrentPage(1);
+  const handleReset = () => {
+    setSearch("");
+    setStatusFilter("");
+    setCustomerFilter("");
+    setFromDate("");
+    setToDate("");
+    fetchPurchaseRequests();
   };
 
-  useEffect(() => {
-    if (company?.id) {
-      fetchPurchaseRequests();
-    }
-  }, [company?.id, currentPage, statusFilter]);
+  // Apply search filter locally for export data
+  const applySearchFilter = (data: PurchaseRequest[]): PurchaseRequest[] => {
+    if (!search) return data;
+    
+    const searchLower = search.toLowerCase();
+    return data.filter(request => {
+      return (
+        request.purchase_req_no?.toLowerCase().includes(searchLower) ||
+        request.customer_name?.toLowerCase().includes(searchLower) ||
+        request.notes?.toLowerCase().includes(searchLower) ||
+        false
+      );
+    });
+  };
 
-  if (!company) {
+  // Apply filters locally
+  const applyFilters = (data: PurchaseRequest[]): PurchaseRequest[] => {
+    let filtered = data;
+    
+    if (statusFilter && statusFilter !== "all") {
+      filtered = filtered.filter(request => request.status === statusFilter);
+    }
+    
+    if (customerFilter) {
+      filtered = filtered.filter(request => request.customer_id === customerFilter);
+    }
+    
+    // Date filters
+    if (fromDate) {
+      filtered = filtered.filter(request => {
+        if (!request.request_date && !request.created_at) return false;
+        const reqDate = new Date(request.request_date || request.created_at);
+        const from = new Date(fromDate);
+        return reqDate >= from;
+      });
+    }
+    
+    if (toDate) {
+      filtered = filtered.filter(request => {
+        if (!request.request_date && !request.created_at) return false;
+        const reqDate = new Date(request.request_date || request.created_at);
+        const to = new Date(toDate);
+        return reqDate <= to;
+      });
+    }
+    
+    return filtered;
+  };
+
+  const filteredRequests = purchaseRequests.filter(request => {
+    if (statusFilter && statusFilter !== "all" && request.status !== statusFilter) return false;
+    if (customerFilter && request.customer_id !== customerFilter) return false;
+    
+    if (fromDate) {
+      const reqDate = new Date(request.request_date || request.created_at);
+      const from = new Date(fromDate);
+      if (reqDate < from) return false;
+    }
+    
+    if (toDate) {
+      const reqDate = new Date(request.request_date || request.created_at);
+      const to = new Date(toDate);
+      if (reqDate > to) return false;
+    }
+    
+    if (search) {
+      const searchLower = search.toLowerCase();
+      return (
+        request.purchase_req_no?.toLowerCase().includes(searchLower) ||
+        request.customer_name?.toLowerCase().includes(searchLower) ||
+        request.notes?.toLowerCase().includes(searchLower) ||
+        false
+      );
+    }
+    
+    return true;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / pageSize));
+  const pagedRequests = filteredRequests.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
+  // Export functions
+  const copyToClipboard = async () => {
+    if (copyLoading) return;
+    setCopyLoading(true);
+    try {
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyFilters(filtered);
+      if (filtered.length === 0) {
+        alert("No purchase requests to export.");
+        return;
+      }
+      
+      const headers: string[] = [];
+      const rows = filtered.map(request => {
+        const row: string[] = [];
+
+        if (visibleColumns.requestNumber) {
+          if (!headers.includes("Request #")) headers.push("Request #");
+          row.push(request.purchase_req_no || `PR-${request.id.slice(0, 8)}`);
+        }
+
+        if (visibleColumns.customer) {
+          if (!headers.includes("Customer")) headers.push("Customer");
+          row.push(request.customer_name || "-");
+        }
+
+        if (visibleColumns.requestDate) {
+          if (!headers.includes("Request Date")) headers.push("Request Date");
+          row.push(formatDate(request.request_date || request.created_at));
+        }
+
+        if (visibleColumns.items) {
+          if (!headers.includes("Items")) headers.push("Items");
+          row.push((request.total_items || 0).toString());
+        }
+
+        if (visibleColumns.quantity) {
+          if (!headers.includes("Quantity")) headers.push("Quantity");
+          row.push((request.total_quantity || 0).toString());
+        }
+
+        if (visibleColumns.status) {
+          if (!headers.includes("Status")) headers.push("Status");
+          row.push(getStatusText(request.status));
+        }
+
+        return row;
+      });
+
+      const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
+      await navigator.clipboard.writeText(text);
+      alert("Purchase request data copied to clipboard");
+    } catch (error) {
+      console.error("Copy failed:", error);
+      alert("Failed to copy data. Please try again.");
+    } finally {
+      setCopyLoading(false);
+    }
+  };
+
+  const exportExcel = async () => {
+    if (excelLoading) return;
+    setExcelLoading(true);
+    try {
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyFilters(filtered);
+      if (filtered.length === 0) {
+        alert("No purchase requests to export.");
+        return;
+      }
+      
+      const exportData = filtered.map(request => {
+        const row: Record<string, any> = {};
+
+        if (visibleColumns.requestNumber) {
+          row["Request #"] = request.purchase_req_no || `PR-${request.id.slice(0, 8)}`;
+        }
+
+        if (visibleColumns.customer) {
+          row["Customer"] = request.customer_name || "";
+        }
+
+        if (visibleColumns.requestDate) {
+          row["Request Date"] = formatDate(request.request_date || request.created_at);
+        }
+
+        if (visibleColumns.items) {
+          row["Total Items"] = request.total_items || 0;
+        }
+
+        if (visibleColumns.quantity) {
+          row["Total Quantity"] = request.total_quantity || 0;
+        }
+
+        if (visibleColumns.status) {
+          row["Status"] = getStatusText(request.status);
+        }
+
+        row["Notes"] = request.notes || "";
+        row["Created At"] = formatDate(request.created_at);
+        row["Updated At"] = formatDate(request.updated_at);
+        
+        return row;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Purchase Requests");
+      XLSX.writeFile(wb, "purchase_requests.xlsx");
+    } catch (error) {
+      console.error("Excel export failed:", error);
+      alert("Failed to export Excel. Please try again.");
+    } finally {
+      setExcelLoading(false);
+    }
+  };
+
+  const exportPDF = async () => {
+    if (pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyFilters(filtered);
+      if (filtered.length === 0) {
+        alert("No purchase requests to export.");
+        return;
+      }
+      
+      const doc = new jsPDF("landscape");
+      
+      const headers: string[] = [];
+      const body = filtered.map(request => {
+        const row: string[] = [];
+
+        if (visibleColumns.requestNumber) {
+          if (!headers.includes("Req #")) headers.push("Req #");
+          row.push(request.purchase_req_no || `PR-${request.id.slice(0, 8)}`);
+        }
+
+        if (visibleColumns.customer) {
+          if (!headers.includes("Customer")) headers.push("Customer");
+          row.push(request.customer_name || "-");
+        }
+
+        if (visibleColumns.requestDate) {
+          if (!headers.includes("Req Date")) headers.push("Req Date");
+          row.push(formatDate(request.request_date || request.created_at));
+        }
+
+        if (visibleColumns.items) {
+          if (!headers.includes("Items")) headers.push("Items");
+          row.push((request.total_items || 0).toString());
+        }
+
+        if (visibleColumns.quantity) {
+          if (!headers.includes("Qty")) headers.push("Qty");
+          row.push((request.total_quantity || 0).toString());
+        }
+
+        if (visibleColumns.status) {
+          if (!headers.includes("Status")) headers.push("Status");
+          row.push(getStatusText(request.status));
+        }
+
+        return row;
+      });
+
+      autoTable(doc, {
+        head: [headers],
+        body: body,
+        startY: 20,
+        margin: { top: 20, left: 10, right: 10, bottom: 20 },
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          overflow: "linebreak",
+          font: "helvetica",
+        },
+        headStyles: {
+          fillColor: [41, 128, 185],
+          textColor: 255,
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [245, 245, 245],
+        },
+        didDrawPage: (data) => {
+          doc.setFontSize(16);
+          doc.text("Purchase Requests List", data.settings.margin.left, 12);
+          
+          doc.setFontSize(10);
+          doc.text(company?.name || '', data.settings.margin.left, 18);
+          
+          doc.text(
+            `Generated: ${new Date().toLocaleDateString("en-IN")}`,
+            doc.internal.pageSize.width - 60,
+            12
+          );
+
+          const pageCount = doc.getNumberOfPages();
+          doc.text(
+            `Page ${data.pageNumber} of ${pageCount}`,
+            data.settings.margin.left,
+            doc.internal.pageSize.height - 8
+          );
+        },
+      });
+
+      doc.save("purchase_requests.pdf");
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      alert("Failed to export PDF. Please try again.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const exportCSV = async () => {
+    if (csvLoading) return;
+    setCsvLoading(true);
+    try {
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyFilters(filtered);
+      if (filtered.length === 0) {
+        alert("No purchase requests to export.");
+        return;
+      }
+      
+      const exportData = filtered.map(request => {
+        const row: Record<string, any> = {};
+
+        if (visibleColumns.requestNumber) {
+          row["Request #"] = request.purchase_req_no || `PR-${request.id.slice(0, 8)}`;
+        }
+
+        if (visibleColumns.customer) {
+          row["Customer"] = request.customer_name || "";
+        }
+
+        if (visibleColumns.requestDate) {
+          row["Request Date"] = formatDate(request.request_date || request.created_at);
+        }
+
+        if (visibleColumns.items) {
+          row["Total Items"] = request.total_items || 0;
+        }
+
+        if (visibleColumns.quantity) {
+          row["Total Quantity"] = request.total_quantity || 0;
+        }
+
+        if (visibleColumns.status) {
+          row["Status"] = getStatusText(request.status);
+        }
+
+        return row;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      saveAs(blob, "purchase_requests.csv");
+    } catch (error) {
+      console.error("CSV export failed:", error);
+      alert("Failed to export CSV. Please try again.");
+    } finally {
+      setCsvLoading(false);
+    }
+  };
+
+  const handlePrint = async () => {
+    if (printLoading) return;
+    setPrintLoading(true);
+    try {
+      const allData = await getExportData();
+      let filtered = applySearchFilter(allData);
+      filtered = applyFilters(filtered);
+      setRequestsToPrint(filtered);
+      setShowPrintView(true);
+    } catch (error) {
+      console.error("Print failed:", error);
+      alert("Failed to prepare print view. Please try again.");
+    } finally {
+      setPrintLoading(false);
+    }
+  };
+
+  const toggleColumn = (key: keyof typeof visibleColumns) => {
+    setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleDelete = async (requestId: string, requestNo: string) => {
+    if (window.confirm(`Are you sure you want to delete purchase request ${requestNo}? This action cannot be undone.`)) {
+      try {
+        if (company?.id) {
+          // Assuming you have a delete method in your API
+          // await purchaseRequestsApi.delete(company.id, requestId);
+          fetchPurchaseRequests();
+          alert('Purchase request deleted successfully!');
+        }
+      } catch (error) {
+        console.error("Error deleting purchase request:", error);
+        alert("Failed to delete purchase request");
+      }
+    }
+  };
+
+  if (!companyId) {
     return (
-      <div className="rounded-lg bg-white p-8 text-center shadow-1 dark:bg-gray-dark">
-        <p className="text-dark-6">Please select a company first</p>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 dark:bg-yellow-900/20 dark:border-yellow-800">
+          <p className="text-yellow-800 dark:text-yellow-400">Please select a company first.</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-dark dark:text-white">Purchase Requests</h1>
-          <p className="text-sm text-dark-6">Manage customer purchase requests</p>
-        </div>
-        <Link
-          href="/purchase-req/new"
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
-        >
-          <span>+</span> New Purchase Request
-        </Link>
-      </div>
+    <div className="w-full">
+      {showPrintView && (
+        <PrintView
+          purchaseRequests={requestsToPrint}
+          visibleColumns={visibleColumns}
+          formatDate={formatDate}
+          getStatusText={getStatusText}
+          getStatusBadgeClass={getStatusBadgeClass}
+          companyName={company?.name || ''}
+        />
+      )}
 
       {/* Confirmation Modal */}
       {showConfirmModal && selectedRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-dark">
-            <h3 className="mb-4 text-lg font-semibold text-dark dark:text-white">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800">
+            <h3 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
               Confirm Status Update
             </h3>
             
             <div className="mb-6 space-y-3">
               <div className="flex justify-between">
-                <span className="text-dark-6 dark:text-dark-6">Request No:</span>
-                <span className="font-medium text-dark dark:text-white">
+                <span className="text-gray-600 dark:text-gray-400">Request No:</span>
+                <span className="font-medium text-gray-900 dark:text-white">
                   {selectedRequest.purchase_req_no}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-dark-6 dark:text-dark-6">Customer:</span>
-                <span className="font-medium text-dark dark:text-white">
+                <span className="text-gray-600 dark:text-gray-400">Customer:</span>
+                <span className="font-medium text-gray-900 dark:text-white">
                   {selectedRequest.customer_name}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-dark-6 dark:text-dark-6">Current Status:</span>
+                <span className="text-gray-600 dark:text-gray-400">Current Status:</span>
                 <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                  statusColors[selectedRequest.currentStatus]
+                  getStatusBadgeClass(selectedRequest.currentStatus)
                 }`}>
-                  {statusLabels[selectedRequest.currentStatus] || selectedRequest.currentStatus}
+                  {getStatusText(selectedRequest.currentStatus)}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-dark-6 dark:text-dark-6">New Status:</span>
+                <span className="text-gray-600 dark:text-gray-400">New Status:</span>
                 <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                  statusColors[selectedRequest.newStatus]
+                  getStatusBadgeClass(selectedRequest.newStatus)
                 }`}>
-                  {statusLabels[selectedRequest.newStatus] || selectedRequest.newStatus}
+                  {getStatusText(selectedRequest.newStatus)}
                 </span>
               </div>
             </div>
             
-            <p className="mb-6 text-dark-6 dark:text-dark-6">
+            <p className="mb-6 text-gray-600 dark:text-gray-400">
               Are you sure you want to update the status of this purchase request?
               This action will be recorded in the request history.
             </p>
@@ -257,14 +1000,14 @@ export default function PurchaseRequestsPage() {
                   setShowConfirmModal(false);
                   setSelectedRequest(null);
                 }}
-                className="rounded-lg border border-stroke px-4 py-2 text-dark hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
                 disabled={updatingStatusId === selectedRequest.id}
               >
                 Cancel
               </button>
               <button
                 onClick={executeStatusUpdate}
-                className="rounded-lg bg-primary px-4 py-2 text-white hover:bg-opacity-90 disabled:opacity-50"
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50"
                 disabled={updatingStatusId === selectedRequest.id}
               >
                 {updatingStatusId === selectedRequest.id ? (
@@ -281,83 +1024,246 @@ export default function PurchaseRequestsPage() {
         </div>
       )}
 
-      {/* Alert for status updates */}
-      {showAlert && (
-        <div className={`mb-6 rounded-lg p-4 ${
-          alertType === "success" 
-            ? "bg-green-50 text-green-800 dark:bg-green-900/20 dark:text-green-400"
-            : "bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-400"
-        }`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              {alertType === "success" ? (
-                <svg className="mr-2 h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-              ) : (
-                <svg className="mr-2 h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              )}
-              <span className="font-medium">{alertMessage}</span>
+      {/* Header */}
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              Purchase Requests
+            </h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Manage and track all customer purchase requests
+            </p>
+          </div>
+          <Link
+            href="/purchase-req/new"
+            className="px-4 py-2 transition bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2"
+          >
+            <Plus className="w-5 h-5" />
+            New Purchase Request
+          </Link>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="px-6 py-6 bg-gray-50 dark:bg-gray-900">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+          {/* Total Requests */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {purchaseRequests.length}
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Total Requests
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
+                <ShoppingCart className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+              </div>
             </div>
+          </div>
+
+          {/* Open Requests */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold text-green-600">
+                  {purchaseRequests.filter(r => r.status === 'open').length}
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Open Requests
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
+                <CheckSquare className="w-6 h-6 text-green-600 dark:text-green-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* In Progress */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold text-blue-600">
+                  {purchaseRequests.filter(r => r.status === 'in_progress').length}
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  In Progress
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
+                <Clock className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+          </div>
+
+          {/* Pending */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold text-yellow-600">
+                  {purchaseRequests.filter(r => r.status === 'pending').length}
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Pending
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-lg bg-yellow-100 dark:bg-yellow-900/20 flex items-center justify-center">
+                <AlertCircle className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters Section */}
+      <div className="px-6 py-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex flex-wrap gap-4">
+          <div className="flex-1 min-w-[200px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder="Search by request number, customer, or notes..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSearch(e)}
+                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => setShowAlert(false)}
-              className="ml-4 text-lg font-bold opacity-70 hover:opacity-100"
+              onClick={() => setShowFilters(!showFilters)}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
             >
-              ×
+              <Filter className="w-5 h-5" />
+              Filters
+            </button>
+
+            <button
+              onClick={copyToClipboard}
+              disabled={copyLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {copyLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <Copy className="w-5 h-5" />
+              )}
+              Copy
+            </button>
+
+            <div className="relative column-dropdown-container">
+              <button
+                onClick={() => setShowColumnDropdown(!showColumnDropdown)}
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+              >
+                Columns
+                {showColumnDropdown ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+
+              {showColumnDropdown && (
+                <div className="absolute right-0 mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-3 z-10 min-w-[150px]">
+                  {Object.entries(visibleColumns).map(([key, value]) => (
+                    <label key={key} className="flex items-center gap-2 text-sm mb-2 last:mb-0 cursor-pointer text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={value}
+                        onChange={() => toggleColumn(key as keyof typeof visibleColumns)}
+                        className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={exportExcel}
+              disabled={excelLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {excelLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <>
+                  <FileText className="w-5 h-5" />
+                  Excel
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={exportPDF}
+              disabled={pdfLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {pdfLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <>
+                  <Download className="w-5 h-5" />
+                  PDF
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={exportCSV}
+              disabled={csvLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {csvLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <>
+                  <FileText className="w-5 h-5" />
+                  CSV
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handlePrint}
+              disabled={printLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {printLoading ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
+              ) : (
+                <>
+                  <Printer className="w-5 h-5" />
+                  Print
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleReset}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
+            >
+              <RefreshCw className="w-5 h-5" />
+              Reset
             </button>
           </div>
         </div>
-      )}
 
-      {error && (
-        <div className="mb-6 rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">
-          {error}
-        </div>
-      )}
-
-      {/* Filters and Search */}
-      <div className="mb-6 rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <form onSubmit={handleSearch} className="flex-1">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by request number, customer, or item..."
-                className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
-              />
-              <button
-                type="submit"
-                className="rounded-lg bg-primary px-4 py-2 text-white transition hover:bg-opacity-90"
-              >
-                Search
-              </button>
-              {searchTerm && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchTerm("");
-                    setCurrentPage(1);
-                    fetchPurchaseRequests();
-                  }}
-                  className="rounded-lg border border-stroke px-4 py-2 text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </form>
-
-          <div className="flex items-center gap-4">
+        {showFilters && (
+          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Status Filter */}
             <div>
-              <label className="mr-2 text-sm font-medium text-dark dark:text-white">Status:</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Status
+              </label>
               <select
                 value={statusFilter}
-                onChange={handleFilterChange}
-                className="rounded-lg border border-stroke bg-transparent px-3 py-2 text-sm outline-none focus:border-primary dark:border-dark-3"
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
                 <option value="all">All Status</option>
                 <option value="pending">Pending</option>
@@ -366,194 +1272,348 @@ export default function PurchaseRequestsPage() {
                 <option value="closed">Closed</option>
               </select>
             </div>
+
+            {/* Customer Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Customer
+              </label>
+              <select
+                value={customerFilter}
+                onChange={(e) => setCustomerFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">All Customers</option>
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* From Date */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                From Date
+              </label>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* To Date */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                To Date
+              </label>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Purchase Requests List */}
-      <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
-        {loading ? (
-          <div className="flex justify-center p-8">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
-          </div>
-        ) : purchaseRequests.length === 0 ? (
-          <div className="p-8 text-center">
-            <p className="text-dark-6">No purchase requests found</p>
-            <Link
-              href="/purchase-req/new"
-              className="mt-2 inline-block text-primary hover:underline"
-            >
-              Create your first purchase request
-            </Link>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-stroke dark:border-dark-3">
-                    <th className="px-6 py-3 text-left text-sm font-medium text-dark-6 dark:text-dark-6">
-                      Request #
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium text-dark-6 dark:text-dark-6 whitespace-nowrap w-64">
-                      Customer
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium text-dark-6 dark:text-dark-6">
-                      Date
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium text-dark-6 dark:text-dark-6">
-                      Items
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium text-dark-6 dark:text-dark-6">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-medium text-dark-6 dark:text-dark-6">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {purchaseRequests.map((request) => (
+      {/* Error */}
+      {error && (
+        <div className="mx-6 mt-4 bg-red-50 border border-red-200 rounded-lg p-4 dark:bg-red-900/20 dark:border-red-800">
+          <p className="text-red-800 dark:text-red-400">{error}</p>
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-200 dark:bg-gray-700/50">
+              <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+                <th className="text-left px-6 py-3 whitespace-nowrap w-20">
+                  S.No
+                </th>
+                {visibleColumns.requestNumber && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                    Request #
+                  </th>
+                )}
+                {visibleColumns.customer && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-64">
+                    Customer
+                  </th>
+                )}
+                {visibleColumns.requestDate && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                    Request Date
+                  </th>
+                )}
+                {visibleColumns.items && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                    Items
+                  </th>
+                )}
+                {visibleColumns.quantity && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                    Quantity
+                  </th>
+                )}
+                {visibleColumns.status && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                    Status
+                  </th>
+                )}
+                {visibleColumns.actions && (
+                  <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                    Actions
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-sm text-gray-700 dark:text-gray-300">
+              {loading ? (
+                <tr>
+                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                    <div className="flex items-center justify-center">
+                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredRequests.length === 0 ? (
+                <tr>
+                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                    <div className="flex flex-col items-center justify-center">
+                      <ShoppingCart className="w-12 h-12 text-gray-400 mb-2" />
+                      <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
+                        No purchase requests found
+                      </p>
+                      <p className="text-gray-500 dark:text-gray-400 mb-4">
+                        {statusFilter || search || customerFilter ?
+                          "No purchase requests found matching your filters. Try adjusting your search criteria." :
+                          "Create your first purchase request to start managing customer orders."}
+                      </p>
+                      <Link
+                        href="/purchase-req/new"
+                        className="text-indigo-600 hover:underline dark:text-indigo-400"
+                      >
+                        Create your first purchase request
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                pagedRequests.map((request, index) => {
+                  const profileInitials = request.customer_name?.charAt(0) || 'C';
+
+                  return (
                     <tr
                       key={request.id}
-                      className="border-b border-stroke hover:bg-gray-50 dark:border-dark-3 dark:hover:bg-dark-3"
+                      className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                     >
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-dark dark:text-white">
-                          {request.purchase_req_no || `PR-${request.id.slice(0, 8)}`}
-                        </div>
+                      <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        {(currentPage - 1) * pageSize + index + 1}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="font-medium text-dark dark:text-white max-w-[240px] truncate">
-                          {request.customer_name}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-dark-6 dark:text-dark-6">
-                          {new Date(request.request_date || request.created_at).toLocaleDateString()}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-dark-6 dark:text-dark-6">
-                          {request.total_items || "N/A"} items
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${statusColors[request.status]}`}
-                        >
-                          {statusLabels[request.status] || request.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <Link
-                            href={`/purchase-req/${request.id}`}
-                            className="rounded-lg bg-blue-100 px-3 py-1 text-sm text-blue-600 transition hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40"
+                      {visibleColumns.requestNumber && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
+                              <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                                {profileInitials}
+                              </span>
+                            </div>
+                            <div className="font-medium text-gray-900 dark:text-white">
+                              {request.purchase_req_no || `PR-${request.id.slice(0, 8)}`}
+                            </div>
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.customer && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="min-w-0 max-w-[240px]">
+                            <div className="font-medium text-gray-900 dark:text-white truncate">
+                              {request.customer_name || '-'}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                              Customer ID: {request.customer_id.slice(0, 8)}
+                            </div>
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.requestDate && (
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-gray-400" />
+                            {formatDate(request.request_date || request.created_at)}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.items && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2 font-medium text-gray-900 dark:text-white">
+                            <Package className="w-4 h-4 text-gray-400" />
+                            {request.total_items || 0}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.quantity && (
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                          {request.total_quantity || 0}
+                        </td>
+                      )}
+                      {visibleColumns.status && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              getStatusBadgeClass(request.status)
+                            }`}
                           >
-                            View
-                          </Link>
-                          
-                          {/* Status Actions Dropdown - Show for pending and hold requests */}
-                          {(request.status === "pending" || request.status === "in_progress") && (
-                            <div className="relative">
-                              <select
-                                onChange={(e) => {
-                                  const newStatus = e.target.value as "pending" | "open" | "in_progress" | "hold";
-                                  if (newStatus) {
-                                    // Show confirmation modal instead of directly updating
+                            {request.status === 'open' && <CheckSquare className="w-3 h-3 mr-1" />}
+                            {request.status === 'pending' && <AlertCircle className="w-3 h-3 mr-1" />}
+                            {request.status === 'in_progress' && <Clock className="w-3 h-3 mr-1" />}
+                            {request.status === 'closed' && <XCircle className="w-3 h-3 mr-1" />}
+                            {getStatusText(request.status)}
+                          </span>
+                        </td>
+                      )}
+                      {visibleColumns.actions && (
+                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                          <div className="relative action-dropdown-container inline-block">
+                            <button
+                              onClick={() =>
+                                setActiveActionMenu(
+                                  activeActionMenu === request.id ? null : request.id
+                                )
+                              }
+                              className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:text-gray-300 dark:hover:bg-gray-700/50 transition-all duration-200"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+
+                            {activeActionMenu === request.id && (
+                              <div className="absolute right-0 mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <Link
+                                  href={`/purchase-req/${request.id}`}
+                                  onClick={() => setActiveActionMenu(null)}
+                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                >
+                                  <Eye className="w-4 h-4 text-gray-400" />
+                                  <span>View Details</span>
+                                </Link>
+
+                                <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+
+                                <button
+                                  onClick={() => {
                                     showStatusUpdateConfirmation(
                                       request.id,
                                       request.purchase_req_no || `PR-${request.id.slice(0, 8)}`,
                                       request.customer_name,
                                       request.status,
-                                      newStatus
+                                      "open"
                                     );
-                                  }
-                                  e.target.value = ""; // Reset dropdown
-                                }}
-                                disabled={updatingStatusId === request.id}
-                                className="appearance-none rounded-lg border border-stroke bg-white px-3 py-1 pr-8 text-sm outline-none focus:border-primary disabled:opacity-50 dark:border-dark-3 dark:bg-dark-3"
-                              >
-                                <option value="">Update Status</option>
-                                {request.status !== "open" && <option value="open">Open</option>}
-                                {request.status !== "in_progress" && <option value="in_progress">In Progress</option>}
-                                {request.status !== "closed" && <option value="closed">Closed</option>}
-                              </select>
-                              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
-                                {updatingStatusId === request.id ? (
-                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
-                                ) : (
-                                  <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                    <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                                  </svg>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                                    setActiveActionMenu(null);
+                                  }}
+                                  disabled={updatingStatusId === request.id || request.status === "open"}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <CheckSquare className="w-4 h-4 text-gray-400" />
+                                  <span>Mark as Open</span>
+                                </button>
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="border-t border-stroke px-6 py-4 dark:border-dark-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-dark-6 dark:text-dark-6">
-                    Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} requests
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                      disabled={currentPage === 1}
-                      className="rounded-lg border border-stroke px-3 py-1 text-sm transition hover:bg-gray-100 disabled:opacity-50 dark:border-dark-3 dark:hover:bg-dark-3"
-                    >
-                      Previous
-                    </button>
-                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                      let pageNum;
-                      if (totalPages <= 5) {
-                        pageNum = i + 1;
-                      } else if (currentPage <= 3) {
-                        pageNum = i + 1;
-                      } else if (currentPage >= totalPages - 2) {
-                        pageNum = totalPages - 4 + i;
-                      } else {
-                        pageNum = currentPage - 2 + i;
-                      }
-                      
-                      return (
-                        <button
-                          key={pageNum}
-                          onClick={() => setCurrentPage(pageNum)}
-                          className={`rounded-lg px-3 py-1 text-sm transition ${
-                            currentPage === pageNum
-                              ? "bg-primary text-white"
-                              : "border border-stroke hover:bg-gray-100 dark:border-dark-3 dark:hover:bg-dark-3"
-                          }`}
-                        >
-                          {pageNum}
-                        </button>
-                      );
-                    })}
-                    <button
-                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                      disabled={currentPage === totalPages}
-                      className="rounded-lg border border-stroke px-3 py-1 text-sm transition hover:bg-gray-100 disabled:opacity-50 dark:border-dark-3 dark:hover:bg-dark-3"
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+                                <button
+                                  onClick={() => {
+                                    showStatusUpdateConfirmation(
+                                      request.id,
+                                      request.purchase_req_no || `PR-${request.id.slice(0, 8)}`,
+                                      request.customer_name,
+                                      request.status,
+                                      "in_progress"
+                                    );
+                                    setActiveActionMenu(null);
+                                  }}
+                                  disabled={updatingStatusId === request.id || request.status === "in_progress"}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <Clock className="w-4 h-4 text-gray-400" />
+                                  <span>Mark In Progress</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    showStatusUpdateConfirmation(
+                                      request.id,
+                                      request.purchase_req_no || `PR-${request.id.slice(0, 8)}`,
+                                      request.customer_name,
+                                      request.status,
+                                      "closed"
+                                    );
+                                    setActiveActionMenu(null);
+                                  }}
+                                  disabled={updatingStatusId === request.id || request.status === "closed"}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <XCircle className="w-4 h-4 text-gray-400" />
+                                  <span>Mark as Closed</span>
+                                </button>
+
+                                <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                                <button
+                                  onClick={() => {
+                                    setActiveActionMenu(null);
+                                    handleDelete(
+                                      request.id,
+                                      request.purchase_req_no || `PR-${request.id.slice(0, 8)}`
+                                    );
+                                  }}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  <span>Delete Request</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {!loading && filteredRequests.length > 0 && (
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filteredRequests.length)} of {filteredRequests.length}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              Previous
+            </button>
+            <div className="text-sm text-gray-700 dark:text-gray-300">
+              Page {currentPage} of {totalPages}
+            </div>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
