@@ -216,3 +216,78 @@ class ProformaInvoiceService:
             ProformaInvoice.id == invoice_id,
             ProformaInvoice.company_id == company.id
         ).first()
+
+    def update_proforma_invoice(
+        self,
+        invoice: ProformaInvoice,
+        update_data: Dict[str, Any],
+        items: Optional[List[Dict[str, Any]]] = None,
+    ) -> ProformaInvoice:
+        """Update a proforma invoice and optionally replace items."""
+        for field, value in update_data.items():
+            if field == "items":
+                continue
+            setattr(invoice, field, value)
+
+        if items is not None:
+            self.db.query(ProformaInvoiceItem).filter(
+                ProformaInvoiceItem.invoice_id == invoice.id
+            ).delete(synchronize_session=False)
+            self.db.flush()
+
+            created_items = []
+            for item_data in items:
+                qty = Decimal(str(item_data.get("quantity", 0)))
+                unit_price = Decimal(str(item_data.get("unit_price", 0)))
+                gst_rate = Decimal(str(item_data.get("gst_rate", 18)))
+                discount_percent = Decimal(str(item_data.get("discount_percent", 0)))
+
+                item_total = qty * unit_price
+                discount_amount = item_total * (discount_percent / 100)
+                taxable_amount = item_total - discount_amount
+                tax_amount = taxable_amount * (gst_rate / 100)
+                item_total_amount = taxable_amount + tax_amount
+
+                item = ProformaInvoiceItem(
+                    invoice_id=invoice.id,
+                    product_id=item_data.get("product_id"),
+                    item_code=str(item_data.get("item_code", "")).strip(),
+                    description=item_data.get("description", ""),
+                    quantity=qty,
+                    unit=item_data.get("unit", "unit"),
+                    unit_price=unit_price,
+                    discount_percent=discount_percent,
+                    discount_amount=discount_amount,
+                    gst_rate=gst_rate,
+                    cgst_rate=item_data.get("cgst_rate", gst_rate / 2),
+                    sgst_rate=item_data.get("sgst_rate", gst_rate / 2),
+                    igst_rate=item_data.get("igst_rate", 0),
+                    taxable_amount=taxable_amount,
+                    total_amount=item_total_amount,
+                )
+
+                self.db.add(item)
+                created_items.append(item)
+
+            # Recalculate totals if not explicitly provided
+            freight = Decimal(str(getattr(invoice, "freight_charges", 0) or 0))
+            pf = Decimal(str(getattr(invoice, "pf_charges", 0) or 0))
+            round_off = Decimal(str(getattr(invoice, "round_off", 0) or 0))
+
+            calculated_subtotal = sum(item.taxable_amount for item in created_items)
+            calculated_total_tax = sum(
+                (item.taxable_amount * item.gst_rate / Decimal("100")) for item in created_items
+            )
+            invoice.subtotal = calculated_subtotal + freight + pf
+            invoice.total_tax = calculated_total_tax
+            invoice.total_amount = invoice.subtotal + invoice.total_tax + round_off
+
+        self.db.commit()
+        self.db.refresh(invoice)
+        return invoice
+
+    def delete_proforma_invoice(self, invoice: ProformaInvoice) -> bool:
+        """Delete a proforma invoice."""
+        self.db.delete(invoice)
+        self.db.commit()
+        return True

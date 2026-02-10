@@ -1,10 +1,11 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { cn } from "@/lib/utils";
 import dayjs from "dayjs";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { proformaInvoicesApi } from "@/services/api";
 
 interface ProformaInvoice {
   id: string;
@@ -22,14 +23,15 @@ interface ProformaInvoice {
 
 export default function ProformaInvoicesPage() {
   const { company } = useAuth();
+  const router = useRouter();
   const [invoices, setInvoices] = useState<ProformaInvoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const getToken = () =>
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
-  useEffect(() => {
-    const fetchInvoices = async () => {
+  const fetchInvoices = async () => {
       const token = getToken();
       if (!company?.id || !token) {
         setLoading(false);
@@ -57,6 +59,7 @@ export default function ProformaInvoicesPage() {
       }
     };
 
+  useEffect(() => {
     fetchInvoices();
   }, [company?.id]);
 
@@ -66,6 +69,47 @@ export default function ProformaInvoicesPage() {
       currency: "INR",
       minimumFractionDigits: 0,
     }).format(amount || 0);
+  };
+
+  const handleDelete = async (invoiceId: string) => {
+    if (!company?.id) return;
+    if (!confirm("Are you sure you want to delete this proforma invoice?")) return;
+    setActionLoading(`delete-${invoiceId}`);
+    try {
+      await proformaInvoicesApi.delete(company.id, invoiceId);
+      setInvoices((prev) => prev.filter((inv) => inv.id !== invoiceId));
+    } catch (error) {
+      console.error("Failed to delete proforma invoice:", error);
+      alert("Failed to delete proforma invoice");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleConvert = async (invoiceId: string) => {
+    if (!confirm("Open this proforma invoice in Sales (prefill)?")) return;
+    router.push(`/sales/new?fromProforma=${invoiceId}`);
+  };
+
+  const handlePdf = async (invoiceId: string, invoiceNumber: string) => {
+    if (!company?.id) return;
+    setActionLoading(`pdf-${invoiceId}`);
+    try {
+      const blob = await proformaInvoicesApi.downloadPDF(company.id, invoiceId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Proforma_${invoiceNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Failed to download PDF:", error);
+      alert("Failed to download PDF");
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   return (
@@ -173,6 +217,48 @@ export default function ProformaInvoicesPage() {
                             />
                           </svg>
                         </Link>
+                        <Link
+                          href={`/sales/proforma-invoices/${invoice.id}/edit`}
+                          className="rounded p-1.5 text-dark-6 transition hover:bg-gray-100 hover:text-primary dark:hover:bg-dark-2"
+                          title="Edit"
+                        >
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5h2m-1 0v14m8-7H4" />
+                          </svg>
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => handleConvert(invoice.id)}
+                          disabled={actionLoading === `convert-${invoice.id}`}
+                          className="rounded p-1.5 text-dark-6 transition hover:bg-gray-100 hover:text-primary disabled:opacity-50 dark:hover:bg-dark-2"
+                          title="Convert to Invoice"
+                        >
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h10M7 12h10M7 17h10" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePdf(invoice.id, invoice.invoice_number)}
+                          disabled={actionLoading === `pdf-${invoice.id}`}
+                          className="rounded p-1.5 text-dark-6 transition hover:bg-gray-100 hover:text-primary disabled:opacity-50 dark:hover:bg-dark-2"
+                          title="Download PDF"
+                        >
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m7-7H5" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(invoice.id)}
+                          disabled={actionLoading === `delete-${invoice.id}`}
+                          className="rounded p-1.5 text-red-500 transition hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-900/20"
+                          title="Delete"
+                        >
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
                       </div>
                     </td>
                   </tr>

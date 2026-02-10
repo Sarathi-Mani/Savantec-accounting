@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect,useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 import { customersApi, productsApi, proformaInvoicesApi } from "@/services/api";
@@ -159,6 +159,9 @@ function ProductSelectField({
 
 export default function AddProformaInvoicePage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const editId = searchParams?.get("editId");
+    const isEditMode = Boolean(editId);
     const { company, user } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showTerms, setShowTerms] = useState(true);
@@ -259,6 +262,72 @@ const [contactPersons, setContactPersons] = useState<any[]>([]);
             loadBankAccounts();
         }
     }, [company?.id]);
+
+    useEffect(() => {
+        const loadExisting = async () => {
+            if (!company?.id || !editId) return;
+            try {
+                const existing = await proformaInvoicesApi.get(company.id, editId);
+                setFormData(prev => ({
+                    ...prev,
+                    customer_id: existing.customer_id || "",
+                    proforma_date: existing.proforma_date ? existing.proforma_date.split("T")[0] : prev.proforma_date,
+                    due_date: existing.due_date ? existing.due_date.split("T")[0] : "",
+                    reference_no: existing.reference_no || "",
+                    reference_date: existing.reference_date ? existing.reference_date.split("T")[0] : "",
+                    contact_id: existing.contact_id || "",
+                    sales_person_id: existing.sales_person_id || "",
+                    bank_account_id: existing.bank_account_id || "",
+                    freight_charges: Number(existing.freight_charges || 0),
+                    pf_charges: Number(existing.pf_charges || 0),
+                    notes: existing.notes || "",
+                    terms: existing.terms || prev.terms,
+                    subtotal: Number(existing.subtotal || 0),
+                    total_tax: Number(existing.total_tax || 0),
+                    total_amount: Number(existing.total_amount || 0),
+                    delivery_note: existing.delivery_note || "",
+                    supplier_ref: existing.supplier_ref || "",
+                    other_references: existing.other_references || "",
+                    buyer_order_no: existing.buyer_order_no || "",
+                    buyer_order_date: existing.buyer_order_date ? existing.buyer_order_date.split("T")[0] : "",
+                    despatch_doc_no: existing.despatch_doc_no || "",
+                    delivery_note_date: existing.delivery_note_date ? existing.delivery_note_date.split("T")[0] : "",
+                    despatched_through: existing.despatched_through || "",
+                    destination: existing.destination || "",
+                    terms_of_delivery: existing.terms_of_delivery || "",
+                    payment_terms: existing.payment_terms || "",
+                }));
+
+                if (existing.items && Array.isArray(existing.items) && existing.items.length > 0) {
+                    setItems(existing.items.map((item: any, index: number) => ({
+                        id: item.id || Date.now() + index,
+                        product_id: item.product_id || "",
+                        item_code: item.item_code || "",
+                        description: item.description || "",
+                        quantity: Number(item.quantity || 1),
+                        unit: item.unit || "unit",
+                        unit_price: Number(item.unit_price || 0),
+                        discount_percent: Number(item.discount_percent || 0),
+                        discount_amount: Number(item.discount_amount || 0),
+                        gst_rate: Number(item.gst_rate || 18),
+                        cgst_rate: Number(item.cgst_rate || 0),
+                        sgst_rate: Number(item.sgst_rate || 0),
+                        igst_rate: Number(item.igst_rate || 0),
+                        taxable_amount: Number(item.taxable_amount || 0),
+                        total_amount: Number(item.total_amount || 0),
+                    })));
+                }
+
+                if (existing.customer_id) {
+                    fetchContactPersons(existing.customer_id);
+                }
+            } catch (error) {
+                console.error("Failed to load proforma invoice for edit:", error);
+            }
+        };
+
+        loadExisting();
+    }, [company?.id, editId]);
 
 
     // Add this function to fetch contact persons
@@ -574,10 +643,16 @@ const handleSubmit = async (e: React.FormEvent) => {
         console.log('Submitting proforma invoice data:', proformaData);
 
         // Call the API
-        const response = await proformaInvoicesApi.create(company.id, proformaData);
+        const response = isEditMode
+            ? await proformaInvoicesApi.update(company.id, editId as string, proformaData)
+            : await proformaInvoicesApi.create(company.id, proformaData);
 
-        console.log('Proforma invoice created successfully:', response);
-        router.push(`/sales/proforma-invoices`);
+        console.log('Proforma invoice saved successfully:', response);
+        if (isEditMode) {
+            router.push(`/sales/proforma-invoices/${editId}`);
+        } else {
+            router.push(`/sales/proforma-invoices`);
+        }
 
     } catch (error: any) {
         console.error('Failed to create proforma invoice:', error);
@@ -746,7 +821,9 @@ const customerOptions = useMemo(() => {
                             <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
                             </svg>
-                            <span className="ml-1 font-medium text-dark dark:text-white md:ml-2">New Proforma Invoice</span>
+                            <span className="ml-1 font-medium text-dark dark:text-white md:ml-2">
+                                {isEditMode ? "Edit Proforma Invoice" : "New Proforma Invoice"}
+                            </span>
                         </div>
                     </li>
                     <li aria-current="page">
@@ -762,8 +839,12 @@ const customerOptions = useMemo(() => {
 
             {/* Page Header */}
             <div className="mb-6">
-                <h1 className="text-2xl font-bold text-dark dark:text-white">Proforma Invoice – Add / Update Proforma Invoice</h1>
-                <p className="text-dark-6">Create new proforma invoice with customer details and items</p>
+                <h1 className="text-2xl font-bold text-dark dark:text-white">
+                    {isEditMode ? "Proforma Invoice – Edit" : "Proforma Invoice – Add"}
+                </h1>
+                <p className="text-dark-6">
+                    {isEditMode ? "Update proforma invoice details and items" : "Create new proforma invoice with customer details and items"}
+                </p>
             </div>
 
             <form onSubmit={handleSubmit}>
@@ -1496,7 +1577,7 @@ const customerOptions = useMemo(() => {
                                     disabled={isSubmitting}
                                     className="min-w-[180px] rounded-lg bg-green-600 px-6 py-3 font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
                                 >
-                                    {isSubmitting ? "Saving..." : "Save Proforma Invoice"}
+                                    {isSubmitting ? "Saving..." : isEditMode ? "Update Proforma Invoice" : "Save Proforma Invoice"}
                                 </button>
 
                                 <button

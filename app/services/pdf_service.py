@@ -273,7 +273,7 @@ class PDFService:
                 row = [
                     str(idx),
                     item.description[:40],
-                    item.hsn_code or '-',
+                    getattr(item, "hsn_code", None) or '-',
                     f"{item.quantity:.2f}",
                     f"₹{item.unit_price:,.2f}",
                     f"₹{item.taxable_amount:,.2f}",
@@ -285,7 +285,7 @@ class PDFService:
                 row = [
                     str(idx),
                     item.description[:35],
-                    item.hsn_code or '-',
+                    getattr(item, "hsn_code", None) or '-',
                     f"{item.quantity:.2f}",
                     f"₹{item.unit_price:,.2f}",
                     f"₹{item.taxable_amount:,.2f}",
@@ -463,6 +463,270 @@ class PDFService:
         doc.build(elements)
         buffer.seek(0)
         
+        return buffer
+
+    def generate_proforma_pdf(
+        self,
+        proforma,
+        company: Company,
+        customer: Customer = None
+    ) -> BytesIO:
+        """Generate a basic proforma invoice PDF."""
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            rightMargin=15 * mm,
+            leftMargin=15 * mm,
+            topMargin=15 * mm,
+            bottomMargin=20 * mm
+        )
+
+        elements = []
+
+        elements.append(Paragraph("PROFORMA INVOICE", self.styles['InvoiceTitle']))
+        elements.append(Spacer(1, 5))
+
+        elements.append(Paragraph(company.name, self.styles['CompanyName']))
+        elements.append(Spacer(1, 6))
+
+        address_parts = []
+        if company.address_line1:
+            address_parts.append(company.address_line1)
+        if company.address_line2:
+            address_parts.append(company.address_line2)
+        if company.city:
+            city_state = company.city
+            if company.state:
+                city_state += f", {company.state}"
+            if company.pincode:
+                city_state += f" - {company.pincode}"
+            address_parts.append(city_state)
+        if address_parts:
+            elements.append(Paragraph(
+                '<br/>'.join(address_parts),
+                ParagraphStyle('Address', parent=self.styles['Normal'], fontSize=9, alignment=TA_CENTER)
+            ))
+
+        contact_parts = []
+        if company.phone:
+            contact_parts.append(f"Phone: {company.phone}")
+        if company.email:
+            contact_parts.append(f"Email: {company.email}")
+        if contact_parts:
+            elements.append(Paragraph(
+                ' | '.join(contact_parts),
+                ParagraphStyle('Contact', parent=self.styles['SmallText'], alignment=TA_CENTER)
+            ))
+
+        elements.append(Spacer(1, 10))
+        elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#e2e8f0')))
+        elements.append(Spacer(1, 10))
+
+        proforma_date = proforma.proforma_date.strftime('%d-%b-%Y') if proforma.proforma_date else ''
+        due_date = proforma.due_date.strftime('%d-%b-%Y') if proforma.due_date else 'On Receipt'
+        reference_date = proforma.reference_date.strftime('%d-%b-%Y') if proforma.reference_date else '-'
+
+        sales_person_name = "-"
+        if getattr(proforma, "sales_person", None):
+            sales_person = proforma.sales_person
+            sales_person_name = (
+                getattr(sales_person, "full_name", None)
+                or " ".join(filter(None, [getattr(sales_person, "first_name", None), getattr(sales_person, "last_name", None)]))
+                or getattr(sales_person, "name", None)
+                or "-"
+            )
+
+        contact_person_name = "-"
+        if getattr(proforma, "contact", None):
+            contact = proforma.contact
+            contact_person_name = (
+                getattr(contact, "name", None)
+                or getattr(contact, "email", None)
+                or getattr(contact, "phone", None)
+                or "-"
+            )
+
+        bank_account_label = "-"
+        if getattr(proforma, "bank_account", None):
+            bank = proforma.bank_account
+            bank_account_label = (
+                f"{getattr(bank, 'bank_name', '')} - {getattr(bank, 'account_number', '')}".strip(" -")
+                or getattr(bank, "account_name", None)
+                or "-"
+            )
+
+        invoice_details = [
+            ['Proforma No:', proforma.invoice_number],
+            ['Proforma Date:', proforma_date],
+            ['Due Date:', due_date],
+            ['Reference:', proforma.reference_no or '-'],
+            ['Reference Date:', reference_date],
+            ['Sales Person:', sales_person_name],
+            ['Contact Person:', contact_person_name],
+            ['Bank Account:', bank_account_label],
+        ]
+
+        customer_name = customer.name if customer else "Walk-in Customer"
+        customer_address = ""
+        customer_state = "-"
+        if customer:
+            addr_parts = []
+            if customer.billing_address_line1:
+                addr_parts.append(customer.billing_address_line1)
+            if customer.billing_city:
+                addr_parts.append(customer.billing_city)
+            if customer.billing_state:
+                addr_parts.append(customer.billing_state)
+                customer_state = customer.billing_state
+            customer_address = ", ".join(addr_parts)
+
+        customer_details = [
+            ['Bill To:', customer_name],
+            ['Address:', customer_address or '-'],
+            ['State:', customer_state],
+        ]
+
+        col_width = 85 * mm
+        left_table = Table(invoice_details, colWidths=[35 * mm, 50 * mm])
+        left_table.setStyle(TableStyle([
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+
+        right_table = Table(customer_details, colWidths=[25 * mm, 60 * mm])
+        right_table.setStyle(TableStyle([
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+
+        details_table = Table([[left_table, right_table]], colWidths=[col_width, col_width])
+        elements.append(details_table)
+        elements.append(Spacer(1, 10))
+
+        buyer_order_date = proforma.buyer_order_date.strftime('%d-%b-%Y') if proforma.buyer_order_date else '-'
+        delivery_note_date = proforma.delivery_note_date.strftime('%d-%b-%Y') if proforma.delivery_note_date else '-'
+        other_details = [
+            ['Delivery Note:', proforma.delivery_note or '-'],
+            ["Supplier Ref:", proforma.supplier_ref or '-'],
+            ["Other References:", proforma.other_references or '-'],
+            ["Buyer Order No:", proforma.buyer_order_no or '-'],
+            ["Buyer Order Date:", buyer_order_date],
+            ["Despatch Doc No:", proforma.despatch_doc_no or '-'],
+            ["Delivery Note Date:", delivery_note_date],
+            ["Despatched Through:", proforma.despatched_through or '-'],
+            ["Destination:", proforma.destination or '-'],
+            ["Terms of Delivery:", proforma.terms_of_delivery or '-'],
+        ]
+
+        other_table = Table(other_details, colWidths=[40 * mm, 130 * mm])
+        other_table.setStyle(TableStyle([
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ]))
+
+        elements.append(other_table)
+        elements.append(Spacer(1, 15))
+
+        headers = ['#', 'Item Code', 'Description', 'HSN', 'Qty', 'Unit', 'Rate', 'Disc%', 'Disc Amt', 'GST%', 'Taxable', 'Total']
+        col_widths = [6 * mm, 16 * mm, 40 * mm, 12 * mm, 10 * mm, 10 * mm, 14 * mm, 10 * mm, 14 * mm, 10 * mm, 18 * mm, 18 * mm]
+        data = [headers]
+
+        for idx, item in enumerate(proforma.items, 1):
+            row = [
+                str(idx),
+                getattr(item, "item_code", None) or '-',
+                (item.description or '')[:30],
+                getattr(item, "hsn_code", None) or '-',
+                f"{float(item.quantity):.2f}",
+                getattr(item, "unit", None) or '-',
+                f"₹{float(item.unit_price):,.2f}",
+                f"{float(getattr(item, 'discount_percent', 0) or 0):.2f}",
+                f"â‚¹{float(getattr(item, 'discount_amount', 0) or 0):,.2f}",
+                f"{float(item.gst_rate):.0f}%",
+                f"₹{float(item.taxable_amount):,.2f}",
+                f"₹{float(item.total_amount):,.2f}",
+            ]
+            row[8] = f"Rs {float(getattr(item, 'discount_amount', 0) or 0):,.2f}"
+            data.append(row)
+
+        items_table = Table(data, colWidths=col_widths, repeatRows=1)
+        items_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2d3748')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('ALIGN', (0, 1), (0, -1), 'CENTER'),
+            ('ALIGN', (1, 1), (2, -1), 'LEFT'),
+            ('ALIGN', (3, 1), (-1, -1), 'RIGHT'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f7fafc')]),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+        ]))
+
+        elements.append(items_table)
+        elements.append(Spacer(1, 15))
+
+        totals_data = [
+            ['Subtotal:', f"₹{float(proforma.subtotal):,.2f}"],
+            ['Total Tax:', f"₹{float(proforma.total_tax):,.2f}"],
+            ['Grand Total:', f"₹{float(proforma.total_amount):,.2f}"],
+        ]
+        totals_data.insert(2, ['Freight Charges:', f"â‚¹{float(proforma.freight_charges or 0):,.2f}"])
+        totals_data.insert(3, ['P & F Charges:', f"â‚¹{float(proforma.pf_charges or 0):,.2f}"])
+        totals_data.insert(4, ['Round Off:', f"â‚¹{float(proforma.round_off or 0):,.2f}"])
+        totals_data[2][1] = f"Rs {float(proforma.freight_charges or 0):,.2f}"
+        totals_data[3][1] = f"Rs {float(proforma.pf_charges or 0):,.2f}"
+        totals_data[4][1] = f"Rs {float(proforma.round_off or 0):,.2f}"
+        totals_table = Table(totals_data, colWidths=[130 * mm, 40 * mm])
+        totals_table.setStyle(TableStyle([
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('LINEABOVE', (0, -1), (-1, -1), 1, colors.HexColor('#2d3748')),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+
+        elements.append(totals_table)
+
+        if proforma.terms:
+            elements.append(Spacer(1, 10))
+            elements.append(Paragraph("<b>Terms & Conditions:</b>", self.styles['SectionHeader']))
+            elements.append(Paragraph(proforma.terms, self.styles['SmallText']))
+
+        if proforma.notes:
+            elements.append(Spacer(1, 10))
+            elements.append(Paragraph("<b>Notes:</b>", self.styles['SectionHeader']))
+            elements.append(Paragraph(proforma.notes, self.styles['SmallText']))
+
+        elements.append(Spacer(1, 20))
+        elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#e2e8f0')))
+        elements.append(Paragraph(
+            "This is a computer-generated proforma invoice.",
+            ParagraphStyle('Footer', parent=self.styles['SmallText'], alignment=TA_CENTER)
+        ))
+
+        doc.build(elements)
+        buffer.seek(0)
         return buffer
     
     def generate_invoice_pdf_base64(

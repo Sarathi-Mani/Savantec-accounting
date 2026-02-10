@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
-import { customersApi, productsApi, invoicesApi, ordersApi } from "@/services/api";
+import { customersApi, productsApi, invoicesApi, ordersApi, proformaInvoicesApi } from "@/services/api";
 import { salesmenApi } from "@/services/api"; // Add this import
 import { employeesApi } from "@/services/api"; // Add this import
 import Select from 'react-select';
@@ -179,6 +179,7 @@ export default function AddSalesPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const fromSalesOrderId = searchParams.get("fromSalesOrder");
+    const fromProformaId = searchParams.get("fromProforma");
     const { company, user } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showTerms, setShowTerms] = useState(false);
@@ -372,9 +373,15 @@ export default function AddSalesPage() {
     }, [company?.id]);
 
     useEffect(() => {
-        if (!company?.id || !fromSalesOrderId) return;
-        prefillFromSalesOrder(fromSalesOrderId);
-    }, [company?.id, fromSalesOrderId]);
+        if (!company?.id) return;
+        if (fromProformaId) {
+            prefillFromProforma(fromProformaId);
+            return;
+        }
+        if (fromSalesOrderId) {
+            prefillFromSalesOrder(fromSalesOrderId);
+        }
+    }, [company?.id, fromSalesOrderId, fromProformaId]);
 
     useEffect(() => {
         if (!products.length || !items.length) return;
@@ -458,6 +465,83 @@ export default function AddSalesPage() {
         } catch (error) {
             console.error("Failed to load sales order for invoice prefill:", error);
             setPrefillError("Failed to load sales order data");
+        } finally {
+            setPrefillLoading(false);
+        }
+    };
+
+    const prefillFromProforma = async (proformaId: string) => {
+        if (!company?.id) return;
+        setPrefillLoading(true);
+        setPrefillError("");
+        try {
+            const proforma = await proformaInvoicesApi.get(company.id, proformaId) as any;
+            if (!proforma) {
+                setPrefillError("Proforma invoice not found");
+                return;
+            }
+
+            const proformaDate = proforma.proforma_date ? new Date(proforma.proforma_date) : new Date();
+            const dueDate = proforma.due_date ? new Date(proforma.due_date) : null;
+
+            const customer = customers.find(c => c.id === proforma.customer_id);
+            const customerGstin = customer?.tax_number || customer?.gstin;
+            const placeOfSupply = customer?.billing_state_code || customer?.state_code || "";
+
+            setFormData(prev => ({
+                ...prev,
+                customer_id: proforma.customer_id || prev.customer_id,
+                invoice_date: proformaDate.toISOString().split("T")[0],
+                due_date: dueDate ? dueDate.toISOString().split("T")[0] : "",
+                invoice_type: customerGstin ? "b2b" : "b2c",
+                voucher_type: "sales",
+                place_of_supply: placeOfSupply || prev.place_of_supply,
+                sales_person_id: proforma.sales_person_id || prev.sales_person_id,
+                contact_id: proforma.contact_id || prev.contact_id,
+                referenceNo: proforma.reference_no || prev.referenceNo,
+                notes: proforma.notes || prev.notes,
+                terms: proforma.terms || prev.terms,
+                freightCharges: Number(proforma.freight_charges ?? prev.freightCharges) || 0,
+                pfCharges: Number(proforma.pf_charges ?? prev.pfCharges) || 0,
+                roundOff: Number(proforma.round_off ?? prev.roundOff) || 0,
+                deliveryNote: proforma.delivery_note || prev.deliveryNote,
+                supplierRef: proforma.supplier_ref || prev.supplierRef,
+                otherReferences: proforma.other_references || prev.otherReferences,
+                buyerOrderNo: proforma.buyer_order_no || prev.buyerOrderNo,
+                buyerOrderDate: proforma.buyer_order_date ? new Date(proforma.buyer_order_date).toISOString().split("T")[0] : prev.buyerOrderDate,
+                despatchDocNo: proforma.despatch_doc_no || prev.despatchDocNo,
+                deliveryNoteDate: proforma.delivery_note_date ? new Date(proforma.delivery_note_date).toISOString().split("T")[0] : prev.deliveryNoteDate,
+                despatchedThrough: proforma.despatched_through || prev.despatchedThrough,
+                destination: proforma.destination || prev.destination,
+                termsOfDelivery: proforma.terms_of_delivery || prev.termsOfDelivery,
+            }));
+
+            if (proforma.items && Array.isArray(proforma.items) && proforma.items.length > 0) {
+                setItems(proforma.items.map((item: any) => ({
+                    id: Date.now() + Math.random(),
+                    product_id: item.product_id || "",
+                    description: item.description || "",
+                    item_code: item.item_code || "",
+                    hsn_code: item.hsn_code || item.hsn || "",
+                    quantity: Number(item.quantity || 1),
+                    unit: item.unit || "unit",
+                    unit_price: Number(item.unit_price ?? 0),
+                    discount_percent: Number(item.discount_percent || 0),
+                    discount_amount: Number(item.discount_amount || 0),
+                    gst_rate: Number(item.gst_rate || 0),
+                    cgst_rate: Number(item.cgst_rate || 0),
+                    sgst_rate: Number(item.sgst_rate || 0),
+                    igst_rate: Number(item.igst_rate || 0),
+                    taxable_amount: Number(item.taxable_amount || 0),
+                    total_amount: Number(item.total_amount || 0),
+                })));
+            }
+
+            // Ensure optional sections are visible when prefilling
+            setShowOtherFields(true);
+        } catch (error) {
+            console.error("Failed to load proforma for invoice prefill:", error);
+            setPrefillError("Failed to load proforma invoice data");
         } finally {
             setPrefillLoading(false);
         }
@@ -1101,7 +1185,11 @@ export default function AddSalesPage() {
 
             {(prefillLoading || prefillError) && (
                 <div className="mb-6 rounded-lg border border-stroke bg-white p-4 text-sm dark:border-dark-3 dark:bg-gray-dark">
-                    {prefillLoading && <p className="text-dark-6">Loading sales order data...</p>}
+                    {prefillLoading && (
+                        <p className="text-dark-6">
+                            {fromProformaId ? "Loading proforma invoice data..." : "Loading sales order data..."}
+                        </p>
+                    )}
                     {prefillError && <p className="text-red-600">{prefillError}</p>}
                 </div>
             )}

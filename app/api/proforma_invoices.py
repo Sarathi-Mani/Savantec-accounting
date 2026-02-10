@@ -1,5 +1,6 @@
 """Proforma Invoices API."""
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime, date
@@ -9,6 +10,9 @@ from pydantic import BaseModel, Field
 from app.database.connection import get_db
 from app.database.models import User, Company
 from app.services.proforma_service import ProformaInvoiceService
+from app.services.invoice_service import InvoiceService
+from app.services.pdf_service import PDFService
+from app.schemas.invoice import InvoiceCreate, InvoiceItemCreate, InvoiceType, VoucherType
 from app.auth.dependencies import get_current_active_user
 
 router = APIRouter(prefix="/companies/{company_id}/proforma-invoices", tags=["Proforma Invoices"])
@@ -116,6 +120,7 @@ class ProformaInvoiceResponse(BaseModel):
     proforma_date: datetime
     due_date: Optional[datetime]
     customer_id: str
+    customer_name: Optional[str] = None
     reference_no: Optional[str]
     reference_date: Optional[datetime]
     sales_person_id: Optional[str]
@@ -148,6 +153,45 @@ class ProformaInvoiceResponse(BaseModel):
         json_encoders = {
             Decimal: str
         }
+
+
+class ProformaInvoiceUpdate(BaseModel):
+    proforma_date: Optional[datetime] = None
+    due_date: Optional[datetime] = None
+    reference_no: Optional[str] = None
+    reference_date: Optional[datetime] = None
+    sales_person_id: Optional[str] = None
+    contact_id: Optional[str] = None
+    bank_account_id: Optional[str] = None
+    notes: Optional[str] = None
+    terms: Optional[str] = None
+    freight_charges: Optional[Decimal] = None
+    pf_charges: Optional[Decimal] = None
+    round_off: Optional[Decimal] = None
+    subtotal: Optional[Decimal] = None
+    total_tax: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
+    delivery_note: Optional[str] = None
+    supplier_ref: Optional[str] = None
+    other_references: Optional[str] = None
+    buyer_order_no: Optional[str] = None
+    buyer_order_date: Optional[datetime] = None
+    despatch_doc_no: Optional[str] = None
+    delivery_note_date: Optional[datetime] = None
+    despatched_through: Optional[str] = None
+    destination: Optional[str] = None
+    terms_of_delivery: Optional[str] = None
+    items: Optional[List[ProformaInvoiceItemInput]] = None
+
+    class Config:
+        json_encoders = {
+            Decimal: str
+        }
+
+
+class ConvertToInvoiceRequest(BaseModel):
+    invoice_date: Optional[datetime] = None
+    due_date: Optional[datetime] = None
 
 
 # ============== Proforma Invoice Endpoints ==============
@@ -334,10 +378,11 @@ async def list_proforma_invoices(
             proforma_date=invoice.proforma_date,
             due_date=invoice.due_date,
             customer_id=invoice.customer_id,
+            customer_name=invoice.customer.name if invoice.customer else None,
             reference_no=invoice.reference_no,
             reference_date=invoice.reference_date,
             sales_person_id=invoice.sales_person_id,
-            contact_person=invoice.contact_person,
+            contact_id=invoice.contact_id,
             bank_account_id=invoice.bank_account_id,
             notes=invoice.notes,
             terms=invoice.terms,
@@ -407,10 +452,11 @@ async def get_proforma_invoice(
         proforma_date=invoice.proforma_date,
         due_date=invoice.due_date,
         customer_id=invoice.customer_id,
+        customer_name=invoice.customer.name if invoice.customer else None,
         reference_no=invoice.reference_no,
         reference_date=invoice.reference_date,
         sales_person_id=invoice.sales_person_id,
-        contact_person=invoice.contact_person,
+        contact_id=invoice.contact_id,
         bank_account_id=invoice.bank_account_id,
         notes=invoice.notes,
         terms=invoice.terms,
@@ -432,4 +478,204 @@ async def get_proforma_invoice(
         terms_of_delivery=invoice.terms_of_delivery,
         created_at=invoice.created_at,
         items=items_response,
+    )
+
+
+@router.put("/{invoice_id}", response_model=ProformaInvoiceResponse)
+async def update_proforma_invoice(
+    company_id: str,
+    invoice_id: str,
+    data: ProformaInvoiceUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update a proforma invoice."""
+    company = get_company_or_404(company_id, current_user, db)
+    service = ProformaInvoiceService(db)
+
+    invoice = service.get_proforma_invoice(invoice_id, company)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Proforma invoice not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+    items_data = update_data.pop("items", None)
+    items_payload = None
+    if items_data is not None:
+        items_payload = [item.model_dump() for item in items_data]
+
+    invoice = service.update_proforma_invoice(invoice, update_data, items_payload)
+
+    items_response = [
+        ProformaInvoiceItemResponse(
+            id=item.id,
+            product_id=item.product_id,
+            item_code=item.item_code,
+            description=item.description,
+            quantity=item.quantity,
+            unit=item.unit,
+            unit_price=item.unit_price,
+            discount_percent=item.discount_percent,
+            discount_amount=item.discount_amount,
+            gst_rate=item.gst_rate,
+            cgst_rate=item.cgst_rate,
+            sgst_rate=item.sgst_rate,
+            igst_rate=item.igst_rate,
+            taxable_amount=item.taxable_amount,
+            total_amount=item.total_amount,
+        )
+        for item in invoice.items
+    ]
+
+    return ProformaInvoiceResponse(
+        id=invoice.id,
+        invoice_number=invoice.invoice_number,
+        proforma_date=invoice.proforma_date,
+        due_date=invoice.due_date,
+        customer_id=invoice.customer_id,
+        customer_name=invoice.customer.name if invoice.customer else None,
+        reference_no=invoice.reference_no,
+        reference_date=invoice.reference_date,
+        sales_person_id=invoice.sales_person_id,
+        contact_id=invoice.contact_id,
+        bank_account_id=invoice.bank_account_id,
+        notes=invoice.notes,
+        terms=invoice.terms,
+        freight_charges=invoice.freight_charges or Decimal("0"),
+        pf_charges=invoice.pf_charges or Decimal("0"),
+        round_off=invoice.round_off or Decimal("0"),
+        subtotal=invoice.subtotal or Decimal("0"),
+        total_tax=invoice.total_tax or Decimal("0"),
+        total_amount=invoice.total_amount or Decimal("0"),
+        delivery_note=invoice.delivery_note,
+        supplier_ref=invoice.supplier_ref,
+        other_references=invoice.other_references,
+        buyer_order_no=invoice.buyer_order_no,
+        buyer_order_date=invoice.buyer_order_date,
+        despatch_doc_no=invoice.despatch_doc_no,
+        delivery_note_date=invoice.delivery_note_date,
+        despatched_through=invoice.despatched_through,
+        destination=invoice.destination,
+        terms_of_delivery=invoice.terms_of_delivery,
+        created_at=invoice.created_at,
+        items=items_response,
+    )
+
+
+@router.delete("/{invoice_id}")
+async def delete_proforma_invoice(
+    company_id: str,
+    invoice_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a proforma invoice."""
+    company = get_company_or_404(company_id, current_user, db)
+    service = ProformaInvoiceService(db)
+
+    invoice = service.get_proforma_invoice(invoice_id, company)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Proforma invoice not found")
+
+    service.delete_proforma_invoice(invoice)
+    return {"message": "Proforma invoice deleted successfully"}
+
+
+@router.post("/{invoice_id}/convert-to-invoice")
+async def convert_to_invoice(
+    company_id: str,
+    invoice_id: str,
+    data: Optional[ConvertToInvoiceRequest] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Convert proforma invoice to invoice."""
+    company = get_company_or_404(company_id, current_user, db)
+    service = ProformaInvoiceService(db)
+    invoice_service = InvoiceService(db)
+
+    proforma = service.get_proforma_invoice(invoice_id, company)
+    if not proforma:
+        raise HTTPException(status_code=404, detail="Proforma invoice not found")
+
+    items = []
+    for item in proforma.items:
+        items.append(InvoiceItemCreate(
+            product_id=item.product_id,
+            description=item.description,
+            hsn_code=getattr(item, "hsn_code", None),
+            quantity=item.quantity,
+            unit=item.unit,
+            unit_price=item.unit_price,
+            discount_percent=item.discount_percent,
+            gst_rate=item.gst_rate,
+        ))
+
+    invoice_date = data.invoice_date if data else None
+    due_date = data.due_date if data else None
+
+    invoice_data = InvoiceCreate(
+        voucher_type=VoucherType.SALES,
+        customer_id=proforma.customer_id,
+        invoice_date=invoice_date.date() if invoice_date else proforma.proforma_date.date(),
+        due_date=due_date.date() if due_date else (proforma.due_date.date() if proforma.due_date else None),
+        invoice_type=InvoiceType.B2C,
+        items=items,
+        notes=proforma.notes,
+        terms=proforma.terms,
+        reference_no=proforma.reference_no,
+        delivery_note=proforma.delivery_note,
+        supplier_ref=proforma.supplier_ref,
+        other_references=proforma.other_references,
+        buyer_order_no=proforma.buyer_order_no,
+        buyer_order_date=proforma.buyer_order_date.date() if proforma.buyer_order_date else None,
+        despatch_doc_no=proforma.despatch_doc_no,
+        delivery_note_date=proforma.delivery_note_date.date() if proforma.delivery_note_date else None,
+        despatched_through=proforma.despatched_through,
+        destination=proforma.destination,
+        terms_of_delivery=proforma.terms_of_delivery,
+        freight_charges=proforma.freight_charges,
+        packing_forwarding_charges=proforma.pf_charges,
+        round_off=proforma.round_off,
+        sales_person_id=proforma.sales_person_id,
+        contact_id=proforma.contact_id,
+        subtotal=proforma.subtotal,
+        total_tax=proforma.total_tax,
+        total_amount=proforma.total_amount,
+    )
+
+    customer = proforma.customer
+    created_invoice = invoice_service.create_invoice(company, invoice_data, customer)
+
+    return {
+        "message": "Proforma invoice converted to invoice successfully",
+        "invoice_id": created_invoice.id,
+        "invoice_number": created_invoice.invoice_number,
+    }
+
+
+@router.get("/{invoice_id}/download")
+async def download_proforma_pdf(
+    company_id: str,
+    invoice_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Download proforma invoice PDF."""
+    company = get_company_or_404(company_id, current_user, db)
+    service = ProformaInvoiceService(db)
+
+    invoice = service.get_proforma_invoice(invoice_id, company)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Proforma invoice not found")
+
+    pdf_service = PDFService()
+    pdf_buffer = pdf_service.generate_proforma_pdf(invoice, company, invoice.customer)
+    filename = f"Proforma_{invoice.invoice_number}.pdf"
+
+    return Response(
+        content=pdf_buffer.getvalue(),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        },
     )
