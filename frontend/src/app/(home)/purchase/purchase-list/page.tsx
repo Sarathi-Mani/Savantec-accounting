@@ -7,6 +7,8 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { saveAs } from "file-saver";
 import { addPdfPageNumbers, getProfessionalTableTheme } from "@/utils/pdfTheme";
+import { useAuth } from "@/context/AuthContext";
+import { purchasesApi, PurchaseInvoice } from "@/services/api";
 import {
   Search,
   Filter,
@@ -31,101 +33,26 @@ import {
 } from "lucide-react";
 
 export default function PurchaseListPage() {
-  // Sample data for purchase list
-  const [purchases, setPurchases] = useState([
-    {
-      id: "1",
-      purchaseDate: "2024-01-15",
-      dueDate: "2024-02-15",
-      purchaseCode: "PUR-001",
-      purchaseStatus: "Received",
-      referenceNo: "REF-001",
-      supplierName: "ABC Suppliers",
-      total: 15000,
-      currencyCode: "USD",
-      paidAmount: 15000,
-      paymentStatus: "Paid",
-    },
-    {
-      id: "2",
-      purchaseDate: "2024-01-20",
-      dueDate: "2024-02-20",
-      purchaseCode: "PUR-002",
-      purchaseStatus: "Pending",
-      referenceNo: "REF-002",
-      supplierName: "XYZ Corporation",
-      total: 25000,
-      currencyCode: "USD",
-      paidAmount: 15000,
-      paymentStatus: "Partial",
-    },
-    {
-      id: "3",
-      purchaseDate: "2024-01-25",
-      dueDate: "2024-02-25",
-      purchaseCode: "PUR-003",
-      purchaseStatus: "Received",
-      referenceNo: "REF-003",
-      supplierName: "Global Traders",
-      total: 18000,
-      currencyCode: "USD",
-      paidAmount: 0,
-      paymentStatus: "Unpaid",
-      isOverdue: true,
-    },
-    {
-      id: "4",
-      purchaseDate: "2024-02-01",
-      dueDate: "2024-03-01",
-      purchaseCode: "PUR-004",
-      purchaseStatus: "Received",
-      referenceNo: "REF-004",
-      supplierName: "Tech Solutions Ltd",
-      total: 32000,
-      currencyCode: "USD",
-      paidAmount: 32000,
-      paymentStatus: "Paid",
-    },
-    {
-      id: "5",
-      purchaseDate: "2024-02-05",
-      dueDate: "2024-03-05",
-      purchaseCode: "PUR-005",
-      purchaseStatus: "Pending",
-      referenceNo: "REF-005",
-      supplierName: "ABC Suppliers",
-      total: 12500,
-      currencyCode: "USD",
-      paidAmount: 12500,
-      paymentStatus: "Paid",
-    },
-    {
-      id: "6",
-      purchaseDate: "2024-02-10",
-      dueDate: "2024-03-10",
-      purchaseCode: "PUR-006",
-      purchaseStatus: "Received",
-      referenceNo: "REF-006",
-      supplierName: "Global Traders",
-      total: 22000,
-      currencyCode: "USD",
-      paidAmount: 10000,
-      paymentStatus: "Partial",
-    },
-    {
-      id: "7",
-      purchaseDate: "2024-02-15",
-      dueDate: "2024-03-15",
-      purchaseCode: "PUR-007",
-      purchaseStatus: "Received",
-      referenceNo: "REF-007",
-      supplierName: "XYZ Corporation",
-      total: 18500,
-      currencyCode: "USD",
-      paidAmount: 18500,
-      paymentStatus: "Paid",
-    },
-  ]);
+  const { company } = useAuth();
+
+  type PurchaseRow = {
+    id: string;
+    purchaseDate: string;
+    dueDate: string;
+    purchaseCode: string;
+    purchaseStatus: "Received" | "Pending";
+    referenceNo: string;
+    supplierName: string;
+    total: number;
+    currencyCode: string;
+    paidAmount: number;
+    paymentStatus: "Paid" | "Partial" | "Unpaid";
+    rawStatus: string;
+  };
+
+  const [purchases, setPurchases] = useState<PurchaseRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const [searchTerm, setSearchTerm] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");
@@ -159,6 +86,77 @@ export default function PurchaseListPage() {
   });
 
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
+
+  const mapPurchaseToRow = (purchase: PurchaseInvoice): PurchaseRow => {
+    const total = Number(purchase.total_amount || 0);
+    const paid = Number(purchase.amount_paid || 0);
+    const balance = Number(purchase.balance_due || 0);
+    const rawStatus = String(purchase.status || "").toLowerCase();
+    const purchaseStatus: "Received" | "Pending" =
+      rawStatus === "approved" || rawStatus === "paid" || rawStatus === "partially_paid"
+        ? "Received"
+        : "Pending";
+    const paymentStatus: "Paid" | "Partial" | "Unpaid" =
+      balance <= 0 ? "Paid" : paid > 0 ? "Partial" : "Unpaid";
+
+    return {
+      id: purchase.id,
+      purchaseDate: purchase.invoice_date,
+      dueDate: purchase.due_date || purchase.invoice_date,
+      purchaseCode: purchase.invoice_number || `PUR-${purchase.id.slice(0, 8).toUpperCase()}`,
+      purchaseStatus,
+      referenceNo: purchase.vendor_invoice_number || "-",
+      supplierName: purchase.vendor_name || "Unknown Vendor",
+      total,
+      currencyCode: "INR",
+      paidAmount: paid,
+      paymentStatus,
+      rawStatus,
+    };
+  };
+
+  const fetchPurchases = async () => {
+    if (!company?.id) {
+      setPurchases([]);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const pageSize = 100;
+      let pageNum = 1;
+      let allItems: PurchaseInvoice[] = [];
+
+      while (true) {
+        const response = await purchasesApi.list(company.id, {
+          page: pageNum,
+          page_size: pageSize,
+          from_date: fromDate || undefined,
+          to_date: toDate || undefined,
+        });
+
+        const batch = response.items || [];
+        allItems = allItems.concat(batch);
+
+        if (pageNum >= (response.total_pages || 1) || batch.length < pageSize) break;
+        pageNum += 1;
+      }
+
+      setPurchases(allItems.map(mapPurchaseToRow));
+    } catch (err) {
+      console.error("Failed to load purchases:", err);
+      setError("Failed to load purchase invoices from backend");
+      setPurchases([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPurchases();
+  }, [company?.id, fromDate, toDate]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -396,10 +394,11 @@ export default function PurchaseListPage() {
   };
 
   const filteredPurchases = purchases.filter((purchase) => {
+    const search = searchTerm.trim().toLowerCase();
     const matchesSearch =
-      purchase.purchaseCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      purchase.supplierName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      purchase.referenceNo.toLowerCase().includes(searchTerm.toLowerCase());
+      purchase.purchaseCode.toLowerCase().includes(search) ||
+      purchase.supplierName.toLowerCase().includes(search) ||
+      purchase.referenceNo.toLowerCase().includes(search);
 
     const matchesSupplier = !supplierFilter || purchase.supplierName === supplierFilter;
 
@@ -465,7 +464,7 @@ export default function PurchaseListPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  ${summaryData.totalInvoiceAmount.toLocaleString()}
+                  Rs. {summaryData.totalInvoiceAmount.toLocaleString("en-IN")}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Total Invoice Amount
@@ -482,7 +481,7 @@ export default function PurchaseListPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  ${summaryData.totalPaidAmount.toLocaleString()}
+                  Rs. {summaryData.totalPaidAmount.toLocaleString("en-IN")}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Total Paid Amount
@@ -499,7 +498,7 @@ export default function PurchaseListPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  ${summaryData.totalPurchaseDue.toLocaleString()}
+                  Rs. {summaryData.totalPurchaseDue.toLocaleString("en-IN")}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Total Purchase Due
@@ -688,6 +687,11 @@ export default function PurchaseListPage() {
 
       {/* Table */}
       <div className="p-6">
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+            {error}
+          </div>
+        )}
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
           <div className="w-full">
             {/* TABLE */}
@@ -754,7 +758,15 @@ export default function PurchaseListPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-xs text-gray-700 dark:text-gray-300">
-                  {paginatedPurchases.length === 0 ? (
+                  {loading ? (
+                    <tr>
+                      <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                        <div className="flex items-center justify-center">
+                          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : paginatedPurchases.length === 0 ? (
                     <tr>
                       <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                         <div className="flex flex-col items-center justify-center">
@@ -822,7 +834,7 @@ export default function PurchaseListPage() {
                         )}
                         {visibleColumns.total && (
                           <td className="px-2.5 py-4 font-medium text-gray-900 dark:text-white">
-                            ${purchase.total.toLocaleString()}
+                            Rs. {purchase.total.toLocaleString("en-IN")}
                           </td>
                         )}
                         {visibleColumns.currencyCode && (
@@ -832,7 +844,7 @@ export default function PurchaseListPage() {
                         )}
                         {visibleColumns.paidAmount && (
                           <td className="px-2.5 py-4 font-medium text-gray-900 dark:text-white">
-                            ${purchase.paidAmount.toLocaleString()}
+                            Rs. {purchase.paidAmount.toLocaleString("en-IN")}
                           </td>
                         )}
                         {visibleColumns.paymentStatus && (
@@ -920,7 +932,7 @@ export default function PurchaseListPage() {
                         Total Amount:
                       </td>
                       <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
-                        ${totalAmount.toLocaleString()}
+                        Rs. {totalAmount.toLocaleString("en-IN")}
                       </td>
                       {visibleColumns.actions && (
                         <td></td>
