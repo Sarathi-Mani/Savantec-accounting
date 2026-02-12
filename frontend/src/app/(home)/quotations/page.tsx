@@ -10,6 +10,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { saveAs } from "file-saver";
+import { addPdfPageNumbers, getProfessionalTableTheme } from "@/utils/pdfTheme";
 
 interface Quotation {
   id: string;
@@ -208,6 +209,7 @@ export default function QuotationsPage() {
       const doc = new jsPDF("landscape");
 
       autoTable(doc, {
+        ...getProfessionalTableTheme(doc, "Quotations List", company?.name || "", "l"),
         head: [["Date", "Status", "Expire", "Code", "Reference", "Customer", "Total", "Salesman"]],
         body: quotations.map((q) => [
           dayjs(q.quotation_date).format("DD MMM YYYY"),
@@ -221,6 +223,7 @@ export default function QuotationsPage() {
         ]),
       });
 
+      addPdfPageNumbers(doc, "l");
       doc.save("quotations.pdf");
     } catch (error) {
       console.error("PDF export failed:", error);

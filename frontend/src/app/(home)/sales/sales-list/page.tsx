@@ -9,7 +9,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { saveAs } from "file-saver";
-import { addPdfPageNumbers, getProfessionalTableTheme } from "@/utils/pdfTheme";
+import { addPdfPageNumbers } from "@/utils/pdfTheme";
 import {
   Search,
   Filter,
@@ -907,84 +907,197 @@ export default function SalesListPage() {
     setPdfLoading(true);
     try {
       const allInvoices = await fetchAllInvoicesForExport();
-      
-      const doc = new jsPDF("landscape");
-      
-      const headers: string[] = ["S.No"];
-      const body = allInvoices.map((invoice, index) => {
-        const row: string[] = [(index + 1).toString()];
+      if (!allInvoices.length) {
+        alert("No invoices found to export.");
+        return;
+      }
 
-        if (visibleColumns.invoiceDate) {
-          if (!headers.includes("Sales Date")) headers.push("Sales Date");
-          row.push(formatDate(invoice.invoice_date));
+      const detailedInvoices = await Promise.all(
+        allInvoices.map(async (invoice) => {
+          try {
+            return (await invoicesApi.get(company!.id, invoice.id)) as Invoice;
+          } catch (error) {
+            console.error(`Failed to load invoice details for ${invoice.invoice_number}:`, error);
+            return invoice;
+          }
+        })
+      );
+
+      const doc = new jsPDF("p", "mm", "a4");
+      const money = (v: number | undefined | null) =>
+        new Intl.NumberFormat("en-IN", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(Number(v || 0));
+      const val = (v: any) => (v === undefined || v === null || v === "" ? "-" : String(v));
+
+      detailedInvoices.forEach((invoice, index) => {
+        if (index > 0) doc.addPage();
+
+        const pageWidth = doc.internal.pageSize.getWidth();
+        doc.setFillColor(22, 78, 99);
+        doc.rect(0, 0, pageWidth, 24, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(12);
+        doc.text(company?.name || "Company", 14, 10);
+        doc.setFontSize(11);
+        doc.text("SALES INVOICE", 14, 18);
+        doc.setFontSize(9);
+        doc.text(`No: ${val(invoice.invoice_number)}`, pageWidth - 14, 10, { align: "right" });
+        doc.text(`Date: ${formatDate(invoice.invoice_date)}`, pageWidth - 14, 18, { align: "right" });
+        doc.setTextColor(0, 0, 0);
+
+        let y = 32;
+        const addSection = (title: string) => {
+          doc.setFillColor(241, 245, 249);
+          doc.rect(14, y - 3, 182, 7, "F");
+          doc.setFontSize(10);
+          doc.setFont(undefined, "bold");
+          doc.text(title, 16, y + 1);
+          doc.setFont(undefined, "normal");
+          y += 9;
+        };
+        const addLine = (label: string, value: any) => {
+          doc.setFontSize(9);
+          doc.setFont(undefined, "bold");
+          doc.text(`${label}:`, 14, y);
+          doc.setFont(undefined, "normal");
+          const lines = doc.splitTextToSize(val(value), 145);
+          doc.text(lines, 50, y);
+          y += Math.max(1, lines.length) * 4.6;
+        };
+
+        addSection("Customer & Invoice Details");
+        addLine("Customer", getCustomerDisplayName(invoice));
+        addLine("Customer GSTIN", getCustomerGSTIN(invoice));
+        addLine("Customer Phone", getCustomerPhone(invoice));
+        addLine("Status", getStatusText(invoice.status));
+        addLine("Due Date", invoice.due_date ? formatDate(invoice.due_date) : "-");
+        addLine("Voucher Type", invoice.voucher_type === "sales_return" ? "Sales Return" : "Sales");
+        addLine("Sales Person", invoice.sales_person_id);
+
+        addSection("Reference / Dispatch");
+        addLine("Reference No", invoice.reference_no);
+        addLine("Buyer Order No", invoice.buyer_order_no);
+        addLine("Buyer Order Date", invoice.buyer_order_date ? formatDate(invoice.buyer_order_date) : "-");
+        addLine("Delivery Note", invoice.delivery_note);
+        addLine("Delivery Note Date", invoice.delivery_note_date ? formatDate(invoice.delivery_note_date) : "-");
+        addLine("Despatch Doc No", invoice.despatch_doc_no);
+        addLine("Despatched Through", invoice.despatched_through);
+        addLine("Destination", invoice.destination);
+        addLine("Terms Of Delivery", invoice.terms_of_delivery);
+        addLine("Payment Terms", invoice.payment_terms);
+        addLine("Supplier Ref", invoice.supplier_ref);
+        addLine("Other References", invoice.other_references);
+
+        const shippingAddress = [
+          invoice.shipping_address,
+          invoice.shipping_city,
+          invoice.shipping_state,
+          invoice.shipping_country,
+          invoice.shipping_zip,
+        ]
+          .filter(Boolean)
+          .join(", ");
+        addLine("Shipping Address", shippingAddress);
+
+        if (invoice.notes) addLine("Notes", invoice.notes);
+        if (invoice.terms) addLine("Terms", invoice.terms);
+
+        const itemStartY = y + 2;
+        const items = Array.isArray(invoice.items) ? invoice.items : [];
+        const rows = items.map((item, rowIndex) => {
+          const taxAmount =
+            Number(item.cgst_amount || 0) +
+            Number(item.sgst_amount || 0) +
+            Number(item.igst_amount || 0) +
+            Number(item.cess_amount || 0);
+
+          return [
+            String(rowIndex + 1),
+            val(item.product_id),
+            val(item.description),
+            Number(item.quantity || 0).toFixed(2),
+            val(item.unit),
+            Number(item.unit_price || 0).toFixed(2),
+            Number(item.discount_percent || 0).toFixed(2),
+            Number(item.discount_amount || 0).toFixed(2),
+            Number(item.taxable_amount || 0).toFixed(2),
+            Number(item.gst_rate || 0).toFixed(2),
+            taxAmount.toFixed(2),
+            Number(item.total_amount || 0).toFixed(2),
+          ];
+        });
+
+        autoTable(doc, {
+          startY: itemStartY,
+          head: [[
+            "#",
+            "Product ID",
+            "Description",
+            "Qty",
+            "Unit",
+            "Unit Price",
+            "Disc %",
+            "Disc Amt",
+            "Taxable",
+            "GST %",
+            "Tax",
+            "Amount",
+          ]],
+          body: rows.length ? rows : [["-", "-", "No items", "-", "-", "-", "-", "-", "-", "-", "-", "-"]],
+          theme: "grid",
+          styles: { fontSize: 7.3, cellPadding: 1.5, lineColor: [220, 220, 220], lineWidth: 0.1 },
+          headStyles: { fillColor: [22, 78, 99], textColor: [255, 255, 255], fontSize: 7.5 },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+          columnStyles: {
+            3: { halign: "right" },
+            5: { halign: "right" },
+            6: { halign: "right" },
+            7: { halign: "right" },
+            8: { halign: "right" },
+            9: { halign: "right" },
+            10: { halign: "right" },
+            11: { halign: "right" },
+          },
+        });
+
+        const finalY = (doc as any).lastAutoTable?.finalY ?? itemStartY;
+        let totalsY = finalY + 7;
+        if (totalsY + 46 > 286) {
+          doc.addPage();
+          totalsY = 20;
         }
 
-        if (visibleColumns.dueDate) {
-          if (!headers.includes("Due Date")) headers.push("Due Date");
-          row.push(formatDate(invoice.due_date) || "-");
-        }
+        doc.setDrawColor(200, 200, 200);
+        doc.roundedRect(118, totalsY, 78, 44, 2, 2, "S");
+        doc.setFontSize(8.5);
+        doc.text("Subtotal", 121, totalsY + 5);
+        doc.text(money(invoice.subtotal), 193, totalsY + 5, { align: "right" });
+        doc.text("CGST", 121, totalsY + 10);
+        doc.text(money(invoice.cgst_amount), 193, totalsY + 10, { align: "right" });
+        doc.text("SGST", 121, totalsY + 15);
+        doc.text(money(invoice.sgst_amount), 193, totalsY + 15, { align: "right" });
+        doc.text("IGST", 121, totalsY + 20);
+        doc.text(money(invoice.igst_amount), 193, totalsY + 20, { align: "right" });
+        doc.text("Freight", 121, totalsY + 25);
+        doc.text(money(invoice.freight_charges), 193, totalsY + 25, { align: "right" });
+        doc.text("Packing/Forwarding", 121, totalsY + 30);
+        doc.text(money(invoice.packing_forwarding_charges), 193, totalsY + 30, { align: "right" });
+        doc.text("Round Off", 121, totalsY + 35);
+        doc.text(money(invoice.round_off), 193, totalsY + 35, { align: "right" });
+        doc.setFont(undefined, "bold");
+        doc.text("Grand Total", 121, totalsY + 41);
+        doc.text(money(invoice.total_amount), 193, totalsY + 41, { align: "right" });
+        doc.setFont(undefined, "normal");
 
-        if (visibleColumns.invoiceNumber) {
-          if (!headers.includes("Invoice No.")) headers.push("Invoice No.");
-          row.push(invoice.invoice_number || "N/A");
-        }
-
-        if (visibleColumns.referenceNo) {
-          if (!headers.includes("Reference No.")) headers.push("Reference No.");
-          row.push(invoice.reference_no || "-");
-        }
-
-        if (visibleColumns.customerName) {
-          if (!headers.includes("Customer Name")) headers.push("Customer Name");
-          row.push(getCustomerDisplayName(invoice));
-        }
-
-        if (visibleColumns.subtotal) {
-          if (!headers.includes("Subtotal")) headers.push("Subtotal");
-          row.push(`Rs. ${new Intl.NumberFormat("en-IN", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          }).format(calculateSubtotal(invoice))}`);
-        }
-
-        if (visibleColumns.total) {
-          if (!headers.includes("Total")) headers.push("Total");
-          row.push(`Rs. ${new Intl.NumberFormat("en-IN", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          }).format(invoice.total_amount || 0)}`);
-        }
-
-        if (visibleColumns.paidAmount) {
-          if (!headers.includes("Paid")) headers.push("Paid");
-          row.push(`Rs. ${new Intl.NumberFormat("en-IN", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          }).format(invoice.amount_paid || 0)}`);
-        }
-
-        if (visibleColumns.status) {
-          if (!headers.includes("Status")) headers.push("Status");
-          row.push(getStatusText(invoice.status));
-        }
-
-        return row;
+        doc.setFontSize(8.5);
+        doc.text(`Paid: ${money(invoice.amount_paid)}`, 14, totalsY + 39);
+        doc.text(`Balance: ${money(invoice.balance_due ?? invoice.outstanding_amount ?? 0)}`, 14, totalsY + 44);
       });
 
-      autoTable(doc, {
-        ...getProfessionalTableTheme(doc, "Sales Invoices List", company?.name || "", "l"),
-        head: [headers],
-        body: body,
-        styles: {
-          fontSize: 9,
-          cellPadding: 3,
-          overflow: "linebreak",
-          font: "helvetica",
-        },
-      });
-
-      addPdfPageNumbers(doc, "l");
-      doc.save("sales-invoices.pdf");
+      addPdfPageNumbers(doc, "p");
+      doc.save("sales-invoices-detailed.pdf");
     } catch (error) {
       console.error("PDF export failed:", error);
       alert("Failed to export PDF. Please try again.");

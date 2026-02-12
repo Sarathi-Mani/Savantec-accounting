@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+import { addPdfPageNumbers } from "@/utils/pdfTheme";
 
 interface QuotationItem {
   id?: string;
@@ -261,33 +262,38 @@ export default function ViewQuotationPage() {
     try {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
-      
-      // Header
-      doc.setFontSize(20);
-      doc.text("QUOTATION", pageWidth / 2, 20, { align: 'center' });
-      
+
+      // Professional header band (same family as sales-order PDF)
+      doc.setFillColor(22, 78, 99);
+      doc.rect(0, 0, pageWidth, 24, "F");
+      doc.setTextColor(255, 255, 255);
       doc.setFontSize(12);
-      doc.text(`Quotation No: ${quotation.quotation_number}`, 20, 35);
-      doc.text(`Date: ${formatDate(quotation.quotation_date)}`, pageWidth - 70, 35);
+      doc.text(company?.name || "Company", 14, 10);
+      doc.setFontSize(11);
+      doc.text("QUOTATION", 14, 18);
+      doc.setFontSize(9);
+      doc.text(`No: ${quotation.quotation_number}`, pageWidth - 14, 10, { align: "right" });
+      doc.text(`Date: ${formatDate(quotation.quotation_date)}`, pageWidth - 14, 18, { align: "right" });
+      doc.setTextColor(0, 0, 0);
       
       // Company Info
       doc.setFontSize(10);
-      doc.text("From:", 20, 50);
+      doc.text("From:", 20, 34);
       doc.setFont(undefined, 'bold');
-      doc.text(company?.name || "Your Company", 20, 55);
+      doc.text(company?.name || "Your Company", 20, 39);
       doc.setFont(undefined, 'normal');
       const companyAddr = company?.address ?? [company?.address_line1, company?.address_line2, company?.city, company?.state, company?.pincode].filter(Boolean).join(", ");
       if (companyAddr) {
-        doc.text(companyAddr, 20, 60);
+        doc.text(companyAddr, 20, 44);
       }
       
       // Customer Info
-      doc.text("To:", 20, 75);
+      doc.text("To:", 20, 58);
       doc.setFont(undefined, 'bold');
-      doc.text(quotation.customer_name, 20, 80);
+      doc.text(quotation.customer_name, 20, 63);
       doc.setFont(undefined, 'normal');
       if (quotation.contact_person) {
-        doc.text(`Attn: ${quotation.contact_person}`, 20, 85);
+        doc.text(`Attn: ${quotation.contact_person}`, 20, 68);
       }
       
       // Table
@@ -311,12 +317,13 @@ export default function ViewQuotationPage() {
       });
       
       (doc as any).autoTable({
-        startY: 95,
+        startY: 75,
         head: [tableColumn],
         body: tableRows,
         theme: 'grid',
-        headStyles: { fillColor: [41, 128, 185], textColor: 255 },
-        styles: { fontSize: 8 },
+        headStyles: { fillColor: [22, 78, 99], textColor: 255 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        styles: { fontSize: 8, lineColor: [220, 220, 220], lineWidth: 0.1 },
         columnStyles: {
           0: { cellWidth: 10 },
           1: { cellWidth: 40 },
@@ -377,6 +384,7 @@ export default function ViewQuotationPage() {
         doc.text(splitTerms, 20, termsY + 5);
       }
       
+      addPdfPageNumbers(doc, "p");
       doc.save(`Quotation_${quotation.quotation_number}.pdf`);
       showToast("PDF downloaded successfully", "success");
     } catch (error) {
