@@ -298,6 +298,13 @@ interface PurchaseOrderResponse {
   };
 }
 
+const formatNumberINR = (amount: number) => {
+  return new Intl.NumberFormat('en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
+
 export default function PurchaseOrderListPage() {
   const { company } = useAuth();
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
@@ -334,6 +341,7 @@ export default function PurchaseOrderListPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [converting, setConverting] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const companyId = company?.id || (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
   
   // Column visibility
   const [visibleColumns, setVisibleColumns] = useState({
@@ -393,7 +401,7 @@ export default function PurchaseOrderListPage() {
   const fetchPurchaseOrders = async () => {
     try {
       const token = getToken();
-      if (!company?.id || !token) {
+      if (!companyId || !token) {
         setLoading(false);
         return;
       }
@@ -403,7 +411,7 @@ export default function PurchaseOrderListPage() {
       
       const params = buildQueryParams(currentPage, pageSize);
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/orders/purchase?${params.toString()}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${companyId}/orders/purchase?${params.toString()}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -442,11 +450,11 @@ export default function PurchaseOrderListPage() {
   const fetchAllPurchaseOrdersForExport = useCallback(async (): Promise<PurchaseOrder[]> => {
     try {
       const token = getToken();
-      if (!company?.id || !token) return [];
+      if (!companyId || !token) return [];
 
       const params = buildQueryParams(1, 1000);
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/orders/purchase?${params.toString()}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${companyId}/orders/purchase?${params.toString()}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -459,19 +467,70 @@ export default function PurchaseOrderListPage() {
         throw new Error(`Failed to fetch purchase orders: ${response.statusText}`);
       }
 
-      const data: PurchaseOrderResponse = await response.json();
-      const orders = data.purchases || [];
+      const data: PurchaseOrderResponse | PurchaseOrder[] = await response.json();
+      const orders = Array.isArray(data) ? data : (data.purchases || []);
       setCachedExportData(orders);
       return orders;
     } catch (error) {
       console.error("Export fetch failed:", error);
       return [];
     }
-  }, [company?.id, searchTerm, statusFilter, fromDate, toDate]);
+  }, [companyId, searchTerm, statusFilter, fromDate, toDate]);
 
   const getExportData = async (): Promise<PurchaseOrder[]> => {
-    if (cachedExportData) return cachedExportData;
+    if (cachedExportData && cachedExportData.length > 0) return cachedExportData;
+    if (purchaseOrders.length > 0) return purchaseOrders;
     return await fetchAllPurchaseOrdersForExport();
+  };
+
+  const applySearchFilter = (data: PurchaseOrder[]): PurchaseOrder[] => {
+    if (!searchTerm) return data;
+    const searchLower = searchTerm.toLowerCase();
+    return data.filter((order) => {
+      return (
+        order.order_number?.toLowerCase().includes(searchLower) ||
+        order.reference_number?.toLowerCase().includes(searchLower) ||
+        order.vendor_name?.toLowerCase().includes(searchLower) ||
+        order.creator_name?.toLowerCase().includes(searchLower) ||
+        false
+      );
+    });
+  };
+
+  const applyFilters = (data: PurchaseOrder[]): PurchaseOrder[] => {
+    let filtered = data;
+
+    if (statusFilter) {
+      filtered = filtered.filter((order) => order.status === statusFilter);
+    }
+
+    if (fromDate) {
+      filtered = filtered.filter((order) => {
+        const orderDate = new Date(order.order_date);
+        const from = new Date(fromDate);
+        return orderDate >= from;
+      });
+    }
+
+    if (toDate) {
+      filtered = filtered.filter((order) => {
+        const orderDate = new Date(order.order_date);
+        const to = new Date(toDate);
+        return orderDate <= to;
+      });
+    }
+
+    return filtered;
+  };
+
+  const getFilteredExportData = async (): Promise<PurchaseOrder[]> => {
+    const allData = await getExportData();
+    let filtered = applySearchFilter(allData);
+    filtered = applyFilters(filtered);
+    if (filtered.length === 0 && purchaseOrders.length > 0) {
+      return purchaseOrders;
+    }
+    return filtered;
   };
 
   const deletePurchaseOrder = async (id: string) => {
@@ -555,7 +614,11 @@ export default function PurchaseOrderListPage() {
     if (printLoading) return;
     setPrintLoading(true);
     try {
-      const allData = await getExportData();
+      const allData = await getFilteredExportData();
+      if (allData.length === 0) {
+        alert("No purchase orders to export.");
+        return;
+      }
       setOrdersToPrint(allData);
       setShowPrintView(true);
     } catch (error) {
@@ -575,13 +638,13 @@ export default function PurchaseOrderListPage() {
   };
 
   useEffect(() => {
-    if (company?.id) {
+    if (companyId) {
       fetchPurchaseOrders();
     }
-  }, [company?.id, currentPage, statusFilter, fromDate, toDate]);
+  }, [companyId, currentPage, statusFilter, fromDate, toDate]);
 
   useEffect(() => {
-    if (company?.id) {
+    if (companyId) {
       const timeoutId = setTimeout(() => {
         setCurrentPage(1);
         fetchPurchaseOrders();
@@ -589,7 +652,7 @@ export default function PurchaseOrderListPage() {
 
       return () => clearTimeout(timeoutId);
     }
-  }, [searchTerm]);
+  }, [companyId, searchTerm]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -642,7 +705,11 @@ export default function PurchaseOrderListPage() {
     if (copyLoading) return;
     setCopyLoading(true);
     try {
-      const allData = await getExportData();
+      const allData = await getFilteredExportData();
+      if (allData.length === 0) {
+        alert("No purchase orders to export.");
+        return;
+      }
       
       const headers: string[] = [];
       const rows = allData.map(order => {
@@ -701,7 +768,11 @@ export default function PurchaseOrderListPage() {
     if (excelLoading) return;
     setExcelLoading(true);
     try {
-      const allData = await getExportData();
+      const allData = await getFilteredExportData();
+      if (allData.length === 0) {
+        alert("No purchase orders to export.");
+        return;
+      }
       const exportData = allData.map(order => {
         const row: Record<string, any> = {};
 
@@ -757,7 +828,11 @@ export default function PurchaseOrderListPage() {
     if (pdfLoading) return;
     setPdfLoading(true);
     try {
-      const allData = await getExportData();
+      const allData = await getFilteredExportData();
+      if (allData.length === 0) {
+        alert("No purchase orders to export.");
+        return;
+      }
       const doc = new jsPDF("landscape");
       
       const headers: string[] = [];
@@ -791,7 +866,7 @@ export default function PurchaseOrderListPage() {
 
         if (visibleColumns.totalAmount) {
           if (!headers.includes("Total (INR)")) headers.push("Total (INR)");
-          row.push(formatCurrencyINR(convertToINR(order.total_amount, order.currency, order.exchange_rate || 1)));
+          row.push(formatNumberINR(convertToINR(order.total_amount, order.currency, order.exchange_rate || 1)));
         }
 
         if (visibleColumns.createdBy) {
@@ -916,7 +991,7 @@ export default function PurchaseOrderListPage() {
     fetchPurchaseOrders();
   };
 
-  if (!company?.id) {
+  if (!companyId) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 dark:bg-yellow-900/20 dark:border-yellow-800">
