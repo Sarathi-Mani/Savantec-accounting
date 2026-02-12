@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { customersApi, productsApi, salesmenApi } from "@/services/api";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Select from "react-select";
 
@@ -123,6 +123,10 @@ const getColumnLetter = (index: number): string => {
 export default function NewQuotationPage() {
   const { company } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editQuotationId = searchParams.get("edit_id");
+  const enquiryIdForPrefill = searchParams.get("enquiry_id");
+  const isEditMode = Boolean(editQuotationId);
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -277,6 +281,392 @@ const fetchNextQuotationNumber = async () => {
     } catch (error) {
       console.error("Failed to fetch customer:", error);
       return null;
+    }
+  };
+
+  const prefillFromEnquiry = async (
+    enquiryId: string,
+    availableCustomers: any[] = [],
+    availableProducts: any[] = []
+  ) => {
+    if (!company?.id || !enquiryId) return;
+
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) return;
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/enquiries/${enquiryId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        showToast("Failed to load enquiry for quotation prefill", "error");
+        return;
+      }
+
+      const enquiry = await response.json();
+      console.log("[EQ-DEBUG][prefill] enquiry_response", enquiry);
+      const enquiryNumber = enquiry.enquiry_number || `ENQ-${enquiryId}`;
+      const normalizeId = (value: any) => String(value ?? "").trim();
+      const sameId = (a: any, b: any) => normalizeId(a) !== "" && normalizeId(a) === normalizeId(b);
+      const toNumber = (value: any, fallback = 0) => {
+        if (value === null || value === undefined || value === "") return fallback;
+        if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
+        const normalized = String(value).replace(/,/g, "").replace(/[^\d.-]/g, "");
+        const parsed = Number(normalized);
+        return Number.isFinite(parsed) ? parsed : fallback;
+      };
+      const firstPositive = (...values: any[]) => {
+        for (const value of values) {
+          const n = toNumber(value, 0);
+          if (n > 0) return n;
+        }
+        return 0;
+      };
+
+      const sourceItems = Array.isArray(enquiry.products_interested) && enquiry.products_interested.length > 0
+        ? enquiry.products_interested
+        : Array.isArray(enquiry.items)
+          ? enquiry.items
+          : [];
+      const cachedPrefillRaw =
+        typeof window !== "undefined"
+          ? localStorage.getItem(`quotation_prefill_enquiry_${enquiryId}`)
+          : null;
+      let cachedPrefill: any = null;
+      try {
+        cachedPrefill = cachedPrefillRaw ? JSON.parse(cachedPrefillRaw) : null;
+      } catch {
+        cachedPrefill = null;
+      }
+      const cachedItems = Array.isArray(cachedPrefill?.items) ? cachedPrefill.items : [];
+      const effectiveSourceItems = sourceItems.length > 0 ? sourceItems : cachedItems;
+
+      const productPool = availableProducts.length > 0 ? availableProducts : products;
+      const enquiryItems = Array.isArray(enquiry.items) ? enquiry.items : [];
+      const findMatchedProduct = (item: any, matchedEnquiryItem: any) => {
+        const byId =
+          productPool.find((p: any) => sameId(p.id, item.product_id || item.item_id)) ||
+          productPool.find((p: any) => sameId(p.id, matchedEnquiryItem.product_id || matchedEnquiryItem.item_id));
+        if (byId) return byId;
+
+        const itemCode = item.item_code || matchedEnquiryItem.item_code;
+        if (itemCode) {
+          const byCode = productPool.find(
+            (p: any) =>
+              String(p.item_code || p.code || "").trim().toLowerCase() ===
+              String(itemCode || "").trim().toLowerCase()
+          );
+          if (byCode) return byCode;
+        }
+
+        const itemDesc = String(item.description || matchedEnquiryItem.description || "").trim().toLowerCase();
+        if (itemDesc) {
+          const byNameOrDesc = productPool.find((p: any) => {
+            const name = String(p.name || "").trim().toLowerCase();
+            const desc = String(p.description || "").trim().toLowerCase();
+            return itemDesc === name || itemDesc === desc;
+          });
+          if (byNameOrDesc) return byNameOrDesc;
+        }
+
+        return {};
+      };
+
+      const mappedItems = effectiveSourceItems.length > 0
+        ? effectiveSourceItems.map((item: any, idx: number) => {
+            const matchedEnquiryItem =
+              enquiryItems.find((ei: any) => sameId(ei.product_id || ei.item_id, item.product_id || item.item_id)) ||
+              enquiryItems[idx] ||
+              {};
+            const matchedCachedItem =
+              cachedItems.find((ci: any) => sameId(ci.product_id || ci.item_id, item.product_id || item.item_id)) ||
+              cachedItems[idx] ||
+              {};
+            const matchedProduct = findMatchedProduct(item, matchedEnquiryItem);
+
+            const quantity = toNumber(
+              item.quantity ?? matchedCachedItem.quantity ?? matchedEnquiryItem.quantity,
+              1
+            );
+            const resolvedUnitPrice = firstPositive(
+              item.sales_price,
+              item.unit_price,
+              item.rate,
+              item.price,
+              matchedCachedItem.sales_price,
+              matchedCachedItem.unit_price,
+              matchedCachedItem.rate,
+              matchedCachedItem.price,
+              matchedEnquiryItem.sales_price,
+              matchedEnquiryItem.unit_price,
+              matchedEnquiryItem.rate,
+              matchedEnquiryItem.price,
+              matchedProduct.sales_price,
+              matchedProduct.unit_price
+            );
+            const fallbackFromAmount =
+              resolvedUnitPrice > 0
+                ? resolvedUnitPrice
+                : (() => {
+                    const totalAmount = toNumber(item.amount ?? matchedCachedItem.amount ?? matchedEnquiryItem.amount, 0);
+                    return quantity > 0 ? totalAmount / quantity : 0;
+                  })();
+
+            return {
+              product_id: normalizeId(item.product_id || matchedEnquiryItem.product_id || matchedProduct.id || ""),
+              hsn:
+                item.hsn_code ||
+                item.hsn ||
+                matchedEnquiryItem.hsn_code ||
+                matchedEnquiryItem.hsn ||
+                item.product?.hsn_code ||
+                item.product?.hsn ||
+                matchedProduct.hsn ||
+                matchedProduct.hsn_code ||
+                "",
+              item_code:
+                item.item_code ||
+                matchedCachedItem.item_code ||
+                matchedEnquiryItem.item_code ||
+                matchedProduct.item_code ||
+                matchedProduct.code ||
+                "",
+              description:
+                item.description ||
+                matchedCachedItem.description ||
+                matchedEnquiryItem.description ||
+                matchedProduct.description ||
+                matchedProduct.name ||
+                "Item",
+              quantity,
+              unit: item.unit || matchedCachedItem.unit || matchedEnquiryItem.unit || matchedProduct.unit || "unit",
+              unit_price: fallbackFromAmount,
+              discount_percent: toNumber(
+                item.discount_percent ??
+                matchedCachedItem.discount_percent ??
+                matchedEnquiryItem.discount_percent ??
+                matchedProduct.discount_percent ??
+                matchedProduct.discount ??
+                0
+              ),
+              gst_rate: toNumber(
+                item.gst_rate ??
+                item.tax_rate ??
+                matchedCachedItem.gst_rate ??
+                matchedCachedItem.tax_rate ??
+                matchedEnquiryItem.gst_rate ??
+                matchedEnquiryItem.tax_rate ??
+                matchedProduct.gst_rate ??
+                matchedProduct.tax_rate ??
+                18
+              ),
+              subItems: Array.isArray(item.sub_items)
+                ? item.sub_items.map((subItem: any, idx: number) => ({
+                    id: `${Date.now()}-${idx}`,
+                    description: subItem.description || "",
+                    quantity: Number(subItem.quantity) || 1,
+                    image: null,
+                    imageUrl: subItem.image_url || "",
+                  }))
+                : [],
+            };
+          })
+        : [{
+            product_id: "",
+            hsn: "",
+            item_code: "",
+            description: "",
+            quantity: 1,
+            unit: "unit",
+            unit_price: 0,
+            discount_percent: 0,
+            gst_rate: 18,
+          }];
+
+      // Last-resort hydration: if item still has zero price, fetch product by ID directly.
+      const missingPriceRows = mappedItems
+        .map((item: any, index: number) => ({ index, product_id: normalizeId(item.product_id), unit_price: Number(item.unit_price || 0) }))
+        .filter((row: any) => row.product_id && row.unit_price <= 0);
+
+      if (missingPriceRows.length > 0) {
+        const uniqueProductIds = Array.from(new Set(missingPriceRows.map((r: any) => r.product_id)));
+        const fetchedById: Record<string, any> = {};
+
+        await Promise.all(
+          uniqueProductIds.map(async (pid) => {
+            try {
+              const productResp = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/products/${pid}`,
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              if (productResp.ok) {
+                fetchedById[pid] = await productResp.json();
+              }
+            } catch (err) {
+              console.warn("[EQ-DEBUG][prefill] product_fetch_by_id_failed", pid, err);
+            }
+          })
+        );
+
+        for (const row of missingPriceRows) {
+          const product = fetchedById[row.product_id];
+          if (!product) continue;
+          const resolved = firstPositive(product.sales_price, product.unit_price);
+          if (resolved > 0) {
+            const target = mappedItems[row.index];
+            mappedItems[row.index] = {
+              ...target,
+              product_id: normalizeId(target.product_id || product.id || row.product_id),
+              item_code: target.item_code || product.item_code || product.code || "",
+              hsn: target.hsn || product.hsn || product.hsn_code || "",
+              unit: target.unit || product.unit || "unit",
+              unit_price: resolved,
+              gst_rate: Number(target.gst_rate || product.gst_rate || product.tax_rate || 18),
+              discount_percent: Number(target.discount_percent || product.discount_percent || product.discount || 0),
+            };
+          }
+        }
+      }
+
+      console.log("[EQ-DEBUG][prefill] source_items", effectiveSourceItems);
+      console.log("[EQ-DEBUG][prefill] mapped_items", mappedItems);
+      const zeroPriceRows = mappedItems
+        .map((it: any, i: number) => ({ i, product_id: it.product_id, description: it.description, unit_price: it.unit_price }))
+        .filter((r: any) => Number(r.unit_price) <= 0);
+      if (zeroPriceRows.length > 0) {
+        console.warn("[EQ-DEBUG][prefill] zero_or_missing_unit_price_rows", zeroPriceRows);
+      }
+
+      const customerId = enquiry.customer_id || "";
+      const contactName = enquiry.contact_person || enquiry.kind_attn || enquiry.prospect_name || "";
+      const salesmanId = enquiry.salesman_id || enquiry.sales_person_id || "";
+
+      setFormData(prev => ({
+        ...prev,
+        customer_id: customerId,
+        contact_person: contactName,
+        salesman_id: salesmanId,
+        subject: `Quotation for ${enquiryNumber}`,
+        notes: enquiry.description || enquiry.remarks || "",
+        remarks: enquiry.remarks || "",
+        reference: "Enquiry",
+        reference_no: enquiryNumber,
+        reference_date: enquiry.enquiry_date ? new Date(enquiry.enquiry_date).toISOString().split("T")[0] : "",
+      }));
+
+      setItems(mappedItems);
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(`quotation_prefill_enquiry_${enquiryId}`);
+      }
+
+      if (customerId) {
+        const customerPool = availableCustomers.length > 0 ? availableCustomers : customers;
+        const customer = customerPool.find((c: any) => c.id === customerId);
+        if (customer) {
+          setSelectedCustomer(customer);
+          await fetchContactPersons(customer.id);
+        }
+      } else {
+        showToast("Enquiry has no linked customer. Select a customer before saving.", "warning");
+      }
+
+      showToast(`Prefilled from enquiry ${enquiryNumber}`, "success");
+    } catch (error) {
+      console.error("Failed to prefill from enquiry:", error);
+      showToast("Failed to prefill quotation from enquiry", "error");
+    }
+  };
+
+  const loadQuotationForEdit = async (quotationId: string, availableCustomers: any[] = []) => {
+    if (!company?.id || !quotationId) return;
+
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) return;
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${quotationId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        showToast("Failed to load quotation for edit", "error");
+        router.push("/quotations");
+        return;
+      }
+
+      const quotation = await response.json();
+
+      setFormData(prev => ({
+        ...prev,
+        quotation_code: quotation.quotation_number || quotation.quotation_code || prev.quotation_code,
+        quotation_date: quotation.quotation_date ? new Date(quotation.quotation_date).toISOString().split("T")[0] : prev.quotation_date,
+        validity_days: quotation.validity_days || 30,
+        customer_id: quotation.customer_id || "",
+        notes: quotation.notes || "",
+        terms: quotation.terms || "",
+        subject: quotation.subject || prev.subject,
+        tax_regime: quotation.tax_regime || prev.tax_regime,
+        status: quotation.status || "open",
+        salesman_id: quotation.sales_person_id || "",
+        reference: quotation.reference || "",
+        reference_no: quotation.reference_no || "",
+        reference_date: quotation.reference_date ? new Date(quotation.reference_date).toISOString().split("T")[0] : "",
+        payment_terms: quotation.payment_terms || prev.payment_terms,
+        remarks: quotation.remarks || "",
+        contact_person: quotation.contact_person || "",
+        show_images: quotation.show_images !== false,
+        show_images_in_pdf: quotation.show_images_in_pdf !== false,
+        quotation_type: quotation.quotation_type || "item",
+      }));
+
+      if (Array.isArray(quotation.items) && quotation.items.length > 0) {
+        setItems(quotation.items.map((item: any, itemIndex: number) => ({
+          product_id: item.product_id || "",
+          hsn: item.hsn_code || item.hsn || "",
+          item_code: item.item_code || "",
+          description: item.description || "Item",
+          quantity: Number(item.quantity) || 1,
+          unit: item.unit || "unit",
+          unit_price: Number(item.unit_price) || 0,
+          discount_percent: Number(item.discount_percent) || 0,
+          gst_rate: Number(item.gst_rate) || 18,
+          subItems: Array.isArray(item.sub_items)
+            ? item.sub_items.map((subItem: any, idx: number) => ({
+                id: subItem.id || `${quotationId}-${itemIndex}-${idx}`,
+                description: subItem.description || "",
+                quantity: Number(subItem.quantity) || 1,
+                image: null,
+                imageUrl: subItem.image_url || "",
+              }))
+            : [],
+        })));
+      }
+
+      if (quotation.customer_id) {
+        const customerPool = availableCustomers.length > 0 ? availableCustomers : customers;
+        const customer = customerPool.find((c: any) => c.id === quotation.customer_id);
+        if (customer) {
+          setSelectedCustomer(customer);
+          await fetchContactPersons(customer.id);
+        }
+      }
+
+      showToast(`Editing quotation ${quotation.quotation_number || quotationId}`, "info");
+    } catch (error) {
+      console.error("Failed to load quotation for edit:", error);
+      showToast("Failed to load quotation for edit", "error");
+      router.push("/quotations");
     }
   };
 
@@ -1255,6 +1645,8 @@ const productOptions = useMemo(() =>
       
       try {
         setLoading(true);
+        let customersArray: any[] = [];
+        let validProducts: any[] = [];
         const nextQuotationNumber = await fetchNextQuotationNumber();
          setFormData(prev => ({
         ...prev,
@@ -1265,7 +1657,6 @@ const productOptions = useMemo(() =>
         // Fetch customers
         try {
           const customersData = await customersApi.list(company.id, { page_size: 100 });
-          let customersArray: any[] = [];
           if (customersData && typeof customersData === 'object') {
             customersArray = customersData.customers || [];
           }
@@ -1301,7 +1692,7 @@ const productOptions = useMemo(() =>
           }
           
           // Filter and validate products
-          const validProducts = productsArray.filter(product => {
+          validProducts = productsArray.filter(product => {
             // Ensure required fields exist
             if (!product || !product.id) return false;
             
@@ -1309,7 +1700,7 @@ const productOptions = useMemo(() =>
             product.name = product.name || "Unnamed Product";
           
             product.description = product.description || "";
-            product.hsn = product.hsn || "";
+            product.hsn = product.hsn || product.hsn_code || product.hsn_no || "";
             product.unit_price = parseFloat(product.unit_price) || 0;
             product.sales_price = parseFloat(product.sales_price) || product.unit_price || 0;
             product.tax_rate = parseFloat(product.tax_rate) || 18;
@@ -1329,6 +1720,12 @@ const productOptions = useMemo(() =>
         
         // Fetch sales engineers (employees with sales designation)
         await fetchSalesEngineers();
+
+        if (editQuotationId) {
+          await loadQuotationForEdit(editQuotationId, customersArray);
+        } else if (enquiryIdForPrefill) {
+          await prefillFromEnquiry(enquiryIdForPrefill, customersArray, validProducts);
+        }
         
       } catch (error) {
         console.error("Unexpected error in fetchData:", error);
@@ -1339,7 +1736,7 @@ const productOptions = useMemo(() =>
     };
     
     fetchData();
-  }, [company?.id]);
+  }, [company?.id, editQuotationId, enquiryIdForPrefill]);
 
   useEffect(() => {
     console.log("Products loaded:", products);
@@ -1348,6 +1745,60 @@ const productOptions = useMemo(() =>
       console.log("Available fields:", Object.keys(products[0]));
     }
   }, [products]);
+
+  useEffect(() => {
+    if (!enquiryIdForPrefill || products.length === 0) return;
+    const normalizeId = (value: any) => String(value ?? "").trim();
+    const sameId = (a: any, b: any) => normalizeId(a) !== "" && normalizeId(a) === normalizeId(b);
+
+    setItems((prevItems) => {
+      let changed = false;
+
+      const nextItems = prevItems.map((item) => {
+        if (Number(item.unit_price) > 0) return item;
+
+        const matchById = products.find((p: any) => sameId(p.id, item.product_id));
+        const matchByCode =
+          !matchById && item.item_code
+            ? products.find((p: any) => String(p.item_code || p.code || "").trim().toLowerCase() === String(item.item_code || "").trim().toLowerCase())
+            : null;
+        const matchByText =
+          !matchById && !matchByCode && item.description
+            ? products.find((p: any) => {
+                const d = String(item.description || "").trim().toLowerCase();
+                return (
+                  d.length > 0 &&
+                  (d === String(p.name || "").trim().toLowerCase() ||
+                    d === String(p.description || "").trim().toLowerCase())
+                );
+              })
+            : null;
+
+        const matchedProduct: any = matchById || matchByCode || matchByText;
+        if (!matchedProduct) return item;
+
+        const resolvedPrice =
+          Number(matchedProduct.sales_price ?? matchedProduct.unit_price ?? 0) || 0;
+        if (resolvedPrice <= 0) return item;
+
+        changed = true;
+        return {
+          ...item,
+          product_id: normalizeId(item.product_id || matchedProduct.id || ""),
+          hsn: item.hsn || matchedProduct.hsn || matchedProduct.hsn_code || "",
+          item_code: item.item_code || matchedProduct.item_code || matchedProduct.code || "",
+          unit: item.unit || matchedProduct.unit || "unit",
+          unit_price: resolvedPrice,
+          gst_rate: Number(item.gst_rate || matchedProduct.gst_rate || matchedProduct.tax_rate || 18),
+          discount_percent: Number(
+            item.discount_percent || matchedProduct.discount_percent || matchedProduct.discount || 0
+          ),
+        };
+      });
+
+      return changed ? nextItems : prevItems;
+    });
+  }, [enquiryIdForPrefill, products, items]);
 
   const fetchSalesEngineers = async () => {
     if (!company?.id) return;
@@ -1825,6 +2276,9 @@ const itemsForBackend = items
         customer_id: formData.customer_id || undefined,
         quotation_date: new Date(formData.quotation_date).toISOString(),
         validity_days: formData.validity_days,
+        status: formData.status || "open",
+        tax_regime: formData.tax_regime || undefined,
+        place_of_supply: selectedCustomer?.billing_state || undefined,
         subject: formData.subject || `Quotation ${formData.quotation_code}`,
         notes: formData.notes || undefined,
         terms: formData.terms || undefined, // Additional terms
@@ -1837,8 +2291,8 @@ const itemsForBackend = items
         quotation_type: formData.quotation_type || "item", 
         payment_terms: formData.payment_terms || undefined,
         excel_notes: excelDataText || undefined,
-      show_images: formData.show_images, 
-       show_images_in_pdf: formData.show_images,
+        show_images: formData.show_images !== false,
+        show_images_in_pdf: formData.show_images_in_pdf !== false,
        
         items: itemsForBackend
       };
@@ -1855,10 +2309,14 @@ const itemsForBackend = items
 
       console.log("Sending FormData payload:", payload);
 
+      const requestUrl = isEditMode
+        ? `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${editQuotationId}`
+        : `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations`;
+
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations`,
+        requestUrl,
         {
-          method: "POST",
+          method: isEditMode ? "PUT" : "POST",
           headers: {
             "Authorization": `Bearer ${token}`,
             // Do NOT set Content-Type header for FormData - browser will set it automatically
@@ -1869,8 +2327,8 @@ const itemsForBackend = items
 
       if (response.ok) {
         const data = await response.json();
-        showToast("Quotation created successfully!", "success");
-        router.push(`/quotations`);
+        showToast(isEditMode ? "Quotation updated successfully!" : "Quotation created successfully!", "success");
+        router.push(isEditMode ? `/quotations/${editQuotationId}` : `/quotations`);
       } else {
         const errorText = await response.text();
         console.error("Backend error response:", errorText);
@@ -1896,7 +2354,7 @@ const itemsForBackend = items
     } catch (err: any) { 
       console.error("Submission error:", err);
       const errorMessage = err instanceof Error ? err.message : "Network error";
-      showToast("Failed to create quotation: " + errorMessage, "error");
+      showToast(`Failed to ${isEditMode ? "update" : "create"} quotation: ${errorMessage}`, "error");
     } finally {
       setLoading(false);
     }
@@ -1906,10 +2364,10 @@ const itemsForBackend = items
   const handleCancel = () => {
     if (items.some(item => item.product_id) || formData.customer_id) {
       if (window.confirm("Are you sure? Any unsaved changes will be lost.")) {
-        router.back();
+        router.push(isEditMode ? `/quotations/${editQuotationId}` : "/quotations");
       }
     } else {
-      router.back();
+      router.push(isEditMode ? `/quotations/${editQuotationId}` : "/quotations");
     }
   };
 
@@ -2102,25 +2560,27 @@ const itemsForBackend = items
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
-                Create New Quotation
+                {isEditMode ? "Edit Quotation" : "Create New Quotation"}
               </h1>
               <p className="text-gray-600 dark:text-gray-400 mt-1">
-                Create a detailed quotation for your customer
+                {isEditMode ? "Update quotation details" : "Create a detailed quotation for your customer"}
               </p>
             </div>
             
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setShowCopyModal(true)}
-                className="inline-flex items-center gap-2 rounded-lg border border-blue-600 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                Copy Existing Quotation
-              </button>
-            </div>
+            {!isEditMode && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCopyModal(true)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-blue-600 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Copy Existing Quotation
+                </button>
+              </div>
+            )}
           </div>
         </div>
         
@@ -2658,7 +3118,7 @@ const itemsForBackend = items
           if (selectedProduct) {
             const updatedItem = {
               product_id: selectedProduct.id,
-              hsn: selectedProduct.hsn || "",
+              hsn: selectedProduct.hsn || selectedProduct.hsn_code || "",
               description: selectedProduct.description || selectedProduct.name || "Product",
               unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
               discount_percent: selectedProduct.discount || selectedProduct.discount_percent || 0,
@@ -3039,7 +3499,7 @@ const itemsForBackend = items
           if (selectedProduct) {
             const updatedItem = {
               product_id: selectedProduct.id,
-              hsn: selectedProduct.hsn || "",
+              hsn: selectedProduct.hsn || selectedProduct.hsn_code || "",
               description: selectedProduct.description || selectedProduct.name || "Product",
               unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
               discount_percent: selectedProduct.discount || selectedProduct.discount_percent || 0,
@@ -3839,14 +4299,14 @@ const itemsForBackend = items
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Creating...
+                  {isEditMode ? "Updating..." : "Creating..."}
                 </>
               ) : (
                 <>
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  Save Quotation
+                  {isEditMode ? "Update Quotation" : "Save Quotation"}
                 </>
               )}
             </button>

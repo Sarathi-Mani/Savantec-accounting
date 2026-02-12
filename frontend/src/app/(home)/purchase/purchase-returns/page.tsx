@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { saveAs } from "file-saver";
+import { addPdfPageNumbers, getProfessionalTableTheme } from "@/utils/pdfTheme";
 import {
     Search,
     Filter,
@@ -269,6 +270,7 @@ export default function PurchaseReturnsListPage() {
             const doc = new jsPDF();
 
             autoTable(doc, {
+                ...getProfessionalTableTheme(doc, "Purchase Returns List", "", "p"),
                 head: [["Date", "Purchase Code", "Return Code", "Return Status", "Reference No", "Supplier Name", "Total", "Paid Payment", "Payment Status", "Created By"]],
                 body: filtered.map(ret => [
                     formatDate(ret.date),
@@ -284,6 +286,7 @@ export default function PurchaseReturnsListPage() {
                 ])
             });
 
+            addPdfPageNumbers(doc, "p");
             doc.save("purchase_returns.pdf");
         } catch (error) {
             console.error("PDF export failed:", error);

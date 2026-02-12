@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { saveAs } from "file-saver";
+import { addPdfPageNumbers, getProfessionalTableTheme } from "@/utils/pdfTheme";
 import {
   Search,
   Filter,
@@ -259,6 +260,7 @@ export default function PurchaseListPage() {
       const doc = new jsPDF();
 
       autoTable(doc, {
+        ...getProfessionalTableTheme(doc, "Purchase List", "", "p"),
         head: [["Purchase Date", "Due Date", "Purchase Code", "Purchase Status", "Reference No", "Supplier Name", "Total", "Currency Code", "Paid Payment", "Payment Status"]],
         body: filtered.map(purchase => [
           formatDate(purchase.purchaseDate),
@@ -274,6 +276,7 @@ export default function PurchaseListPage() {
         ])
       });
 
+      addPdfPageNumbers(doc, "p");
       doc.save("purchases.pdf");
     } catch (error) {
       console.error("PDF export failed:", error);

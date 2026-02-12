@@ -945,6 +945,7 @@ class Product(Base):
     tax_type = Column(String(100), nullable=True)
     mrp = Column(Numeric(15, 2), default=0.00)
     company_id = Column(String(36), ForeignKey("companies.id"), nullable=False, index=True)
+    godown_id = Column(String(36), ForeignKey("godowns.id", ondelete="SET NULL"), nullable=True, index=True)
     tax_id = Column(String(36), ForeignKey("taxes.id"), nullable=True, index=True)
     profit_margin = Column(Numeric(8, 2), default=0.00)
     sku = Column(String(100), nullable=True, index=True)
@@ -992,6 +993,7 @@ class Product(Base):
     # Add these relationships
     brand = relationship("Brand", backref="products")
     category = relationship("Category", backref="products")
+    godown = relationship("Godown", foreign_keys=[godown_id])
 
     # Add the missing relationship for stock_entries
     stock_entries = relationship("StockEntry", back_populates="product", cascade="all, delete-orphan")

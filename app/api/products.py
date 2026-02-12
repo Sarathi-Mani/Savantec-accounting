@@ -38,6 +38,7 @@ async def create_product(
     gst_rate: str = Form("18"),
     brand_id: Optional[str] = Form(None),
     category_id: Optional[str] = Form(None),
+    godown_id: Optional[str] = Form(None),
     opening_stock: int = Form(0),
     min_stock_level: int = Form(0),
     is_service: bool = Form(False),
@@ -66,6 +67,7 @@ async def create_product(
         gst_rate=gst_rate,
         brand_id=brand_id,
         category_id=category_id,
+        godown_id=godown_id,
         opening_stock=opening_stock,
         min_stock_level=min_stock_level,
         is_service=is_service,
@@ -104,6 +106,7 @@ async def update_product(
     gst_rate: Optional[str] = Form(None),
     brand_id: Optional[str] = Form(None),
     category_id: Optional[str] = Form(None),
+    godown_id: Optional[str] = Form(None),
     opening_stock: Optional[int] = Form(None),
     min_stock_level: Optional[int] = Form(None),
     is_service: Optional[bool] = Form(None),
@@ -148,6 +151,8 @@ async def update_product(
         update_data["brand_id"] = brand_id
     if category_id is not None:
         update_data["category_id"] = category_id
+    if godown_id is not None:
+        update_data["godown_id"] = godown_id
     if opening_stock is not None:
         update_data["opening_stock"] = opening_stock
     if min_stock_level is not None:

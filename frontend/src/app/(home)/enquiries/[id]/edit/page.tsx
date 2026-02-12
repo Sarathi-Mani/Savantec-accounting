@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api";
+const STATIC_BASE_URL = API_BASE.replace(/\/api$/, "") || "http://localhost:6768";
 
 interface Enquiry {
   id: string;
@@ -177,10 +178,36 @@ export default function EditEnquiryPage() {
     setItems(updatedItems);
   };
 
-const handleSubmit = async (e: React.FormEvent, opts?: { redirect?: boolean; showAlert?: boolean }) => {
+  const getBackendImageUrl = (imagePath?: string) => {
+    if (!imagePath) return null;
+
+    if (
+      imagePath.startsWith("http://") ||
+      imagePath.startsWith("https://") ||
+      imagePath.startsWith("blob:")
+    ) {
+      return imagePath;
+    }
+
+    if (imagePath.startsWith("/")) {
+      return `${STATIC_BASE_URL}${imagePath}`;
+    }
+
+    if (imagePath.startsWith("storage/") || imagePath.startsWith("uploads/")) {
+      return `${STATIC_BASE_URL}/${imagePath}`;
+    }
+
+    return `${STATIC_BASE_URL}/storage/enquiry_items/${imagePath}`;
+  };
+
+const handleSubmit = async (
+  e: React.FormEvent,
+  opts?: { redirect?: boolean; showAlert?: boolean; rethrowOnError?: boolean }
+) => {
   e.preventDefault();
   const redirect = opts?.redirect ?? true;
   const showAlert = opts?.showAlert ?? true;
+  const rethrowOnError = opts?.rethrowOnError ?? false;
   
   // Validate form
   if (!formData.status) {
@@ -265,6 +292,9 @@ const handleSubmit = async (e: React.FormEvent, opts?: { redirect?: boolean; sho
   } catch (err: any) {
     console.error("Error updating enquiry:", err);
     setError(err.message || "Failed to update enquiry.");
+    if (rethrowOnError) {
+      throw err;
+    }
   } finally {
     setSaving(false);
   }
@@ -275,47 +305,40 @@ const handleSubmit = async (e: React.FormEvent, opts?: { redirect?: boolean; sho
       return;
     }
 
-    if (!formData.quotation_no) {
-      alert("Please enter a quotation number.");
-      return;
-    }
-
     if (confirm("Are you sure you want to convert this enquiry to quotation?")) {
       try {
-        const token = getToken();
-        
-        // First, update the enquiry with the current data
-        await handleSubmit(new Event("submit") as any, { redirect: false, showAlert: false });
-        
-        // Then, convert to quotation
-        const convertResponse = await fetch(
-          `${API_BASE}/companies/${companyId}/enquiries/${enquiryId}/convert-to-quotation`,
-          {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              validity_days: 30,
-              notes: enquiry?.description || "",
-              terms: "",
-            }),
-          }
-        );
-
-        if (!convertResponse.ok) {
-          const data = await convertResponse.json();
-          throw new Error(data.detail || `Failed to convert to quotation (Status: ${convertResponse.status})`);
+        // First, update the enquiry with the current data before opening quotation page
+        await handleSubmit(new Event("submit") as any, {
+          redirect: false,
+          showAlert: false,
+          rethrowOnError: true,
+        });
+        if (typeof window !== "undefined") {
+          const conversionItems = items.map((item, index) => ({
+            product_id: item.product_id || item.item_id || "",
+            item_id: item.item_id || item.product_id || "",
+            item_code: (item as any).item_code || "",
+            description: item.description || item.product_name || `Item ${index + 1}`,
+            quantity: Number(item.quantity) || 1,
+            unit: (item as any).unit || "unit",
+            sales_price: Number(item.sales_price) || 0,
+            unit_price: Number(item.sales_price) || 0,
+            purchase_price: Number(item.purchase_price) || 0,
+          }));
+          localStorage.setItem(
+            `quotation_prefill_enquiry_${enquiryId}`,
+            JSON.stringify({
+              enquiry_id: enquiryId,
+              updated_at: new Date().toISOString(),
+              items: conversionItems,
+            })
+          );
         }
-
-        const data = await convertResponse.json();
-        alert("Enquiry converted to quotation successfully!");
-        router.push(`/quotations/${data.quotation_id}`);
+        router.push(`/quotations/new?enquiry_id=${enquiryId}`);
         
       } catch (err: any) {
         console.error("Error converting to quotation:", err);
-        setError(err.message || "Failed to convert to quotation.");
+        setError(err.message || "Failed to open quotation page.");
       }
     }
   };
@@ -566,15 +589,15 @@ const handleSubmit = async (e: React.FormEvent, opts?: { redirect?: boolean; sho
                     {/* Item Image - READ ONLY */}
                     <td className="px-4 py-3">
                       <div className="text-center">
-                        {item.existing_image ? (
+                        {getBackendImageUrl(item.existing_image || item.image) ? (
                           <a
-                            href={item.existing_image}
+                            href={getBackendImageUrl(item.existing_image || item.image) || undefined}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-block"
                           >
                             <img
-                              src={item.existing_image}
+                              src={getBackendImageUrl(item.existing_image || item.image) || ""}
                               alt="Item"
                               className="h-16 w-16 object-cover rounded border dark:border-dark-3"
                               onError={(e) => {

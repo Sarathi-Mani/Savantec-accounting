@@ -36,6 +36,7 @@ class ProductService:
         # Build product data - only include fields that exist in Product model
         product_data = {
             "company_id": company.id,
+            "godown_id": data.godown_id if getattr(data, "godown_id", None) else None,
             "name": data.name,
             "description": data.description,
             "sku": data.sku,
@@ -197,6 +198,8 @@ class ProductService:
         response_data = {
             "id": product.id,
             "company_id": product.company_id,
+            "godown_id": getattr(product, "godown_id", None),
+            "godown_name": product.godown.name if getattr(product, "godown", None) else None,
             "name": product.name,
             "description": product.description,
             "sku": product.sku,

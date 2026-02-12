@@ -11,6 +11,15 @@ import {
 } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
 
+const getProductImageUrl = (raw?: string | null) => {
+  if (!raw) return null;
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
+  const base = apiBase.replace(/\/api\/?$/, "");
+  if (raw.startsWith("/")) return `${base}${raw}`;
+  return `${base}/${raw}`;
+};
+
 export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -82,6 +91,13 @@ export default function ProductDetailPage() {
     );
   }
 
+  const mainImage = getProductImageUrl(
+    product.image_url || product.main_image_url || product.image || product.main_image || null
+  );
+  const additionalImage = getProductImageUrl(
+    product.additional_image_url || product.additional_image || null
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
@@ -145,6 +161,36 @@ export default function ProductDetailPage() {
       <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Product Details */}
         <div className="lg:col-span-1 space-y-6">
+          {(mainImage || additionalImage) && (
+            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                Images
+              </h2>
+              <div className="grid grid-cols-1 gap-4">
+                {mainImage && (
+                  <div>
+                    <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">Main Image</p>
+                    <img
+                      src={mainImage}
+                      alt={`${product.name} main`}
+                      className="h-52 w-full rounded-lg border border-gray-200 dark:border-gray-700 object-cover"
+                    />
+                  </div>
+                )}
+                {additionalImage && (
+                  <div>
+                    <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">Additional Image</p>
+                    <img
+                      src={additionalImage}
+                      alt={`${product.name} additional`}
+                      className="h-52 w-full rounded-lg border border-gray-200 dark:border-gray-700 object-cover"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
               Details

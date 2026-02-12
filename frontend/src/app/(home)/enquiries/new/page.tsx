@@ -624,6 +624,8 @@ export default function NewEnquiryPage() {
       description: item.description,
       quantity: item.quantity,
       notes: `Item ${index + 1}`,
+      // Preserve selected product image when no new file is uploaded
+      existing_image: item.existing_image_url || null,
     }));
     
     formDataToSend.append("items", JSON.stringify(itemsData));

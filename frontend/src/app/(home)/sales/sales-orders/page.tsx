@@ -9,6 +9,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { saveAs } from "file-saver";
+import { addPdfPageNumbers, getProfessionalTableTheme } from "@/utils/pdfTheme";
 import {
   Search,
   Filter,
@@ -39,6 +40,7 @@ import {
   TrendingUp,
   Receipt,
   FilePlus,
+  FileDown,
   Truck,
   Archive,
   Shield,
@@ -844,46 +846,18 @@ export default function SalesOrdersPage() {
       });
 
       autoTable(doc, {
+        ...getProfessionalTableTheme(doc, "Sales Orders List", company?.name || "", "l"),
         head: [headers],
         body: body,
-        startY: 20,
-        margin: { top: 20, left: 10, right: 10, bottom: 20 },
         styles: {
           fontSize: 9,
           cellPadding: 3,
           overflow: "linebreak",
           font: "helvetica",
         },
-        headStyles: {
-          fillColor: [41, 128, 185],
-          textColor: 255,
-          fontStyle: "bold",
-        },
-        alternateRowStyles: {
-          fillColor: [245, 245, 245],
-        },
-        didDrawPage: (data) => {
-          doc.setFontSize(16);
-          doc.text("Sales Orders List", data.settings.margin.left, 12);
-          
-          doc.setFontSize(10);
-          doc.text(company?.name || '', data.settings.margin.left, 18);
-          
-          doc.text(
-            `Generated: ${new Date().toLocaleDateString("en-IN")}`,
-            doc.internal.pageSize.width - 60,
-            12
-          );
-
-          const pageCount = doc.getNumberOfPages();
-          doc.text(
-            `Page ${data.pageNumber} of ${pageCount}`,
-            data.settings.margin.left,
-            doc.internal.pageSize.height - 8
-          );
-        },
       });
 
+      addPdfPageNumbers(doc, "l");
       doc.save("sales-orders.pdf");
     } catch (error) {
       console.error("PDF export failed:", error);
@@ -1007,10 +981,199 @@ export default function SalesOrdersPage() {
     if (!company?.id) return;
 
     try {
-      const response = await fetch(`/api/sales-orders/${orderId}/pdf`);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      window.open(url, '_blank');
+      const order = (await ordersApi.getSalesOrder(company.id, orderId)) as any;
+      const doc = new jsPDF("p", "mm", "a4");
+      const valueOrDash = (value: any) =>
+        value === undefined || value === null || value === "" ? "-" : String(value);
+      const fmtNum = (value: any) => Number(value || 0).toFixed(2);
+      const fmtMoney = (value: any) =>
+        new Intl.NumberFormat("en-IN", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(Number(value || 0));
+      const safeFilePart = (value: string) => value.replace(/[\\/:*?"<>|]/g, "_");
+
+      const orderNumber = valueOrDash(order?.order_number);
+      const customerName =
+        order?.customer_name || order?.customer?.name || getCustomerDisplayName(order as ExtendedSalesOrder) || "Walk-in Customer";
+      const salesPersonName =
+        order?.sales_person_name ||
+        (order?.sales_person_id ? employeeNameById[String(order.sales_person_id)] : "") ||
+        order?.sales_person_id ||
+        "-";
+
+      // Professional header band
+      doc.setFillColor(22, 78, 99);
+      doc.rect(0, 0, 210, 28, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(15);
+      doc.text(company?.name || "Company", 14, 11);
+      doc.setFontSize(12);
+      doc.text("SALES ORDER", 14, 20);
+      doc.setFontSize(10);
+      doc.text(`No: ${orderNumber}`, 150, 11);
+      doc.text(`Date: ${order?.order_date ? formatDate(order.order_date) : "-"}`, 150, 20);
+      doc.setTextColor(0, 0, 0);
+
+      let y = 34;
+      const ensureSpace = (needed = 10) => {
+        if (y + needed > 280) {
+          doc.addPage();
+          y = 16;
+        }
+      };
+      const addSectionTitle = (title: string) => {
+        ensureSpace(10);
+        doc.setFillColor(241, 245, 249);
+        doc.rect(14, y - 4, 182, 7, "F");
+        doc.setFontSize(10);
+        doc.setFont(undefined, "bold");
+        doc.text(title, 16, y);
+        doc.setFont(undefined, "normal");
+        y += 8;
+      };
+      const addLine = (label: string, value: any) => {
+        ensureSpace(12);
+        doc.setFont(undefined, "bold");
+        doc.text(`${label}:`, 14, y);
+        doc.setFont(undefined, "normal");
+        const valueLines = doc.splitTextToSize(valueOrDash(value), 148);
+        doc.text(valueLines, 46, y);
+        y += Math.max(1, valueLines.length) * 5;
+      };
+
+      addSectionTitle("Order Information");
+      addLine("Order No", orderNumber);
+      addLine("Order Date", order?.order_date ? formatDate(order.order_date) : "-");
+      addLine("Expiry Date", order?.expire_date ? formatDate(order.expire_date) : "-");
+      addLine("Customer", customerName);
+      addLine("Contact Person", order?.contact_person_name || order?.contact_person);
+      addLine("Sales Person", salesPersonName);
+      addLine("Reference No", order?.reference_no);
+      addLine("Reference Date", order?.reference_date ? formatDate(order.reference_date) : "-");
+      addLine("Payment Terms", order?.payment_terms);
+
+      addSectionTitle("Dispatch / Other Details");
+      addLine("Delivery Note", order?.delivery_note);
+      addLine("Supplier Ref", order?.supplier_ref);
+      addLine("Other References", order?.other_references);
+      addLine("Buyer Order No", order?.buyer_order_no);
+      addLine("Buyer Order Date", order?.buyer_order_date ? formatDate(order.buyer_order_date) : "-");
+      addLine("Despatch Doc No", order?.despatch_doc_no);
+      addLine("Delivery Note Date", order?.delivery_note_date ? formatDate(order.delivery_note_date) : "-");
+      addLine("Despatched Through", order?.despatched_through);
+      addLine("Destination", order?.destination);
+      addLine("Terms Of Delivery", order?.terms_of_delivery);
+
+      const notesText = valueOrDash(order?.notes);
+      const termsText = valueOrDash(order?.terms);
+      addSectionTitle("Notes");
+      const notesLines = doc.splitTextToSize(notesText, 182);
+      ensureSpace(notesLines.length * 5 + 8);
+      doc.text(notesLines, 14, y);
+      y += notesLines.length * 5 + 2;
+
+      addSectionTitle("Terms & Conditions");
+      const termsLines = doc.splitTextToSize(termsText, 182);
+      ensureSpace(termsLines.length * 5 + 8);
+      doc.text(termsLines, 14, y);
+      y += termsLines.length * 5 + 4;
+
+      const items = Array.isArray(order?.items) ? order.items : [];
+      const body = items.map((item: any, index: number) => {
+        const qty = Number(item?.quantity || 0);
+        const rate = Number(item?.rate ?? item?.unit_price ?? 0);
+        const discountPercent = Number(item?.discount_percent || 0);
+        const discountAmount = Number(item?.discount_amount || 0);
+        const taxable = Number(item?.taxable_amount ?? qty * rate - discountAmount);
+        const gstRate = Number(item?.gst_rate || 0);
+        const taxAmount = Number(item?.tax_amount ?? taxable * (gstRate / 100));
+        const amount = Number(item?.total_amount ?? taxable + taxAmount);
+
+        return [
+          `${index + 1}`,
+          valueOrDash(item?.item_code),
+          valueOrDash(item?.description),
+          qty.toFixed(2),
+          valueOrDash(item?.unit),
+          rate.toFixed(2),
+          discountPercent.toFixed(2),
+          discountAmount.toFixed(2),
+          taxable.toFixed(2),
+          gstRate.toFixed(2),
+          taxAmount.toFixed(2),
+          amount.toFixed(2),
+        ];
+      });
+
+      autoTable(doc, {
+        startY: y,
+        head: [["#", "Item Code", "Description", "Qty", "Unit", "Rate", "Disc %", "Disc Amt", "Taxable", "GST %", "Tax", "Amount"]],
+        body,
+        theme: "grid",
+        styles: { fontSize: 8, cellPadding: 1.8, lineColor: [220, 220, 220], lineWidth: 0.1 },
+        headStyles: { fillColor: [22, 78, 99], fontSize: 8, textColor: [255, 255, 255] },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          3: { halign: "right" },
+          5: { halign: "right" },
+          6: { halign: "right" },
+          7: { halign: "right" },
+          8: { halign: "right" },
+          9: { halign: "right" },
+          10: { halign: "right" },
+          11: { halign: "right" },
+        },
+      });
+
+      const subtotal = Number(order?.subtotal || 0);
+      const tax = Number(order?.total_tax || 0);
+      const freight = Number(order?.freight_charges || 0);
+      const pAndF = Number(order?.p_and_f_charges || 0);
+      const roundOff = Number(order?.round_off || 0);
+      const total = Number(order?.total_amount || 0);
+      const finalY = (doc as any).lastAutoTable?.finalY ?? y;
+      const totalsY = finalY + 10;
+      const boxX = 118;
+      const boxW = 78;
+      const boxH = 40;
+
+      if (totalsY + boxH > 285) {
+        doc.addPage();
+      }
+      const adjustedY = totalsY + boxH > 285 ? 20 : totalsY;
+      doc.setDrawColor(200, 200, 200);
+      doc.roundedRect(boxX, adjustedY, boxW, boxH, 2, 2, "S");
+      doc.setFontSize(9);
+      doc.text("Subtotal", boxX + 3, adjustedY + 6);
+      doc.text(fmtMoney(subtotal), boxX + boxW - 3, adjustedY + 6, { align: "right" });
+      doc.text("Tax", boxX + 3, adjustedY + 12);
+      doc.text(fmtMoney(tax), boxX + boxW - 3, adjustedY + 12, { align: "right" });
+      doc.text("Freight Charges", boxX + 3, adjustedY + 18);
+      doc.text(fmtMoney(freight), boxX + boxW - 3, adjustedY + 18, { align: "right" });
+      doc.text("P&F Charges", boxX + 3, adjustedY + 24);
+      doc.text(fmtMoney(pAndF), boxX + boxW - 3, adjustedY + 24, { align: "right" });
+      doc.text("Round Off", boxX + 3, adjustedY + 30);
+      doc.text(fmtNum(roundOff), boxX + boxW - 3, adjustedY + 30, { align: "right" });
+      doc.setDrawColor(210, 210, 210);
+      doc.line(boxX + 2, adjustedY + 33, boxX + boxW - 2, adjustedY + 33);
+      doc.setFont(undefined, "bold");
+      doc.setFontSize(10);
+      doc.text("Grand Total", boxX + 3, adjustedY + 38);
+      doc.text(fmtMoney(total), boxX + boxW - 3, adjustedY + 38, { align: "right" });
+      doc.setFont(undefined, "normal");
+
+      // Footer with page numbers
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.text(`Page ${i} of ${pageCount}`, 196, 292, { align: "right" });
+      }
+      doc.setTextColor(0, 0, 0);
+
+      doc.save(`sales-order-${safeFilePart(orderNumber)}.pdf`);
     } catch (error) {
       console.error("Failed to download PDF:", error);
       alert("Failed to generate PDF. Please try again.");
@@ -1607,6 +1770,17 @@ export default function SalesOrdersPage() {
                                 >
                                   <Printer className="w-4 h-4 text-gray-400" />
                                   <span>Print</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setActiveActionMenu(null);
+                                    handleDownloadPDF(order.id);
+                                  }}
+                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                >
+                                  <FileDown className="w-4 h-4 text-gray-400" />
+                                  <span>Download PDF</span>
                                 </button>
 
                                 <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
