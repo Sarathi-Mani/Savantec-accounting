@@ -23,6 +23,7 @@ class ProductCreate(BaseModel):
     # New fields for mapping
     brand_id: Optional[str] = None
     category_id: Optional[str] = None
+    godown_id: Optional[str] = None
     opening_stock: Optional[Decimal] = Field(0, ge=0)
     min_stock_level: Optional[Decimal] = Field(0, ge=0)
     standard_cost: Optional[Decimal] = Field(None, ge=0)
@@ -57,6 +58,7 @@ class ProductUpdate(BaseModel):
     unit: Optional[str] = None
     
     gst_rate: Optional[str] = None
+    godown_id: Optional[str] = None
   
     is_service: Optional[bool] = None
     is_active: Optional[bool] = None
@@ -86,6 +88,8 @@ class ProductResponse(BaseModel):
     updated_at: datetime
     brand: Optional[Dict] = None
     category: Optional[Dict] = None
+    godown_id: Optional[str] = None
+    godown_name: Optional[str] = None
     
     class Config:
         from_attributes = True      

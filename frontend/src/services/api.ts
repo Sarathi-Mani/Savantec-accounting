@@ -298,6 +298,13 @@ export interface Product {
   standard_cost?: number;
   discount?: number;
   discount_type?: string; // 'percentage' or 'amount'
+  // Image fields can vary by endpoint; keep optional fallbacks
+  image_url?: string;
+  main_image_url?: string;
+  additional_image_url?: string;
+  image?: string;
+  main_image?: string;
+  additional_image?: string;
   // Add other properties if needed:
   hsn?: string; // Add this if your backend uses `hsn` instead of `hsn_code`
   tax_rate?: number; // Add this if needed
@@ -935,6 +942,7 @@ export const productsApi = {
       page_size?: number;
       search?: string;
       is_service?: boolean;
+      godown_id?: string;
     }
   ): Promise<ProductListResponse> => {
     const response = await api.get(`/companies/${companyId}/products`, { params });
@@ -1910,6 +1918,7 @@ export const purchaseRequestsApi = {
       page_size?: number;
       status?: 'pending' | 'approved' | 'hold' | 'rejected' | 'open' | 'in_progress' | 'closed';
       customer_id?: string;
+      brand_id?: string;
       search?: string;
       start_date?: string;
       end_date?: string;

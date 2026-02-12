@@ -8,6 +8,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { saveAs } from "file-saver";
+import { addPdfPageNumbers, getProfessionalTableTheme } from "@/utils/pdfTheme";
 import {
   Search,
   Filter,
@@ -431,46 +432,18 @@ export default function CategoriesPage() {
       });
 
       autoTable(doc, {
+        ...getProfessionalTableTheme(doc, "Categories List", company?.name || "", "l"),
         head: [headers],
         body: body,
-        startY: 20,
-        margin: { top: 20, left: 10, right: 10, bottom: 20 },
         styles: {
           fontSize: 9,
           cellPadding: 3,
           overflow: "linebreak",
           font: "helvetica",
         },
-        headStyles: {
-          fillColor: [41, 128, 185],
-          textColor: 255,
-          fontStyle: "bold",
-        },
-        alternateRowStyles: {
-          fillColor: [245, 245, 245],
-        },
-        didDrawPage: (data) => {
-          doc.setFontSize(16);
-          doc.text("Categories List", data.settings.margin.left, 12);
-          
-          doc.setFontSize(10);
-          doc.text(company?.name || '', data.settings.margin.left, 18);
-          
-          doc.text(
-            `Generated: ${new Date().toLocaleDateString("en-IN")}`,
-            doc.internal.pageSize.width - 60,
-            12
-          );
-
-          const pageCount = doc.getNumberOfPages();
-          doc.text(
-            `Page ${data.pageNumber} of ${pageCount}`,
-            data.settings.margin.left,
-            doc.internal.pageSize.height - 8
-          );
-        },
       });
 
+      addPdfPageNumbers(doc, "l");
       doc.save("categories.pdf");
     } catch (error) {
       console.error("PDF export failed:", error);

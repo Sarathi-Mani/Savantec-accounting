@@ -272,6 +272,7 @@ class PurchaseRequestService:
         overall_status: Optional[str] = None,
         approval_status: Optional[str] = None,
         customer_id: Optional[str] = None,
+        brand_id: Optional[str] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         search: Optional[str] = None,
@@ -300,6 +301,9 @@ class PurchaseRequestService:
         if customer_id:
             print(f"   Filtering by customer_id: {customer_id}")
             query = query.filter(PurchaseRequest.customer_id == customer_id)
+        
+        if brand_id:
+            print(f"   Filtering by brand_id: {brand_id}")
         
         if start_date:
             print(f"   Filtering by start_date: {start_date}")
@@ -332,10 +336,6 @@ class PurchaseRequestService:
                 )
             )
         
-        # Get total count
-        total = query.count()
-        print(f"📊 Total records found: {total}")
-        
         # Apply sorting
         valid_sort_columns = [
             "purchase_req_no", "request_number", "request_date", "customer_name",
@@ -353,14 +353,50 @@ class PurchaseRequestService:
         else:
             query = query.order_by(desc(PurchaseRequest.request_date))
             print(f"   Default sorting by request_date DESC")
-        
-        # Apply pagination
+
+        # Brand filtering needs resolving product_id -> products.brand_id from JSON items.
+        if brand_id:
+            all_results = query.all()
+            product_ids = set()
+            for request in all_results:
+                for item in (request.items or []):
+                    pid = item.get("product_id")
+                    if pid:
+                        product_ids.add(str(pid))
+
+            product_brand_map = {}
+            if product_ids:
+                products = self.db.query(Product.id, Product.brand_id).filter(
+                    Product.company_id == company.id,
+                    Product.id.in_(list(product_ids))
+                ).all()
+                product_brand_map = {str(p.id): str(p.brand_id) if p.brand_id else "" for p in products}
+
+            filtered = []
+            for request in all_results:
+                has_brand = False
+                for item in (request.items or []):
+                    pid = item.get("product_id")
+                    if not pid:
+                        continue
+                    if product_brand_map.get(str(pid)) == str(brand_id):
+                        has_brand = True
+                        break
+                if has_brand:
+                    filtered.append(request)
+
+            total = len(filtered)
+            print(f"📊 Total records found after brand filter: {total}")
+            offset = (page - 1) * page_size
+            results = filtered[offset: offset + page_size]
+            print(f"📄 Returning {len(results)} records (page {page}, size {page_size})")
+            return results, total
+
+        total = query.count()
+        print(f"📊 Total records found: {total}")
         offset = (page - 1) * page_size
-        query = query.offset(offset).limit(page_size)
-        
-        results = query.all()
+        results = query.offset(offset).limit(page_size).all()
         print(f"📄 Returning {len(results)} records (page {page}, size {page_size})")
-        
         return results, total
     
     def update_status(

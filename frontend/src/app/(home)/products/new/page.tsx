@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { productsApi, brandsApi, categoriesApi, getErrorMessage } from "@/services/api";
+import { productsApi, brandsApi, categoriesApi, inventoryApi, Godown } from "@/services/api";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
@@ -23,8 +23,11 @@ export default function NewProductPage() {
   
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [godowns, setGodowns] = useState<Godown[]>([]);
   const [loadingBrands, setLoadingBrands] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
+  const [loadingGodowns, setLoadingGodowns] = useState(false);
+  const [companySelection, setCompanySelection] = useState("company");
 
   const [formData, setFormData] = useState({
     // Item Basic Details - Required fields
@@ -76,11 +79,16 @@ export default function NewProductPage() {
         setLoadingCategories(true);
         const categoriesResult = await categoriesApi.list(company.id, { page: 1, page_size: 100 });
         setCategories(categoriesResult.categories || categoriesResult.data || []);
+
+        setLoadingGodowns(true);
+        const godownsResult = await inventoryApi.listGodowns(company.id);
+        setGodowns(godownsResult || []);
       } catch (error) {
         console.error("Failed to fetch brands/categories:", error);
       } finally {
         setLoadingBrands(false);
         setLoadingCategories(false);
+        setLoadingGodowns(false);
       }
     };
 
@@ -200,7 +208,11 @@ const handleSubmit = async (e: React.FormEvent) => {
     formDataToSend.append('is_inclusive', formData.is_inclusive.toString());
     formDataToSend.append('unit_price', formData.unit_price.toString());
     formDataToSend.append('gst_rate', formData.gst_rate);
-    formDataToSend.append('company_id', company.id);
+
+    // Send selected godown when chosen from Company dropdown
+    if (companySelection.startsWith("godown:")) {
+      formDataToSend.append("godown_id", companySelection.replace("godown:", ""));
+    }
 
     // Add images if they exist
     if (mainImage) {
@@ -464,12 +476,22 @@ const uploadImages = async (companyId: string, productId: string, mainImage: Fil
                   <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                     Company
                   </label>
-                  <input
-                    type="text"
-                    value={company.name}
-                    readOnly
-                    className="w-full rounded-lg border border-stroke bg-gray-50 px-4 py-3 text-dark-6 dark:border-dark-3 dark:bg-dark-2"
-                  />
+                  <select
+                    value={companySelection}
+                    onChange={(e) => setCompanySelection(e.target.value)}
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-dark outline-none focus:border-primary dark:border-dark-3 dark:text-white"
+                  >
+                    <option value="company">{company.name}</option>
+                    {loadingGodowns ? (
+                      <option value="loading" disabled>Loading godowns...</option>
+                    ) : godowns.length > 0 ? (
+                      godowns.map((godown) => (
+                        <option key={godown.id} value={`godown:${godown.id}`}>
+                          {godown.name}
+                        </option>
+                      ))
+                    ) : null}
+                  </select>
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-medium text-dark dark:text-white">

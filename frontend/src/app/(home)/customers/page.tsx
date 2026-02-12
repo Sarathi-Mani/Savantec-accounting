@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { saveAs } from "file-saver";
+import { addPdfPageNumbers, getProfessionalTableTheme } from "@/utils/pdfTheme";
 import { useAuth } from "@/context/AuthContext";
 import { customersApi, Customer, CustomerListResponse } from "@/services/api";
 import Link from "next/link";
@@ -238,6 +239,7 @@ export default function CustomersPage() {
       const doc = new jsPDF("l", "mm", "a4");
 
       autoTable(doc, {
+        ...getProfessionalTableTheme(doc, "Customers List", company?.name || "", "l"),
         head: [[
           "Customer ID",
           "Name",
@@ -254,10 +256,9 @@ export default function CustomersPage() {
           formatCurrency(c.credit_limit || 0),
           getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
         ]),
-        styles: { fontSize: 9 },
-        headStyles: { fillColor: [37, 99, 235] },
       });
 
+      addPdfPageNumbers(doc, "l");
       doc.save(`customers_${Date.now()}.pdf`);
     } catch (error) {
       console.error("PDF export failed:", error);

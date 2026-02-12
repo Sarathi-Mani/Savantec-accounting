@@ -2,12 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { productsApi, Product, ProductListResponse } from "@/services/api";
+import { inventoryApi, productsApi, Product, ProductListResponse, Godown } from "@/services/api";
 import { useEffect, useState, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { saveAs } from "file-saver";
+import { addPdfPageNumbers, getProfessionalTableTheme } from "@/utils/pdfTheme";
 import Link from "next/link";
 import {
   Search,
@@ -44,6 +45,9 @@ type ProductWithMeta = Product & {
   current_stock?: number | null;
   unit_price?: number | string;
   gst_rate?: number | string;
+  company_id?: string;
+  godown_id?: string | null;
+  godown_name?: string | null;
 };
 
 const toNumber = (value: number | string | undefined | null, fallback = 0) => {
@@ -54,6 +58,10 @@ const toNumber = (value: number | string | undefined | null, fallback = 0) => {
 
 const getBrandName = (product: ProductWithMeta) => product.brand?.name || "-";
 const getCategoryName = (product: ProductWithMeta) => product.category?.name || "-";
+const getStoreName = (product: ProductWithMeta, companyName?: string) => {
+  if (!product.godown_id) return companyName || "-";
+  return product.godown_name || product.godown_id;
+};
 
 // Print component for products
 const PrintView = ({
@@ -140,6 +148,16 @@ const PrintView = ({
                   fontWeight: 'bold'
                 }}>
                   Category
+                </th>
+              )}
+              {visibleColumns.store && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Store Name
                 </th>
               )}
               {visibleColumns.hsn && (
@@ -241,6 +259,14 @@ const PrintView = ({
                     {getCategoryName(product)}
                   </td>
                 )}
+                {visibleColumns.store && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {getStoreName(product, companyName)}
+                  </td>
+                )}
                 {visibleColumns.hsn && (
                   <td style={{
                     padding: '12px',
@@ -332,7 +358,8 @@ export default function ProductsPage() {
   
   // Filters state
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<string>("");
+  const [storeFilter, setStoreFilter] = useState<string>("");
+  const [godowns, setGodowns] = useState<Godown[]>([]);
   
   // UI state
   const [showFilters, setShowFilters] = useState(false);
@@ -355,6 +382,7 @@ export default function ProductsPage() {
     name: true,
     brand: true,
     category: true,
+    store: true,
     hsn: true,
     type: true,
     price: true,
@@ -365,11 +393,37 @@ export default function ProductsPage() {
 
   const companyId = company?.id || (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
 
+  const selectedGodownId = storeFilter.startsWith("godown:")
+    ? storeFilter.replace("godown:", "")
+    : undefined;
+
+  const applyStoreFilter = useCallback((products: ProductWithMeta[]) => {
+    if (selectedGodownId) {
+      return products.filter((product) => product.godown_id === selectedGodownId);
+    }
+    return products;
+  }, [selectedGodownId]);
+
   useEffect(() => {
     if (companyId) {
       fetchProducts();
     }
-  }, [companyId, currentPage, search, typeFilter]);
+  }, [companyId, currentPage, search, storeFilter]);
+
+  useEffect(() => {
+    const fetchGodowns = async () => {
+      if (!companyId) return;
+      try {
+        const result = await inventoryApi.listGodowns(companyId);
+        setGodowns(result || []);
+      } catch (err) {
+        console.error("Failed to load godowns", err);
+        setGodowns([]);
+      }
+    };
+
+    fetchGodowns();
+  }, [companyId]);
 
   const fetchProducts = async () => {
     try {
@@ -383,7 +437,7 @@ export default function ProductsPage() {
         page: currentPage,
         page_size: pageSize,
         search: search || undefined,
-        is_service: typeFilter === "" ? undefined : typeFilter === "service",
+        godown_id: selectedGodownId,
       });
       
       setData(result);
@@ -408,11 +462,12 @@ export default function ProductsPage() {
           page: pageNum,
           page_size: pageSize,
           search: search || undefined,
-          is_service: typeFilter === "" ? undefined : typeFilter === "service",
+          godown_id: selectedGodownId,
         });
-        const batch = (result?.products || []) as ProductWithMeta[];
+        const rawBatch = (result?.products || []) as ProductWithMeta[];
+        const batch = applyStoreFilter(rawBatch);
         allProducts = allProducts.concat(batch);
-        if (batch.length < pageSize) break;
+        if (rawBatch.length < pageSize) break;
         pageNum += 1;
       }
 
@@ -430,7 +485,7 @@ export default function ProductsPage() {
 
   const handleReset = () => {
     setSearch("");
-    setTypeFilter("");
+    setStoreFilter("");
     setCurrentPage(1);
   };
 
@@ -451,7 +506,7 @@ export default function ProductsPage() {
       : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
   };
 
-  const filteredProducts = data?.products || [];
+  const filteredProducts = applyStoreFilter((data?.products || []) as ProductWithMeta[]);
   const totalPages = data ? Math.max(1, Math.ceil(data.total / pageSize)) : 1;
 
   // Export functions
@@ -478,6 +533,11 @@ export default function ProductsPage() {
         if (visibleColumns.category) {
           if (!headers.includes("Category")) headers.push("Category");
           row.push(getCategoryName(product as ProductWithMeta));
+        }
+
+        if (visibleColumns.store) {
+          if (!headers.includes("Store Name")) headers.push("Store Name");
+          row.push(getStoreName(product as ProductWithMeta, company?.name));
         }
 
         if (visibleColumns.hsn) {
@@ -550,6 +610,10 @@ export default function ProductsPage() {
           row["Category"] = getCategoryName(product as ProductWithMeta);
         }
 
+        if (visibleColumns.store) {
+          row["Store Name"] = getStoreName(product as ProductWithMeta, company?.name);
+        }
+
         if (visibleColumns.hsn) {
           row["HSN/SAC"] = product.hsn_code || "";
         }
@@ -616,6 +680,11 @@ export default function ProductsPage() {
           row.push(getCategoryName(product as ProductWithMeta));
         }
 
+        if (visibleColumns.store) {
+          if (!headers.includes("Store Name")) headers.push("Store Name");
+          row.push(getStoreName(product as ProductWithMeta, company?.name));
+        }
+
         if (visibleColumns.hsn) {
           if (!headers.includes("HSN/SAC")) headers.push("HSN/SAC");
           row.push(product.hsn_code || "-");
@@ -648,46 +717,18 @@ export default function ProductsPage() {
       });
 
       autoTable(doc, {
+        ...getProfessionalTableTheme(doc, "Products List", company?.name || "", "l"),
         head: [headers],
         body: body,
-        startY: 20,
-        margin: { top: 20, left: 10, right: 10, bottom: 20 },
         styles: {
           fontSize: 9,
           cellPadding: 3,
           overflow: "linebreak",
           font: "helvetica",
         },
-        headStyles: {
-          fillColor: [41, 128, 185],
-          textColor: 255,
-          fontStyle: "bold",
-        },
-        alternateRowStyles: {
-          fillColor: [245, 245, 245],
-        },
-        didDrawPage: (data) => {
-          doc.setFontSize(16);
-          doc.text("Products List", data.settings.margin.left, 12);
-          
-          doc.setFontSize(10);
-          doc.text(company?.name || '', data.settings.margin.left, 18);
-          
-          doc.text(
-            `Generated: ${new Date().toLocaleDateString("en-IN")}`,
-            doc.internal.pageSize.width - 60,
-            12
-          );
-
-          const pageCount = doc.getNumberOfPages();
-          doc.text(
-            `Page ${data.pageNumber} of ${pageCount}`,
-            data.settings.margin.left,
-            doc.internal.pageSize.height - 8
-          );
-        },
       });
 
+      addPdfPageNumbers(doc, "l");
       doc.save("products.pdf");
     } catch (error) {
       console.error("PDF export failed:", error);
@@ -718,6 +759,10 @@ export default function ProductsPage() {
 
         if (visibleColumns.category) {
           row["Category"] = getCategoryName(product as ProductWithMeta);
+        }
+
+        if (visibleColumns.store) {
+          row["Store Name"] = getStoreName(product as ProductWithMeta, company?.name);
         }
 
         if (visibleColumns.hsn) {
@@ -986,6 +1031,7 @@ export default function ProductsPage() {
                       />
                       <span className="capitalize">
                         {key === 'hsn' ? 'HSN/SAC' : 
+                         key === 'store' ? 'Store Name' :
                          key === 'gst' ? 'GST %' : 
                          key.charAt(0).toUpperCase() + key.slice(1)}
                       </span>
@@ -1067,19 +1113,25 @@ export default function ProductsPage() {
 
         {showFilters && (
           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Type Filter */}
+            {/* Store Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Type
+                Store
               </label>
               <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
+                value={storeFilter}
+                onChange={(e) => {
+                  setStoreFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
-                <option value="">All Types</option>
-                <option value="product">Products</option>
-                <option value="service">Services</option>
+                <option value="">{company?.name || "Company"}</option>
+                {godowns.map((godown) => (
+                  <option key={godown.id} value={`godown:${godown.id}`}>
+                    {godown.name}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -1115,6 +1167,11 @@ export default function ProductsPage() {
                 {visibleColumns.category && (
                   <th className="text-left px-6 py-3 whitespace-nowrap w-40">
                     Category
+                  </th>
+                )}
+                {visibleColumns.store && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                    Store Name
                   </th>
                 )}
                 {visibleColumns.hsn && (
@@ -1167,7 +1224,7 @@ export default function ProductsPage() {
                         No products found
                       </p>
                       <p className="text-gray-500 dark:text-gray-400 mb-4">
-                        {typeFilter || search ?
+                        {search || !!selectedGodownId ?
                           "No products found matching your filters. Try adjusting your search criteria." :
                           "Add your first product or service to start managing your inventory."}
                       </p>
@@ -1235,6 +1292,11 @@ export default function ProductsPage() {
                           ) : (
                             <span className="text-gray-500 dark:text-gray-400">-</span>
                           )}
+                        </td>
+                      )}
+                      {visibleColumns.store && (
+                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                          {getStoreName(product as ProductWithMeta, company?.name)}
                         </td>
                       )}
                       {visibleColumns.hsn && (

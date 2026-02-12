@@ -3,12 +3,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { purchaseRequestsApi, getErrorMessage } from "@/services/api";
+import { purchaseRequestsApi, brandsApi, productsApi, getErrorMessage } from "@/services/api";
 import Link from "next/link";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { saveAs } from "file-saver";
+import { addPdfPageNumbers, getProfessionalTableTheme } from "@/utils/pdfTheme";
 import {
   Search,
   Filter,
@@ -50,6 +51,10 @@ interface PurchaseRequest {
   notes?: string;
   created_at: string;
   updated_at: string;
+  items?: Array<{
+    product_id?: string;
+    make?: string;
+  }>;
 }
 
 interface Customer {
@@ -57,6 +62,11 @@ interface Customer {
   name: string;
   email?: string;
   phone?: string;
+}
+
+interface BrandOption {
+  id: string;
+  name: string;
 }
 
 // Print component for purchase requests
@@ -304,8 +314,11 @@ export default function PurchaseRequestsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
+  const [brandFilter, setBrandFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [brands, setBrands] = useState<BrandOption[]>([]);
+  const [productBrandNameMap, setProductBrandNameMap] = useState<Record<string, string>>({});
   
   // UI state
   const [showFilters, setShowFilters] = useState(false);
@@ -368,6 +381,12 @@ export default function PurchaseRequestsPage() {
   }, [companyId]);
 
   useEffect(() => {
+    if (companyId) {
+      fetchBrandsForBrandFilter();
+    }
+  }, [companyId]);
+
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (!target.closest(".action-dropdown-container")) {
@@ -384,11 +403,83 @@ export default function PurchaseRequestsPage() {
       fetchPurchaseRequests();
       setCachedExportData(null);
     }
-  }, [statusFilter, customerFilter, fromDate, toDate]);
+  }, [statusFilter, customerFilter, brandFilter, fromDate, toDate]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, customerFilter, fromDate, toDate, search]);
+  }, [statusFilter, customerFilter, brandFilter, fromDate, toDate, search]);
+
+  const fetchBrandsForBrandFilter = async () => {
+    try {
+      if (!companyId) return;
+
+      const pageSize = 100; // Backend validates page_size <= 100
+      let page = 1;
+      let allBrands: any[] = [];
+
+      while (true) {
+        const brandsResult = await brandsApi.list(companyId, { page, page_size: pageSize });
+        const batch = brandsResult?.brands || [];
+        allBrands = allBrands.concat(batch);
+        if (batch.length < pageSize) break;
+        page += 1;
+      }
+
+      const fetchedBrands: BrandOption[] = allBrands.map((b: any) => ({
+        id: b.id,
+        name: b.name,
+      }));
+      setBrands(fetchedBrands);
+
+      const brandNameById: Record<string, string> = {};
+      fetchedBrands.forEach((b) => {
+        brandNameById[String(b.id)] = b.name;
+      });
+
+      const productPageSize = 100;
+      let productPage = 1;
+      const nextProductBrandNameMap: Record<string, string> = {};
+      while (true) {
+        const productsResult: any = await productsApi.list(companyId, { page: productPage, page_size: productPageSize });
+        const batch: any[] = Array.isArray(productsResult)
+          ? productsResult
+          : (productsResult?.products || productsResult?.data || productsResult?.items || []);
+
+        batch.forEach((product: any) => {
+          const pid = product?.id ? String(product.id) : "";
+          if (!pid) return;
+          const brandName =
+            product?.brand?.name ||
+            (product?.brand_id ? brandNameById[String(product.brand_id)] : "") ||
+            "";
+          if (brandName) {
+            nextProductBrandNameMap[pid] = brandName;
+          }
+        });
+
+        if (batch.length < productPageSize) break;
+        productPage += 1;
+      }
+      setProductBrandNameMap(nextProductBrandNameMap);
+    } catch (err) {
+      console.error("Failed to load brands for brand filter:", err);
+      setBrands([]);
+      setProductBrandNameMap({});
+    }
+  };
+
+  const getRequestBrandNames = (request: PurchaseRequest): string => {
+    const names = new Set<string>();
+    (request.items || []).forEach((item: any) => {
+      const pid = item?.product_id ? String(item.product_id) : "";
+      if (pid && productBrandNameMap[pid]) {
+        names.add(productBrandNameMap[pid]);
+      } else if (item?.make) {
+        names.add(String(item.make));
+      }
+    });
+    return names.size > 0 ? Array.from(names).join(", ") : "-";
+  };
 
   const fetchCustomers = (source: PurchaseRequest[]) => {
     try {
@@ -425,6 +516,10 @@ export default function PurchaseRequestsPage() {
       if (statusFilter !== "all" && statusFilter) {
         params.status = statusFilter;
       }
+
+      if (brandFilter) {
+        params.brand_id = brandFilter;
+      }
       
       const response = await purchaseRequestsApi.list(company.id, params);
       const nextRequests = response.purchase_requests || [];
@@ -444,10 +539,20 @@ export default function PurchaseRequestsPage() {
     try {
       if (!companyId) return [];
 
-      const response = await purchaseRequestsApi.list(companyId, { page_size: 1000 });
-      const allRequests = Array.isArray(response)
-        ? response
-        : (response.purchase_requests || []);
+      const pageSize = 100; // Backend validates page_size <= 100
+      let page = 1;
+      let allRequests: PurchaseRequest[] = [];
+
+      while (true) {
+        const response = await purchaseRequestsApi.list(companyId, { page, page_size: pageSize });
+        const batch = Array.isArray(response)
+          ? response
+          : (response.purchase_requests || []);
+        allRequests = allRequests.concat(batch);
+        if (batch.length < pageSize) break;
+        page += 1;
+      }
+
       setCachedExportData(allRequests);
       return allRequests;
     } catch (error) {
@@ -527,6 +632,7 @@ export default function PurchaseRequestsPage() {
     setSearch("");
     setStatusFilter("");
     setCustomerFilter("");
+    setBrandFilter("");
     setFromDate("");
     setToDate("");
     fetchPurchaseRequests();
@@ -558,7 +664,7 @@ export default function PurchaseRequestsPage() {
     if (customerFilter) {
       filtered = filtered.filter(request => request.customer_id === customerFilter);
     }
-    
+
     // Date filters
     if (fromDate) {
       filtered = filtered.filter(request => {
@@ -787,46 +893,18 @@ export default function PurchaseRequestsPage() {
       });
 
       autoTable(doc, {
+        ...getProfessionalTableTheme(doc, "Purchase Requests List", company?.name || "", "l"),
         head: [headers],
         body: body,
-        startY: 20,
-        margin: { top: 20, left: 10, right: 10, bottom: 20 },
         styles: {
           fontSize: 9,
           cellPadding: 3,
           overflow: "linebreak",
           font: "helvetica",
         },
-        headStyles: {
-          fillColor: [41, 128, 185],
-          textColor: 255,
-          fontStyle: "bold",
-        },
-        alternateRowStyles: {
-          fillColor: [245, 245, 245],
-        },
-        didDrawPage: (data) => {
-          doc.setFontSize(16);
-          doc.text("Purchase Requests List", data.settings.margin.left, 12);
-          
-          doc.setFontSize(10);
-          doc.text(company?.name || '', data.settings.margin.left, 18);
-          
-          doc.text(
-            `Generated: ${new Date().toLocaleDateString("en-IN")}`,
-            doc.internal.pageSize.width - 60,
-            12
-          );
-
-          const pageCount = doc.getNumberOfPages();
-          doc.text(
-            `Page ${data.pageNumber} of ${pageCount}`,
-            data.settings.margin.left,
-            doc.internal.pageSize.height - 8
-          );
-        },
       });
 
+      addPdfPageNumbers(doc, "l");
       doc.save("purchase_requests.pdf");
     } catch (error) {
       console.error("PDF export failed:", error);
@@ -1254,7 +1332,7 @@ export default function PurchaseRequestsPage() {
         </div>
 
         {showFilters && (
-          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {/* Status Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -1316,6 +1394,25 @@ export default function PurchaseRequestsPage() {
                 onChange={(e) => setToDate(e.target.value)}
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               />
+            </div>
+
+            {/* Brand Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Brand
+              </label>
+              <select
+                value={brandFilter}
+                onChange={(e) => setBrandFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">All Brands</option>
+                {brands.map((brand) => (
+                  <option key={brand.id} value={brand.id}>
+                    {brand.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         )}
@@ -1392,7 +1489,7 @@ export default function PurchaseRequestsPage() {
                         No purchase requests found
                       </p>
                       <p className="text-gray-500 dark:text-gray-400 mb-4">
-                        {statusFilter || search || customerFilter ?
+                        {statusFilter || search || customerFilter || brandFilter ?
                           "No purchase requests found matching your filters. Try adjusting your search criteria." :
                           "Create your first purchase request to start managing customer orders."}
                       </p>
@@ -1439,6 +1536,9 @@ export default function PurchaseRequestsPage() {
                             </div>
                             <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
                               Customer ID: {request.customer_id.slice(0, 8)}
+                            </div>
+                            <div className="text-xs text-indigo-600 dark:text-indigo-400 truncate">
+                              Brand: {getRequestBrandNames(request)}
                             </div>
                           </div>
                         </td>

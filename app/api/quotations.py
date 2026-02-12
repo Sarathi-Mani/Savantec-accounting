@@ -495,6 +495,19 @@ async def create_quotation(
     try:
         # Parse the JSON data
         quotation_data = json.loads(data)
+        try:
+            incoming_items = quotation_data.get("items", []) or []
+            print(
+                f"[EQ-DEBUG][quotation:create] company_id={company_id} "
+                f"incoming_items_count={len(incoming_items)}"
+            )
+            if len(incoming_items) > 0:
+                print(
+                    "[EQ-DEBUG][quotation:create] first_incoming_item="
+                    f"{json.dumps(incoming_items[0], default=str)}"
+                )
+        except Exception as _debug_err:
+            print(f"[EQ-DEBUG][quotation:create] debug_error={_debug_err}")
         
         # Verify company belongs to user
         company = db.query(Company).filter(
@@ -566,6 +579,13 @@ async def create_quotation(
                     item_dict["sub_items"].append(sub_item_dict)
             
             items.append(item_dict)
+        try:
+            print(
+                "[EQ-DEBUG][quotation:create] mapped_item_prices="
+                f"{[{'product_id': i.get('product_id'), 'unit_price': i.get('unit_price'), 'description': i.get('description')} for i in items]}"
+            )
+        except Exception as _debug_err:
+            print(f"[EQ-DEBUG][quotation:create] mapped_debug_error={_debug_err}")
         
         # Get quotation_type from the data
         quotation_type = quotation_data.get("quotation_type", "item")

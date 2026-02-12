@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { saveAs } from "file-saver";
+import { addPdfPageNumbers, getProfessionalTableTheme } from "@/utils/pdfTheme";
 import {
   Search,
   Filter,
@@ -111,6 +112,17 @@ const canEditEnquiry = (status: string): boolean => {
 const canDeleteEnquiry = (status: string): boolean => {
   const deletableStatuses = ['pending', 'new', 'assigned', 'on_hold'];
   return deletableStatuses.includes(status);
+};
+
+const isConvertedToQuotationStatus = (status: string): boolean => {
+  const normalized = status.trim().toLowerCase().replace(/\s+/g, "_");
+  return [
+    "convert-to_quotation",
+    "convert_to_quotation",
+    "converted_to_quotation",
+    "converted-to_quotation",
+    "converted_to-quotation",
+  ].includes(normalized);
 };
 
 export default function EnquiriesPage() {
@@ -715,44 +727,18 @@ export default function EnquiriesPage() {
       });
 
       autoTable(doc, {
+        ...getProfessionalTableTheme(doc, "Enquiries List", company?.name || "", "l"),
         head: [headers],
         body: body,
-        startY: 20,
-        margin: { top: 20, left: 10, right: 10, bottom: 20 },
         styles: {
           fontSize: 9,
           cellPadding: 3,
           overflow: "linebreak",
           font: "helvetica",
         },
-        headStyles: {
-          fillColor: [41, 128, 185],
-          textColor: 255,
-          fontStyle: "bold",
-        },
-        alternateRowStyles: {
-          fillColor: [245, 245, 245],
-        },
-        didDrawPage: (data) => {
-          doc.setFontSize(16);
-          doc.text("Enquiries List", data.settings.margin.left, 12);
-          
-          doc.setFontSize(10);
-          doc.text(
-            `Generated: ${new Date().toLocaleDateString("en-IN")}`,
-            doc.internal.pageSize.width - 60,
-            12
-          );
-
-          const pageCount = doc.getNumberOfPages();
-          doc.text(
-            `Page ${data.pageNumber} of ${pageCount}`,
-            data.settings.margin.left,
-            doc.internal.pageSize.height - 8
-          );
-        },
       });
 
+      addPdfPageNumbers(doc, "l");
       doc.save("enquiries.pdf");
     } catch (error) {
       console.error("PDF export failed:", error);
@@ -1311,9 +1297,6 @@ export default function EnquiriesPage() {
                 </tr>
               ) : (
                 enquiries.map((enquiry) => {
-                  const isCompleted = enquiry.status === 'completed';
-                  const showEditDelete = canEditEnquiry(enquiry.status) || canDeleteEnquiry(enquiry.status);
-
                   return (
                     <tr
                       key={enquiry.id}
@@ -1416,41 +1399,43 @@ export default function EnquiriesPage() {
 
                             {activeActionMenu === enquiry.id && (
                               <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                                <Link
-                                  href={`/enquiries/${enquiry.id}`}
-                                  onClick={() => setActiveActionMenu(null)}
-                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                                >
-                                  <Eye className="w-4 h-4 text-gray-400" />
-                                  <span>View Details</span>
-                                </Link>
-
-                                {canEditEnquiry(enquiry.status) && (
+                                {isConvertedToQuotationStatus(enquiry.status) ? (
                                   <Link
-                                    href={`/enquiries/${enquiry.id}/edit`}
+                                    href={`/enquiries/${enquiry.id}`}
                                     onClick={() => setActiveActionMenu(null)}
                                     className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                                   >
-                                    <Edit className="w-4 h-4 text-gray-400" />
-                                    <span>Edit / Assign</span>
-                                </Link>
-                                )}
-
-                                {canDeleteEnquiry(enquiry.status) && (
+                                    <Eye className="w-4 h-4 text-gray-400" />
+                                    <span>View Details</span>
+                                  </Link>
+                                ) : (
                                   <>
-                                    <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
-                                    <button
-                                      onClick={() => {
-                                        if (confirm(`Are you sure you want to delete enquiry ${enquiry.enquiry_number}?`)) {
-                                          handleDeleteEnquiry(enquiry.id, enquiry.enquiry_number);
-                                          setActiveActionMenu(null);
-                                        }
-                                      }}
-                                      className="flex w-full items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                    <Link
+                                      href={`/enquiries/${enquiry.id}/edit`}
+                                      onClick={() => setActiveActionMenu(null)}
+                                      className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                                     >
-                                      <Trash2 className="w-4 h-4" />
-                                      <span>Delete Enquiry</span>
-                                    </button>
+                                      <Edit className="w-4 h-4 text-gray-400" />
+                                      <span>Edit / Assign</span>
+                                    </Link>
+
+                                    {canDeleteEnquiry(enquiry.status) && (
+                                      <>
+                                        <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                                        <button
+                                          onClick={() => {
+                                            if (confirm(`Are you sure you want to delete enquiry ${enquiry.enquiry_number}?`)) {
+                                              handleDeleteEnquiry(enquiry.id, enquiry.enquiry_number);
+                                              setActiveActionMenu(null);
+                                            }
+                                          }}
+                                          className="flex w-full items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                          <span>Delete Enquiry</span>
+                                        </button>
+                                      </>
+                                    )}
                                   </>
                                 )}
                               </div>
