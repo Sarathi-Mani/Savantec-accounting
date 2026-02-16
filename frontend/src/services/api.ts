@@ -59,7 +59,7 @@ api.interceptors.response.use(
       // Handle unauthorized access
       localStorage.removeItem('access_token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      window.location.href = '/auth/sign-in';
     }
     return Promise.reject(error);
   }

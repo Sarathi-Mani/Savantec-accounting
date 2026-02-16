@@ -115,7 +115,7 @@ export default function AdminLiveTracking() {
   // Redirect if no company
   useEffect(() => {
     if (!company?.id) {
-      router.push("/login");
+      router.push("/auth/sign-in");
     }
   }, [company, router]);
 

@@ -196,7 +196,7 @@ export async function permissionGuard(req: NextRequest): Promise<NextResponse> {
   if (!user) {
     // For auth-only routes, redirect to login
     if (AUTH_ONLY_ROUTES.some(route => pathname.startsWith(route))) {
-      const loginUrl = new URL('/auth/login', req.url);
+      const loginUrl = new URL('/auth/sign-in', req.url);
       loginUrl.searchParams.set('callbackUrl', pathname);
       return NextResponse.redirect(loginUrl);
     }
@@ -210,7 +210,7 @@ export async function permissionGuard(req: NextRequest): Promise<NextResponse> {
     }
     
     // For web pages, redirect to login
-    const loginUrl = new URL('/auth/login', req.url);
+    const loginUrl = new URL('/auth/sign-in', req.url);
     loginUrl.searchParams.set('callbackUrl', pathname);
     return NextResponse.redirect(loginUrl);
   }
