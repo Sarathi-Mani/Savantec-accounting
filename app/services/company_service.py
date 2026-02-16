@@ -1,6 +1,6 @@
 """Company service for business logic."""
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Union
 from decimal import Decimal
 from app.database.models import Company, BankAccount, User, Account, AccountType,Invoice
 from app.schemas.company import CompanyCreate, CompanyUpdate, BankAccountCreate, BankAccountUpdate
@@ -12,6 +12,32 @@ class CompanyService:
     
     def __init__(self, db: Session):
         self.db = db
+
+    def _get_user_id(self, user: Union[User, Dict[str, Any]]) -> Optional[str]:
+        """Extract a user ID from supported auth payload shapes."""
+        if isinstance(user, User):
+            return user.id
+
+        if isinstance(user, dict):
+            # Standard wrapped user payload: {"type": "user", "data": <User>}
+            if user.get("type") == "user":
+                user_data = user.get("data")
+                if user_data is not None and hasattr(user_data, "id"):
+                    return getattr(user_data, "id")
+
+            # Fallback for plain dict user payloads
+            user_id = user.get("id")
+            if user_id:
+                return str(user_id)
+
+        return None
+
+    def _get_employee_company_id(self, user: Union[User, Dict[str, Any]]) -> Optional[str]:
+        """Return company ID when auth payload belongs to an employee."""
+        if isinstance(user, dict) and user.get("is_employee"):
+            company_id = user.get("company_id")
+            return str(company_id) if company_id else None
+        return None
     def get_next_invoice_number(self, company: Company, voucher_type: Optional[str] = None) -> str:
         """Get the next invoice number for a company based on voucher type."""
         from app.database.models import InvoiceVoucher
@@ -88,17 +114,39 @@ class CompanyService:
         self.db.refresh(company)
         return company
     
-    def get_company(self, company_id: str, user: User) -> Optional[Company]:
-        """Get a company by ID (must belong to user)."""
+    def get_company(self, company_id: str, user: Union[User, Dict[str, Any]]) -> Optional[Company]:
+        """Get a company by ID for either owner user or employee auth payload."""
+        employee_company_id = self._get_employee_company_id(user)
+        if employee_company_id is not None:
+            if employee_company_id != str(company_id):
+                return None
+            return self.db.query(Company).filter(Company.id == company_id).first()
+
+        user_id = self._get_user_id(user)
+        if not user_id:
+            return None
+
         return self.db.query(Company).filter(
             Company.id == company_id,
-            Company.user_id == user.id
+            Company.user_id == user_id
         ).first()
     
-    def get_companies(self, user: User) -> List[Company]:
-        """Get all companies for a user."""
+    def get_companies(self, user: Union[User, Dict[str, Any]]) -> List[Company]:
+        """Get all companies for a user or the single company visible to an employee."""
+        employee_company_id = self._get_employee_company_id(user)
+        if employee_company_id is not None:
+            company = self.db.query(Company).filter(
+                Company.id == employee_company_id,
+                Company.is_active == True
+            ).first()
+            return [company] if company else []
+
+        user_id = self._get_user_id(user)
+        if not user_id:
+            return []
+
         return self.db.query(Company).filter(
-            Company.user_id == user.id,
+            Company.user_id == user_id,
             Company.is_active == True
         ).all()
     

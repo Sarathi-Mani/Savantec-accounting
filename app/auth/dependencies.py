@@ -3,9 +3,10 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from jose import jwt, JWTError
-from typing import Optional, Union, Dict, Any
+from typing import Optional, Union, Dict, Any, List
 from app.database.connection import get_db
 from app.database.models import User
+from app.database.payroll_models import Employee, Designation
 from app.config import settings
 from app.auth.supabase_client import auth_helper
 
@@ -77,9 +78,26 @@ async def get_current_user(
             company_id = payload.get("company_id")
             employee_code = payload.get("employee_code")
             email = payload.get("email")
+            designation_id = payload.get("designation_id")
+            permissions = payload.get("permissions")
             
             if not employee_id or not company_id:
                 raise credentials_exception
+
+            if not isinstance(permissions, list):
+                permissions = []
+
+            # Backward compatibility for older tokens without permission payload:
+            # fetch designation permissions from DB.
+            if not permissions:
+                employee = db.query(Employee).filter(Employee.id == str(employee_id)).first()
+                if employee and employee.designation_id:
+                    designation = db.query(Designation).filter(
+                        Designation.id == employee.designation_id
+                    ).first()
+                    if designation and isinstance(designation.permissions, list):
+                        permissions = designation.permissions
+                    designation_id = designation_id or str(employee.designation_id)
             
             # Return employee data as dict (not User object)
             return {
@@ -88,6 +106,8 @@ async def get_current_user(
                 "company_id": company_id,
                 "employee_code": employee_code,
                 "email": email,
+                "designation_id": designation_id,
+                "permissions": permissions,
                 "is_employee": True
             }
     except JWTError:

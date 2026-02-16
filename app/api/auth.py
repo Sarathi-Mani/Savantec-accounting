@@ -193,6 +193,18 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
             
             # Create employee JWT token
             access_token_expires = timedelta(minutes=EMPLOYEE_TOKEN_EXPIRE_MINUTES)
+            designation_permissions = []
+            if employee.designation and isinstance(employee.designation.permissions, list):
+                designation_permissions = employee.designation.permissions
+            elif employee.designation_id:
+                designation = (
+                    db.query(Designation)
+                    .filter(Designation.id == employee.designation_id)
+                    .first()
+                )
+                if designation and isinstance(designation.permissions, list):
+                    designation_permissions = designation.permissions
+
             access_token = create_employee_access_token(
                 data={
                     "sub": str(employee.id),
@@ -200,6 +212,8 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
                     "company_id": str(employee.company_id),
                     "employee_code": employee.employee_code,
                     "email": data.email,
+                    "designation_id": str(employee.designation_id) if employee.designation_id else None,
+                    "permissions": designation_permissions,
                     "type": "employee"
                 },
                 expires_delta=access_token_expires
@@ -210,7 +224,8 @@ async def login(data: UserLogin, db: Session = Depends(get_db)):
             if employee.designation:
                 designation_data = {
                     "id": str(employee.designation.id),
-                    "name": employee.designation.name
+                    "name": employee.designation.name,
+                    "permissions": employee.designation.permissions or [],
                 }
             elif employee.designation_id:
                 designation = (
