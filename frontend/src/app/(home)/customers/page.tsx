@@ -44,6 +44,15 @@ const formatCurrency = (amount: number): string => {
   }).format(amount);
 };
 
+const toSafeNumber = (value: unknown): number => {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(/,/g, "").trim());
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+};
+
 export default function CustomersPage() {
   const { company } = useAuth();
   const [data, setData] = useState<CustomerListResponse | null>(null);
@@ -176,9 +185,9 @@ export default function CustomersPage() {
         c.email || "-",
         c.tax_number || c.gstin || "-",
         getTypeLabel(c.customer_type || ""),
-        formatCurrency(c.outstanding_balance || 0),
-        formatCurrency(c.credit_limit || 0),
-        getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
+        formatCurrency(toSafeNumber(c.outstanding_balance)),
+        formatCurrency(toSafeNumber(c.credit_limit)),
+        getStatusText(toSafeNumber(c.outstanding_balance), toSafeNumber(c.credit_limit)),
       ]);
 
     const text = [headers.join("	"), ...rows.map(r => r.join("	"))].join("\n");
@@ -208,9 +217,9 @@ export default function CustomersPage() {
         "Email": c.email || "-",
         "GSTIN": c.tax_number || c.gstin || "-",
         "Type": getTypeLabel(c.customer_type || ""),
-        "Due Amount": c.outstanding_balance || 0,
-        "Credit Limit": c.credit_limit || 0,
-        "Status": getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
+        "Due Amount": toSafeNumber(c.outstanding_balance),
+        "Credit Limit": toSafeNumber(c.credit_limit),
+        "Status": getStatusText(toSafeNumber(c.outstanding_balance), toSafeNumber(c.credit_limit)),
         "Trade Name": c.trade_name || "-",
         "State": c.state || "-",
         "City": c.city || "-",
@@ -252,9 +261,9 @@ export default function CustomersPage() {
           c.customer_code || "N/A",
           c.name,
           getTypeLabel(c.customer_type || ""),
-          formatCurrency(c.outstanding_balance || 0),
-          formatCurrency(c.credit_limit || 0),
-          getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
+          formatCurrency(toSafeNumber(c.outstanding_balance)),
+          formatCurrency(toSafeNumber(c.credit_limit)),
+          getStatusText(toSafeNumber(c.outstanding_balance), toSafeNumber(c.credit_limit)),
         ]),
       });
 
@@ -283,9 +292,9 @@ export default function CustomersPage() {
         "Email": c.email || "-",
         "GSTIN": c.tax_number || c.gstin || "-",
         "Type": getTypeLabel(c.customer_type || ""),
-        "Due Amount": c.outstanding_balance || 0,
-        "Credit Limit": c.credit_limit || 0,
-        "Status": getStatusText(c.outstanding_balance || 0, c.credit_limit || 0),
+        "Due Amount": toSafeNumber(c.outstanding_balance),
+        "Credit Limit": toSafeNumber(c.credit_limit),
+        "Status": getStatusText(toSafeNumber(c.outstanding_balance), toSafeNumber(c.credit_limit)),
       }));
 
       const ws = XLSX.utils.json_to_sheet(exportData);
@@ -321,7 +330,10 @@ export default function CustomersPage() {
   const applyStatusFilter = (customers: Customer[]): Customer[] => {
     if (!statusFilter) return customers;
     return customers.filter((c) => {
-      const status = getStatusText(c.outstanding_balance || 0, c.credit_limit || 0).toLowerCase();
+      const status = getStatusText(
+        toSafeNumber(c.outstanding_balance),
+        toSafeNumber(c.credit_limit),
+      ).toLowerCase();
       return status === statusFilter.toLowerCase();
     });
   };
@@ -453,7 +465,7 @@ export default function CustomersPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {formatCurrency(data?.customers?.reduce((sum, customer) => sum + (customer.outstanding_balance || 0), 0) || 0)}
+                  {formatCurrency(data?.customers?.reduce((sum, customer) => sum + toSafeNumber(customer.outstanding_balance), 0) || 0)}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Total Outstanding
@@ -487,7 +499,7 @@ export default function CustomersPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {data?.customers?.filter(c => (c.outstanding_balance || 0) <= (c.credit_limit || 0)).length || 0}
+                  {data?.customers?.filter(c => toSafeNumber(c.outstanding_balance) <= toSafeNumber(c.credit_limit)).length || 0}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Active Customers
@@ -752,7 +764,7 @@ export default function CustomersPage() {
                     </tr>
                   ) : (
                     displayCustomers.map((customer) => {
-                      const isOverdue = (customer.outstanding_balance || 0) > (customer.credit_limit || 0);
+                      const isOverdue = toSafeNumber(customer.outstanding_balance) > toSafeNumber(customer.credit_limit);
                       
                       return (
                         <tr
@@ -813,18 +825,18 @@ export default function CustomersPage() {
                           {visibleColumns.dueAmount && (
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className={`font-medium ${isOverdue ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>
-                                {formatCurrency(customer.outstanding_balance || 0)}
+                                {formatCurrency(toSafeNumber(customer.outstanding_balance))}
                               </div>
                             </td>
                           )}
                           {visibleColumns.creditLimit && (
                             <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                              {formatCurrency(customer.credit_limit || 0)}
+                              {formatCurrency(toSafeNumber(customer.credit_limit))}
                             </td>
                           )}
                           {visibleColumns.status && (
                             <td className="px-6 py-4 whitespace-nowrap">
-                              {getStatusBadge(customer.outstanding_balance || 0, customer.credit_limit || 0)}
+                              {getStatusBadge(toSafeNumber(customer.outstanding_balance), toSafeNumber(customer.credit_limit))}
                             </td>
                           )}
                           {visibleColumns.actions && (
@@ -942,7 +954,7 @@ export default function CustomersPage() {
                         Total Outstanding:
                       </td>
                       <td className="px-6 py-4 font-bold text-gray-900 dark:text-white whitespace-nowrap">
-                        {formatCurrency(displayCustomers.reduce((sum, customer) => sum + (customer.outstanding_balance || 0), 0))}
+                        {formatCurrency(displayCustomers.reduce((sum, customer) => sum + toSafeNumber(customer.outstanding_balance), 0))}
                       </td>
                       {visibleColumns.actions && (
                         <td></td>
