@@ -367,21 +367,28 @@ async def dev_reset_company_data(
 @router.get("/{company_id}/next-invoice-number")
 async def get_next_invoice_number(
     company_id: str,
+    voucher_type: Optional[str] = None,
+    auth_data: Union[User, Dict[str, Any]] = Depends(get_current_user),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
 ):
     """Get next available invoice number for a company."""
-    # Convert string to string (keep it as string)
     company = db.query(Company).filter(Company.id == company_id).first()
     
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     
-    # Check if user has access to this company
-    if str(company.id) not in [str(c.id) for c in current_user.companies]:
-        raise HTTPException(status_code=403, detail="Not authorized")
+    # Employee auth: can only access their own company
+    if isinstance(auth_data, dict) and auth_data.get("is_employee"):
+        employee_company_id = auth_data.get("company_id")
+        if str(employee_company_id) != str(company_id):
+            raise HTTPException(status_code=403, detail="Not authorized")
+    else:
+        # Regular user auth
+        user = get_actual_user(auth_data)
+        if str(company.id) not in [str(c.id) for c in user.companies]:
+            raise HTTPException(status_code=403, detail="Not authorized")
     
     company_service = CompanyService(db)
-    next_number = company_service.get_next_invoice_number(company)
+    next_number = company_service.get_next_invoice_number(company, voucher_type)
     
     return {"invoice_number": next_number}

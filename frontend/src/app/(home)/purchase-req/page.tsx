@@ -49,11 +49,16 @@ interface PurchaseRequest {
   total_items: number;
   total_quantity: number;
   notes?: string;
+  created_by_user?: string;
+  created_by_employee?: string;
+  created_by_name?: string;
+  created_by_email?: string;
   created_at: string;
   updated_at: string;
   items?: Array<{
     product_id?: string;
     make?: string;
+    item?: string;
   }>;
 }
 
@@ -68,6 +73,14 @@ interface BrandOption {
   id: string;
   name: string;
 }
+
+const getCreatedByDisplay = (request: PurchaseRequest): string => {
+  if (request.created_by_name?.trim()) return request.created_by_name.trim();
+  if (request.created_by_email?.trim()) return request.created_by_email.trim();
+  if (request.created_by_user?.trim()) return request.created_by_user.trim();
+  if (request.created_by_employee?.trim()) return request.created_by_employee.trim();
+  return "-";
+};
 
 // Print component for purchase requests
 const PrintView = ({
@@ -152,6 +165,16 @@ const PrintView = ({
                   Request Date
                 </th>
               )}
+              {visibleColumns.createdBy && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Created By
+                </th>
+              )}
               {visibleColumns.items && (
                 <th style={{
                   padding: '12px',
@@ -212,6 +235,14 @@ const PrintView = ({
                     borderRight: '1px solid #ddd'
                   }}>
                     {formatDate(request.request_date || request.created_at)}
+                  </td>
+                )}
+                {visibleColumns.createdBy && (
+                  <td style={{
+                    padding: '12px',
+                    borderRight: '1px solid #ddd'
+                  }}>
+                    {getCreatedByDisplay(request)}
                   </td>
                 )}
                 {visibleColumns.items && (
@@ -314,6 +345,7 @@ export default function PurchaseRequestsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
   const [brandFilter, setBrandFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -338,12 +370,14 @@ export default function PurchaseRequestsPage() {
   
   const [cachedExportData, setCachedExportData] = useState<PurchaseRequest[] | null>(null);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([]);
   
   // Column visibility
   const [visibleColumns, setVisibleColumns] = useState({
     requestNumber: true,
     customer: true,
     requestDate: true,
+    createdBy: true,
     items: true,
     quantity: true,
     status: true,
@@ -406,8 +440,14 @@ export default function PurchaseRequestsPage() {
   }, [statusFilter, customerFilter, brandFilter, fromDate, toDate]);
 
   useEffect(() => {
+    setSelectedRequestIds((prev) =>
+      prev.filter((id) => purchaseRequests.some((request) => request.id === id))
+    );
+  }, [purchaseRequests]);
+
+  useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, customerFilter, brandFilter, fromDate, toDate, search]);
+  }, [statusFilter, customerFilter, itemFilter, brandFilter, fromDate, toDate, search]);
 
   const fetchBrandsForBrandFilter = async () => {
     try {
@@ -632,6 +672,7 @@ export default function PurchaseRequestsPage() {
     setSearch("");
     setStatusFilter("");
     setCustomerFilter("");
+    setItemFilter("");
     setBrandFilter("");
     setFromDate("");
     setToDate("");
@@ -665,6 +706,12 @@ export default function PurchaseRequestsPage() {
       filtered = filtered.filter(request => request.customer_id === customerFilter);
     }
 
+    if (itemFilter) {
+      filtered = filtered.filter(request =>
+        (request.items || []).some(item => (item?.item || "").trim() === itemFilter)
+      );
+    }
+
     // Date filters
     if (fromDate) {
       filtered = filtered.filter(request => {
@@ -690,6 +737,10 @@ export default function PurchaseRequestsPage() {
   const filteredRequests = purchaseRequests.filter(request => {
     if (statusFilter && statusFilter !== "all" && request.status !== statusFilter) return false;
     if (customerFilter && request.customer_id !== customerFilter) return false;
+    if (itemFilter) {
+      const hasItem = (request.items || []).some(item => (item?.item || "").trim() === itemFilter);
+      if (!hasItem) return false;
+    }
     
     if (fromDate) {
       const reqDate = new Date(request.request_date || request.created_at);
@@ -708,6 +759,9 @@ export default function PurchaseRequestsPage() {
       return (
         request.purchase_req_no?.toLowerCase().includes(searchLower) ||
         request.customer_name?.toLowerCase().includes(searchLower) ||
+        request.created_by_name?.toLowerCase().includes(searchLower) ||
+        request.created_by_email?.toLowerCase().includes(searchLower) ||
+        request.created_by_user?.toLowerCase().includes(searchLower) ||
         request.notes?.toLowerCase().includes(searchLower) ||
         false
       );
@@ -721,6 +775,20 @@ export default function PurchaseRequestsPage() {
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   );
+  const tableColumnCount = Object.values(visibleColumns).filter(Boolean).length + 2;
+  const pagedRequestIds = pagedRequests.map((request) => request.id);
+  const areAllPagedSelected =
+    pagedRequestIds.length > 0 &&
+    pagedRequestIds.every((id) => selectedRequestIds.includes(id));
+  const itemOptions = Array.from(
+    new Set(
+      purchaseRequests.flatMap((request) =>
+        (request.items || [])
+          .map((item) => (item?.item || "").trim())
+          .filter(Boolean)
+      )
+    )
+  ).sort((a, b) => a.localeCompare(b));
 
   // Export functions
   const copyToClipboard = async () => {
@@ -752,6 +820,11 @@ export default function PurchaseRequestsPage() {
         if (visibleColumns.requestDate) {
           if (!headers.includes("Request Date")) headers.push("Request Date");
           row.push(formatDate(request.request_date || request.created_at));
+        }
+
+        if (visibleColumns.createdBy) {
+          if (!headers.includes("Created By")) headers.push("Created By");
+          row.push(getCreatedByDisplay(request));
         }
 
         if (visibleColumns.items) {
@@ -808,6 +881,10 @@ export default function PurchaseRequestsPage() {
 
         if (visibleColumns.requestDate) {
           row["Request Date"] = formatDate(request.request_date || request.created_at);
+        }
+
+        if (visibleColumns.createdBy) {
+          row["Created By"] = getCreatedByDisplay(request);
         }
 
         if (visibleColumns.items) {
@@ -872,6 +949,11 @@ export default function PurchaseRequestsPage() {
         if (visibleColumns.requestDate) {
           if (!headers.includes("Req Date")) headers.push("Req Date");
           row.push(formatDate(request.request_date || request.created_at));
+        }
+
+        if (visibleColumns.createdBy) {
+          if (!headers.includes("Created By")) headers.push("Created By");
+          row.push(getCreatedByDisplay(request));
         }
 
         if (visibleColumns.items) {
@@ -941,6 +1023,10 @@ export default function PurchaseRequestsPage() {
           row["Request Date"] = formatDate(request.request_date || request.created_at);
         }
 
+        if (visibleColumns.createdBy) {
+          row["Created By"] = getCreatedByDisplay(request);
+        }
+
         if (visibleColumns.items) {
           row["Total Items"] = request.total_items || 0;
         }
@@ -987,6 +1073,31 @@ export default function PurchaseRequestsPage() {
 
   const toggleColumn = (key: keyof typeof visibleColumns) => {
     setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleToggleRowSelection = (requestId: string) => {
+    setSelectedRequestIds((prev) =>
+      prev.includes(requestId)
+        ? prev.filter((id) => id !== requestId)
+        : [...prev, requestId]
+    );
+  };
+
+  const handleToggleSelectAllPaged = () => {
+    setSelectedRequestIds((prev) => {
+      if (areAllPagedSelected) {
+        return prev.filter((id) => !pagedRequestIds.includes(id));
+      }
+      return Array.from(new Set([...prev, ...pagedRequestIds]));
+    });
+  };
+
+  const handleConvertPurchaseOrder = (requestIds: string[]) => {
+    if (requestIds.length === 0) return;
+    const params = new URLSearchParams();
+    params.set("from", "purchase-req");
+    params.set("purchase_request_ids", requestIds.join(","));
+    router.push(`/purchase/purchase-orders/new?${params.toString()}`);
   };
 
   const handleDelete = async (requestId: string, requestNo: string) => {
@@ -1215,6 +1326,20 @@ export default function PurchaseRequestsPage() {
 
           <div className="flex flex-wrap gap-2">
             <button
+              onClick={() => handleConvertPurchaseOrder(selectedRequestIds)}
+              disabled={selectedRequestIds.length === 0}
+              className="px-4 py-2 rounded-lg border border-indigo-300 dark:border-indigo-500/40 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <FileDigit className="w-5 h-5" />
+              Convert Purchase Order
+              {selectedRequestIds.length > 0 && (
+                <span className="inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-indigo-600 text-white text-xs">
+                  {selectedRequestIds.length}
+                </span>
+              )}
+            </button>
+
+            <button
               onClick={() => setShowFilters(!showFilters)}
               className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
             >
@@ -1332,7 +1457,7 @@ export default function PurchaseRequestsPage() {
         </div>
 
         {showFilters && (
-          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
             {/* Status Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -1365,6 +1490,25 @@ export default function PurchaseRequestsPage() {
                 {customers.map((customer) => (
                   <option key={customer.id} value={customer.id}>
                     {customer.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Item Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Item
+              </label>
+              <select
+                value={itemFilter}
+                onChange={(e) => setItemFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">All Items</option>
+                {itemOptions.map((itemName) => (
+                  <option key={itemName} value={itemName}>
+                    {itemName}
                   </option>
                 ))}
               </select>
@@ -1431,6 +1575,15 @@ export default function PurchaseRequestsPage() {
           <table className="w-full">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
               <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+                <th className="text-left px-4 py-3 whitespace-nowrap w-14">
+                  <input
+                    type="checkbox"
+                    checked={areAllPagedSelected}
+                    onChange={handleToggleSelectAllPaged}
+                    aria-label="Select all rows on current page"
+                    className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+                  />
+                </th>
                 <th className="text-left px-6 py-3 whitespace-nowrap w-20">
                   S.No
                 </th>
@@ -1447,6 +1600,11 @@ export default function PurchaseRequestsPage() {
                 {visibleColumns.requestDate && (
                   <th className="text-left px-6 py-3 whitespace-nowrap w-40">
                     Request Date
+                  </th>
+                )}
+                {visibleColumns.createdBy && (
+                  <th className="text-left px-6 py-3 whitespace-nowrap w-64">
+                    Created By
                   </th>
                 )}
                 {visibleColumns.items && (
@@ -1474,7 +1632,7 @@ export default function PurchaseRequestsPage() {
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-sm text-gray-700 dark:text-gray-300">
               {loading ? (
                 <tr>
-                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                  <td colSpan={tableColumnCount} className="px-6 py-8 text-center">
                     <div className="flex items-center justify-center">
                       <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
                     </div>
@@ -1482,14 +1640,14 @@ export default function PurchaseRequestsPage() {
                 </tr>
               ) : filteredRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                  <td colSpan={tableColumnCount} className="px-6 py-8 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <ShoppingCart className="w-12 h-12 text-gray-400 mb-2" />
                       <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
                         No purchase requests found
                       </p>
                       <p className="text-gray-500 dark:text-gray-400 mb-4">
-                        {statusFilter || search || customerFilter || brandFilter ?
+                        {statusFilter || search || customerFilter || itemFilter || brandFilter ?
                           "No purchase requests found matching your filters. Try adjusting your search criteria." :
                           "Create your first purchase request to start managing customer orders."}
                       </p>
@@ -1505,12 +1663,29 @@ export default function PurchaseRequestsPage() {
               ) : (
                 pagedRequests.map((request, index) => {
                   const profileInitials = request.customer_name?.charAt(0) || 'C';
+                  const requestItemSummary =
+                    Array.from(
+                      new Set(
+                        (request.items || [])
+                          .map((item) => (item?.item || "").trim())
+                          .filter(Boolean)
+                      )
+                    ).join(", ") || "-";
 
                   return (
                     <tr
                       key={request.id}
                       className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                     >
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedRequestIds.includes(request.id)}
+                          onChange={() => handleToggleRowSelection(request.id)}
+                          aria-label={`Select purchase request ${request.purchase_req_no || request.id}`}
+                          className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+                        />
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
                         {(currentPage - 1) * pageSize + index + 1}
                       </td>
@@ -1535,7 +1710,7 @@ export default function PurchaseRequestsPage() {
                               {request.customer_name || '-'}
                             </div>
                             <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                              Customer ID: {request.customer_id.slice(0, 8)}
+                              Items: {requestItemSummary}
                             </div>
                             <div className="text-xs text-indigo-600 dark:text-indigo-400 truncate">
                               Brand: {getRequestBrandNames(request)}
@@ -1548,6 +1723,15 @@ export default function PurchaseRequestsPage() {
                           <div className="flex items-center gap-2">
                             <Calendar className="w-4 h-4 text-gray-400" />
                             {formatDate(request.request_date || request.created_at)}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.createdBy && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="min-w-0 max-w-[280px]">
+                            <div className="font-medium text-gray-900 dark:text-white truncate">
+                              {getCreatedByDisplay(request)}
+                            </div>
                           </div>
                         </td>
                       )}
@@ -1603,6 +1787,17 @@ export default function PurchaseRequestsPage() {
                                   <Eye className="w-4 h-4 text-gray-400" />
                                   <span>View Details</span>
                                 </Link>
+
+                                <button
+                                  onClick={() => {
+                                    setActiveActionMenu(null);
+                                    handleConvertPurchaseOrder([request.id]);
+                                  }}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+                                >
+                                  <FileDigit className="w-4 h-4 text-indigo-500" />
+                                  <span>Convert Purchase Order</span>
+                                </button>
 
                                 <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
 

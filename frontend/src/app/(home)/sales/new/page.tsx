@@ -11,6 +11,21 @@ import Select from 'react-select';
 import { useRef } from "react";
 
 
+const normalizeInvoiceNumberForVoucherType = (invoiceNumber: string, voucherType: string): string => {
+    const raw = (invoiceNumber || "").trim();
+    if (!raw) return raw;
+
+    if (voucherType === "service") {
+        if (/^INV-SER-/i.test(raw)) return raw;
+        if (/^INV-/i.test(raw)) return raw.replace(/^INV-/i, "INV-SER-");
+        return `INV-SER-${raw}`;
+    }
+
+    if (/^INV-SER-/i.test(raw)) return raw.replace(/^INV-SER-/i, "INV-");
+    if (/^INV-/i.test(raw)) return raw;
+    return `INV-${raw}`;
+};
+
 // Add this component before the AddSalesPage function
 function SelectField({
     label,
@@ -189,6 +204,14 @@ export default function AddSalesPage() {
     const [loadingInvoiceNumber, setLoadingInvoiceNumber] = useState(false);
     const [prefillLoading, setPrefillLoading] = useState(false);
     const [prefillError, setPrefillError] = useState("");
+    const getAuthToken = () => {
+        if (typeof window === "undefined") return null;
+        const userType = localStorage.getItem("user_type");
+        if (userType === "employee") {
+            return localStorage.getItem("employee_token");
+        }
+        return localStorage.getItem("access_token");
+    };
 
     const [productSearch, setProductSearch] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -553,7 +576,7 @@ export default function AddSalesPage() {
 
             try {
                 setLoadingInvoiceNumber(true);
-                const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+                const token = getAuthToken();
 
                 // IMPORTANT: Use formData.voucher_type for initial load
                 const voucherType = formData.voucher_type || "sales";
@@ -570,7 +593,12 @@ export default function AddSalesPage() {
 
                 if (response.ok) {
                     const data = await response.json();
-                    setNextInvoiceNumber(data.invoice_number || "");
+                    setNextInvoiceNumber(
+                        normalizeInvoiceNumberForVoucherType(
+                            data.invoice_number || "",
+                            voucherType
+                        )
+                    );
                 }
             } catch (error) {
                 console.error("Failed to load next invoice number:", error);
@@ -617,7 +645,7 @@ export default function AddSalesPage() {
             setLoading(prev => ({ ...prev, salesmen: true }));
 
             // Check if we have a token
-            const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+            const token = getAuthToken();
             if (!token || !company?.id) {
                 console.error("No access token or company ID found");
                 return;
@@ -849,7 +877,10 @@ export default function AddSalesPage() {
                 voucher_type: formData.voucher_type || "sales",
                 invoice_date: new Date(formData.invoice_date).toISOString(),
                 invoice_type: formData.invoice_type || "b2b",
-                invoice_number: nextInvoiceNumber,
+                invoice_number: normalizeInvoiceNumberForVoucherType(
+                    nextInvoiceNumber,
+                    formData.voucher_type || "sales"
+                ),
 
                 // GST Details
                 place_of_supply: formData.place_of_supply || company?.state_code || "",
@@ -1013,7 +1044,7 @@ export default function AddSalesPage() {
 
                 try {
                     setLoadingInvoiceNumber(true);
-                    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+                    const token = getAuthToken();
 
                     const response = await fetch(
                         `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/next-invoice-number?voucher_type=${value}`,
@@ -1027,7 +1058,12 @@ export default function AddSalesPage() {
 
                     if (response.ok) {
                         const data = await response.json();
-                        setNextInvoiceNumber(data.invoice_number || "");
+                        setNextInvoiceNumber(
+                            normalizeInvoiceNumberForVoucherType(
+                                data.invoice_number || "",
+                                value
+                            )
+                        );
                     }
                 } catch (error) {
                     console.error("Failed to load next invoice number:", error);
