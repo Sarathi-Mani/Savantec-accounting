@@ -1299,6 +1299,95 @@ class Payment(Base):
         return f"<Payment {self.amount} for Invoice {self.invoice_id}>"
 
 
+class SalesReturn(Base):
+    """Sales Return header model."""
+    __tablename__ = "sales_returns"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    original_invoice_id = Column(String(36), ForeignKey("invoices.id", ondelete="SET NULL"))
+    customer_id = Column(String(36), ForeignKey("customers.id", ondelete="SET NULL"))
+    sales_person_id = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"))
+
+    return_number = Column(String(50), nullable=False)
+    return_date = Column(DateTime, nullable=False, default=datetime.utcnow)
+    status = Column(String(50), default="pending")
+    reason = Column(Text)
+    reference_no = Column(String(100))
+    notes = Column(Text)
+
+    subtotal = Column(Numeric(14, 2), default=0)
+    discount_amount = Column(Numeric(14, 2), default=0)
+    cgst_amount = Column(Numeric(14, 2), default=0)
+    sgst_amount = Column(Numeric(14, 2), default=0)
+    igst_amount = Column(Numeric(14, 2), default=0)
+    total_tax = Column(Numeric(14, 2), default=0)
+    total_amount = Column(Numeric(14, 2), default=0)
+    round_off = Column(Numeric(14, 2), default=0)
+    freight_charges = Column(Numeric(14, 2), default=0)
+    packing_forwarding_charges = Column(Numeric(14, 2), default=0)
+
+    created_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    company = relationship("Company")
+    original_invoice = relationship("Invoice", foreign_keys=[original_invoice_id])
+    customer = relationship("Customer")
+    sales_person = relationship("Employee", foreign_keys=[sales_person_id])
+    creator = relationship("User", foreign_keys=[created_by])
+    items = relationship("SalesReturnItem", back_populates="sales_return", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "return_number", name="uq_sales_return_number_company"),
+        Index("idx_sales_return_company", "company_id"),
+        Index("idx_sales_return_invoice", "original_invoice_id"),
+        Index("idx_sales_return_customer", "customer_id"),
+        Index("idx_sales_return_date", "return_date"),
+        Index("idx_sales_return_status", "status"),
+    )
+
+    def __repr__(self):
+        return f"<SalesReturn {self.return_number}>"
+
+
+class SalesReturnItem(Base):
+    """Sales Return item model."""
+    __tablename__ = "sales_return_items"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    sales_return_id = Column(String(36), ForeignKey("sales_returns.id", ondelete="CASCADE"), nullable=False)
+    invoice_item_id = Column(String(36), ForeignKey("invoice_items.id", ondelete="SET NULL"))
+    product_id = Column(String(36), ForeignKey("items.id", ondelete="SET NULL"))
+
+    description = Column(String(500), nullable=False)
+    hsn_code = Column(String(8))
+    quantity = Column(Numeric(10, 3), nullable=False, default=1)
+    unit = Column(String(20), default="unit")
+    unit_price = Column(Numeric(12, 2), nullable=False, default=0)
+
+    discount_percent = Column(Numeric(5, 2), default=0)
+    discount_amount = Column(Numeric(12, 2), default=0)
+
+    gst_rate = Column(Numeric(5, 2), default=0)
+    cgst_rate = Column(Numeric(5, 2), default=0)
+    sgst_rate = Column(Numeric(5, 2), default=0)
+    igst_rate = Column(Numeric(5, 2), default=0)
+
+    taxable_amount = Column(Numeric(14, 2), default=0)
+    total_amount = Column(Numeric(14, 2), default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    sales_return = relationship("SalesReturn", back_populates="items")
+
+    __table_args__ = (
+        Index("idx_sales_return_item_return", "sales_return_id"),
+    )
+
+    def __repr__(self):
+        return f"<SalesReturnItem {self.description[:30]}>"
+
+
 class BankAccount(Base):
     """Bank account model - for displaying bank details on invoices."""
     __tablename__ = "bank_accounts"

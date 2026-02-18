@@ -10,6 +10,8 @@ import { employeesApi } from "@/services/api"; // Add this import
 import Select from 'react-select';
 import { useRef } from "react";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api";
+
 
 const normalizeInvoiceNumberForVoucherType = (invoiceNumber: string, voucherType: string): string => {
     const raw = (invoiceNumber || "").trim();
@@ -582,7 +584,7 @@ export default function AddSalesPage() {
                 const voucherType = formData.voucher_type || "sales";
 
                 const response = await fetch(
-                    `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/next-invoice-number?voucher_type=${voucherType}`,
+                    `${API_BASE_URL}/companies/${company.id}/next-invoice-number?voucher_type=${voucherType}`,
                     {
                         headers: {
                             'Authorization': `Bearer ${token}`,
@@ -653,7 +655,7 @@ export default function AddSalesPage() {
 
             // Try to fetch sales engineers from the correct endpoint
             try {
-                const salesEngineersUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/sales-engineers`;
+                const salesEngineersUrl = `${API_BASE_URL}/companies/${company.id}/sales-engineers`;
 
                 console.log("Fetching sales engineers from:", salesEngineersUrl);
 
@@ -1047,7 +1049,7 @@ export default function AddSalesPage() {
                     const token = getAuthToken();
 
                     const response = await fetch(
-                        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/next-invoice-number?voucher_type=${value}`,
+                        `${API_BASE_URL}/companies/${company.id}/next-invoice-number?voucher_type=${value}`,
                         {
                             headers: {
                                 'Authorization': `Bearer ${token}`,
@@ -1586,57 +1588,54 @@ export default function AddSalesPage() {
                                     <tbody>
                                         {items.map((item) => (
                                             <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                                                <td className="px-4 py-3">
-                                                    <td className="px-4 py-3 min-w-[200px]">
-                                                        <ProductSelectField
-                                                            value={item.product_id}
-                                                            products={products}
-                                                            onChange={(product) => {
-                                                                if (!product) return;
+                                                <td className="px-4 py-3 min-w-[200px]">
+                                                    <ProductSelectField
+                                                        value={item.product_id}
+                                                        products={products}
+                                                        onChange={(product) => {
+                                                            if (!product) return;
 
-                                                                setItems(prev =>
-                                                                    prev.map(i => {
-                                                                        if (i.id !== item.id) return i;
+                                                            setItems(prev =>
+                                                                prev.map(i => {
+                                                                    if (i.id !== item.id) return i;
 
-                                                                        const unitPrice =
-                                                                            product.selling_price ??
-                                                                            product.unit_price ??
-                                                                            0;
+                                                                    const unitPrice =
+                                                                        product.selling_price ??
+                                                                        product.unit_price ??
+                                                                        0;
 
-                                                                        const gstRate = Number(product.gst_rate) || i.gst_rate || 18;
-                                                                        const qty = i.quantity || 1;
+                                                                    const gstRate = Number(product.gst_rate) || i.gst_rate || 18;
+                                                                    const qty = i.quantity || 1;
 
-                                                                        const taxable = qty * unitPrice;
-                                                                        const tax = taxable * (gstRate / 100);
+                                                                    const taxable = qty * unitPrice;
+                                                                    const tax = taxable * (gstRate / 100);
 
-                                                                        return {
-                                                                            ...i,
-                                                                            product_id: product.id,
-                                                                            item_code: i.item_code || "",
-                                                                            description: product.name,
+                                                                    return {
+                                                                        ...i,
+                                                                        product_id: product.id,
+                                                                        item_code: i.item_code || "",
+                                                                        description: product.name,
 
-                                                                            hsn_code: product.hsn_code || product.hsn || "",
-                                                                            unit_price: unitPrice,
-                                                                            gst_rate: gstRate,
-                                                                            discount_amount: 0,
-                                                                            taxable_amount: taxable,
-                                                                            total_amount: taxable + tax,
-                                                                            ...(formData.place_of_supply === company?.state_code ? {
-                                                                                cgst_rate: gstRate / 2,
-                                                                                sgst_rate: gstRate / 2,
-                                                                                igst_rate: 0,
-                                                                            } : {
-                                                                                cgst_rate: 0,
-                                                                                sgst_rate: 0,
-                                                                                igst_rate: gstRate,
-                                                                            }),
-                                                                        };
-                                                                    })
-                                                                );
-                                                            }}
-                                                        />
-
-                                                    </td>
+                                                                        hsn_code: product.hsn_code || product.hsn || "",
+                                                                        unit_price: unitPrice,
+                                                                        gst_rate: gstRate,
+                                                                        discount_amount: 0,
+                                                                        taxable_amount: taxable,
+                                                                        total_amount: taxable + tax,
+                                                                        ...(formData.place_of_supply === company?.state_code ? {
+                                                                            cgst_rate: gstRate / 2,
+                                                                            sgst_rate: gstRate / 2,
+                                                                            igst_rate: 0,
+                                                                        } : {
+                                                                            cgst_rate: 0,
+                                                                            sgst_rate: 0,
+                                                                            igst_rate: gstRate,
+                                                                        }),
+                                                                    };
+                                                                })
+                                                            );
+                                                        }}
+                                                    />
                                                 </td>
 
                                                 <td className="px-4 py-3">

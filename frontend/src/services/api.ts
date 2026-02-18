@@ -3955,6 +3955,55 @@ export const creditNotesApi = {
   },
 };
 
+// ============== Sales Returns API ==============
+export const salesReturnsApi = {
+  list: async (companyId: string, params?: { status?: string }) => {
+    try {
+      const response = await api.get(`/companies/${companyId}/sales-returns`, { params });
+      return response.data;
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        const notes = await creditNotesApi.list(companyId);
+        return (notes || []).map((note) => ({
+          id: note.id,
+          return_number: note.note_number,
+          invoice_number: note.original_invoice,
+          customer_name: note.customer_name,
+          return_date: note.note_date,
+          total_amount: Number(note.total_amount) || 0,
+          reason: note.reason || "",
+          status: "approved",
+        }));
+      }
+      throw error;
+    }
+  },
+
+  create: async (companyId: string, data: any) => {
+    try {
+      const response = await api.post(`/companies/${companyId}/sales-returns`, data);
+      return response.data;
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        const payload: CreditNoteCreate = {
+          original_invoice_id: data?.invoice_id,
+          note_date: data?.return_date,
+          reason: data?.return_reason || data?.notes || "Sales return",
+          items: (data?.items || []).map((item: any) => ({
+            invoice_item_id: item?.invoice_item_id,
+            description: item?.description || "",
+            quantity: Number(item?.quantity) || 0,
+            unit_price: Number(item?.unit_price) || 0,
+            gst_rate: Number(item?.gst_rate) || 0,
+          })),
+        };
+        return creditNotesApi.create(companyId, payload);
+      }
+      throw error;
+    }
+  },
+};
+
 // ============== Debit Notes Types ==============
 
 export interface DebitNoteItem {

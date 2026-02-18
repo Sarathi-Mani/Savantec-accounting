@@ -33,10 +33,16 @@ router = APIRouter(tags=["Quotations"])
 
 def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
     """Get company or raise 404."""
-    company = db.query(Company).filter(
-        Company.id == company_id,
-        Company.user_id == user.id
-    ).first()
+    if isinstance(user, dict) and user.get("is_employee"):
+        if str(user.get("company_id")) != str(company_id):
+            raise HTTPException(status_code=404, detail="Company not found")
+        company = db.query(Company).filter(Company.id == company_id).first()
+    else:
+        user_id = user.get("id") if isinstance(user, dict) else user.id
+        company = db.query(Company).filter(
+            Company.id == company_id,
+            Company.user_id == user_id
+        ).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company
@@ -315,13 +321,7 @@ async def get_contact_persons(
     db: Session = Depends(get_db)
 ):
     """Get contact persons for a company, optionally filtered by customer."""
-    # Verify company belongs to user
-    company = db.query(Company).filter(
-        Company.id == company_id,
-        Company.user_id == current_user.id
-    ).first()
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
+    get_company_or_404(company_id, current_user, db)
     
     # Build query
     query = db.query(ContactPerson).join(Customer).filter(
@@ -348,13 +348,7 @@ async def get_sales_engineers(
     Get sales engineers from payroll database.
     ONLY includes employees with sales/engineer designations.
     """
-    # Verify company belongs to user
-    company = db.query(Company).filter(
-        Company.id == company_id,
-        Company.user_id == current_user.id
-    ).first()
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
+    get_company_or_404(company_id, current_user, db)
     
     try:
         # Query employees with designation containing 'sales' or 'engineer'

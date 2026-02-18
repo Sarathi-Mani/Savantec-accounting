@@ -1,5 +1,4 @@
-"use client";
-
+x
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Breadcrumb from "@/components/Breadcrumbs/Breadcrumb";

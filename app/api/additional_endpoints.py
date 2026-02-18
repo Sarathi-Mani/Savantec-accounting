@@ -17,7 +17,7 @@ from app.database.models import (
     ManufacturingOrder, ManufacturingOrderStatus,
     StockAdjustment, StockAdjustmentStatus, StockAdjustmentItem,
     PeriodLock, AuditLog, NarrationTemplate, Notification, NotificationType,
-    BillOfMaterial, generate_uuid
+    BillOfMaterial, SalesReturn, SalesReturnItem, Invoice, Customer, generate_uuid
 )
 from app.auth.dependencies import get_current_active_user
 
@@ -26,10 +26,18 @@ router = APIRouter(tags=["Additional Features"])
 
 def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
     """Get company or raise 404."""
-    company = db.query(Company).filter(
-        Company.id == company_id,
-        Company.user_id == user.id
-    ).first()
+    if isinstance(user, dict) and user.get("is_employee"):
+        # Employee tokens carry company_id directly; do not match against company.user_id
+        if str(user.get("company_id")) != str(company_id):
+            raise HTTPException(status_code=404, detail="Company not found")
+        company = db.query(Company).filter(Company.id == company_id).first()
+    else:
+        user_id = user.get("id") if isinstance(user, dict) else user.id
+        company = db.query(Company).filter(
+            Company.id == company_id,
+            Company.user_id == user_id
+        ).first()
+
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company
@@ -1381,6 +1389,229 @@ async def list_receipt_notes(
         })
     
     return result
+
+
+# ==================== SALES RETURNS ====================
+
+class SalesReturnItemCreate(BaseModel):
+    invoice_item_id: Optional[str] = None
+    product_id: Optional[str] = None
+    description: str
+    hsn_code: Optional[str] = None
+    quantity: float
+    unit: Optional[str] = "unit"
+    unit_price: float
+    discount_percent: Optional[float] = 0
+    discount_amount: Optional[float] = 0
+    gst_rate: Optional[float] = 0
+    cgst_rate: Optional[float] = 0
+    sgst_rate: Optional[float] = 0
+    igst_rate: Optional[float] = 0
+    taxable_amount: Optional[float] = 0
+    total_amount: Optional[float] = 0
+
+
+class SalesReturnCreate(BaseModel):
+    invoice_id: str
+    return_number: Optional[str] = None
+    return_date: Optional[datetime] = None
+    customer_id: Optional[str] = None
+    sales_person_id: Optional[str] = None
+    status: Optional[str] = "pending"
+    return_reason: Optional[str] = None
+    reference_no: Optional[str] = None
+    notes: Optional[str] = None
+    subtotal: Optional[float] = 0
+    discount_amount: Optional[float] = 0
+    cgst_amount: Optional[float] = 0
+    sgst_amount: Optional[float] = 0
+    igst_amount: Optional[float] = 0
+    total_tax: Optional[float] = 0
+    total_amount: Optional[float] = 0
+    round_off: Optional[float] = 0
+    freight_charges: Optional[float] = 0
+    packing_forwarding_charges: Optional[float] = 0
+    items: List[SalesReturnItemCreate]
+
+
+@router.get("/companies/{company_id}/next-sales-return-number")
+async def get_next_sales_return_number(
+    company_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get next sales return number for UI prefill."""
+    get_company_or_404(company_id, current_user, db)
+
+    # Find latest return and derive next sequence
+    latest = db.query(SalesReturn).filter(
+        SalesReturn.company_id == company_id
+    ).order_by(SalesReturn.created_at.desc()).first()
+
+    if not latest or not latest.return_number:
+        return {"return_number": "SRN-000001"}
+
+    raw = str(latest.return_number).strip()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if digits:
+        next_num = int(digits[-6:]) + 1
+    else:
+        next_num = 1
+
+    return {"return_number": f"SRN-{next_num:06d}"}
+
+
+@router.get("/companies/{company_id}/sales-returns")
+async def list_sales_returns(
+    company_id: str,
+    status: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """List sales returns from dedicated sales_returns table."""
+    get_company_or_404(company_id, current_user, db)
+
+    query = db.query(SalesReturn).filter(SalesReturn.company_id == company_id)
+    if status:
+        query = query.filter(SalesReturn.status == status)
+
+    returns = query.order_by(SalesReturn.return_date.desc()).limit(200).all()
+
+    result = []
+    for ret in returns:
+        invoice_number = ret.original_invoice.invoice_number if ret.original_invoice else None
+        customer_name = ret.customer.name if ret.customer else ""
+        if not customer_name and ret.original_invoice and ret.original_invoice.customer_name:
+            customer_name = ret.original_invoice.customer_name
+
+        result.append({
+            "id": ret.id,
+            "return_number": ret.return_number,
+            "invoice_id": ret.original_invoice_id,
+            "invoice_number": invoice_number,
+            "customer_id": ret.customer_id,
+            "customer_name": customer_name,
+            "return_date": ret.return_date.isoformat() if ret.return_date else None,
+            "total_amount": float(ret.total_amount or 0),
+            "reason": ret.reason or "",
+            "status": ret.status or "pending",
+            "reference_no": ret.reference_no,
+            "notes": ret.notes,
+        })
+
+    return result
+
+
+@router.post("/companies/{company_id}/sales-returns", status_code=status.HTTP_201_CREATED)
+async def create_sales_return(
+    company_id: str,
+    data: SalesReturnCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Create a sales return in dedicated sales_returns table."""
+    get_company_or_404(company_id, current_user, db)
+    creator_user_id = None if (isinstance(current_user, dict) and current_user.get("is_employee")) else (
+        current_user.get("id") if isinstance(current_user, dict) else current_user.id
+    )
+
+    invoice = db.query(Invoice).filter(
+        Invoice.id == data.invoice_id,
+        Invoice.company_id == company_id
+    ).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Original invoice not found")
+
+    if not data.items or len(data.items) == 0:
+        raise HTTPException(status_code=400, detail="At least one item is required")
+
+    return_number = (data.return_number or "").strip()
+    if not return_number:
+        return_number = f"SRN-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
+    duplicate = db.query(SalesReturn).filter(
+        SalesReturn.company_id == company_id,
+        SalesReturn.return_number == return_number
+    ).first()
+    if duplicate:
+        raise HTTPException(status_code=400, detail="Sales return number already exists")
+
+    sales_return = SalesReturn(
+        id=generate_uuid(),
+        company_id=company_id,
+        original_invoice_id=invoice.id,
+        customer_id=data.customer_id or invoice.customer_id,
+        sales_person_id=data.sales_person_id,
+        return_number=return_number,
+        return_date=data.return_date or datetime.utcnow(),
+        status=(data.status or "pending"),
+        reason=(data.return_reason or data.notes or ""),
+        reference_no=data.reference_no,
+        notes=data.notes,
+        subtotal=Decimal(str(data.subtotal or 0)),
+        discount_amount=Decimal(str(data.discount_amount or 0)),
+        cgst_amount=Decimal(str(data.cgst_amount or 0)),
+        sgst_amount=Decimal(str(data.sgst_amount or 0)),
+        igst_amount=Decimal(str(data.igst_amount or 0)),
+        total_tax=Decimal(str(data.total_tax or 0)),
+        total_amount=Decimal(str(data.total_amount or 0)),
+        round_off=Decimal(str(data.round_off or 0)),
+        freight_charges=Decimal(str(data.freight_charges or 0)),
+        packing_forwarding_charges=Decimal(str(data.packing_forwarding_charges or 0)),
+        created_by=creator_user_id,
+    )
+    db.add(sales_return)
+
+    for item in data.items:
+        qty = Decimal(str(item.quantity or 0))
+        unit_price = Decimal(str(item.unit_price or 0))
+        discount_amount = Decimal(str(item.discount_amount or 0))
+        taxable = Decimal(str(item.taxable_amount or 0))
+        if taxable <= 0:
+            taxable = (qty * unit_price) - discount_amount
+        total_amount = Decimal(str(item.total_amount or 0))
+        if total_amount <= 0:
+            total_amount = taxable + (taxable * Decimal(str(item.gst_rate or 0)) / Decimal("100"))
+
+        db.add(SalesReturnItem(
+            id=generate_uuid(),
+            sales_return_id=sales_return.id,
+            invoice_item_id=item.invoice_item_id,
+            product_id=item.product_id,
+            description=item.description,
+            hsn_code=item.hsn_code,
+            quantity=qty,
+            unit=item.unit or "unit",
+            unit_price=unit_price,
+            discount_percent=Decimal(str(item.discount_percent or 0)),
+            discount_amount=discount_amount,
+            gst_rate=Decimal(str(item.gst_rate or 0)),
+            cgst_rate=Decimal(str(item.cgst_rate or 0)),
+            sgst_rate=Decimal(str(item.sgst_rate or 0)),
+            igst_rate=Decimal(str(item.igst_rate or 0)),
+            taxable_amount=taxable,
+            total_amount=total_amount,
+        ))
+
+    db.commit()
+
+    customer_name = ""
+    if sales_return.customer_id:
+        customer = db.query(Customer).filter(Customer.id == sales_return.customer_id).first()
+        customer_name = customer.name if customer else ""
+
+    return {
+        "id": sales_return.id,
+        "return_number": sales_return.return_number,
+        "invoice_id": sales_return.original_invoice_id,
+        "invoice_number": invoice.invoice_number,
+        "customer_name": customer_name or invoice.customer_name or "",
+        "return_date": sales_return.return_date.isoformat() if sales_return.return_date else None,
+        "total_amount": float(sales_return.total_amount or 0),
+        "reason": sales_return.reason or "",
+        "status": sales_return.status or "pending",
+        "message": "Sales return created successfully",
+    }
 
 
 # ==================== CREDIT NOTES ====================
