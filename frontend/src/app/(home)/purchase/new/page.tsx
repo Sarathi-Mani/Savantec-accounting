@@ -332,6 +332,7 @@ export default function AddPurchasePage() {
         symbol: "",
         exchangeRate: 1,
     });
+    const [paymentExchangeRateInput, setPaymentExchangeRateInput] = useState("1");
 
     // Payment state
     const [paymentData, setPaymentData] = useState({
@@ -361,6 +362,7 @@ export default function AddPurchasePage() {
         vendor_invoice_number: "",
         vendor_invoice_date: "",
         payment_type: "",
+        exchange_rate: 1,
         notes: "",
         terms: `1. Goods must be delivered in perfect condition.
 2. All items must be properly packed.
@@ -547,6 +549,12 @@ export default function AddPurchasePage() {
             };
 
             setCurrencies(prev => [...prev, currencyToAdd]);
+            setFormData(prev => ({
+                ...prev,
+                payment_type: currencyToAdd.code,
+                exchange_rate: currencyToAdd.exchangeRate,
+            }));
+            setPaymentExchangeRateInput(String(currencyToAdd.exchangeRate));
             
             // Reset form
             setNewCurrency({
@@ -561,6 +569,27 @@ export default function AddPurchasePage() {
         } else {
             alert("Please fill all required fields (Code, Name, Symbol)");
         }
+    };
+
+    const handlePaymentCurrencyChange = (field: string, value: any) => {
+        if (field !== "payment_type") {
+            handleFormChange(field, value);
+            return;
+        }
+
+        if (value === "add_new") {
+            setShowAddCurrencyModal(true);
+            return;
+        }
+
+        const selectedCurrency = currencies.find((c) => c.code === value);
+        const selectedRate = selectedCurrency?.exchangeRate || 1;
+        setFormData((prev) => ({
+            ...prev,
+            payment_type: value,
+            exchange_rate: selectedRate,
+        }));
+        setPaymentExchangeRateInput(String(selectedRate));
     };
 
     // Calculate totals based on purchase type
@@ -659,6 +688,21 @@ const calculateTotals = () => {
 };
 
     const totals = calculateTotals();
+    const selectedPaymentCurrency =
+        currencies.find((c) => c.code === formData.payment_type) ||
+        currencies.find((c) => c.code === "INR");
+    const paymentCurrencyCode = selectedPaymentCurrency?.code || "INR";
+    const paymentCurrencySymbol = selectedPaymentCurrency?.symbol || "Rs. ";
+    const paymentExchangeRate = Number(formData.exchange_rate) > 0 ? Number(formData.exchange_rate) : 1;
+    const selectedCurrencyTotal = totals.grandTotal;
+    const inrFromSelectedCurrency =
+        paymentCurrencyCode === "INR"
+            ? selectedCurrencyTotal
+            : selectedCurrencyTotal * paymentExchangeRate;
+    const paymentAmountInInr =
+        paymentCurrencyCode === "INR"
+            ? Number(paymentData.amount || 0)
+            : Number(paymentData.amount || 0) * paymentExchangeRate;
 
     // Functions for import items
     const updateImportItem = (id: number, field: string, value: any) => {
@@ -794,6 +838,7 @@ const calculateTotals = () => {
                 purchase_date: formData.purchase_date,
                 due_date: formData.due_date || undefined,
                 payment_type: formData.payment_type || "",
+                exchange_rate: Number(formData.exchange_rate || 1),
                 notes: formData.notes || "",
                 terms: formData.terms || "",
                 purchase_type: purchaseType,
@@ -1493,20 +1538,46 @@ useEffect(() => {
                                 
                                 <div>
                                     <SelectField
-                                        label="Payment Type"
+                                        label="Payment Type / Currency"
                                         name="payment_type"
                                         value={formData.payment_type}
-                                        onChange={handleFormChange}
+                                        onChange={handlePaymentCurrencyChange}
                                         options={[
                                             { value: "", label: "- Select -" },
-                                            { value: "cash", label: "Cash" },
-                                            { value: "credit", label: "Credit" },
-                                            { value: "bank_transfer", label: "Bank Transfer" },
-                                            { value: "cheque", label: "Cheque" },
-                                            { value: "online", label: "Online Payment" },
+                                            ...currencies.map((currency) => ({
+                                                value: currency.code,
+                                                label: `${currency.code} - ${currency.name}`,
+                                            })),
+                                            { value: "add_new", label: "+ Add New Currency" },
                                         ]}
                                         required={true}
-                                        placeholder="Select Payment Type"
+                                        placeholder="Select Currency"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                        Exchange Rate
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={paymentExchangeRateInput}
+                                        onChange={(e) => {
+                                            const raw = e.target.value;
+                                            setPaymentExchangeRateInput(raw);
+                                            const parsed = parseFloat(raw);
+                                            if (!Number.isNaN(parsed)) {
+                                                setFormData((prev) => ({ ...prev, exchange_rate: parsed }));
+                                            }
+                                        }}
+                                        onBlur={() => {
+                                            const parsed = parseFloat(paymentExchangeRateInput);
+                                            const safeRate = !Number.isNaN(parsed) && parsed > 0 ? parsed : 1;
+                                            setFormData((prev) => ({ ...prev, exchange_rate: safeRate }));
+                                            setPaymentExchangeRateInput(String(safeRate));
+                                        }}
+                                        min="0.0001"
+                                        step="0.0001"
+                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                     />
                                 </div>
                                 
@@ -1990,6 +2061,26 @@ useEffect(() => {
                                                 <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
                                                 <span className="text-lg font-bold text-primary">₹{totals.grandTotal.toLocaleString('en-IN')}</span>
                                             </div>
+                                            <div className="mt-2 flex justify-between text-sm">
+                                                <span className="text-dark-6">Total in {paymentCurrencyCode}</span>
+                                                <span className="font-medium text-dark dark:text-white">
+                                                    {paymentCurrencySymbol}{selectedCurrencyTotal.toLocaleString("en-IN", {
+                                                        minimumFractionDigits: 2,
+                                                        maximumFractionDigits: 2,
+                                                    })}
+                                                </span>
+                                            </div>
+                                            {paymentCurrencyCode !== "INR" && (
+                                                <div className="mt-1 flex justify-between text-xs">
+                                                    <span className="text-dark-6">INR Equivalent (Total {paymentCurrencyCode} × {paymentExchangeRate})</span>
+                                                    <span className="font-medium text-dark dark:text-white">
+                                                        Rs. {inrFromSelectedCurrency.toLocaleString("en-IN", {
+                                                            minimumFractionDigits: 2,
+                                                            maximumFractionDigits: 2,
+                                                        })}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -2145,9 +2236,25 @@ useEffect(() => {
                                                 Payment Amount:
                                             </span>
                                             <span className="font-medium text-dark dark:text-white">
-                                                ₹{paymentData.amount.toFixed(2)}
+                                                {paymentCurrencySymbol}{Number(paymentData.amount).toLocaleString("en-IN", {
+                                                    minimumFractionDigits: 2,
+                                                    maximumFractionDigits: 2,
+                                                })} {paymentCurrencyCode}
                                             </span>
                                         </div>
+                                        {paymentCurrencyCode !== "INR" && (
+                                            <div className="mt-1 flex items-center justify-between">
+                                                <span className="text-xs text-dark-6 dark:text-gray-400">
+                                                    INR Equivalent:
+                                                </span>
+                                                <span className="text-sm font-medium text-dark dark:text-white">
+                                                    Rs. {paymentAmountInInr.toLocaleString("en-IN", {
+                                                        minimumFractionDigits: 2,
+                                                        maximumFractionDigits: 2,
+                                                    })}
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>

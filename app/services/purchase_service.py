@@ -173,8 +173,10 @@ class PurchaseService:
         # STEP 3: GENERATE PURCHASE NUMBER
         # ============================================
         print("\n🔢 STEP 3: Generating purchase number")
-        company_service = CompanyService(self.db)
-        purchase_number = company_service.get_next_invoice_number(company)
+        # Use purchase-specific numbering to avoid collisions with other invoice modules.
+        purchase_number = self._get_next_purchase_number(company_id)
+        while self.db.query(Purchase).filter(Purchase.purchase_number == purchase_number).first():
+            purchase_number = self._get_next_purchase_number(company_id)
         print(f"✅ Generated purchase number: {purchase_number}")
         
         # ============================================

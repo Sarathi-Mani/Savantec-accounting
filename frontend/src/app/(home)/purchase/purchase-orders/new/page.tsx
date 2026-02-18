@@ -179,7 +179,7 @@ export default function AddPurchaseOrderPage() {
     const [nextPurchaseOrderNumber, setNextPurchaseOrderNumber] = useState("");
     const [loadingPurchaseOrderNumber, setLoadingPurchaseOrderNumber] = useState(false);
     const [showAddCurrencyModal, setShowAddCurrencyModal] = useState(false);
-    const [newCurrency, setNewCurrency] = useState({ code: "", name: "", rate: 1 });
+    const [newCurrency, setNewCurrency] = useState({ code: "", name: "" });
 
     const [productSearch, setProductSearch] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -206,7 +206,6 @@ export default function AddPurchaseOrderPage() {
         reference_no: "",
         reference_date: "",
         currency: "INR",
-        exchange_rate: 1,
         delivery_date: "",
         notes: "",
         terms: `1. Goods must be delivered in perfect condition.
@@ -345,7 +344,7 @@ export default function AddPurchaseOrderPage() {
     };
 
     const handleSaveCurrency = () => {
-        if (!newCurrency.code || !newCurrency.name || !newCurrency.rate) {
+        if (!newCurrency.code || !newCurrency.name) {
             alert("Please fill all currency fields");
             return;
         }
@@ -353,18 +352,44 @@ export default function AddPurchaseOrderPage() {
         const newCurrencyOption = {
             value: newCurrency.code,
             label: `${newCurrency.code} - ${newCurrency.name}`,
-            rate: parseFloat(newCurrency.rate.toString()),
         };
 
         setCurrencies([...currencies, newCurrencyOption]);
         setFormData(prev => ({
             ...prev,
             currency: newCurrency.code,
-            exchange_rate: newCurrency.rate,
         }));
-        setNewCurrency({ code: "", name: "", rate: 1 });
+        setNewCurrency({ code: "", name: "" });
         setShowAddCurrencyModal(false);
     };
+
+    const currencySymbolMap: Record<string, string> = {
+        INR: "Rs. ",
+        USD: "$",
+        EUR: "EUR ",
+        GBP: "GBP ",
+        AED: "AED ",
+    };
+
+    const currencyPrefix = currencySymbolMap[formData.currency] || `${formData.currency} `;
+
+    const formatAmount = (amount: number) =>
+        `${currencyPrefix}${(Number(amount) || 0).toLocaleString("en-IN", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        })}`;
+
+    const getProductPurchasePrice = (product: any) =>
+        Number(
+            product?.price ??
+            product?.purchase_price ??
+            product?.cost_price ??
+            product?.unit_price ??
+            0
+        );
+
+    const getProductDiscountPercent = (product: any) =>
+        Number(product?.discount_percent ?? product?.discount ?? 0);
 
     // Calculate totals
     const calculateTotals = () => {
@@ -482,7 +507,6 @@ export default function AddPurchaseOrderPage() {
                 discount_on_all: formData.discount_on_all || 0,
                 round_off: formData.round_off || 0,
                 currency: formData.currency,
-                exchange_rate: formData.exchange_rate,
                 items: preparedItems,
             };
 
@@ -522,17 +546,20 @@ export default function AddPurchaseOrderPage() {
                     if (field === 'product_id' && value) {
                         const selectedProduct = products.find(p => p.id === value);
                         if (selectedProduct) {
+                            const selectedPrice = getProductPurchasePrice(selectedProduct);
+                            const selectedDiscount = getProductDiscountPercent(selectedProduct);
                             updated.description = selectedProduct.name;
-                            updated.purchase_price = selectedProduct.cost_price || selectedProduct.purchase_price || 0;
+                            updated.purchase_price = selectedPrice;
+                            updated.discount_percent = selectedDiscount;
                             updated.gst_rate = parseFloat(selectedProduct.gst_rate) || 18;
-                            updated.item_code = selectedProduct.sku || selectedProduct.item_code || "";
                         }
                     }
 
                     // Recalculate item totals EVERY TIME any field changes
                     const itemTotal = updated.quantity * updated.purchase_price;
-                    const discount = updated.discount_percent > 0 ?
-                        itemTotal * (updated.discount_percent / 100) : 0;
+                    const discountPercent = Number(updated.discount_percent) || 0;
+                    const discount = discountPercent > 0 ?
+                        itemTotal * (discountPercent / 100) : 0;
                     const taxable = itemTotal - discount;
                     const tax = taxable * (updated.gst_rate / 100);
 
@@ -550,19 +577,10 @@ export default function AddPurchaseOrderPage() {
 
     // Update form data handler
     const handleFormChange = (field: string, value: any) => {
-        if (field === 'currency') {
-            const selectedCurrency = currencies.find(c => c.value === value);
-            setFormData(prev => ({
-                ...prev,
-                currency: value,
-                exchange_rate: selectedCurrency?.rate || 1,
-            }));
-        } else {
-            setFormData(prev => ({
-                ...prev,
-                [field]: value,
-            }));
-        }
+        setFormData(prev => ({
+            ...prev,
+            [field]: value,
+        }));
     };
 
     const handleProductSearch = (value: string) => {
@@ -582,12 +600,14 @@ export default function AddPurchaseOrderPage() {
     };
 
     const handleSearchSelect = (product: any) => {
+        const selectedPrice = getProductPurchasePrice(product);
+        const selectedDiscount = getProductDiscountPercent(product);
         addItem({
             product_id: product.id,
             description: product.description || "",
             quantity: 1,
-            purchase_price: product.cost_price || product.purchase_price || 0,
-            discount_percent: 0,
+            purchase_price: selectedPrice,
+            discount_percent: selectedDiscount,
             gst_rate: product.gst_rate || 0,
         });
 
@@ -654,24 +674,6 @@ export default function AddPurchaseOrderPage() {
                                 />
                             </div>
 
-                            <div>
-                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                    Exchange Rate <span className="text-red-500">*</span>
-                                </label>
-                                <div className="flex items-center">
-                                    <span className="mr-2 text-dark-6">1 {newCurrency.code || "XXX"} =</span>
-                                    <input
-                                        type="number"
-                                        value={newCurrency.rate}
-                                        onChange={(e) => setNewCurrency(prev => ({ ...prev, rate: parseFloat(e.target.value) || 1 }))}
-                                        className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                        placeholder="e.g., 83.5"
-                                        min="0.01"
-                                        step="0.01"
-                                    />
-                                    <span className="ml-2 text-dark-6">INR</span>
-                                </div>
-                            </div>
                         </div>
 
                         <div className="mt-6 flex justify-end gap-3">
@@ -767,7 +769,7 @@ export default function AddPurchaseOrderPage() {
                                 </div>
                                 <div>
                                     <SelectField
-                                        label="Currency"
+                                        label="Payment Type"
                                         name="currency"
                                         value={formData.currency}
                                         onChange={handleFormChange}
@@ -780,34 +782,9 @@ export default function AddPurchaseOrderPage() {
                                         ]}
                                         onAddNew={handleAddCurrency}
                                         required={true}
-                                        placeholder="Select Currency"
+                                        placeholder="Select Payment Type"
                                     />
                                 </div>
-                                {formData.currency !== "INR" && (
-                                    <div>
-                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                            Exchange Rate <span className="text-red-500">*</span>
-                                        </label>
-                                        <div className="flex items-center gap-2">
-                                            <div className="flex-1 flex items-center">
-                                                <span className="mr-2 text-dark-6">1 {formData.currency} =</span>
-                                                <input
-                                                    type="number"
-                                                    value={formData.exchange_rate}
-                                                    onChange={(e) => setFormData(prev => ({
-                                                        ...prev,
-                                                        exchange_rate: parseFloat(e.target.value) || 1
-                                                    }))}
-                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0.01"
-                                                    step="0.01"
-                                                    required={formData.currency !== "INR"}
-                                                />
-                                            </div>
-                                            <span className="text-dark-6">INR</span>
-                                        </div>
-                                    </div>
-                                )}
                                 <div>
 
                                     <SelectField
@@ -955,13 +932,14 @@ export default function AddPurchaseOrderPage() {
                                                                 prev.map(i => {
                                                                     if (i.id !== item.id) return i;
 
-                                                                    const purchasePrice = product.cost_price || product.purchase_price || 0;
+                                                                    const purchasePrice = getProductPurchasePrice(product);
+                                                                    const discountPercent = getProductDiscountPercent(product);
                                                                     const gstRate = Number(product.gst_rate) || 18;
                                                                     const qty = i.quantity || 1;
 
                                                                     // Calculate totals
                                                                     const itemTotal = qty * purchasePrice;
-                                                                    const discount = 0; // No discount initially
+                                                                    const discount = discountPercent > 0 ? itemTotal * (discountPercent / 100) : 0;
                                                                     const taxable = itemTotal - discount;
                                                                     const tax = taxable * (gstRate / 100);
                                                                     const total = taxable + tax;
@@ -969,11 +947,10 @@ export default function AddPurchaseOrderPage() {
                                                                     return {
                                                                         ...i,
                                                                         product_id: product.id,
-                                                                        item_code: product.sku || product.item_code || i.item_code || "",
                                                                         description: product.name,
                                                                         purchase_price: purchasePrice,
                                                                         gst_rate: gstRate,
-                                                                        discount_percent: 0,
+                                                                        discount_percent: discountPercent,
                                                                         discount_amount: discount,
                                                                         tax_amount: tax,
                                                                         unit_cost: purchasePrice,
@@ -1025,8 +1002,8 @@ export default function AddPurchaseOrderPage() {
                                                     <div className="flex gap-1">
                                                         <input
                                                             type="number"
-                                                            value={item.discount_percent}
-                                                            onChange={(e) => updateItem(item.id, 'discount_percent', parseFloat(e.target.value))}
+                                                            value={item.discount_percent || ""}
+                                                            onChange={(e) => updateItem(item.id, 'discount_percent', parseFloat(e.target.value) || 0)}
                                                             className="w-16 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
                                                             min="0"
                                                             step="0.01"
@@ -1036,16 +1013,16 @@ export default function AddPurchaseOrderPage() {
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <span className="font-medium">
-                                                        ₹{(item.tax_amount || 0).toFixed(2)}
+                                                        {formatAmount(item.tax_amount || 0)}
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <span className="font-medium">
-                                                        ₹{(item.unit_cost || item.purchase_price).toFixed(2)}
+                                                        {formatAmount(item.unit_cost || item.purchase_price)}
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3 font-medium">
-                                                    ₹{item.total_amount.toFixed(2)}
+                                                    {formatAmount(item.total_amount)}
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <button
@@ -1100,14 +1077,14 @@ export default function AddPurchaseOrderPage() {
                                             </div>
                                             {formData.freight_type.startsWith('tax@') && formData.freight_charges > 0 && (
                                                 <div className="mt-1 text-xs text-dark-6">
-                                                    Base: ₹{formData.freight_charges.toFixed(2)} + {formData.freight_type.replace('tax@', '')} tax = ₹{
+                                                    Base: {formatAmount(formData.freight_charges)} + {formData.freight_type.replace('tax@', '')} tax = {
                                                         (() => {
                                                             const match = formData.freight_type.match(/tax@(\d+)%/);
                                                             if (match) {
                                                                 const taxRate = parseInt(match[1]);
-                                                                return (formData.freight_charges * (1 + taxRate / 100)).toFixed(2);
+                                                                return formatAmount(formData.freight_charges * (1 + taxRate / 100));
                                                             }
-                                                            return formData.freight_charges.toFixed(2);
+                                                            return formatAmount(formData.freight_charges);
                                                         })()
                                                     }
                                                 </div>
@@ -1141,14 +1118,14 @@ export default function AddPurchaseOrderPage() {
                                             </div>
                                             {formData.other_charges_type.startsWith('tax@') && formData.other_charges > 0 && (
                                                 <div className="mt-1 text-xs text-dark-6">
-                                                    Base: ₹{formData.other_charges.toFixed(2)} + {formData.other_charges_type.replace('tax@', '')} tax = ₹{
+                                                    Base: {formatAmount(formData.other_charges)} + {formData.other_charges_type.replace('tax@', '')} tax = {
                                                         (() => {
                                                             const match = formData.other_charges_type.match(/tax@(\d+)%/);
                                                             if (match) {
                                                                 const taxRate = parseInt(match[1]);
-                                                                return (formData.other_charges * (1 + taxRate / 100)).toFixed(2);
+                                                                return formatAmount(formData.other_charges * (1 + taxRate / 100));
                                                             }
-                                                            return formData.other_charges.toFixed(2);
+                                                            return formatAmount(formData.other_charges);
                                                         })()
                                                     }
                                                 </div>
@@ -1214,7 +1191,7 @@ export default function AddPurchaseOrderPage() {
                                                             {formData.round_off >= 0 ? '+' : '-'}
                                                         </div>
                                                         <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                                                            ₹
+                                                            {currencyPrefix.trim()}
                                                         </div>
                                                     </div>
                                                     <button
@@ -1256,37 +1233,31 @@ export default function AddPurchaseOrderPage() {
                                     <div className="space-y-3">
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Subtotal</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
+                                            <span className="font-medium text-dark dark:text-white">{formatAmount(totals?.subtotal || 0)}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Freight Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.freight.toLocaleString('en-IN')}</span>
+                                            <span className="font-medium text-dark dark:text-white">{formatAmount(totals.freight)}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Other Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.otherCharges.toLocaleString('en-IN')}</span>
+                                            <span className="font-medium text-dark dark:text-white">{formatAmount(totals.otherCharges)}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Discount on All</span>
-                                            <span className="font-medium text-red-600">-₹{totals.discountAll.toLocaleString('en-IN')}</span>
+                                            <span className="font-medium text-red-600">-{formatAmount(totals.discountAll)}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Round Off</span>
                                             <span className={`font-medium ${totals.roundOff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                {totals.roundOff >= 0 ? '+₹' : '-₹'}{Math.abs(totals.roundOff).toLocaleString('en-IN')}
+                                                {totals.roundOff >= 0 ? '+' : '-'}{formatAmount(Math.abs(totals.roundOff))}
                                             </span>
                                         </div>
                                         <div className="border-t border-stroke pt-3 dark:border-dark-3">
                                             <div className="flex justify-between">
                                                 <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
-                                                <span className="text-lg font-bold text-primary">₹{totals.grandTotal.toLocaleString('en-IN')}</span>
+                                                <span className="text-lg font-bold text-primary">{formatAmount(totals.grandTotal)}</span>
                                             </div>
-                                            {formData.currency !== "INR" && (
-                                                <div className="mt-2 flex justify-between text-sm text-dark-6">
-                                                    <span>Amount in {formData.currency}</span>
-                                                    <span>{(totals.grandTotal / formData.exchange_rate).toFixed(2)} {formData.currency}</span>
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -1364,3 +1335,5 @@ export default function AddPurchaseOrderPage() {
         </div>
     );
 }
+
+

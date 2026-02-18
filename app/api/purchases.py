@@ -100,6 +100,7 @@ class PurchaseCreate(BaseModel):
     vendor_invoice_number: Optional[str] = Field(None, max_length=100)
     vendor_invoice_date: Optional[datetime] = None
     payment_type: Optional[str] = Field(None, max_length=50)
+    exchange_rate: float = Field(1.0, gt=0)
     
     # Items
     items: List[PurchaseItemCreate] = Field(default_factory=list)
@@ -246,6 +247,7 @@ class PurchaseResponse(BaseModel):
     vendor_invoice_date: Optional[datetime]
     due_date: Optional[datetime]
     payment_type: Optional[str]
+    exchange_rate: float = 1.0
     
     # Charges
     freight_charges: float
@@ -309,6 +311,7 @@ class PurchaseUpdate(BaseModel):
     vendor_invoice_number: Optional[str] = None
     vendor_invoice_date: Optional[datetime] = None
     payment_type: Optional[str] = None
+    exchange_rate: Optional[float] = Field(None, gt=0)
     
     # Charges
     freight_charges: Optional[float] = None
@@ -419,6 +422,7 @@ async def create_purchase(
         "vendor_invoice_date": data.vendor_invoice_date,
         "due_date": data.due_date,
         "payment_type": data.payment_type,
+        "exchange_rate": data.exchange_rate,
         "notes": data.notes,
         "terms": data.terms,
         "freight_charges": data.freight_charges,
@@ -955,6 +959,7 @@ def _build_purchase_response(purchase) -> PurchaseResponse:
             "vendor_invoice_date": purchase.vendor_invoice_date,
             "due_date": purchase.due_date,
             "payment_type": purchase.payment_type,
+            "exchange_rate": float(purchase.exchange_rate or 1),
             
             # Charges
             "freight_charges": float(purchase.freight_charges or 0),
@@ -1025,6 +1030,7 @@ def _build_purchase_response(purchase) -> PurchaseResponse:
             purchase_type=purchase.purchase_type.value if hasattr(purchase.purchase_type, 'value') else str(purchase.purchase_type),
             purchase_number=purchase.purchase_number,
             invoice_date=purchase.invoice_date or purchase.created_at,
+            exchange_rate=float(purchase.exchange_rate or 1),
             subtotal=float(purchase.subtotal or 0),
             total_tax=float(purchase.total_tax or 0),
             total_amount=float(purchase.total_amount or 0),

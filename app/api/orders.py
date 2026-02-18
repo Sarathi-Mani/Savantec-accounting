@@ -894,8 +894,75 @@ async def create_purchase_order(
     
     # Get order with items
     order_with_items = service.get_purchase_order_with_items(order.id, company)
-    
-    return PurchaseOrderResponse.from_orm(order_with_items)
+
+    # Build items response explicitly to avoid ORM/schema field mismatches
+    items_response = []
+    if order_with_items and order_with_items.items:
+        for item in order_with_items.items:
+            taxable_amount = (item.quantity * item.rate) - (item.discount_amount or Decimal("0"))
+            product_name = item.product.name if getattr(item, "product", None) else None
+
+            items_response.append(
+                OrderItemResponse(
+                    id=str(item.id),
+                    product_id=str(item.product_id) if item.product_id else None,
+                    product_name=product_name,
+                    item_code=item.item_code or "",
+                    description=item.description or "",
+                    quantity=item.quantity or Decimal("0"),
+                    unit=item.unit or "",
+                    unit_price=item.rate or Decimal("0"),
+                    discount_percent=item.discount_percent or Decimal("0"),
+                    discount_amount=item.discount_amount or Decimal("0"),
+                    gst_rate=item.gst_rate or Decimal("0"),
+                    cgst_rate=getattr(item, "cgst_rate", Decimal("0")) or Decimal("0"),
+                    sgst_rate=getattr(item, "sgst_rate", Decimal("0")) or Decimal("0"),
+                    igst_rate=getattr(item, "igst_rate", Decimal("0")) or Decimal("0"),
+                    taxable_amount=taxable_amount,
+                    total_amount=item.total_amount or Decimal("0"),
+                    quantity_pending=item.quantity_pending or Decimal("0"),
+                )
+            )
+
+    vendor_info = None
+    if order_with_items and getattr(order_with_items, "vendor", None):
+        vendor = order_with_items.vendor
+        vendor_info = {
+            "id": str(vendor.id),
+            "name": vendor.name or "",
+            "email": vendor.email or "",
+            "contact": vendor.contact or "",
+            "address": vendor.billing_address or vendor.shipping_address or "",
+        }
+
+    return PurchaseOrderResponse(
+        id=str(order_with_items.id),
+        order_number=order_with_items.order_number,
+        order_date=order_with_items.order_date,
+        expected_date=order_with_items.expected_date,
+        vendor_id=str(order_with_items.vendor_id) if order_with_items.vendor_id else None,
+        vendor=vendor_info,
+        status=order_with_items.status.value,
+        subtotal=order_with_items.subtotal or Decimal("0"),
+        tax_amount=order_with_items.tax_amount or Decimal("0"),
+        total_amount=order_with_items.total_amount or Decimal("0"),
+        quantity_ordered=order_with_items.quantity_ordered or Decimal("0"),
+        quantity_received=order_with_items.quantity_received or Decimal("0"),
+        notes=order_with_items.notes,
+        terms=order_with_items.terms,
+        created_at=order_with_items.created_at,
+        updated_at=order_with_items.updated_at,
+        items=items_response,
+        reference_number=order_with_items.reference_number,
+        currency=order_with_items.currency or "INR",
+        exchange_rate=order_with_items.exchange_rate or Decimal("1"),
+        freight_charges=order_with_items.freight_charges or Decimal("0"),
+        other_charges=order_with_items.other_charges or Decimal("0"),
+        discount_on_all=order_with_items.discount_on_all or Decimal("0"),
+        round_off=order_with_items.round_off or Decimal("0"),
+        created_by=order_with_items.creator_id or "",
+        creator_name=None,
+    )
 
 @router.get("/purchase", response_model=dict)
 async def list_purchase_orders(
