@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { customersApi, getErrorMessage } from "@/services/api";
+import CreatableSelect from "react-select/creatable";
 
 interface ContactPerson {
   id?: string;
@@ -83,6 +84,77 @@ const GST_REGISTRATION_TYPES = [
   "Non-Resident Taxpayer"
 ] as const;
 
+const DEFAULT_COUNTRIES = ["India", "United States", "United Arab Emirates"] as const;
+
+const INDIAN_STATES = [
+  "Andhra Pradesh",
+  "Arunachal Pradesh",
+  "Assam",
+  "Bihar",
+  "Chhattisgarh",
+  "Goa",
+  "Gujarat",
+  "Haryana",
+  "Himachal Pradesh",
+  "Jharkhand",
+  "Karnataka",
+  "Kerala",
+  "Madhya Pradesh",
+  "Maharashtra",
+  "Manipur",
+  "Meghalaya",
+  "Mizoram",
+  "Nagaland",
+  "Odisha",
+  "Punjab",
+  "Rajasthan",
+  "Sikkim",
+  "Tamil Nadu",
+  "Telangana",
+  "Tripura",
+  "Uttar Pradesh",
+  "Uttarakhand",
+  "West Bengal",
+  "Andaman and Nicobar Islands",
+  "Chandigarh",
+  "Dadra and Nagar Haveli and Daman and Diu",
+  "Delhi",
+  "Jammu and Kashmir",
+  "Ladakh",
+  "Lakshadweep",
+  "Puducherry",
+] as const;
+
+const countrySelectStyles = {
+  control: (base: any, state: any) => ({
+    ...base,
+    minHeight: "48px",
+    borderRadius: "0.5rem",
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: state.isFocused ? "#3c50e0" : "#e2e8f0",
+    boxShadow: "none",
+    backgroundColor: "transparent",
+    "&:hover": {
+      borderColor: "#3c50e0",
+    },
+  }),
+  menu: (base: any) => ({
+    ...base,
+    zIndex: 20,
+  }),
+  valueContainer: (base: any) => ({
+    ...base,
+    paddingLeft: "0.75rem",
+    paddingRight: "0.75rem",
+  }),
+  input: (base: any) => ({
+    ...base,
+    margin: 0,
+    padding: 0,
+  }),
+};
+
 export default function EditCustomerPage() {
   const { company } = useAuth();
   const router = useRouter();
@@ -95,6 +167,9 @@ export default function EditCustomerPage() {
   const [sameAsBilling, setSameAsBilling] = useState(false);
   const [showGstOptions, setShowGstOptions] = useState(false);
   const [showOpeningBalanceSplit, setShowOpeningBalanceSplit] = useState(false);
+  const [countryOptions, setCountryOptions] = useState(
+    DEFAULT_COUNTRIES.map((country) => ({ value: country, label: country })),
+  );
 
   const [formData, setFormData] = useState<FormData>({
     // Basic Info
@@ -211,6 +286,20 @@ export default function EditCustomerPage() {
           is_active: customer.is_active !== false,
         });
 
+        setCountryOptions((prev) => {
+          const options = [...prev];
+          const fetchedCountries = [customer.billing_country, customer.shipping_country].filter(
+            (country): country is string => Boolean(country && country.trim()),
+          );
+          fetchedCountries.forEach((country) => {
+            const exists = options.some((option) => option.value.toLowerCase() === country.toLowerCase());
+            if (!exists) {
+              options.push({ value: country, label: country });
+            }
+          });
+          return options;
+        });
+
         // Check if shipping is same as billing
         if (customer.shipping_address === customer.billing_address &&
             customer.shipping_city === customer.billing_city &&
@@ -240,6 +329,39 @@ export default function EditCustomerPage() {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
     
+    setError(null);
+  };
+
+  const isIndiaCountry = (country: string) => country.trim().toLowerCase() === "india";
+
+  const ensureCountryOption = (country: string) => {
+    const trimmedCountry = country.trim();
+    if (!trimmedCountry) return;
+
+    setCountryOptions((prev) => {
+      const exists = prev.some((option) => option.value.toLowerCase() === trimmedCountry.toLowerCase());
+      if (exists) return prev;
+      return [...prev, { value: trimmedCountry, label: trimmedCountry }];
+    });
+  };
+
+  const handleCountrySelect = (field: "billing_country" | "shipping_country", countryValue: string) => {
+    const trimmedCountry = countryValue.trim();
+    ensureCountryOption(trimmedCountry);
+
+    if (field === "billing_country") {
+      setFormData((prev) => ({
+        ...prev,
+        billing_country: trimmedCountry,
+        billing_state: isIndiaCountry(trimmedCountry) ? prev.billing_state : "",
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        shipping_country: trimmedCountry,
+        shipping_state: isIndiaCountry(trimmedCountry) ? prev.shipping_state : "",
+      }));
+    }
     setError(null);
   };
 
@@ -1177,27 +1299,51 @@ export default function EditCustomerPage() {
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                   State
                 </label>
-                <input
-                  type="text"
-                  name="billing_state"
-                  value={formData.billing_state}
-                  onChange={handleChange}
-                  placeholder="Enter state"
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                />
+                {isIndiaCountry(formData.billing_country) ? (
+                  <select
+                    name="billing_state"
+                    value={formData.billing_state}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  >
+                    <option value="">Select state</option>
+                    {INDIAN_STATES.map((state) => (
+                      <option key={state} value={state}>
+                        {state}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    name="billing_state"
+                    value={formData.billing_state}
+                    onChange={handleChange}
+                    placeholder="Enter state"
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  />
+                )}
               </div>
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                   Country
                 </label>
-                <input
-                  type="text"
+                <CreatableSelect
                   name="billing_country"
-                  value={formData.billing_country}
-                  onChange={handleChange}
-                  placeholder="Enter country"
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  value={
+                    countryOptions.find((option) => option.value === formData.billing_country) ||
+                    (formData.billing_country
+                      ? { value: formData.billing_country, label: formData.billing_country }
+                      : null)
+                  }
+                  options={countryOptions}
+                  onChange={(selected) => handleCountrySelect("billing_country", selected?.value || "")}
+                  onCreateOption={(inputValue) => handleCountrySelect("billing_country", inputValue)}
+                  formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
+                  isClearable
+                  placeholder="Select or type country"
+                  styles={countrySelectStyles}
                 />
               </div>
 
@@ -1265,27 +1411,51 @@ export default function EditCustomerPage() {
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                   State
                 </label>
-                <input
-                  type="text"
-                  name="shipping_state"
-                  value={formData.shipping_state}
-                  onChange={handleChange}
-                  placeholder="Enter state"
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                />
+                {isIndiaCountry(formData.shipping_country) ? (
+                  <select
+                    name="shipping_state"
+                    value={formData.shipping_state}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  >
+                    <option value="">Select state</option>
+                    {INDIAN_STATES.map((state) => (
+                      <option key={state} value={state}>
+                        {state}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    name="shipping_state"
+                    value={formData.shipping_state}
+                    onChange={handleChange}
+                    placeholder="Enter state"
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  />
+                )}
               </div>
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                   Country
                 </label>
-                <input
-                  type="text"
+                <CreatableSelect
                   name="shipping_country"
-                  value={formData.shipping_country}
-                  onChange={handleChange}
-                  placeholder="Enter country"
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  value={
+                    countryOptions.find((option) => option.value === formData.shipping_country) ||
+                    (formData.shipping_country
+                      ? { value: formData.shipping_country, label: formData.shipping_country }
+                      : null)
+                  }
+                  options={countryOptions}
+                  onChange={(selected) => handleCountrySelect("shipping_country", selected?.value || "")}
+                  onCreateOption={(inputValue) => handleCountrySelect("shipping_country", inputValue)}
+                  formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
+                  isClearable
+                  placeholder="Select or type country"
+                  styles={countrySelectStyles}
                 />
               </div>
 
