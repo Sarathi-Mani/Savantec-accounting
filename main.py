@@ -1,8 +1,10 @@
 """GST Invoice Pro - Main FastAPI Application."""
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import os
+from sqlalchemy.exc import OperationalError
 
 from app.config import settings
 from app.database.connection import init_db
@@ -149,7 +151,12 @@ app.include_router(stock_journal_router, prefix="/api")
 @app.on_event("startup")
 async def startup_event():
     """Initialize database on startup."""
-    init_db()
+    try:
+        init_db()
+    except OperationalError as exc:
+        # Keep API process alive so temporary DNS/DB outages do not crash local dev server.
+        print("[WARN] Database init failed during startup. Server will continue in degraded mode.")
+        print(f"[WARN] {exc}")
     print(f"[OK] {settings.APP_NAME} v{settings.APP_VERSION} started!")
     print(f"[API] Docs: http://localhost:6768/api/docs")
     print(f"[WEB] Frontend: http://localhost:6767")
@@ -159,6 +166,17 @@ async def startup_event():
     for route in app.routes:
         if hasattr(route, "methods") and "purchases" in str(route.path):
             print(f"  {route.methods} {route.path}")
+
+
+@app.exception_handler(OperationalError)
+async def database_operational_error_handler(request: Request, exc: OperationalError):
+    """Return a clean API response when database connectivity is temporarily unavailable."""
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Database temporarily unavailable. Please check DATABASE_URL/network and retry."
+        },
+    )
 
 
 @app.get("/health")

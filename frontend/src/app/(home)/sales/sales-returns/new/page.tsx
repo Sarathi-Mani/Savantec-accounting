@@ -182,6 +182,8 @@ export default function AddSalesReturnPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const fromSalesInvoiceId = searchParams.get("fromSalesInvoice");
+    const editReturnId = searchParams.get("editId");
+    const isEditMode = Boolean(editReturnId);
     const { company, user } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showPreviousPayments, setShowPreviousPayments] = useState(false);
@@ -299,14 +301,22 @@ export default function AddSalesReturnPage() {
 
     useEffect(() => {
         if (!company?.id) return;
+        if (editReturnId) {
+            prefillFromExistingReturn(editReturnId);
+            return;
+        }
         if (fromSalesInvoiceId) {
             prefillFromSalesInvoice(fromSalesInvoiceId);
         }
-    }, [company?.id, fromSalesInvoiceId]);
+    }, [company?.id, fromSalesInvoiceId, editReturnId]);
 
     useEffect(() => {
         const loadNextReturnNumber = async () => {
             if (!company?.id) return;
+            if (isEditMode) {
+                setLoadingReturnNumber(false);
+                return;
+            }
             try {
                 setLoadingReturnNumber(true);
                 const token = getAuthToken();
@@ -335,7 +345,7 @@ export default function AddSalesReturnPage() {
             }
         };
         loadNextReturnNumber();
-    }, [company?.id]);
+    }, [company?.id, isEditMode]);
 
     const loadCustomers = async () => {
         try {
@@ -431,6 +441,80 @@ export default function AddSalesReturnPage() {
             console.error("Failed to load invoices:", error);
         } finally {
             setLoading(prev => ({ ...prev, invoices: false }));
+        }
+    };
+
+    const formatDateForInput = (dateValue?: string | null) => {
+        if (!dateValue) return new Date().toISOString().split("T")[0];
+        const d = new Date(dateValue);
+        if (Number.isNaN(d.getTime())) return new Date().toISOString().split("T")[0];
+        return d.toISOString().split("T")[0];
+    };
+
+    const prefillFromExistingReturn = async (returnId: string) => {
+        if (!company?.id) return;
+        setPrefillLoading(true);
+        setPrefillError("");
+        try {
+            const salesReturn = await salesReturnsApi.get(company.id, returnId) as any;
+            if (!salesReturn) {
+                setPrefillError("Sales return not found");
+                return;
+            }
+
+            setNextReturnNumber(
+                normalizeReturnNumber(salesReturn.return_number || generateFallbackReturnNumber())
+            );
+
+            setFormData(prev => ({
+                ...prev,
+                customer_id: salesReturn.customer_id || prev.customer_id,
+                return_date: formatDateForInput(salesReturn.return_date),
+                status: salesReturn.status || prev.status,
+                invoice_id: salesReturn.invoice_id || prev.invoice_id,
+                referenceNo: salesReturn.reference_no || prev.referenceNo,
+                sales_person_id: salesReturn.sales_person_id || prev.sales_person_id,
+                return_reason: salesReturn.reason || prev.return_reason,
+                notes: salesReturn.notes || prev.notes,
+                subtotal: Number(salesReturn.subtotal || 0),
+                discount_amount: Number(salesReturn.discount_amount || 0),
+                cgst_amount: Number(salesReturn.cgst_amount || 0),
+                sgst_amount: Number(salesReturn.sgst_amount || 0),
+                igst_amount: Number(salesReturn.igst_amount || 0),
+                total_tax: Number(salesReturn.total_tax || 0),
+                total_amount: Number(salesReturn.total_amount || 0),
+                freightCharges: Number(salesReturn.freight_charges || 0),
+                pfCharges: Number(salesReturn.packing_forwarding_charges || 0),
+                roundOff: Number(salesReturn.round_off || 0),
+            }));
+
+            if (Array.isArray(salesReturn.items) && salesReturn.items.length > 0) {
+                setItems(
+                    salesReturn.items.map((item: any) => ({
+                        id: Date.now() + Math.random(),
+                        product_id: item.product_id || "",
+                        description: item.description || "",
+                        item_code: item.item_code || "",
+                        hsn_code: item.hsn_code || "",
+                        quantity: Number(item.quantity || 1),
+                        unit: item.unit || "unit",
+                        unit_price: Number(item.unit_price || 0),
+                        discount_percent: Number(item.discount_percent || 0),
+                        discount_amount: Number(item.discount_amount || 0),
+                        gst_rate: Number(item.gst_rate || 0),
+                        cgst_rate: Number(item.cgst_rate || 0),
+                        sgst_rate: Number(item.sgst_rate || 0),
+                        igst_rate: Number(item.igst_rate || 0),
+                        taxable_amount: Number(item.taxable_amount || 0),
+                        total_amount: Number(item.total_amount || 0),
+                    }))
+                );
+            }
+        } catch (error) {
+            console.error("Failed to load sales return for edit:", error);
+            setPrefillError("Failed to load sales return data");
+        } finally {
+            setPrefillLoading(false);
         }
     };
 
@@ -576,6 +660,13 @@ export default function AddSalesReturnPage() {
                 return_date: new Date(formData.return_date).toISOString(),
                 status: formData.status,
                 invoice_id: formData.invoice_id || null,
+                created_by_name: (
+                    user?.full_name ||
+                    user?.name ||
+                    `${user?.first_name || ""} ${user?.last_name || ""}`.trim() ||
+                    user?.email ||
+                    ""
+                ).trim() || undefined,
                 return_number: normalizeReturnNumber(nextReturnNumber),
                 sales_person_id: formData.sales_person_id || null,
                 contact_id: formData.contact_id || null,
@@ -612,17 +703,19 @@ export default function AddSalesReturnPage() {
 
             console.log("Sales return data being sent:", JSON.stringify(returnData, null, 2));
 
-            const response = await salesReturnsApi.create(company.id, returnData);
-            console.log('Sales return created successfully:', response);
+            const response = isEditMode && editReturnId
+                ? await salesReturnsApi.update(company.id, editReturnId, returnData)
+                : await salesReturnsApi.create(company.id, returnData);
+            console.log(`Sales return ${isEditMode ? "updated" : "created"} successfully:`, response);
             router.push(`/sales/sales-returns`);
 
         } catch (error: any) {
-            console.error("Error creating sales return:", error);
+            console.error(`Error ${isEditMode ? "updating" : "creating"} sales return:`, error);
             if (error.response) {
                 console.error("Response error:", error.response.data);
                 console.error("Response status:", error.response.status);
             }
-            alert(`Failed to create sales return: ${error.message || "Unknown error"}`);
+            alert(`Failed to ${isEditMode ? "update" : "create"} sales return: ${error.message || "Unknown error"}`);
         } finally {
             setIsSubmitting(false);
         }
@@ -777,7 +870,9 @@ export default function AddSalesReturnPage() {
                             <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
                             </svg>
-                            <span className="ml-1 font-medium text-dark dark:text-white md:ml-2">New Sales Return</span>
+                            <span className="ml-1 font-medium text-dark dark:text-white md:ml-2">
+                                {isEditMode ? "Edit Sales Return" : "New Sales Return"}
+                            </span>
                         </div>
                     </li>
                 </ol>
@@ -786,7 +881,9 @@ export default function AddSalesReturnPage() {
             {/* Page Header */}
             <div className="mb-6">
                 <h1 className="text-2xl font-bold text-dark dark:text-white">Sales Return – Add / Update Sales Return</h1>
-                <p className="text-dark-6">Create new sales return with customer details and items</p>
+                <p className="text-dark-6">
+                    {isEditMode ? "Update existing sales return details and items" : "Create new sales return with customer details and items"}
+                </p>
             </div>
 
             {(prefillLoading || prefillError) && (
@@ -1534,7 +1631,7 @@ export default function AddSalesReturnPage() {
                                     disabled={isSubmitting}
                                     className="min-w-[180px] rounded-lg bg-green-600 px-6 py-3 font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
                                 >
-                                    {isSubmitting ? "Saving..." : "Save Sales Return"}
+                                    {isSubmitting ? "Saving..." : isEditMode ? "Update Sales Return" : "Save Sales Return"}
                                 </button>
 
                                 <button

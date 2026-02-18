@@ -4,11 +4,12 @@ Additional API Endpoints - Serial Numbers, Manufacturing, Price Levels, Period L
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from datetime import datetime, date
 from decimal import Decimal
 from pydantic import BaseModel
 from io import BytesIO
+import re
 
 from app.database.connection import get_db
 from app.database.models import (
@@ -19,9 +20,12 @@ from app.database.models import (
     PeriodLock, AuditLog, NarrationTemplate, Notification, NotificationType,
     BillOfMaterial, SalesReturn, SalesReturnItem, Invoice, Customer, generate_uuid
 )
+from app.database.payroll_models import Employee
 from app.auth.dependencies import get_current_active_user
 
 router = APIRouter(tags=["Additional Features"])
+
+CREATOR_NAME_META_PATTERN = re.compile(r"^\[created_by_name:(.*?)\]\s*\n?", re.IGNORECASE)
 
 
 def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
@@ -41,6 +45,55 @@ def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company
+
+
+def _extract_creator_name_from_notes(notes: Optional[str]) -> Tuple[Optional[str], str]:
+    """Extract creator name metadata from notes and return clean notes."""
+    raw_notes = notes or ""
+    match = CREATOR_NAME_META_PATTERN.match(raw_notes)
+    if not match:
+        return None, raw_notes
+    creator_name = (match.group(1) or "").strip() or None
+    clean_notes = CREATOR_NAME_META_PATTERN.sub("", raw_notes, count=1).strip()
+    return creator_name, clean_notes
+
+
+def _inject_creator_name_into_notes(notes: Optional[str], creator_name: Optional[str]) -> Optional[str]:
+    """Store creator name in notes for rows where created_by FK cannot carry employee identity."""
+    base_notes = (notes or "").strip()
+    if not creator_name:
+        return base_notes or None
+    return f"[created_by_name:{creator_name}]\n{base_notes}" if base_notes else f"[created_by_name:{creator_name}]"
+
+
+def _resolve_creator_name(current_user: User, company_id: str, db: Session) -> Optional[str]:
+    """Resolve display name for current actor (regular user or employee login)."""
+    if isinstance(current_user, dict) and current_user.get("is_employee"):
+        employee_id = current_user.get("id")
+        if not employee_id:
+            return None
+        employee = db.query(Employee).filter(
+            Employee.id == str(employee_id),
+            Employee.company_id == company_id
+        ).first()
+        if not employee:
+            return None
+        return (
+            (employee.full_name or "").strip()
+            or f"{(employee.first_name or '').strip()} {(employee.last_name or '').strip()}".strip()
+            or (employee.email or "").strip()
+            or (employee.employee_code or "").strip()
+            or None
+        )
+
+    user_obj = current_user.get("data") if isinstance(current_user, dict) else current_user
+    if not user_obj:
+        return None
+    return (
+        (getattr(user_obj, "full_name", "") or "").strip()
+        or (getattr(user_obj, "email", "") or "").strip()
+        or None
+    )
 
 
 # ==================== SERIAL NUMBERS ====================
@@ -1417,6 +1470,7 @@ class SalesReturnCreate(BaseModel):
     return_date: Optional[datetime] = None
     customer_id: Optional[str] = None
     sales_person_id: Optional[str] = None
+    created_by_name: Optional[str] = None
     status: Optional[str] = "pending"
     return_reason: Optional[str] = None
     reference_no: Optional[str] = None
@@ -1483,6 +1537,13 @@ async def list_sales_returns(
         customer_name = ret.customer.name if ret.customer else ""
         if not customer_name and ret.original_invoice and ret.original_invoice.customer_name:
             customer_name = ret.original_invoice.customer_name
+        note_creator_name, clean_notes = _extract_creator_name_from_notes(ret.notes)
+        creator_name = (
+            (ret.creator.full_name if ret.creator and ret.creator.full_name else None)
+            or (ret.creator.email if ret.creator and ret.creator.email else None)
+            or note_creator_name
+            or ""
+        )
 
         result.append({
             "id": ret.id,
@@ -1496,10 +1557,88 @@ async def list_sales_returns(
             "reason": ret.reason or "",
             "status": ret.status or "pending",
             "reference_no": ret.reference_no,
-            "notes": ret.notes,
+            "notes": clean_notes,
+            "created_by": ret.created_by,
+            "created_by_name": creator_name,
         })
 
     return result
+
+
+@router.get("/companies/{company_id}/sales-returns/{return_id}")
+async def get_sales_return(
+    company_id: str,
+    return_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get single sales return with full item details."""
+    get_company_or_404(company_id, current_user, db)
+
+    ret = db.query(SalesReturn).filter(
+        SalesReturn.id == return_id,
+        SalesReturn.company_id == company_id
+    ).first()
+    if not ret:
+        raise HTTPException(status_code=404, detail="Sales return not found")
+
+    invoice_number = ret.original_invoice.invoice_number if ret.original_invoice else None
+    customer_name = ret.customer.name if ret.customer else ""
+    if not customer_name and ret.original_invoice and ret.original_invoice.customer_name:
+        customer_name = ret.original_invoice.customer_name
+
+    note_creator_name, clean_notes = _extract_creator_name_from_notes(ret.notes)
+    creator_name = (
+        (ret.creator.full_name if ret.creator and ret.creator.full_name else None)
+        or (ret.creator.email if ret.creator and ret.creator.email else None)
+        or note_creator_name
+        or ""
+    )
+
+    return {
+        "id": ret.id,
+        "return_number": ret.return_number,
+        "invoice_id": ret.original_invoice_id,
+        "invoice_number": invoice_number,
+        "customer_id": ret.customer_id,
+        "customer_name": customer_name,
+        "return_date": ret.return_date.isoformat() if ret.return_date else None,
+        "total_amount": float(ret.total_amount or 0),
+        "reason": ret.reason or "",
+        "status": ret.status or "pending",
+        "reference_no": ret.reference_no,
+        "notes": clean_notes,
+        "sales_person_id": ret.sales_person_id,
+        "subtotal": float(ret.subtotal or 0),
+        "discount_amount": float(ret.discount_amount or 0),
+        "cgst_amount": float(ret.cgst_amount or 0),
+        "sgst_amount": float(ret.sgst_amount or 0),
+        "igst_amount": float(ret.igst_amount or 0),
+        "total_tax": float(ret.total_tax or 0),
+        "round_off": float(ret.round_off or 0),
+        "freight_charges": float(ret.freight_charges or 0),
+        "packing_forwarding_charges": float(ret.packing_forwarding_charges or 0),
+        "created_by": ret.created_by,
+        "created_by_name": creator_name,
+        "items": [{
+            "id": item.id,
+            "invoice_item_id": item.invoice_item_id,
+            "product_id": item.product_id,
+            "description": item.description,
+            "hsn_code": item.hsn_code,
+            "quantity": float(item.quantity or 0),
+            "unit": item.unit or "unit",
+            "unit_price": float(item.unit_price or 0),
+            "discount_percent": float(item.discount_percent or 0),
+            "discount_amount": float(item.discount_amount or 0),
+            "gst_rate": float(item.gst_rate or 0),
+            "cgst_rate": float(item.cgst_rate or 0),
+            "sgst_rate": float(item.sgst_rate or 0),
+            "igst_rate": float(item.igst_rate or 0),
+            "taxable_amount": float(item.taxable_amount or 0),
+            "total_amount": float(item.total_amount or 0),
+        } for item in (ret.items or [])],
+    }
 
 
 @router.post("/companies/{company_id}/sales-returns", status_code=status.HTTP_201_CREATED)
@@ -1513,6 +1652,11 @@ async def create_sales_return(
     get_company_or_404(company_id, current_user, db)
     creator_user_id = None if (isinstance(current_user, dict) and current_user.get("is_employee")) else (
         current_user.get("id") if isinstance(current_user, dict) else current_user.id
+    )
+    creator_name = (
+        (data.created_by_name or "").strip()
+        or (_resolve_creator_name(current_user, company_id, db) or "").strip()
+        or None
     )
 
     invoice = db.query(Invoice).filter(
@@ -1547,7 +1691,7 @@ async def create_sales_return(
         status=(data.status or "pending"),
         reason=(data.return_reason or data.notes or ""),
         reference_no=data.reference_no,
-        notes=data.notes,
+        notes=_inject_creator_name_into_notes(data.notes, creator_name),
         subtotal=Decimal(str(data.subtotal or 0)),
         discount_amount=Decimal(str(data.discount_amount or 0)),
         cgst_amount=Decimal(str(data.cgst_amount or 0)),
@@ -1610,7 +1754,133 @@ async def create_sales_return(
         "total_amount": float(sales_return.total_amount or 0),
         "reason": sales_return.reason or "",
         "status": sales_return.status or "pending",
+        "created_by": sales_return.created_by,
+        "created_by_name": creator_name or "",
         "message": "Sales return created successfully",
+    }
+
+
+@router.put("/companies/{company_id}/sales-returns/{return_id}")
+async def update_sales_return(
+    company_id: str,
+    return_id: str,
+    data: SalesReturnCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update an existing sales return and replace its items."""
+    get_company_or_404(company_id, current_user, db)
+
+    sales_return = db.query(SalesReturn).filter(
+        SalesReturn.id == return_id,
+        SalesReturn.company_id == company_id
+    ).first()
+    if not sales_return:
+        raise HTTPException(status_code=404, detail="Sales return not found")
+
+    invoice = db.query(Invoice).filter(
+        Invoice.id == data.invoice_id,
+        Invoice.company_id == company_id
+    ).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Original invoice not found")
+
+    if not data.items or len(data.items) == 0:
+        raise HTTPException(status_code=400, detail="At least one item is required")
+
+    return_number = (data.return_number or sales_return.return_number or "").strip()
+    if not return_number:
+        return_number = f"SRN-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
+    duplicate = db.query(SalesReturn).filter(
+        SalesReturn.company_id == company_id,
+        SalesReturn.return_number == return_number,
+        SalesReturn.id != return_id
+    ).first()
+    if duplicate:
+        raise HTTPException(status_code=400, detail="Sales return number already exists")
+
+    creator_name = (
+        (data.created_by_name or "").strip()
+        or (_resolve_creator_name(current_user, company_id, db) or "").strip()
+        or None
+    )
+
+    sales_return.original_invoice_id = invoice.id
+    sales_return.customer_id = data.customer_id or invoice.customer_id
+    sales_return.sales_person_id = data.sales_person_id
+    sales_return.return_number = return_number
+    sales_return.return_date = data.return_date or sales_return.return_date or datetime.utcnow()
+    sales_return.status = (data.status or "pending")
+    sales_return.reason = (data.return_reason or data.notes or "")
+    sales_return.reference_no = data.reference_no
+    sales_return.notes = _inject_creator_name_into_notes(data.notes, creator_name)
+    sales_return.subtotal = Decimal(str(data.subtotal or 0))
+    sales_return.discount_amount = Decimal(str(data.discount_amount or 0))
+    sales_return.cgst_amount = Decimal(str(data.cgst_amount or 0))
+    sales_return.sgst_amount = Decimal(str(data.sgst_amount or 0))
+    sales_return.igst_amount = Decimal(str(data.igst_amount or 0))
+    sales_return.total_tax = Decimal(str(data.total_tax or 0))
+    sales_return.total_amount = Decimal(str(data.total_amount or 0))
+    sales_return.round_off = Decimal(str(data.round_off or 0))
+    sales_return.freight_charges = Decimal(str(data.freight_charges or 0))
+    sales_return.packing_forwarding_charges = Decimal(str(data.packing_forwarding_charges or 0))
+
+    db.query(SalesReturnItem).filter(
+        SalesReturnItem.sales_return_id == sales_return.id
+    ).delete(synchronize_session=False)
+
+    for item in data.items:
+        qty = Decimal(str(item.quantity or 0))
+        unit_price = Decimal(str(item.unit_price or 0))
+        discount_amount = Decimal(str(item.discount_amount or 0))
+        taxable = Decimal(str(item.taxable_amount or 0))
+        if taxable <= 0:
+            taxable = (qty * unit_price) - discount_amount
+        total_amount = Decimal(str(item.total_amount or 0))
+        if total_amount <= 0:
+            total_amount = taxable + (taxable * Decimal(str(item.gst_rate or 0)) / Decimal("100"))
+
+        db.add(SalesReturnItem(
+            id=generate_uuid(),
+            sales_return_id=sales_return.id,
+            invoice_item_id=item.invoice_item_id,
+            product_id=item.product_id,
+            description=item.description,
+            hsn_code=item.hsn_code,
+            quantity=qty,
+            unit=item.unit or "unit",
+            unit_price=unit_price,
+            discount_percent=Decimal(str(item.discount_percent or 0)),
+            discount_amount=discount_amount,
+            gst_rate=Decimal(str(item.gst_rate or 0)),
+            cgst_rate=Decimal(str(item.cgst_rate or 0)),
+            sgst_rate=Decimal(str(item.sgst_rate or 0)),
+            igst_rate=Decimal(str(item.igst_rate or 0)),
+            taxable_amount=taxable,
+            total_amount=total_amount,
+        ))
+
+    db.commit()
+
+    customer_name = ""
+    if sales_return.customer_id:
+        customer = db.query(Customer).filter(Customer.id == sales_return.customer_id).first()
+        customer_name = customer.name if customer else ""
+
+    return {
+        "id": sales_return.id,
+        "return_number": sales_return.return_number,
+        "invoice_id": sales_return.original_invoice_id,
+        "invoice_number": invoice.invoice_number,
+        "customer_name": customer_name or invoice.customer_name or "",
+        "return_date": sales_return.return_date.isoformat() if sales_return.return_date else None,
+        "total_amount": float(sales_return.total_amount or 0),
+        "reason": sales_return.reason or "",
+        "status": sales_return.status or "pending",
+        "created_by": sales_return.created_by,
+        "created_by_name": creator_name or "",
+        "message": "Sales return updated successfully",
     }
 
 

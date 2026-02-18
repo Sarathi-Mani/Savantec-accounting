@@ -2887,6 +2887,7 @@ class Purchase(Base):
     
     # Payment type for the entire purchase
     payment_type = Column(String(50))  # cash, credit, bank_transfer, cheque, online
+    exchange_rate = Column(Numeric(14, 6), default=Decimal("1.0"))
     
     # Charges and discounts
     freight_charges = Column(Numeric(14, 2), default=0)

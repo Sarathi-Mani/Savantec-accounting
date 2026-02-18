@@ -2196,6 +2196,8 @@ export interface PurchaseInvoice {
   invoice_date: string;
   vendor_invoice_date?: string;
   due_date?: string;
+  payment_type?: string;
+  exchange_rate?: number;
   place_of_supply?: string;
   place_of_supply_name?: string;
   is_reverse_charge: boolean;
@@ -2280,6 +2282,8 @@ export const purchasesApi = {
     vendor_invoice_date?: string;
     invoice_date?: string;
     due_date?: string;
+    payment_type?: string;
+    exchange_rate?: number;
     place_of_supply?: string;
     is_reverse_charge?: boolean;
     purchase_type?: string;
@@ -2367,6 +2371,8 @@ export const purchasesApi = {
     return response.data;
   },
 };
+
+
 // Inventory Types
 export interface StockGroup {
   id: string;
@@ -3979,6 +3985,34 @@ export const salesReturnsApi = {
     }
   },
 
+  get: async (companyId: string, returnId: string) => {
+    try {
+      const response = await api.get(`/companies/${companyId}/sales-returns/${returnId}`);
+      return response.data;
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        const notes = await creditNotesApi.list(companyId);
+        const note = (notes || []).find((n) => n.id === returnId);
+        if (note) {
+          return {
+            id: note.id,
+            return_number: note.note_number,
+            invoice_id: "",
+            invoice_number: note.original_invoice,
+            customer_id: "",
+            customer_name: note.customer_name,
+            return_date: note.note_date,
+            total_amount: Number(note.total_amount) || 0,
+            reason: note.reason || "",
+            status: "approved",
+            items: [],
+          };
+        }
+      }
+      throw error;
+    }
+  },
+
   create: async (companyId: string, data: any) => {
     try {
       const response = await api.post(`/companies/${companyId}/sales-returns`, data);
@@ -4001,6 +4035,11 @@ export const salesReturnsApi = {
       }
       throw error;
     }
+  },
+
+  update: async (companyId: string, returnId: string, data: any) => {
+    const response = await api.put(`/companies/${companyId}/sales-returns/${returnId}`, data);
+    return response.data;
   },
 };
 
