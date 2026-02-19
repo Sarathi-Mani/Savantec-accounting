@@ -105,12 +105,12 @@ export function Sidebar() {
                   <ul className="space-y-2">
                     {section.items.map((item) => (
                       <li key={item.title}>
-                        {item.items.length ? (
+                        {(item.items?.length ?? 0) > 0 ? (
                           <div>
                             <MenuItem
-                              isActive={item.items.some(
+                              isActive={item.items?.some(
                                 ({ url }) => url === pathname,
-                              )}
+                              ) ?? false}
                               onClick={() => toggleExpanded(item.title)}
                             >
                               <item.icon
@@ -135,11 +135,11 @@ export function Sidebar() {
                                 className="ml-9 mr-0 space-y-1.5 pb-[15px] pr-0 pt-2"
                                 role="menu"
                               >
-                                {item.items.map((subItem) => (
+                                {(item.items ?? []).map((subItem) => (
                                   <li key={subItem.url || subItem.title} role="none">
                                     <MenuItem
                                       as="link"
-                                      href={subItem.url}
+                                      href={subItem.url ?? "#"}
                                       isActive={pathname === subItem.url}
                                     >
                                       <span>{subItem.title}</span>

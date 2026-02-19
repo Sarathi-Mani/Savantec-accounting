@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { invoicesApi, customersApi, Customer } from "@/services/api";
+import { invoicesApi, customersApi, Customer, InvoiceListResponse } from "@/services/api";
 import Link from "next/link";
 import { useEffect, useState, useRef } from "react";
 import * as XLSX from "xlsx";
@@ -596,7 +596,7 @@ export default function SalesListPage() {
         return;
       }
 
-      const result: InvoiceResponse = await invoicesApi.list(company.id, {
+      const result: InvoiceListResponse = await invoicesApi.list(company.id, {
         page: currentPage,
         page_size: pageSize,
         search: search || undefined,
@@ -606,7 +606,7 @@ export default function SalesListPage() {
         to_date: toDate || undefined
       });
 
-      setData(result.invoices || []);
+      setData((result?.invoices || []) as Invoice[]);
       setSummary({
         total_amount: result.total_amount || 0,
         total_paid: result.total_paid || 0,
@@ -652,7 +652,7 @@ export default function SalesListPage() {
       let pageNum = 1;
       let allInvoices: Invoice[] = [];
       while (true) {
-        const result: InvoiceResponse = await invoicesApi.list(company.id, {
+        const result: InvoiceListResponse = await invoicesApi.list(company.id, {
           page: pageNum,
           page_size: pageSize,
           search: search || undefined,
@@ -915,7 +915,7 @@ export default function SalesListPage() {
       const detailedInvoices = await Promise.all(
         allInvoices.map(async (invoice) => {
           try {
-            return (await invoicesApi.get(company!.id, invoice.id)) as Invoice;
+            return (await invoicesApi.get(company?.id ?? "", invoice.id)) as Invoice;
           } catch (error) {
             console.error(`Failed to load invoice details for ${invoice.invoice_number}:`, error);
             return invoice;

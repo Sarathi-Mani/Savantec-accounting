@@ -32,8 +32,8 @@ interface MapProps {
 }
 
 export default function MapComponent({ center, zoom, engineers, onMarkerClick }: MapProps) {
-  const mapRef = useRef<L.Map | null>(null);
-  const markersRef = useRef<Map<string, L.Marker>>(new Map());
+  const mapRef = useRef<ReturnType<typeof L.map> | null>(null);
+  const markersRef = useRef<Map<string, any>>(new Map());
 
   useEffect(() => {
     if (!mapRef.current) {
@@ -57,7 +57,7 @@ export default function MapComponent({ center, zoom, engineers, onMarkerClick }:
 
       const icon = createMarkerIcon(engineer.status, engineer.isOnline, engineer.hasFraudFlag);
       
-      const marker = L.marker(engineer.position as L.LatLngExpression, {
+      const marker = L.marker(engineer.position, {
         icon,
         rotationAngle: engineer.heading || 0,
         rotationOrigin: "center center",

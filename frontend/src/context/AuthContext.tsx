@@ -7,6 +7,8 @@ import { clearUserDesignation, storeUserDesignation } from "@/utils/permission-c
 
 // Extended User interface to include employee data
 interface ExtendedUser extends User {
+  name?: string;
+  full_name?: string;
   is_employee?: boolean;
   employee_code?: string;
   first_name?: string;

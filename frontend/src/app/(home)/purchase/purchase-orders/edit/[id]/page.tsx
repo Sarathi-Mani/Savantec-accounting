@@ -399,7 +399,7 @@ export default function EditPurchaseOrderPage() {
 
     const currencyPrefix = currencySymbolMap[formData.currency] || `${formData.currency} `;
 
-    const formatAmount = (amount: number) =>
+    const formatAmount = (amount: number | string) =>
         `${currencyPrefix}${(Number(amount) || 0).toLocaleString("en-IN", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,

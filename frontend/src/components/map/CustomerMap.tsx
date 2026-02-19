@@ -107,13 +107,14 @@ export default function CustomerMap({
             attributionControl: false,
           });
 
-          mapRef.current.addControl(new maplibre.NavigationControl(), "top-right");
-          mapRef.current.addControl(new maplibre.AttributionControl({ compact: true }));
-
-          mapRef.current.on("load", () => {
+          if (mapRef.current) {
+            mapRef.current.addControl(new maplibre.NavigationControl(), "top-right");
+            mapRef.current.addControl(new maplibre.AttributionControl({ compact: true }));
+            mapRef.current.on("load", () => {
             updateMarkers();
             updateCurrentLocationMarker();
           });
+          }
         }
 
         if (mapRef.current) {

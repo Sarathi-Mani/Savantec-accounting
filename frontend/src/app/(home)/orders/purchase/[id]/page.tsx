@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { ordersApi, vendorsApi, PurchaseOrder, Customer, getErrorMessage } from "@/services/api";
+import { ordersApi, vendorsApi, PurchaseOrder, Vendor, getErrorMessage } from "@/services/api";
 import dayjs from "dayjs";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -14,7 +14,7 @@ export default function ViewPurchaseOrderPage() {
   const orderId = params.id as string;
   
   const [order, setOrder] = useState<PurchaseOrder | null>(null);
-  const [vendor, setVendor] = useState<Customer | null>(null);
+  const [vendor, setVendor] = useState<Vendor | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

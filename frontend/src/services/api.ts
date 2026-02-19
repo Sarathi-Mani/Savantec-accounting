@@ -118,7 +118,7 @@ export interface BankAccount {
 export interface Company {
   id: string;
   name: string;
-
+  trade_name?: string;
   gstin?: string;
   pan?: string;
   cin?: string;
@@ -182,6 +182,9 @@ export interface Customer {
   company_id: string;
   name: string;
   contact: string;
+  trade_name?: string;
+  city?: string;
+  state?: string;
   email?: string;
   mobile?: string;
   tax_number?: string;
@@ -201,6 +204,7 @@ export interface Customer {
   billing_address?: string;  // Add this
   billing_city?: string;
   billing_state?: string;
+  billing_state_code?: string;
   billing_country?: string;
   billing_zip?: string;  // Add this
   district?: string;
@@ -341,6 +345,8 @@ export interface InvoiceItem {
   taxable_amount: number;
   total_amount: number;
   created_at: string;
+  stock_reserved?: number;
+  stock_reduced?: number;
 }
 
 export interface Payment {
@@ -860,6 +866,11 @@ export const vendorsApi = {
     const response = await api.post(`/companies/${companyId}/vendors/${vendorId}/toggle-status`);
     return response.data;
   },
+  toggleActive: async (companyId: string, vendorId: string, _isActive?: boolean): Promise<Vendor> => {
+    await api.post(`/companies/${companyId}/vendors/${vendorId}/toggle-status`);
+    const res = await api.get(`/companies/${companyId}/vendors/${vendorId}`);
+    return res.data;
+  },
 
   // Bank Details
   addBankDetail: async (companyId: string, vendorId: string, data: Partial<VendorBankDetail>): Promise<VendorBankDetail> => {
@@ -1180,6 +1191,7 @@ export interface Brand {
 
 export interface BrandListResponse {
   brands: Brand[];
+  data?: Brand[];
   total: number;
   page: number;
   page_size: number;
@@ -1198,6 +1210,7 @@ export interface Category {
 
 export interface CategoryListResponse {
   categories: Category[];
+  data?: Category[];
   total: number;
   page: number;
   page_size: number;
@@ -1601,7 +1614,7 @@ export const quickEntryApi = {
 
 // ============== Orders Types ==============
 
-export type OrderStatus = "draft" | "confirmed" | "completed" | "cancelled";
+export type OrderStatus = "draft" | "confirmed" | "completed" | "cancelled" | "processing" | "partially_delivered";
 
 export interface OrderItem {
   id: string;
@@ -1671,6 +1684,12 @@ export interface PurchaseOrder {
   terms?: string;
   created_at: string;
   items?: OrderItem[];
+  reference_number?: string;
+  currency?: string;
+  freight_charges?: number;
+  other_charges?: number;
+  discount_on_all?: number;
+  round_off?: number;
 }
 
 export interface PurchaseOrderUpdate {
@@ -1945,6 +1964,16 @@ export const purchaseRequestsApi = {
       approval_status: 'pending' | 'approved' | 'hold' | 'rejected' | 'open' | 'in_progress' | 'closed';  // Use approval_status for API request
       approval_notes?: string;
     }
+  ): Promise<any> => {
+    const response = await api.put(`/companies/${companyId}/purchase-requests/${requestId}/status`, data);
+    return response.data;
+  },
+
+  updateItemStatus: async (
+    companyId: string,
+    requestId: string,
+    _itemId: string,
+    data: { approval_status: string; approval_notes?: string }
   ): Promise<any> => {
     const response = await api.put(`/companies/${companyId}/purchase-requests/${requestId}/status`, data);
     return response.data;
@@ -2771,6 +2800,8 @@ export interface VendorOpeningBalanceItem {
 
 export interface VendorListResponse {
   vendors: Vendor[];
+  customers?: Customer[];
+  data?: Vendor[];
   total: number;
   page: number;
   page_size: number;
@@ -2846,7 +2877,14 @@ export interface VendorCreateRequest {
   shipping_zip?: string;
 }
 
-export interface VendorUpdateRequest extends Partial<VendorCreateRequest> { }
+export interface VendorUpdateRequest extends Partial<VendorCreateRequest> {
+  email?: string | null;
+  mobile?: string | null;
+  tax_number?: string | null;
+  gst_registration_type?: string | null;
+  pan_number?: string | null;
+  vendor_code?: string | null;
+}
 
 
 
@@ -3963,7 +4001,7 @@ export const creditNotesApi = {
 
 // ============== Sales Returns API ==============
 export const salesReturnsApi = {
-  list: async (companyId: string, params?: { status?: string }) => {
+  list: async (companyId: string, params?: { status?: string; page?: number }) => {
     try {
       const response = await api.get(`/companies/${companyId}/sales-returns`, { params });
       return response.data;
@@ -4040,6 +4078,10 @@ export const salesReturnsApi = {
   update: async (companyId: string, returnId: string, data: any) => {
     const response = await api.put(`/companies/${companyId}/sales-returns/${returnId}`, data);
     return response.data;
+  },
+
+  delete: async (companyId: string, returnId: string): Promise<void> => {
+    await api.delete(`/companies/${companyId}/sales-returns/${returnId}`);
   },
 };
 

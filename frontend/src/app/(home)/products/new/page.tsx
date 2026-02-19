@@ -320,7 +320,7 @@ const uploadImages = async (companyId: string, productId: string, mainImage: Fil
   } catch (error) {
     console.error("Failed to upload images:", error);
     // Don't fail the whole process if image upload fails
-    showToast("Product created but image upload failed", "warning");
+    showToast("Product created but image upload failed", "error");
   }
 };
 
