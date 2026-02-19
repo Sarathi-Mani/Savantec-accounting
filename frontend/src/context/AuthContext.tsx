@@ -27,6 +27,7 @@ interface ExtendedUser extends User {
 // Use the existing Company interface and extend it
 interface ExtendedCompany extends Company {
   is_employee_company?: boolean;
+  trade_name?: string;
 }
 
 interface AuthContextType {
