@@ -153,18 +153,19 @@ export default function AdminLiveTracking() {
           attributionControl: false,
         });
 
-        mapInstanceRef.current.addControl(
-          new maplibre.NavigationControl(),
-          "top-right"
-        );
-        mapInstanceRef.current.addControl(
-          new maplibre.AttributionControl({ compact: true })
-        );
-
-        mapInstanceRef.current.on("load", () => {
-          setIsMapReady(true);
-          setMapLoaded(true);
-        });
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.addControl(
+            new maplibre.NavigationControl(),
+            "top-right"
+          );
+          mapInstanceRef.current.addControl(
+            new maplibre.AttributionControl({ compact: true })
+          );
+          mapInstanceRef.current.on("load", () => {
+            setIsMapReady(true);
+            setMapLoaded(true);
+          });
+        }
 
         window.setTimeout(() => mapInstanceRef.current?.resize(), 50);
         window.setTimeout(() => mapInstanceRef.current?.resize(), 250);
@@ -248,9 +249,9 @@ export default function AdminLiveTracking() {
       // Update stats
       setStats({
         totalEngineers: trackingResponse.data.length,
-        activeTrips: trackingResponse.data.filter(e => e.current_trip_id).length,
+        activeTrips: trackingResponse.data.filter((e: any) => e.current_trip_id).length,
         totalVisits: visitsResponse.data.length,
-        fraudCases: tripsResponse.data.filter(t => t.has_fraud_flag).length
+        fraudCases: tripsResponse.data.filter((t: any) => t.has_fraud_flag).length
       });
       
       // Update map markers

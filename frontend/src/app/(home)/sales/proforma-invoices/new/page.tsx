@@ -474,7 +474,7 @@ const fetchContactPersons = async (customerId: string) => {
         }
 
         // Format the data to match your frontend structure
-        const formattedSalesmen = salesEngineers.map(engineer => ({
+        const formattedSalesmen = salesEngineers.map((engineer: any) => ({
             id: engineer.id,
             name: engineer.full_name || engineer.name || 'Unnamed Engineer',
             email: engineer.email || '',
@@ -493,8 +493,8 @@ const fetchContactPersons = async (customerId: string) => {
         try {
             const employees = await employeesApi.list(company!.id);
             const salesEmployees = employees.filter(emp =>
-                emp.designation?.toLowerCase().includes('sales') ||
-                emp.employee_type?.toLowerCase().includes('sales')
+                (typeof emp.designation === 'string' ? emp.designation : (emp.designation as any)?.name || '').toLowerCase().includes('sales') ||
+                (emp.employee_type || '').toLowerCase().includes('sales')
             );
             console.log("Fallback sales employees:", salesEmployees);
             setSalesmen(salesEmployees);
@@ -622,6 +622,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             despatched_through: formData.despatched_through,
             destination: formData.destination,
             terms_of_delivery: formData.terms_of_delivery,
+            company_id: company!.id,
             items: items.map(item => ({
                 product_id: item.product_id || undefined,
                 item_code: item.item_code,

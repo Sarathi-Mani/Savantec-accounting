@@ -187,7 +187,7 @@ export default function AddPurchaseOrderPage() {
     // State for dropdown data
     const [suppliers, setSuppliers] = useState<any[]>([]);
     const [products, setProducts] = useState<any[]>([]);
-    const [currencies, setCurrencies] = useState([
+    const [currencies, setCurrencies] = useState<{ value: string; label: string; rate?: number }[]>([
         { value: "INR", label: "INR - Indian Rupee", rate: 1 },
         { value: "USD", label: "USD - US Dollar", rate: 83.5 },
         { value: "EUR", label: "EUR - Euro", rate: 89.2 },
@@ -287,33 +287,22 @@ export default function AddPurchaseOrderPage() {
     const loadSuppliers = async () => {
         try {
             setLoading(prev => ({ ...prev, suppliers: true }));
-            const response = await vendorsApi.list(company!.id, {
+            const response: any = await vendorsApi.list(company!.id, {
                 page_size: 100,
                 search: "",
             });
 
-            console.log("Full vendors API response:", response);
-            console.log("Response type:", typeof response);
-            console.log("Response keys:", Object.keys(response));
-
-            // Check different possible structures
             if (Array.isArray(response)) {
-                console.log("Response is an array:", response);
                 setSuppliers(response);
             } else if (response && Array.isArray(response.data)) {
-                console.log("Response.data is an array:", response.data);
                 setSuppliers(response.data);
             } else if (response && response.data && Array.isArray(response.data.vendors)) {
-                console.log("Response.data.vendors:", response.data.vendors);
                 setSuppliers(response.data.vendors);
             } else if (response && response.vendors) {
-                console.log("Response.vendors:", response.vendors);
                 setSuppliers(response.vendors);
             } else if (response && response.customers) {
-                console.log("Response.customers (fallback):", response.customers);
                 setSuppliers(response.customers);
             } else {
-                console.log("No vendors found, setting empty array");
                 setSuppliers([]);
             }
 

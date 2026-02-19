@@ -393,8 +393,8 @@ interface InvoiceItem {
   taxable_amount: number;
   total_amount: number;
   warehouse_allocation?: any[];
-  stock_reserved: boolean;
-  stock_reduced: boolean;
+  stock_reserved: boolean | number;
+  stock_reduced: boolean | number;
   created_at: string;
 }
 
@@ -915,7 +915,7 @@ export default function SalesListPage() {
       const detailedInvoices = await Promise.all(
         allInvoices.map(async (invoice) => {
           try {
-            return (await invoicesApi.get(company?.id ?? "", invoice.id)) as Invoice;
+            return (await invoicesApi.get(company?.id ?? "", invoice.id ?? "")) as Invoice;
           } catch (error) {
             console.error(`Failed to load invoice details for ${invoice.invoice_number}:`, error);
             return invoice;
@@ -952,43 +952,43 @@ export default function SalesListPage() {
           doc.setFillColor(241, 245, 249);
           doc.rect(14, y - 3, 182, 7, "F");
           doc.setFontSize(10);
-          doc.setFont(undefined, "bold");
+          doc.setFont("helvetica", "bold");
           doc.text(title, 16, y + 1);
-          doc.setFont(undefined, "normal");
+          doc.setFont("helvetica", "normal");
           y += 9;
         };
         const addLine = (label: string, value: any) => {
           doc.setFontSize(9);
-          doc.setFont(undefined, "bold");
+          doc.setFont("helvetica", "bold");
           doc.text(`${label}:`, 14, y);
-          doc.setFont(undefined, "normal");
+          doc.setFont("helvetica", "normal");
           const lines = doc.splitTextToSize(val(value), 145);
           doc.text(lines, 50, y);
           y += Math.max(1, lines.length) * 4.6;
         };
 
         addSection("Customer & Invoice Details");
-        addLine("Customer", getCustomerDisplayName(invoice));
-        addLine("Customer GSTIN", getCustomerGSTIN(invoice));
-        addLine("Customer Phone", getCustomerPhone(invoice));
-        addLine("Status", getStatusText(invoice.status));
+        addLine("Customer", getCustomerDisplayName(invoice) || "");
+        addLine("Customer GSTIN", getCustomerGSTIN(invoice) || "");
+        addLine("Customer Phone", getCustomerPhone(invoice) || "");
+        addLine("Status", getStatusText(invoice.status) || "");
         addLine("Due Date", invoice.due_date ? formatDate(invoice.due_date) : "-");
         addLine("Voucher Type", invoice.voucher_type === "sales_return" ? "Sales Return" : "Sales");
-        addLine("Sales Person", invoice.sales_person_id);
+        addLine("Sales Person", invoice.sales_person_id || "");
 
         addSection("Reference / Dispatch");
-        addLine("Reference No", invoice.reference_no);
-        addLine("Buyer Order No", invoice.buyer_order_no);
+        addLine("Reference No", invoice.reference_no || "");
+        addLine("Buyer Order No", invoice.buyer_order_no || "");
         addLine("Buyer Order Date", invoice.buyer_order_date ? formatDate(invoice.buyer_order_date) : "-");
-        addLine("Delivery Note", invoice.delivery_note);
+        addLine("Delivery Note", invoice.delivery_note || "");
         addLine("Delivery Note Date", invoice.delivery_note_date ? formatDate(invoice.delivery_note_date) : "-");
-        addLine("Despatch Doc No", invoice.despatch_doc_no);
-        addLine("Despatched Through", invoice.despatched_through);
-        addLine("Destination", invoice.destination);
-        addLine("Terms Of Delivery", invoice.terms_of_delivery);
-        addLine("Payment Terms", invoice.payment_terms);
-        addLine("Supplier Ref", invoice.supplier_ref);
-        addLine("Other References", invoice.other_references);
+        addLine("Despatch Doc No", invoice.despatch_doc_no || "");
+        addLine("Despatched Through", invoice.despatched_through || "");
+        addLine("Destination", invoice.destination || "");
+        addLine("Terms Of Delivery", invoice.terms_of_delivery || "");
+        addLine("Payment Terms", invoice.payment_terms || "");
+        addLine("Supplier Ref", invoice.supplier_ref || "");
+        addLine("Other References", invoice.other_references || "");
 
         const shippingAddress = [
           invoice.shipping_address,
@@ -1086,10 +1086,10 @@ export default function SalesListPage() {
         doc.text(money(invoice.packing_forwarding_charges), 193, totalsY + 30, { align: "right" });
         doc.text("Round Off", 121, totalsY + 35);
         doc.text(money(invoice.round_off), 193, totalsY + 35, { align: "right" });
-        doc.setFont(undefined, "bold");
+        doc.setFont("helvetica", "bold");
         doc.text("Grand Total", 121, totalsY + 41);
         doc.text(money(invoice.total_amount), 193, totalsY + 41, { align: "right" });
-        doc.setFont(undefined, "normal");
+        doc.setFont("helvetica", "normal");
 
         doc.setFontSize(8.5);
         doc.text(`Paid: ${money(invoice.amount_paid)}`, 14, totalsY + 39);

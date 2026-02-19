@@ -279,21 +279,21 @@ export default function ViewQuotationPage() {
       // Company Info
       doc.setFontSize(10);
       doc.text("From:", 20, 34);
-      doc.setFont(undefined, 'bold');
-      doc.text(company?.name || "Your Company", 20, 39);
-      doc.setFont(undefined, 'normal');
-      const companyAddr = company?.address ?? [company?.address_line1, company?.address_line2, company?.city, company?.state, company?.pincode].filter(Boolean).join(", ");
+      doc.setFont("helvetica", 'bold');
+      doc.text(company?.name || "Your Company" || "", 20, 39);
+      doc.setFont("helvetica", 'normal');
+      const companyAddr = (company as { address?: string })?.address ?? [company?.address_line1, company?.address_line2, company?.city, company?.state, company?.pincode].filter(Boolean).join(", ");
       if (companyAddr) {
-        doc.text(companyAddr, 20, 44);
+        doc.text(companyAddr || "", 20, 44);
       }
       
       // Customer Info
       doc.text("To:", 20, 58);
-      doc.setFont(undefined, 'bold');
-      doc.text(quotation.customer_name, 20, 63);
-      doc.setFont(undefined, 'normal');
+      doc.setFont("helvetica", 'bold');
+      doc.text(quotation.customer_name || "", 20, 63);
+      doc.setFont("helvetica", 'normal');
       if (quotation.contact_person) {
-        doc.text(`Attn: ${quotation.contact_person}`, 20, 68);
+        doc.text(`Attn: ${quotation.contact_person || ""}`, 20, 68);
       }
       
       // Table
@@ -363,12 +363,12 @@ export default function ViewQuotationPage() {
         }
         
         doc.text("Round Off:", pageWidth - 100, finalY + 25);
-        doc.text(formatCurrency(totals.roundOff), pageWidth - 30, finalY + 25, { align: 'right' });
+        doc.text(formatCurrency(totals.roundOff ?? 0), pageWidth - 30, finalY + 25, { align: 'right' });
         
-        doc.setFont(undefined, 'bold');
+        doc.setFont("helvetica", 'bold');
         doc.text("Grand Total:", pageWidth - 100, finalY + 30);
-        doc.text(formatCurrency(totals.grandTotal), pageWidth - 30, finalY + 30, { align: 'right' });
-        doc.setFont(undefined, 'normal');
+        doc.text(formatCurrency(totals.grandTotal ?? 0), pageWidth - 30, finalY + 30, { align: 'right' });
+        doc.setFont("helvetica", 'normal');
       }
       
       // Terms

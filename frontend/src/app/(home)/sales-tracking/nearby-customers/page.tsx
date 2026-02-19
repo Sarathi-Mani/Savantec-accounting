@@ -546,7 +546,7 @@ export default function NearbyCustomersPage() {
   ) => {
     try {
       const response = await api.post(
-        `/companies/${company.id}/trips/start?engineer_id=${user.id}`,
+        `/companies/${company?.id}/trips/start?engineer_id=${user?.id}`,
         {
           start_km: parseFloat(tripForm.start_km),
           start_location: {

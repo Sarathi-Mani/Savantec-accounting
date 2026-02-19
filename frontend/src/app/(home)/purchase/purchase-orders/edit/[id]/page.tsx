@@ -186,7 +186,7 @@ export default function EditPurchaseOrderPage() {
     // State for dropdown data
     const [suppliers, setSuppliers] = useState<any[]>([]);
     const [products, setProducts] = useState<any[]>([]);
-    const [currencies, setCurrencies] = useState([
+    const [currencies, setCurrencies] = useState<{ value: string; label: string; rate?: number }[]>([
         { value: "INR", label: "INR - Indian Rupee", rate: 1 },
         { value: "USD", label: "USD - US Dollar", rate: 83.5 },
         { value: "EUR", label: "EUR - Euro", rate: 89.2 },
@@ -276,16 +276,16 @@ export default function EditPurchaseOrderPage() {
 2. All items must be properly packed.
 3. Payment terms: 30 days from invoice date.
 4. Any damaged goods will be returned at supplier's expense.`,
-                freight_charges: parseFloat(response.freight_charges || "0"),
+                freight_charges: parseFloat(String(response.freight_charges || "0")),
                 freight_type: "fixed",
-                other_charges: parseFloat(response.other_charges || "0"),
+                other_charges: parseFloat(String(response.other_charges || "0")),
                 other_charges_type: "fixed",
-                discount_on_all: parseFloat(response.discount_on_all || "0"),
+                discount_on_all: parseFloat(String(response.discount_on_all || "0")),
                 discount_type: "percentage",
-                round_off: parseFloat(response.round_off || "0"),
-                subtotal: parseFloat(response.subtotal || "0"),
-                total_tax: parseFloat(response.tax_amount || "0"),
-                total_amount: parseFloat(response.total_amount || "0"),
+                round_off: parseFloat(String(response.round_off || "0")),
+                subtotal: parseFloat(String(response.subtotal || "0")),
+                total_tax: parseFloat(String(response.tax_amount || "0")),
+                total_amount: parseFloat(String(response.total_amount || "0")),
             });
 
             // Populate items
@@ -322,12 +322,11 @@ export default function EditPurchaseOrderPage() {
     const loadSuppliers = async () => {
         try {
             setLoading(prev => ({ ...prev, suppliers: true }));
-            const response = await vendorsApi.list(company!.id, {
+            const response: any = await vendorsApi.list(company!.id, {
                 page_size: 100,
                 search: "",
             });
             
-            // Check different possible structures
             if (Array.isArray(response)) {
                 setSuppliers(response);
             } else if (response && Array.isArray(response.data)) {

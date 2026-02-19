@@ -273,7 +273,7 @@ export default function VendorEditPage() {
         is_active: formData.is_active,
       };
 
-      await vendorsApi.update(company.id, vendorId, updateData);
+      await vendorsApi.update(company.id, vendorId, updateData as any);
       router.push(`/vendors/${vendorId}`);
     } catch (error: any) {
       console.error("Failed to update vendor:", error);

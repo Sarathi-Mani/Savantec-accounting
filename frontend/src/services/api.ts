@@ -345,8 +345,9 @@ export interface InvoiceItem {
   taxable_amount: number;
   total_amount: number;
   created_at: string;
-  stock_reserved?: number;
-  stock_reduced?: number;
+  stock_reserved?: boolean | number;
+  stock_reduced?: boolean | number;
+  warehouse_allocation?: any[];
 }
 
 export interface Payment {
@@ -438,6 +439,7 @@ export interface Invoice {
 export interface InvoiceListResponse {
   invoices: Invoice[];
   total: number;
+  total_invoices?: number;
   page: number;
   page_size: number;
   total_amount: number;
@@ -732,6 +734,11 @@ export const invoicesApi = {
     }>;
   }> => {
     const response = await api.post(`/companies/${companyId}/invoices/${invoiceId}/allocate-stock`);
+    return response.data;
+  },
+
+  getDashboardSummary: async (companyId: string): Promise<any> => {
+    const response = await api.get(`/companies/${companyId}/invoices/dashboard-summary`);
     return response.data;
   },
 };
@@ -1696,9 +1703,19 @@ export interface PurchaseOrderUpdate {
   vendor_id?: string;
   items?: OrderItemInput[];
   order_date?: string;
-  expected_date?: string;
+  expected_date?: string | null;
   notes?: string;
   terms?: string;
+  reference_number?: string | null;
+  subtotal?: number;
+  tax_amount?: number;
+  total_amount?: number;
+  freight_charges?: number;
+  other_charges?: number;
+  discount_on_all?: number;
+  round_off?: number;
+  currency?: string;
+  [key: string]: any;
 }
 
 export interface DeliveryNote {
@@ -1725,12 +1742,17 @@ export interface ReceiptNote {
 }
 
 export interface OrderItemInput {
-  product_id?: string;  // Unified with Product model
+  product_id?: string | null;
   description: string;
   quantity: number;
   unit?: string;
   rate: number;
   gst_rate?: number;
+  item_code?: string;
+  discount_percent?: number;
+  discount_amount?: number;
+  tax_amount?: number;
+  total_amount?: number;
 }
 
 export interface SalesOrderCreate {
@@ -1746,11 +1768,10 @@ export interface PurchaseOrderCreate {
   vendor_id: string;
   items: OrderItemInput[];
   order_date?: string;
-  expected_date?: string;
+  expected_date?: string | null;
   notes?: string;
   terms?: string;
-  // Add these missing fields:
-  reference_number?: string;
+  reference_number?: string | null;
   currency?: string;
   exchange_rate?: number;
   freight_charges?: number;
@@ -2754,6 +2775,10 @@ export interface Vendor {
   shipping_country?: string;
   shipping_zip?: string;
 
+  // Backward compat
+  gstin?: string;
+  phone?: string;
+
   // Status
   is_active: boolean;
 
@@ -2877,13 +2902,8 @@ export interface VendorCreateRequest {
   shipping_zip?: string;
 }
 
-export interface VendorUpdateRequest extends Partial<VendorCreateRequest> {
-  email?: string | null;
-  mobile?: string | null;
-  tax_number?: string | null;
-  gst_registration_type?: string | null;
-  pan_number?: string | null;
-  vendor_code?: string | null;
+export interface VendorUpdateRequest {
+  [key: string]: any;
 }
 
 
@@ -4001,7 +4021,7 @@ export const creditNotesApi = {
 
 // ============== Sales Returns API ==============
 export const salesReturnsApi = {
-  list: async (companyId: string, params?: { status?: string; page?: number }) => {
+  list: async (companyId: string, params?: { status?: string; page?: number; page_size?: number; [key: string]: any }) => {
     try {
       const response = await api.get(`/companies/${companyId}/sales-returns`, { params });
       return response.data;

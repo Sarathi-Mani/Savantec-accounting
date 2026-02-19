@@ -28,7 +28,7 @@ export default function PurchaseOrdersPage() {
           vendorsApi.list(company.id, { page_size: 100 }),
         ]);
         setOrders(ordersData);
-        setVendors(vendorsData.customers);
+        setVendors((vendorsData.customers ?? vendorsData.vendors ?? []) as any);
       } catch (error) {
         console.error("Failed to fetch data:", error);
       } finally {

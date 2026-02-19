@@ -48,6 +48,7 @@ interface EngineerStatus {
   is_online: boolean;
   speed: number | null;
   heading: number | null;
+  has_fraud_flag?: boolean;
 }
 
 const statusColors: Record<string, string> = {

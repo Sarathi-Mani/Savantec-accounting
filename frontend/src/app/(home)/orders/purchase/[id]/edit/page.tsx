@@ -55,7 +55,7 @@ export default function EditPurchaseOrderPage() {
           productsApi.list(company.id, { page_size: 100 }),
         ]);
         
-        setVendors(vendorsData.customers);
+        setVendors((vendorsData.customers ?? vendorsData.vendors ?? []) as any);
         setProducts(productsData.products);
         setOrderStatus(orderData.status);
         

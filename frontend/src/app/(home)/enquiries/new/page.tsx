@@ -383,7 +383,7 @@ export default function NewEnquiryPage() {
     const filtered = salesmen.filter(employee =>
       `${employee.first_name} ${employee.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
       employee.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.phone?.toLowerCase().includes(searchTerm.toLowerCase())
+      (employee as any).phone?.toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredSalesmen(filtered);
   }, [salesmen]);
@@ -1074,8 +1074,8 @@ export default function NewEnquiryPage() {
                       {employee.email && (
                         <div className="text-sm text-gray-600 dark:text-gray-400">Email: {employee.email}</div>
                       )}
-                      {employee.phone && (
-                        <div className="text-sm text-gray-600 dark:text-gray-400">Phone: {employee.phone}</div>
+                      {(employee as any).phone && (
+                        <div className="text-sm text-gray-600 dark:text-gray-400">Phone: {(employee as any).phone}</div>
                       )}
                     </div>
                   ))}

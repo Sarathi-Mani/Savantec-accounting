@@ -355,7 +355,7 @@ export default function SalesDashboardPage() {
       });
 
       setSalesSummary({
-        total_invoices: invoiceResponse.total_invoices || invoices.length,
+        total_invoices: (invoiceResponse as any).total_invoices || invoiceResponse.total || invoices.length,
         total_revenue: Number.isFinite(totalRevenue) ? totalRevenue : 0,
         total_paid: Number.isFinite(totalPaid) ? totalPaid : 0,
         total_pending: Number.isFinite(totalPending) ? totalPending : 0,
@@ -792,11 +792,11 @@ export default function SalesDashboardPage() {
                   <YAxis 
                     stroke="#9CA3AF"
                     fontSize={12}
-                    tickFormatter={(value) => formatShortCurrency(value)}
+                    tickFormatter={(value: any) => formatShortCurrency(value)}
                   />
                   <Tooltip 
                     formatter={(value: number) => [formatCurrency(value), 'Amount']}
-                    labelFormatter={(label) => `Date: ${label}`}
+                    labelFormatter={(label: any) => `Date: ${label}`}
                     contentStyle={{
                       backgroundColor: '#1F2937',
                       borderColor: '#374151',
@@ -878,7 +878,7 @@ export default function SalesDashboardPage() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ status, percent }) => `${status}: ${(percent * 100).toFixed(0)}%`}
+                    label={({ status, percent }: any) => `${status}: ${(percent * 100).toFixed(0)}%`}
                     outerRadius={80}
                     fill="#8884d8"
                     dataKey="count"
@@ -1059,10 +1059,10 @@ export default function SalesDashboardPage() {
                   <YAxis 
                     stroke="#9CA3AF"
                     fontSize={12}
-                    tickFormatter={(value) => formatShortCurrency(value)}
+                    tickFormatter={(value: any) => formatShortCurrency(value)}
                   />
                   <Tooltip 
-                    formatter={(value: number, name: string) => {
+                    formatter={(value: any, name: any) => {
                       if (name === 'revenue') return [formatCurrency(value), 'Revenue'];
                       if (name === 'quantity') return [value, 'Quantity'];
                       return [value, name];

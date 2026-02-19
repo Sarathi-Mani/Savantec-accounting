@@ -506,7 +506,7 @@ const fetchNextQuotationNumber = async () => {
                 { headers: { Authorization: `Bearer ${token}` } }
               );
               if (productResp.ok) {
-                fetchedById[pid] = await productResp.json();
+                fetchedById[pid as string] = await productResp.json();
               }
             } catch (err) {
               console.warn("[EQ-DEBUG][prefill] product_fetch_by_id_failed", pid, err);
@@ -1334,17 +1334,17 @@ const fetchNextQuotationNumber = async () => {
     let csv = '';
     
     // Use total columns for headers
-    const headers = ['', ...Array.from({ length: totalCols }, (_, i) => getColumnLetter(i))];
+    const headers = ['', ...Array.from({ length: Number(totalCols) }, (_, i) => getColumnLetter(Number(i)))];
     csv += headers.join(',') + '\n';
     
     // Export all rows
-    for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
+    for (let rowIndex = 0; rowIndex < Number(totalRows); rowIndex++) {
       const rowNumber = rowIndex + 1;
       const row = excelGrid[rowIndex] || [];
-      const rowData = [rowNumber];
+      const rowData: (string | number)[] = [rowNumber];
       
       // Add all columns
-      for (let colIndex = 0; colIndex < totalCols; colIndex++) {
+      for (let colIndex = 0; colIndex < Number(totalCols); colIndex++) {
         const cell = row[colIndex];
         if (cell && cell.isFormula && cell.formula) {
           rowData.push(cell.formula);

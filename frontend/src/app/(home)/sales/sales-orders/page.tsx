@@ -1027,43 +1027,43 @@ export default function SalesOrdersPage() {
         doc.setFillColor(241, 245, 249);
         doc.rect(14, y - 4, 182, 7, "F");
         doc.setFontSize(10);
-        doc.setFont(undefined, "bold");
+        doc.setFont("helvetica", "bold");
         doc.text(title, 16, y);
-        doc.setFont(undefined, "normal");
+        doc.setFont("helvetica", "normal");
         y += 8;
       };
       const addLine = (label: string, value: any) => {
         ensureSpace(12);
-        doc.setFont(undefined, "bold");
+        doc.setFont("helvetica", "bold");
         doc.text(`${label}:`, 14, y);
-        doc.setFont(undefined, "normal");
+        doc.setFont("helvetica", "normal");
         const valueLines = doc.splitTextToSize(valueOrDash(value), 148);
         doc.text(valueLines, 46, y);
         y += Math.max(1, valueLines.length) * 5;
       };
 
       addSectionTitle("Order Information");
-      addLine("Order No", orderNumber);
+      addLine("Order No", orderNumber || "");
       addLine("Order Date", order?.order_date ? formatDate(order.order_date) : "-");
       addLine("Expiry Date", order?.expire_date ? formatDate(order.expire_date) : "-");
-      addLine("Customer", customerName);
-      addLine("Contact Person", order?.contact_person_name || order?.contact_person);
-      addLine("Sales Person", salesPersonName);
-      addLine("Reference No", order?.reference_no);
+      addLine("Customer", customerName || "");
+      addLine("Contact Person", order?.contact_person_name || order?.contact_person || "");
+      addLine("Sales Person", salesPersonName || "");
+      addLine("Reference No", order?.reference_no || "");
       addLine("Reference Date", order?.reference_date ? formatDate(order.reference_date) : "-");
-      addLine("Payment Terms", order?.payment_terms);
+      addLine("Payment Terms", order?.payment_terms || "");
 
       addSectionTitle("Dispatch / Other Details");
-      addLine("Delivery Note", order?.delivery_note);
-      addLine("Supplier Ref", order?.supplier_ref);
-      addLine("Other References", order?.other_references);
-      addLine("Buyer Order No", order?.buyer_order_no);
+      addLine("Delivery Note", order?.delivery_note || "");
+      addLine("Supplier Ref", order?.supplier_ref || "");
+      addLine("Other References", order?.other_references || "");
+      addLine("Buyer Order No", order?.buyer_order_no || "");
       addLine("Buyer Order Date", order?.buyer_order_date ? formatDate(order.buyer_order_date) : "-");
-      addLine("Despatch Doc No", order?.despatch_doc_no);
+      addLine("Despatch Doc No", order?.despatch_doc_no || "");
       addLine("Delivery Note Date", order?.delivery_note_date ? formatDate(order.delivery_note_date) : "-");
-      addLine("Despatched Through", order?.despatched_through);
-      addLine("Destination", order?.destination);
-      addLine("Terms Of Delivery", order?.terms_of_delivery);
+      addLine("Despatched Through", order?.despatched_through || "");
+      addLine("Destination", order?.destination || "");
+      addLine("Terms Of Delivery", order?.terms_of_delivery || "");
 
       const notesText = valueOrDash(order?.notes);
       const termsText = valueOrDash(order?.terms);
@@ -1157,11 +1157,11 @@ export default function SalesOrdersPage() {
       doc.text(fmtNum(roundOff), boxX + boxW - 3, adjustedY + 30, { align: "right" });
       doc.setDrawColor(210, 210, 210);
       doc.line(boxX + 2, adjustedY + 33, boxX + boxW - 2, adjustedY + 33);
-      doc.setFont(undefined, "bold");
+      doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
       doc.text("Grand Total", boxX + 3, adjustedY + 38);
       doc.text(fmtMoney(total), boxX + boxW - 3, adjustedY + 38, { align: "right" });
-      doc.setFont(undefined, "normal");
+      doc.setFont("helvetica", "normal");
 
       // Footer with page numbers
       const pageCount = doc.getNumberOfPages();

@@ -6,7 +6,7 @@ import { companiesApi, payrollApi, User, Company, LoginRequest, RegisterRequest 
 import { clearUserDesignation, storeUserDesignation } from "@/utils/permission-check";
 
 // Extended User interface to include employee data
-interface ExtendedUser extends User {
+interface ExtendedUser extends Omit<User, 'full_name'> {
   name?: string;
   full_name?: string;
   is_employee?: boolean;
@@ -28,6 +28,7 @@ interface ExtendedUser extends User {
 interface ExtendedCompany extends Company {
   is_employee_company?: boolean;
   trade_name?: string;
+  address?: string;
 }
 
 interface AuthContextType {
