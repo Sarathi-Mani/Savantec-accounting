@@ -175,7 +175,7 @@ export default function CreateVendorPage() {
   const [sameAsBilling, setSameAsBilling] = useState(false);
   const [showGstOptions, setShowGstOptions] = useState(false);
   const [showOpeningBalanceSplit, setShowOpeningBalanceSplit] = useState(false);
-  const [countryOptions, setCountryOptions] = useState(
+  const [countryOptions, setCountryOptions] = useState<{ value: string; label: string }[]>(
     DEFAULT_COUNTRIES.map((country) => ({ value: country, label: country })),
   );
 

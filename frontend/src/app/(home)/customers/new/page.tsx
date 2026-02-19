@@ -161,7 +161,7 @@ export default function CreateCustomerPage() {
   const [showOpeningBalanceSplit, setShowOpeningBalanceSplit] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
-  const [countryOptions, setCountryOptions] = useState(
+  const [countryOptions, setCountryOptions] = useState<{ value: string; label: string }[]>(
     DEFAULT_COUNTRIES.map((country) => ({ value: country, label: country })),
   );
 
