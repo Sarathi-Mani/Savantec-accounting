@@ -1388,6 +1388,98 @@ class SalesReturnItem(Base):
         return f"<SalesReturnItem {self.description[:30]}>"
 
 
+class PurchaseReturn(Base):
+    """Purchase Return header model."""
+    __tablename__ = "purchase_returns"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    original_purchase_id = Column(String(36), ForeignKey("purchases.id", ondelete="SET NULL"))
+    vendor_id = Column(String(36), ForeignKey("vendors.id", ondelete="SET NULL"))
+
+    return_number = Column(String(50), nullable=False)
+    return_date = Column(DateTime, nullable=False, default=datetime.utcnow)
+    status = Column(String(50), default="pending")
+    reason = Column(Text)
+    reference_no = Column(String(100))
+    notes = Column(Text)
+
+    subtotal = Column(Numeric(14, 2), default=0)
+    discount_amount = Column(Numeric(14, 2), default=0)
+    cgst_amount = Column(Numeric(14, 2), default=0)
+    sgst_amount = Column(Numeric(14, 2), default=0)
+    igst_amount = Column(Numeric(14, 2), default=0)
+    cess_amount = Column(Numeric(14, 2), default=0)
+    total_tax = Column(Numeric(14, 2), default=0)
+    total_amount = Column(Numeric(14, 2), default=0)
+    round_off = Column(Numeric(14, 2), default=0)
+    freight_charges = Column(Numeric(14, 2), default=0)
+    packing_forwarding_charges = Column(Numeric(14, 2), default=0)
+
+    amount_paid = Column(Numeric(14, 2), default=0)
+    payment_status = Column(String(30), default="Unpaid")
+
+    created_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    company = relationship("Company")
+    original_purchase = relationship("Purchase", foreign_keys=[original_purchase_id])
+    vendor = relationship("Vendor", foreign_keys=[vendor_id])
+    creator = relationship("User", foreign_keys=[created_by])
+    items = relationship("PurchaseReturnItem", back_populates="purchase_return", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "return_number", name="uq_purchase_return_number_company"),
+        Index("idx_purchase_return_company", "company_id"),
+        Index("idx_purchase_return_purchase", "original_purchase_id"),
+        Index("idx_purchase_return_vendor", "vendor_id"),
+        Index("idx_purchase_return_date", "return_date"),
+        Index("idx_purchase_return_status", "status"),
+    )
+
+    def __repr__(self):
+        return f"<PurchaseReturn {self.return_number}>"
+
+
+class PurchaseReturnItem(Base):
+    """Purchase Return item model."""
+    __tablename__ = "purchase_return_items"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    purchase_return_id = Column(String(36), ForeignKey("purchase_returns.id", ondelete="CASCADE"), nullable=False)
+    purchase_item_id = Column(String(36), ForeignKey("purchase_items.id", ondelete="SET NULL"))
+    product_id = Column(String(36), ForeignKey("items.id", ondelete="SET NULL"))
+
+    description = Column(String(500), nullable=False)
+    hsn_code = Column(String(8))
+    quantity = Column(Numeric(10, 3), nullable=False, default=1)
+    unit = Column(String(20), default="unit")
+    unit_price = Column(Numeric(12, 2), nullable=False, default=0)
+
+    discount_percent = Column(Numeric(5, 2), default=0)
+    discount_amount = Column(Numeric(12, 2), default=0)
+
+    gst_rate = Column(Numeric(5, 2), default=0)
+    cgst_rate = Column(Numeric(5, 2), default=0)
+    sgst_rate = Column(Numeric(5, 2), default=0)
+    igst_rate = Column(Numeric(5, 2), default=0)
+    cess_amount = Column(Numeric(12, 2), default=0)
+
+    taxable_amount = Column(Numeric(14, 2), default=0)
+    total_amount = Column(Numeric(14, 2), default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    purchase_return = relationship("PurchaseReturn", back_populates="items")
+
+    __table_args__ = (
+        Index("idx_purchase_return_item_return", "purchase_return_id"),
+    )
+
+    def __repr__(self):
+        return f"<PurchaseReturnItem {self.description[:30]}>"
+
+
 class BankAccount(Base):
     """Bank account model - for displaying bank details on invoices."""
     __tablename__ = "bank_accounts"

@@ -65,6 +65,7 @@ const ROUTE_RULES: RouteRule[] = [
   { match: startsWith("/purchase-req"), permissions: [PERMISSION_KEYS.PURCHASE_REQUEST] },
   { match: startsWith("/purchase/purchase-orders"), permissions: [PERMISSION_KEYS.PURCHASE_ORDER] },
   { match: startsWith("/purchase/invoices"), permissions: [PERMISSION_KEYS.PURCHASE_INVOICE] },
+  { match: startsWith("/purchase/purchase-returns"), permissions: [PERMISSION_KEYS.PURCHASE_INVOICE] },
   { match: startsWith("/purchase/debit-notes"), permissions: [PERMISSION_KEYS.PURCHASE_INVOICE] },
   { match: startsWith("/purchase"), permissions: [PERMISSION_KEYS.PURCHASE, PERMISSION_KEYS.PURCHASE_INVOICE, PERMISSION_KEYS.PURCHASE_ORDER] },
   { match: startsWith("/orders/purchase"), permissions: [PERMISSION_KEYS.PURCHASE_ORDER] },

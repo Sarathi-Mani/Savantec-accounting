@@ -69,6 +69,24 @@ interface SalesReturnRow {
   round_off?: number;
   freight_charges?: number;
   packing_forwarding_charges?: number;
+  items?: SalesReturnItem[];
+}
+
+interface SalesReturnItem {
+  product_id?: string;
+  description?: string;
+  quantity?: number;
+  unit?: string;
+  unit_price?: number;
+  discount_percent?: number;
+  discount_amount?: number;
+  gst_rate?: number;
+  cgst_amount?: number;
+  sgst_amount?: number;
+  igst_amount?: number;
+  cess_amount?: number;
+  taxable_amount?: number;
+  total_amount?: number;
 }
 
 interface SalesReturnResponse {
@@ -866,6 +884,17 @@ export default function SalesReturnsPage() {
         return;
       }
 
+      const detailedReturns = await Promise.all(
+        allReturns.map(async (returnItem) => {
+          try {
+            return (await salesReturnsApi.get(company?.id ?? "", returnItem.id)) as SalesReturnRow;
+          } catch (error) {
+            console.error(`Failed to load return details for ${returnItem.return_number}:`, error);
+            return returnItem;
+          }
+        })
+      );
+
       const doc = new jsPDF("p", "mm", "a4");
       const money = (v: number | undefined | null) =>
         new Intl.NumberFormat("en-IN", {
@@ -874,7 +903,7 @@ export default function SalesReturnsPage() {
         }).format(Number(v || 0));
       const val = (v: any) => (v === undefined || v === null || v === "" ? "-" : String(v));
 
-      allReturns.forEach((returnItem, index) => {
+      detailedReturns.forEach((returnItem, index) => {
         if (index > 0) doc.addPage();
 
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -920,9 +949,66 @@ export default function SalesReturnsPage() {
 
         const paidAmount = Number(returnItem.paid_payment ?? returnItem.amount_paid) || 0;
         const totalAmount = Number(returnItem.total_amount) || 0;
-        const taxAmount = calculateTax(returnItem);
+        const itemStartY = y + 2;
+        const items = Array.isArray(returnItem.items) ? returnItem.items : [];
+        const itemRows = items.map((item, rowIndex) => {
+          const taxAmount =
+            Number(item.cgst_amount || 0) +
+            Number(item.sgst_amount || 0) +
+            Number(item.igst_amount || 0) +
+            Number(item.cess_amount || 0);
 
-        let totalsY = y + 7;
+          return [
+            String(rowIndex + 1),
+            val(item.product_id),
+            val(item.description),
+            Number(item.quantity || 0).toFixed(2),
+            val(item.unit),
+            Number(item.unit_price || 0).toFixed(2),
+            Number(item.discount_percent || 0).toFixed(2),
+            Number(item.discount_amount || 0).toFixed(2),
+            Number(item.taxable_amount || 0).toFixed(2),
+            Number(item.gst_rate || 0).toFixed(2),
+            taxAmount.toFixed(2),
+            Number(item.total_amount || 0).toFixed(2),
+          ];
+        });
+
+        autoTable(doc, {
+          startY: itemStartY,
+          head: [[
+            "#",
+            "Product ID",
+            "Description",
+            "Qty",
+            "Unit",
+            "Unit Price",
+            "Disc %",
+            "Disc Amt",
+            "Taxable",
+            "GST %",
+            "Tax",
+            "Amount",
+          ]],
+          body: itemRows.length ? itemRows : [["-", "-", "No items", "-", "-", "-", "-", "-", "-", "-", "-", "-"]],
+          theme: "grid",
+          styles: { fontSize: 7.3, cellPadding: 1.5, lineColor: [220, 220, 220], lineWidth: 0.1 },
+          headStyles: { fillColor: [22, 78, 99], textColor: [255, 255, 255], fontSize: 7.5 },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+          columnStyles: {
+            3: { halign: "right" },
+            5: { halign: "right" },
+            6: { halign: "right" },
+            7: { halign: "right" },
+            8: { halign: "right" },
+            9: { halign: "right" },
+            10: { halign: "right" },
+            11: { halign: "right" },
+          },
+        });
+
+        const finalY = (doc as any).lastAutoTable?.finalY ?? itemStartY;
+        let totalsY = finalY + 7;
         if (totalsY + 46 > 286) {
           doc.addPage();
           totalsY = 20;

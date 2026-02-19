@@ -97,6 +97,17 @@ export default function NewEnquiryPage() {
     status: "pending",
   });
 
+  const redirectToSignIn = useCallback(() => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("employee_token");
+    localStorage.removeItem("employee_data");
+    localStorage.removeItem("user_type");
+    localStorage.removeItem("company_id");
+    router.push("/auth/sign-in");
+  }, [router]);
+
   // Clear contact persons when customer search is cleared
   useEffect(() => {
     if (!formData.customer_id && formData.customer_search === "") {
@@ -162,7 +173,7 @@ export default function NewEnquiryPage() {
     if (!company?.id) return;
     
     try {
-      const token = localStorage.getItem("access_token");
+      const token = getToken();
       if (!token) {
         console.error("Authentication required");
         return;
@@ -178,6 +189,11 @@ export default function NewEnquiryPage() {
           'Content-Type': 'application/json',
         },
       });
+
+      if (response.status === 401) {
+        redirectToSignIn();
+        return;
+      }
 
       if (!response.ok) {
         console.warn("Sales engineers API failed");
@@ -221,7 +237,7 @@ export default function NewEnquiryPage() {
     try {
       console.log("Fetching customers for company:", company.id);
       
-      const token = localStorage.getItem("access_token");
+      const token = getToken();
       const url = `${API_BASE}/companies/${company.id}/customers?page=1&page_size=100`;
       
       const response = await fetch(url, {
@@ -230,6 +246,11 @@ export default function NewEnquiryPage() {
           'Content-Type': 'application/json'
         }
       });
+
+      if (response.status === 401) {
+        redirectToSignIn();
+        return;
+      }
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -276,7 +297,7 @@ export default function NewEnquiryPage() {
     try {
       console.log("Fetching products for company:", company.id);
       
-      const token = localStorage.getItem("access_token");
+      const token = getToken();
       const url = `${API_BASE}/companies/${company.id}/products?page_size=100`;
       console.log("Products URL:", url);
       
@@ -286,6 +307,11 @@ export default function NewEnquiryPage() {
           'Content-Type': 'application/json'
         }
       });
+
+      if (response.status === 401) {
+        redirectToSignIn();
+        return;
+      }
       
       console.log("Products response status:", response.status);
       
@@ -656,6 +682,11 @@ export default function NewEnquiryPage() {
         body: formDataToSend,
       }
     );
+
+    if (response.status === 401) {
+      redirectToSignIn();
+      return;
+    }
 
     if (!response.ok) {
       let errorDetail = `Failed to create enquiry (Status: ${response.status})`;

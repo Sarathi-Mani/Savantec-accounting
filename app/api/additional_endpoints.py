@@ -18,7 +18,8 @@ from app.database.models import (
     ManufacturingOrder, ManufacturingOrderStatus,
     StockAdjustment, StockAdjustmentStatus, StockAdjustmentItem,
     PeriodLock, AuditLog, NarrationTemplate, Notification, NotificationType,
-    BillOfMaterial, SalesReturn, SalesReturnItem, Invoice, Customer, generate_uuid
+    BillOfMaterial, SalesReturn, SalesReturnItem, Invoice, Customer,
+    Purchase, PurchaseItem, Vendor, PurchaseReturn, PurchaseReturnItem, generate_uuid
 )
 from app.database.payroll_models import Employee
 from app.auth.dependencies import get_current_active_user
@@ -1882,6 +1883,502 @@ async def update_sales_return(
         "created_by_name": creator_name or "",
         "message": "Sales return updated successfully",
     }
+
+
+# ==================== PURCHASE RETURNS ====================
+
+class PurchaseReturnItemCreate(BaseModel):
+    purchase_item_id: Optional[str] = None
+    product_id: Optional[str] = None
+    description: str
+    hsn_code: Optional[str] = None
+    quantity: float
+    unit: Optional[str] = "unit"
+    unit_price: float
+    discount_percent: Optional[float] = 0
+    discount_amount: Optional[float] = 0
+    gst_rate: Optional[float] = 0
+    cgst_rate: Optional[float] = 0
+    sgst_rate: Optional[float] = 0
+    igst_rate: Optional[float] = 0
+    cess_amount: Optional[float] = 0
+    taxable_amount: Optional[float] = 0
+    total_amount: Optional[float] = 0
+
+
+class PurchaseReturnCreate(BaseModel):
+    purchase_id: str
+    return_number: Optional[str] = None
+    return_date: Optional[datetime] = None
+    vendor_id: Optional[str] = None
+    created_by_name: Optional[str] = None
+    status: Optional[str] = "pending"
+    return_reason: Optional[str] = None
+    reference_no: Optional[str] = None
+    notes: Optional[str] = None
+    subtotal: Optional[float] = 0
+    discount_amount: Optional[float] = 0
+    cgst_amount: Optional[float] = 0
+    sgst_amount: Optional[float] = 0
+    igst_amount: Optional[float] = 0
+    cess_amount: Optional[float] = 0
+    total_tax: Optional[float] = 0
+    total_amount: Optional[float] = 0
+    round_off: Optional[float] = 0
+    freight_charges: Optional[float] = 0
+    packing_forwarding_charges: Optional[float] = 0
+    amount_paid: Optional[float] = 0
+    payment_status: Optional[str] = None
+    items: List[PurchaseReturnItemCreate]
+
+
+@router.get("/companies/{company_id}/next-purchase-return-number")
+async def get_next_purchase_return_number(
+    company_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get next purchase return number for UI prefill."""
+    get_company_or_404(company_id, current_user, db)
+
+    latest = db.query(PurchaseReturn).filter(
+        PurchaseReturn.company_id == company_id
+    ).order_by(PurchaseReturn.created_at.desc()).first()
+
+    if not latest or not latest.return_number:
+        return {"return_number": "PRN-000001"}
+
+    raw = str(latest.return_number).strip()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if digits:
+        next_num = int(digits[-6:]) + 1
+    else:
+        next_num = 1
+
+    return {"return_number": f"PRN-{next_num:06d}"}
+
+
+@router.get("/companies/{company_id}/purchase-returns")
+async def list_purchase_returns(
+    company_id: str,
+    status: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """List purchase returns from dedicated purchase_returns table."""
+    get_company_or_404(company_id, current_user, db)
+
+    query = db.query(PurchaseReturn).filter(PurchaseReturn.company_id == company_id)
+    if status:
+        query = query.filter(PurchaseReturn.status == status)
+
+    returns = query.order_by(PurchaseReturn.return_date.desc()).limit(200).all()
+
+    result = []
+    for ret in returns:
+        purchase_number = ret.original_purchase.purchase_number if ret.original_purchase else None
+        vendor_name = ret.vendor.name if ret.vendor else ""
+        note_creator_name, clean_notes = _extract_creator_name_from_notes(ret.notes)
+        creator_name = (
+            (ret.creator.full_name if ret.creator and ret.creator.full_name else None)
+            or (ret.creator.email if ret.creator and ret.creator.email else None)
+            or note_creator_name
+            or ""
+        )
+
+        paid_amount = float(ret.amount_paid or 0)
+        total_amount = float(ret.total_amount or 0)
+        payment_status = ret.payment_status or ("Unpaid" if paid_amount <= 0 else "Paid" if paid_amount >= total_amount else "Partial")
+
+        result.append({
+            "id": ret.id,
+            "return_number": ret.return_number,
+            "purchase_id": ret.original_purchase_id,
+            "purchase_number": purchase_number,
+            "vendor_id": ret.vendor_id,
+            "vendor_name": vendor_name,
+            "return_date": ret.return_date.isoformat() if ret.return_date else None,
+            "total_amount": total_amount,
+            "reason": ret.reason or "",
+            "status": ret.status or "pending",
+            "reference_no": ret.reference_no,
+            "notes": clean_notes,
+            "amount_paid": paid_amount,
+            "payment_status": payment_status,
+            "created_by": ret.created_by,
+            "created_by_name": creator_name,
+        })
+
+    return result
+
+
+@router.get("/companies/{company_id}/purchase-returns/{return_id}")
+async def get_purchase_return(
+    company_id: str,
+    return_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get single purchase return with full item details."""
+    get_company_or_404(company_id, current_user, db)
+
+    ret = db.query(PurchaseReturn).filter(
+        PurchaseReturn.id == return_id,
+        PurchaseReturn.company_id == company_id
+    ).first()
+    if not ret:
+        raise HTTPException(status_code=404, detail="Purchase return not found")
+
+    purchase_number = ret.original_purchase.purchase_number if ret.original_purchase else None
+    vendor_name = ret.vendor.name if ret.vendor else ""
+    note_creator_name, clean_notes = _extract_creator_name_from_notes(ret.notes)
+    creator_name = (
+        (ret.creator.full_name if ret.creator and ret.creator.full_name else None)
+        or (ret.creator.email if ret.creator and ret.creator.email else None)
+        or note_creator_name
+        or ""
+    )
+
+    paid_amount = float(ret.amount_paid or 0)
+    total_amount = float(ret.total_amount or 0)
+    payment_status = ret.payment_status or ("Unpaid" if paid_amount <= 0 else "Paid" if paid_amount >= total_amount else "Partial")
+
+    return {
+        "id": ret.id,
+        "return_number": ret.return_number,
+        "purchase_id": ret.original_purchase_id,
+        "purchase_number": purchase_number,
+        "vendor_id": ret.vendor_id,
+        "vendor_name": vendor_name,
+        "return_date": ret.return_date.isoformat() if ret.return_date else None,
+        "total_amount": total_amount,
+        "reason": ret.reason or "",
+        "status": ret.status or "pending",
+        "reference_no": ret.reference_no,
+        "notes": clean_notes,
+        "subtotal": float(ret.subtotal or 0),
+        "discount_amount": float(ret.discount_amount or 0),
+        "cgst_amount": float(ret.cgst_amount or 0),
+        "sgst_amount": float(ret.sgst_amount or 0),
+        "igst_amount": float(ret.igst_amount or 0),
+        "cess_amount": float(ret.cess_amount or 0),
+        "total_tax": float(ret.total_tax or 0),
+        "round_off": float(ret.round_off or 0),
+        "freight_charges": float(ret.freight_charges or 0),
+        "packing_forwarding_charges": float(ret.packing_forwarding_charges or 0),
+        "amount_paid": paid_amount,
+        "payment_status": payment_status,
+        "created_by": ret.created_by,
+        "created_by_name": creator_name,
+        "items": [{
+            "id": item.id,
+            "purchase_item_id": item.purchase_item_id,
+            "product_id": item.product_id,
+            "description": item.description,
+            "hsn_code": item.hsn_code,
+            "quantity": float(item.quantity or 0),
+            "unit": item.unit or "unit",
+            "unit_price": float(item.unit_price or 0),
+            "discount_percent": float(item.discount_percent or 0),
+            "discount_amount": float(item.discount_amount or 0),
+            "gst_rate": float(item.gst_rate or 0),
+            "cgst_rate": float(item.cgst_rate or 0),
+            "sgst_rate": float(item.sgst_rate or 0),
+            "igst_rate": float(item.igst_rate or 0),
+            "cess_amount": float(item.cess_amount or 0),
+            "taxable_amount": float(item.taxable_amount or 0),
+            "total_amount": float(item.total_amount or 0),
+        } for item in (ret.items or [])],
+    }
+
+
+@router.post("/companies/{company_id}/purchase-returns", status_code=status.HTTP_201_CREATED)
+async def create_purchase_return(
+    company_id: str,
+    data: PurchaseReturnCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Create a purchase return in dedicated purchase_returns table."""
+    get_company_or_404(company_id, current_user, db)
+    creator_user_id = None if (isinstance(current_user, dict) and current_user.get("is_employee")) else (
+        current_user.get("id") if isinstance(current_user, dict) else current_user.id
+    )
+    creator_name = (
+        (data.created_by_name or "").strip()
+        or (_resolve_creator_name(current_user, company_id, db) or "").strip()
+        or None
+    )
+
+    purchase = db.query(Purchase).filter(
+        Purchase.id == data.purchase_id,
+        Purchase.company_id == company_id
+    ).first()
+    if not purchase:
+        raise HTTPException(status_code=404, detail="Original purchase not found")
+
+    if not data.items or len(data.items) == 0:
+        raise HTTPException(status_code=400, detail="At least one item is required")
+
+    return_number = (data.return_number or "").strip()
+    if not return_number:
+        return_number = f"PRN-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
+    duplicate = db.query(PurchaseReturn).filter(
+        PurchaseReturn.company_id == company_id,
+        PurchaseReturn.return_number == return_number
+    ).first()
+    if duplicate:
+        raise HTTPException(status_code=400, detail="Purchase return number already exists")
+
+    total_amount = Decimal(str(data.total_amount or 0))
+    amount_paid = Decimal(str(data.amount_paid or 0))
+    if not data.payment_status:
+        payment_status = "Unpaid" if amount_paid <= 0 else "Paid" if amount_paid >= total_amount else "Partial"
+    else:
+        payment_status = data.payment_status
+
+    purchase_return = PurchaseReturn(
+        id=generate_uuid(),
+        company_id=company_id,
+        original_purchase_id=purchase.id,
+        vendor_id=data.vendor_id or purchase.vendor_id,
+        return_number=return_number,
+        return_date=data.return_date or datetime.utcnow(),
+        status=(data.status or "pending"),
+        reason=(data.return_reason or data.notes or ""),
+        reference_no=data.reference_no,
+        notes=_inject_creator_name_into_notes(data.notes, creator_name),
+        subtotal=Decimal(str(data.subtotal or 0)),
+        discount_amount=Decimal(str(data.discount_amount or 0)),
+        cgst_amount=Decimal(str(data.cgst_amount or 0)),
+        sgst_amount=Decimal(str(data.sgst_amount or 0)),
+        igst_amount=Decimal(str(data.igst_amount or 0)),
+        cess_amount=Decimal(str(data.cess_amount or 0)),
+        total_tax=Decimal(str(data.total_tax or 0)),
+        total_amount=total_amount,
+        round_off=Decimal(str(data.round_off or 0)),
+        freight_charges=Decimal(str(data.freight_charges or 0)),
+        packing_forwarding_charges=Decimal(str(data.packing_forwarding_charges or 0)),
+        amount_paid=amount_paid,
+        payment_status=payment_status,
+        created_by=creator_user_id,
+    )
+    db.add(purchase_return)
+
+    for item in data.items:
+        qty = Decimal(str(item.quantity or 0))
+        unit_price = Decimal(str(item.unit_price or 0))
+        discount_amount = Decimal(str(item.discount_amount or 0))
+        taxable = Decimal(str(item.taxable_amount or 0))
+        if taxable <= 0:
+            taxable = (qty * unit_price) - discount_amount
+        item_total = Decimal(str(item.total_amount or 0))
+        if item_total <= 0:
+            item_total = taxable + (taxable * Decimal(str(item.gst_rate or 0)) / Decimal("100"))
+
+        db.add(PurchaseReturnItem(
+            id=generate_uuid(),
+            purchase_return_id=purchase_return.id,
+            purchase_item_id=item.purchase_item_id,
+            product_id=item.product_id,
+            description=item.description,
+            hsn_code=item.hsn_code,
+            quantity=qty,
+            unit=item.unit or "unit",
+            unit_price=unit_price,
+            discount_percent=Decimal(str(item.discount_percent or 0)),
+            discount_amount=discount_amount,
+            gst_rate=Decimal(str(item.gst_rate or 0)),
+            cgst_rate=Decimal(str(item.cgst_rate or 0)),
+            sgst_rate=Decimal(str(item.sgst_rate or 0)),
+            igst_rate=Decimal(str(item.igst_rate or 0)),
+            cess_amount=Decimal(str(item.cess_amount or 0)),
+            taxable_amount=taxable,
+            total_amount=item_total,
+        ))
+
+    db.commit()
+
+    vendor_name = ""
+    if purchase_return.vendor_id:
+        vendor = db.query(Vendor).filter(Vendor.id == purchase_return.vendor_id).first()
+        vendor_name = vendor.name if vendor else ""
+
+    return {
+        "id": purchase_return.id,
+        "return_number": purchase_return.return_number,
+        "purchase_id": purchase_return.original_purchase_id,
+        "purchase_number": purchase.purchase_number,
+        "vendor_name": vendor_name,
+        "return_date": purchase_return.return_date.isoformat() if purchase_return.return_date else None,
+        "total_amount": float(purchase_return.total_amount or 0),
+        "reason": purchase_return.reason or "",
+        "status": purchase_return.status or "pending",
+        "amount_paid": float(purchase_return.amount_paid or 0),
+        "payment_status": purchase_return.payment_status or "Unpaid",
+        "created_by": purchase_return.created_by,
+        "created_by_name": creator_name or "",
+        "message": "Purchase return created successfully",
+    }
+
+
+@router.put("/companies/{company_id}/purchase-returns/{return_id}")
+async def update_purchase_return(
+    company_id: str,
+    return_id: str,
+    data: PurchaseReturnCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update an existing purchase return and replace its items."""
+    get_company_or_404(company_id, current_user, db)
+
+    purchase_return = db.query(PurchaseReturn).filter(
+        PurchaseReturn.id == return_id,
+        PurchaseReturn.company_id == company_id
+    ).first()
+    if not purchase_return:
+        raise HTTPException(status_code=404, detail="Purchase return not found")
+
+    purchase = db.query(Purchase).filter(
+        Purchase.id == data.purchase_id,
+        Purchase.company_id == company_id
+    ).first()
+    if not purchase:
+        raise HTTPException(status_code=404, detail="Original purchase not found")
+
+    if not data.items or len(data.items) == 0:
+        raise HTTPException(status_code=400, detail="At least one item is required")
+
+    return_number = (data.return_number or purchase_return.return_number or "").strip()
+    if not return_number:
+        return_number = f"PRN-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
+    duplicate = db.query(PurchaseReturn).filter(
+        PurchaseReturn.company_id == company_id,
+        PurchaseReturn.return_number == return_number,
+        PurchaseReturn.id != return_id
+    ).first()
+    if duplicate:
+        raise HTTPException(status_code=400, detail="Purchase return number already exists")
+
+    creator_name = (
+        (data.created_by_name or "").strip()
+        or (_resolve_creator_name(current_user, company_id, db) or "").strip()
+        or None
+    )
+
+    total_amount = Decimal(str(data.total_amount or 0))
+    amount_paid = Decimal(str(data.amount_paid or 0))
+    if not data.payment_status:
+        payment_status = "Unpaid" if amount_paid <= 0 else "Paid" if amount_paid >= total_amount else "Partial"
+    else:
+        payment_status = data.payment_status
+
+    purchase_return.original_purchase_id = purchase.id
+    purchase_return.vendor_id = data.vendor_id or purchase.vendor_id
+    purchase_return.return_number = return_number
+    purchase_return.return_date = data.return_date or purchase_return.return_date or datetime.utcnow()
+    purchase_return.status = (data.status or "pending")
+    purchase_return.reason = (data.return_reason or data.notes or "")
+    purchase_return.reference_no = data.reference_no
+    purchase_return.notes = _inject_creator_name_into_notes(data.notes, creator_name)
+    purchase_return.subtotal = Decimal(str(data.subtotal or 0))
+    purchase_return.discount_amount = Decimal(str(data.discount_amount or 0))
+    purchase_return.cgst_amount = Decimal(str(data.cgst_amount or 0))
+    purchase_return.sgst_amount = Decimal(str(data.sgst_amount or 0))
+    purchase_return.igst_amount = Decimal(str(data.igst_amount or 0))
+    purchase_return.cess_amount = Decimal(str(data.cess_amount or 0))
+    purchase_return.total_tax = Decimal(str(data.total_tax or 0))
+    purchase_return.total_amount = total_amount
+    purchase_return.round_off = Decimal(str(data.round_off or 0))
+    purchase_return.freight_charges = Decimal(str(data.freight_charges or 0))
+    purchase_return.packing_forwarding_charges = Decimal(str(data.packing_forwarding_charges or 0))
+    purchase_return.amount_paid = amount_paid
+    purchase_return.payment_status = payment_status
+
+    db.query(PurchaseReturnItem).filter(
+        PurchaseReturnItem.purchase_return_id == purchase_return.id
+    ).delete(synchronize_session=False)
+
+    for item in data.items:
+        qty = Decimal(str(item.quantity or 0))
+        unit_price = Decimal(str(item.unit_price or 0))
+        discount_amount = Decimal(str(item.discount_amount or 0))
+        taxable = Decimal(str(item.taxable_amount or 0))
+        if taxable <= 0:
+            taxable = (qty * unit_price) - discount_amount
+        item_total = Decimal(str(item.total_amount or 0))
+        if item_total <= 0:
+            item_total = taxable + (taxable * Decimal(str(item.gst_rate or 0)) / Decimal("100"))
+
+        db.add(PurchaseReturnItem(
+            id=generate_uuid(),
+            purchase_return_id=purchase_return.id,
+            purchase_item_id=item.purchase_item_id,
+            product_id=item.product_id,
+            description=item.description,
+            hsn_code=item.hsn_code,
+            quantity=qty,
+            unit=item.unit or "unit",
+            unit_price=unit_price,
+            discount_percent=Decimal(str(item.discount_percent or 0)),
+            discount_amount=discount_amount,
+            gst_rate=Decimal(str(item.gst_rate or 0)),
+            cgst_rate=Decimal(str(item.cgst_rate or 0)),
+            sgst_rate=Decimal(str(item.sgst_rate or 0)),
+            igst_rate=Decimal(str(item.igst_rate or 0)),
+            cess_amount=Decimal(str(item.cess_amount or 0)),
+            taxable_amount=taxable,
+            total_amount=item_total,
+        ))
+
+    db.commit()
+
+    vendor_name = ""
+    if purchase_return.vendor_id:
+        vendor = db.query(Vendor).filter(Vendor.id == purchase_return.vendor_id).first()
+        vendor_name = vendor.name if vendor else ""
+
+    return {
+        "id": purchase_return.id,
+        "return_number": purchase_return.return_number,
+        "purchase_id": purchase_return.original_purchase_id,
+        "purchase_number": purchase.purchase_number,
+        "vendor_name": vendor_name,
+        "return_date": purchase_return.return_date.isoformat() if purchase_return.return_date else None,
+        "total_amount": float(purchase_return.total_amount or 0),
+        "reason": purchase_return.reason or "",
+        "status": purchase_return.status or "pending",
+        "amount_paid": float(purchase_return.amount_paid or 0),
+        "payment_status": purchase_return.payment_status or "Unpaid",
+        "created_by": purchase_return.created_by,
+        "created_by_name": creator_name or "",
+        "message": "Purchase return updated successfully",
+    }
+
+
+@router.delete("/companies/{company_id}/purchase-returns/{return_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_purchase_return(
+    company_id: str,
+    return_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a purchase return."""
+    get_company_or_404(company_id, current_user, db)
+
+    purchase_return = db.query(PurchaseReturn).filter(
+        PurchaseReturn.id == return_id,
+        PurchaseReturn.company_id == company_id
+    ).first()
+    if not purchase_return:
+        raise HTTPException(status_code=404, detail="Purchase return not found")
+
+    db.delete(purchase_return)
+    db.commit()
+    return None
 
 
 # ==================== CREDIT NOTES ====================

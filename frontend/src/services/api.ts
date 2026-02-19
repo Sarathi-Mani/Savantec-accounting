@@ -58,7 +58,12 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       // Handle unauthorized access
       localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
       localStorage.removeItem('user');
+      localStorage.removeItem('employee_token');
+      localStorage.removeItem('employee_data');
+      localStorage.removeItem('user_type');
+      localStorage.removeItem('company_id');
       window.location.href = '/auth/sign-in';
     }
     return Promise.reject(error);
@@ -2221,6 +2226,7 @@ export interface PurchaseInvoiceItem {
   hsn_code?: string;
   quantity: number;
   unit: string;
+  purchase_price?: number;
   unit_price: number;
   gst_rate: number;
   cgst_rate: number;
@@ -2241,6 +2247,7 @@ export interface PurchaseInvoice {
   vendor_id?: string;
   vendor_name?: string;
   vendor_gstin?: string;
+  purchase_number?: string;
   invoice_number: string;
   vendor_invoice_number?: string;
   invoice_date: string;
@@ -4102,6 +4109,91 @@ export const salesReturnsApi = {
 
   delete: async (companyId: string, returnId: string): Promise<void> => {
     await api.delete(`/companies/${companyId}/sales-returns/${returnId}`);
+  },
+};
+
+// ============== Purchase Returns Types ==============
+
+export interface PurchaseReturnItem {
+  id?: string;
+  purchase_item_id?: string;
+  product_id?: string;
+  description: string;
+  hsn_code?: string;
+  quantity: number;
+  unit?: string;
+  unit_price: number;
+  discount_percent?: number;
+  discount_amount?: number;
+  gst_rate?: number;
+  cgst_rate?: number;
+  sgst_rate?: number;
+  igst_rate?: number;
+  cess_amount?: number;
+  taxable_amount?: number;
+  total_amount?: number;
+}
+
+export interface PurchaseReturn {
+  id: string;
+  return_number: string;
+  purchase_id?: string;
+  purchase_number?: string;
+  vendor_id?: string;
+  vendor_name?: string;
+  return_date: string;
+  total_amount: number;
+  reason?: string;
+  status?: string;
+  reference_no?: string;
+  notes?: string;
+  subtotal?: number;
+  discount_amount?: number;
+  cgst_amount?: number;
+  sgst_amount?: number;
+  igst_amount?: number;
+  cess_amount?: number;
+  total_tax?: number;
+  round_off?: number;
+  freight_charges?: number;
+  packing_forwarding_charges?: number;
+  amount_paid?: number;
+  payment_status?: string;
+  created_by?: string;
+  created_by_name?: string;
+  items?: PurchaseReturnItem[];
+}
+
+// ============== Purchase Returns API ==============
+
+export const purchaseReturnsApi = {
+  list: async (companyId: string, params?: { status?: string }) => {
+    const response = await api.get(`/companies/${companyId}/purchase-returns`, { params });
+    return response.data as PurchaseReturn[];
+  },
+
+  get: async (companyId: string, returnId: string) => {
+    const response = await api.get(`/companies/${companyId}/purchase-returns/${returnId}`);
+    return response.data as PurchaseReturn;
+  },
+
+  getNextNumber: async (companyId: string): Promise<{ return_number: string }> => {
+    const response = await api.get(`/companies/${companyId}/next-purchase-return-number`);
+    return response.data;
+  },
+
+  create: async (companyId: string, data: any) => {
+    const response = await api.post(`/companies/${companyId}/purchase-returns`, data);
+    return response.data;
+  },
+
+  update: async (companyId: string, returnId: string, data: any) => {
+    const response = await api.put(`/companies/${companyId}/purchase-returns/${returnId}`, data);
+    return response.data;
+  },
+
+  delete: async (companyId: string, returnId: string): Promise<void> => {
+    await api.delete(`/companies/${companyId}/purchase-returns/${returnId}`);
   },
 };
 
