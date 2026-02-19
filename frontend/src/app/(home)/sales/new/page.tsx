@@ -13,19 +13,11 @@ import { useRef } from "react";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api";
 
 
-const normalizeInvoiceNumberForVoucherType = (invoiceNumber: string, voucherType: string): string => {
+const normalizeInvoiceNumberForVoucherType = (invoiceNumber: string, _voucherType: string): string => {
     const raw = (invoiceNumber || "").trim();
     if (!raw) return raw;
-
-    if (voucherType === "service") {
-        if (/^INV-SER-/i.test(raw)) return raw;
-        if (/^INV-/i.test(raw)) return raw.replace(/^INV-/i, "INV-SER-");
-        return `INV-SER-${raw}`;
-    }
-
-    if (/^INV-SER-/i.test(raw)) return raw.replace(/^INV-SER-/i, "INV-");
-    if (/^INV-/i.test(raw)) return raw;
-    return `INV-${raw}`;
+    // Show exactly what backend generates (no extra prefix transformation).
+    return raw;
 };
 
 // Add this component before the AddSalesPage function

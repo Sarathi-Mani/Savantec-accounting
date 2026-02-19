@@ -795,17 +795,17 @@ export default function SalesListPage() {
 
         if (visibleColumns.subtotal) {
           if (!headers.includes("Subtotal")) headers.push("Subtotal");
-          row.push(formatCurrency(calculateSubtotal(invoice)).replace('₹', 'Rs. '));
+          row.push(formatCurrency(calculateSubtotal(invoice)).replace('â‚¹', 'Rs. '));
         }
 
         if (visibleColumns.total) {
           if (!headers.includes("Total")) headers.push("Total");
-          row.push(formatCurrency(invoice.total_amount || 0).replace('₹', 'Rs. '));
+          row.push(formatCurrency(invoice.total_amount || 0).replace('â‚¹', 'Rs. '));
         }
 
         if (visibleColumns.paidAmount) {
           if (!headers.includes("Paid")) headers.push("Paid");
-          row.push(formatCurrency(invoice.amount_paid || 0).replace('₹', 'Rs. '));
+          row.push(formatCurrency(invoice.amount_paid || 0).replace('â‚¹', 'Rs. '));
         }
 
         if (visibleColumns.status) {
@@ -1249,7 +1249,7 @@ export default function SalesListPage() {
               Sales Invoices
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Manage your sales invoices • Track payments and outstanding amounts
+              Manage your sales invoices â€¢ Track payments and outstanding amounts
             </p>
           </div>
           <button

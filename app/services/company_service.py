@@ -2,6 +2,7 @@
 from sqlalchemy.orm import Session
 from typing import Any, Dict, List, Optional, Union
 from decimal import Decimal
+import re
 from app.database.models import Company, BankAccount, User, Account, AccountType,Invoice
 from app.schemas.company import CompanyCreate, CompanyUpdate, BankAccountCreate, BankAccountUpdate
 
@@ -38,6 +39,31 @@ class CompanyService:
             company_id = user.get("company_id")
             return str(company_id) if company_id else None
         return None
+
+    def _is_service_voucher(self, voucher_type: Optional[str]) -> bool:
+        """Normalize voucher type checks across enum/string inputs."""
+        from app.database.models import InvoiceVoucher
+        if voucher_type is None:
+            return False
+        if voucher_type == InvoiceVoucher.SERVICE:
+            return True
+        value = getattr(voucher_type, "value", voucher_type)
+        return str(value).strip().lower() == "service"
+
+    def _build_invoice_prefix(self, company: Company, voucher_type: Optional[str]) -> str:
+        """Build invoice prefix from company settings and voucher type."""
+        base_prefix = (company.invoice_prefix or "INV").strip()
+        if self._is_service_voucher(voucher_type):
+            if "SER" not in base_prefix.upper():
+                return base_prefix.rstrip("-") + "SER-"
+        return base_prefix
+
+    def _extract_numeric_suffix(self, invoice_number: Optional[str]) -> int:
+        """Extract trailing numeric part from invoice number."""
+        if not invoice_number:
+            return 0
+        match = re.search(r"(\d+)$", str(invoice_number).strip())
+        return int(match.group(1)) if match else 0
     def get_next_invoice_number(self, company: Company, voucher_type: Optional[str] = None) -> str:
         """Get the next invoice number for a company based on voucher type."""
         from app.database.models import InvoiceVoucher
@@ -342,32 +368,39 @@ class CompanyService:
         """Get the next invoice number for a company based on voucher type."""
         from app.database.models import InvoiceVoucher
 
-        base_prefix = company.invoice_prefix or "INV-"
+        voucher_enum = InvoiceVoucher.SERVICE if self._is_service_voucher(voucher_type) else InvoiceVoucher.SALES
+        prefix = self._build_invoice_prefix(company, voucher_type)
+        base_prefix = (company.invoice_prefix or "INV").strip().rstrip("-")
 
-        if voucher_type and (voucher_type == InvoiceVoucher.SERVICE or voucher_type == "service"):
-            if "SER" not in base_prefix:
-                prefix = base_prefix.rstrip('-') + "SER-"
-            else:
-                prefix = base_prefix
-        else:
-            prefix = base_prefix
-
-        last_invoice = self.db.query(Invoice).filter(
+        invoice_numbers = self.db.query(Invoice.invoice_number).filter(
             Invoice.company_id == company.id,
+            Invoice.voucher_type == voucher_enum,
             Invoice.invoice_number.isnot(None),
-            Invoice.invoice_number.like(f"{prefix}%"),
-            Invoice.status.in_(["pending", "paid", "partially_paid", "draft"])
-        ).order_by(
-            Invoice.invoice_date.desc(),
-            Invoice.created_at.desc()
-        ).first()
+        ).all()
 
-        if last_invoice and last_invoice.invoice_number:
-            import re
-            matches = re.search(r'\d+$', last_invoice.invoice_number)
-            if matches:
-                last_num = int(matches.group())
-                return f"{prefix}{last_num + 1:05d}"
+        # Keep sequences independent by expected number family:
+        # service -> INVSER / INV-SER
+        # sales   -> INV (but not INVSER / INV-SER)
+        if voucher_enum == InvoiceVoucher.SERVICE:
+            matcher = re.compile(
+                rf"^{re.escape(base_prefix)}-?SER-?(\d+)$",
+                re.IGNORECASE,
+            )
+        else:
+            matcher = re.compile(
+                rf"^{re.escape(base_prefix)}(?!-?SER)-?(\d+)$",
+                re.IGNORECASE,
+            )
 
-        return f"{prefix}00001"
+        max_num = 0
+        for (invoice_number,) in invoice_numbers:
+            number_text = str(invoice_number).strip()
+            match = matcher.match(number_text)
+            if not match:
+                continue
+            parsed = int(match.group(1))
+            if parsed > max_num:
+                max_num = parsed
+
+        return f"{prefix}{max_num + 1:05d}"
 
