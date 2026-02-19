@@ -5,6 +5,8 @@ import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 import { ordersApi } from "@/services/api";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import {
     Printer,
     Download,
@@ -34,6 +36,12 @@ export default function ViewPurchaseOrderPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [purchaseOrder, setPurchaseOrder] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
+
+    const getItemRate = (item: any): number => {
+        const raw = item?.rate ?? item?.purchase_price ?? item?.unit_price ?? 0;
+        const value = Number(raw);
+        return Number.isFinite(value) ? value : 0;
+    };
 
     // Load purchase order data
     useEffect(() => {
@@ -145,7 +153,7 @@ const handlePrint = () => {
                     </td>
                     <td style="padding: 12px 16px;">
                         <div style="font-weight: 500;">
-                            ${formatCurrencyForPrint(itemData.rate || 0)}
+                            ${formatCurrencyForPrint(getItemRate(itemData))}
                         </div>
                     </td>
                     <td style="padding: 12px 16px;">
@@ -755,8 +763,158 @@ const handlePrint = () => {
     // Handle print
     
     // Handle PDF download
-    const handlePDF = () => {
-        window.open(`/purchase/purchase-orders/${params.id}/pdf`, "_blank");
+    const handlePDF = async () => {
+        try {
+            if (!purchaseOrder) {
+                throw new Error("Purchase order data not loaded");
+            }
+
+            const doc = new jsPDF("landscape");
+            const fileName = `${purchaseOrder?.order_number || `purchase-order-${params.id}`}.pdf`;
+            const currency = purchaseOrder.currency || "INR";
+            const formatOrderCurrency = (amount: any) =>
+                new Intl.NumberFormat("en-IN", {
+                    style: "currency",
+                    currency,
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                }).format(Number(amount || 0));
+
+            const commonTableOptions: any = {
+                margin: { top: 20, left: 10, right: 10, bottom: 20 },
+                styles: {
+                    fontSize: 9,
+                    cellPadding: 3,
+                    overflow: "linebreak",
+                    font: "helvetica",
+                },
+                headStyles: {
+                    fillColor: [41, 128, 185],
+                    textColor: 255,
+                    fontStyle: "bold",
+                },
+                alternateRowStyles: {
+                    fillColor: [245, 245, 245],
+                },
+                didDrawPage: (data: any) => {
+                    doc.setFontSize(16);
+                    doc.text(`Purchase Order Details`, data.settings.margin.left, 12);
+                    doc.setFontSize(10);
+                    doc.text(company?.name || "", data.settings.margin.left, 18);
+                    doc.text(
+                        `Generated: ${new Date().toLocaleDateString("en-IN")}`,
+                        doc.internal.pageSize.width - 60,
+                        12
+                    );
+                    const pageCount = doc.getNumberOfPages();
+                    doc.text(
+                        `Page ${data.pageNumber} of ${pageCount}`,
+                        data.settings.margin.left,
+                        doc.internal.pageSize.height - 8
+                    );
+                },
+            };
+
+            autoTable(doc, {
+                ...commonTableOptions,
+                startY: 24,
+                theme: "grid",
+                head: [["Order Summary", "Value"]],
+                body: [
+                    ["Order Number", purchaseOrder.order_number || "N/A"],
+                    ["Status", String(purchaseOrder.status || "N/A")],
+                    ["Order Date", formatDate(purchaseOrder.order_date)],
+                    ["Created Date", formatDate(purchaseOrder.created_at)],
+                    ["Expected Date", purchaseOrder.expected_date ? formatDate(purchaseOrder.expected_date) : "N/A"],
+                    ["Reference No", purchaseOrder.reference_number || "N/A"],
+                    ["Currency", currency],
+                    ["Exchange Rate", purchaseOrder.currency !== "INR" ? `1 ${currency} = ${purchaseOrder.exchange_rate || 1} INR` : "N/A"],
+                    ["Created By", purchaseOrder.creator_name || purchaseOrder.created_by || "System"],
+                ],
+            });
+
+            const afterSummaryY = ((doc as any).lastAutoTable?.finalY || 40) + 8;
+            autoTable(doc, {
+                ...commonTableOptions,
+                startY: afterSummaryY,
+                theme: "grid",
+                head: [["Supplier Information", "Value"]],
+                body: [
+                    ["Name", purchaseOrder.vendor?.name || purchaseOrder.vendor_name || "N/A"],
+                    ["Email", purchaseOrder.vendor?.email || purchaseOrder.vendor_email || "N/A"],
+                    ["Contact", purchaseOrder.vendor?.contact || purchaseOrder.vendor_contact || "N/A"],
+                ],
+            });
+
+            const itemRows = (purchaseOrder.items || []).map((item: any, index: number) => [
+                String(index + 1),
+                item?.product_name || "N/A",
+                item?.item_code || "N/A",
+                item?.description || "N/A",
+                String(item?.quantity || 0),
+                item?.unit || "unit",
+                `${Number(item?.gst_rate || 0)}%`,
+                item?.discount_percent ? `${Number(item.discount_percent)}%` : "-",
+                formatOrderCurrency(getItemRate(item)),
+                formatOrderCurrency(Number(item?.tax_amount || 0)),
+                formatOrderCurrency(Number(item?.total_amount || 0)),
+            ]);
+
+            autoTable(doc, {
+                ...commonTableOptions,
+                startY: ((doc as any).lastAutoTable?.finalY || 52) + 8,
+                head: [["#", "Item", "Item Code", "Description", "Qty", "Unit", "GST", "Disc", "Rate", "Tax", "Total"]],
+                body: itemRows,
+                theme: "grid",
+                styles: {
+                    ...(commonTableOptions.styles || {}),
+                    fontSize: 8,
+                },
+            });
+
+            const finalY = (doc as any).lastAutoTable?.finalY || 52;
+            autoTable(doc, {
+                ...commonTableOptions,
+                startY: finalY + 8,
+                theme: "grid",
+                head: [["Amount Summary", "Value"]],
+                body: [
+                    ["Subtotal", formatOrderCurrency(Number(purchaseOrder.subtotal || 0))],
+                    ["Tax Amount", formatOrderCurrency(Number(purchaseOrder.tax_amount || 0))],
+                    ...(Number(purchaseOrder.freight_charges || 0) > 0 ? [["Freight Charges", formatOrderCurrency(Number(purchaseOrder.freight_charges || 0))]] : []),
+                    ...(Number(purchaseOrder.other_charges || 0) > 0 ? [["Other Charges", formatOrderCurrency(Number(purchaseOrder.other_charges || 0))]] : []),
+                    ...(Number(purchaseOrder.discount_on_all || 0) > 0 ? [["Discount on All", `-${formatOrderCurrency(Number(purchaseOrder.discount_on_all || 0))}`]] : []),
+                    ...(Number(purchaseOrder.round_off || 0) !== 0 ? [["Round Off", formatOrderCurrency(Number(purchaseOrder.round_off || 0))]] : []),
+                    ["Total Amount", formatOrderCurrency(Number(purchaseOrder.total_amount || 0))],
+                    ...(purchaseOrder.currency !== "INR"
+                        ? [["Amount in INR", new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(Number(purchaseOrder.total_amount || 0) * Number(purchaseOrder.exchange_rate || 1))]]
+                        : []),
+                ] as any,
+            });
+
+            const footerY = ((doc as any).lastAutoTable?.finalY || finalY + 20) + 8;
+            if (purchaseOrder.notes) {
+                doc.setFontSize(11);
+                doc.text("Notes:", 14, footerY);
+                doc.setFontSize(9);
+                const noteLines = doc.splitTextToSize(String(purchaseOrder.notes), 180);
+                doc.text(noteLines, 14, footerY + 5);
+            }
+
+            if (purchaseOrder.terms) {
+                const termsStartY = footerY + (purchaseOrder.notes ? 20 : 0);
+                doc.setFontSize(11);
+                doc.text("Terms & Conditions:", 14, termsStartY);
+                doc.setFontSize(9);
+                const termLines = doc.splitTextToSize(String(purchaseOrder.terms), 180);
+                doc.text(termLines, 14, termsStartY + 5);
+            }
+
+            doc.save(fileName);
+        } catch (error) {
+            console.error("PDF download failed:", error);
+            alert("Failed to download PDF");
+        }
     };
 
     // Handle refresh
@@ -1064,7 +1222,7 @@ const handlePrint = () => {
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <div className="font-medium text-dark dark:text-white">
-                                                        {formatCurrency(item.rate, purchaseOrder.currency)}
+                                                        {formatCurrency(getItemRate(item), purchaseOrder.currency)}
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-3">

@@ -367,19 +367,7 @@ const uploadImage = async (file: File): Promise<string> => {
             {/* Personal Details */}
             {activeTab === "personal" && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Employee Code
-                  </label>
-                  <input
-                    type="text"
-                    value="Will be auto-generated"
-                    disabled
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 cursor-not-allowed"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Auto-generated after saving</p>
-                </div>
-
+               
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     First Name <span className="text-red-500">*</span>

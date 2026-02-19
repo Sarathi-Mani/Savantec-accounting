@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
-import { vendorsApi, productsApi, ordersApi } from "@/services/api";
+import { vendorsApi, productsApi, ordersApi, purchaseRequestsApi } from "@/services/api";
 import Select from 'react-select';
 import { useRef } from "react";
 
@@ -173,6 +173,7 @@ function ProductSelectField({
 
 export default function AddPurchaseOrderPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { company, user } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showOtherFields, setShowOtherFields] = useState(false);
@@ -183,6 +184,7 @@ export default function AddPurchaseOrderPage() {
 
     const [productSearch, setProductSearch] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
+    const hasPrefilledFromRequest = useRef(false);
 
     // State for dropdown data
     const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -265,6 +267,141 @@ export default function AddPurchaseOrderPage() {
             loadNextPurchaseOrderNumber();
         }
     }, [company?.id]);
+
+    useEffect(() => {
+        const prefillFromPurchaseRequests = async () => {
+            if (!company?.id) return;
+            if (hasPrefilledFromRequest.current) return;
+
+            const from = searchParams.get("from");
+            const idsParam = searchParams.get("purchase_request_ids");
+            const itemFilter = (searchParams.get("item_filter") || "").trim();
+            const brandFilterId = (searchParams.get("brand_filter") || "").trim();
+            const brandFilterName = (searchParams.get("brand_filter_name") || "").trim().toLowerCase();
+            if (from !== "purchase-req" || !idsParam) return;
+
+            const requestIds = idsParam.split(",").map((id) => id.trim()).filter(Boolean);
+            if (requestIds.length === 0) return;
+
+            hasPrefilledFromRequest.current = true;
+            try {
+                const requests = await Promise.all(
+                    requestIds.map((requestId) => purchaseRequestsApi.get(company.id, requestId))
+                );
+
+                const requestNos = requests
+                    .map((req: any) => req?.purchase_req_no || req?.request_number)
+                    .filter(Boolean);
+
+                const mappedItems = requests
+                    .flatMap((req: any) => (req?.items || []).filter((reqItem: any) => {
+                        const reqItemName = String(reqItem?.item || reqItem?.description || "").trim();
+                        const matchesItem = !itemFilter || reqItemName === itemFilter;
+                        const reqItemBrandId = String(reqItem?.make_id || reqItem?.brand_id || "");
+                        const reqItemBrandName = String(reqItem?.make || reqItem?.brand || "").trim().toLowerCase();
+                        const matchesBrand = !brandFilterId
+                            ? true
+                            : (reqItemBrandId && reqItemBrandId === brandFilterId) ||
+                            (brandFilterName && reqItemBrandName === brandFilterName);
+                        return matchesItem && matchesBrand;
+                    }).map((reqItem: any, idx: number) => {
+                        const productId = reqItem?.product_id ? String(reqItem.product_id) : "";
+                        const matchedProduct = productId ? products.find((p: any) => String(p?.id) === productId) : null;
+                        const quantity = Number(
+                            reqItem?.quantity ??
+                            reqItem?.qty ??
+                            reqItem?.required_qty ??
+                            1
+                        );
+                        const purchasePrice = Number(
+                            reqItem?.unit_price ??
+                            reqItem?.purchase_price ??
+                            reqItem?.price ??
+                            matchedProduct?.price ??
+                            matchedProduct?.purchase_price ??
+                            matchedProduct?.cost_price ??
+                            matchedProduct?.unit_price ??
+                            0
+                        );
+                        const baseAmount = Number(reqItem?.total_amount || quantity * purchasePrice);
+                        const gstRate = 18;
+                        const taxAmount = (baseAmount * gstRate) / 100;
+                        return {
+                            id: Date.now() + idx + Math.floor(Math.random() * 10000),
+                            product_id: productId,
+                            description: reqItem?.item || reqItem?.description || "",
+                            item_code: "",
+                            quantity,
+                            unit: "unit",
+                            purchase_price: purchasePrice,
+                            discount_percent: 0,
+                            discount_amount: 0,
+                            gst_rate: gstRate,
+                            cgst_rate: 9,
+                            sgst_rate: 9,
+                            igst_rate: 0,
+                            tax_amount: taxAmount,
+                            unit_cost: purchasePrice,
+                            total_amount: baseAmount + taxAmount,
+                        };
+                    }))
+                    .filter((item: any) => item.description || item.product_id);
+
+                if (mappedItems.length > 0) {
+                    setItems(mappedItems as any);
+                }
+
+                setFormData((prev) => ({
+                    ...prev,
+                    reference_no: requestNos.join(", ") || prev.reference_no,
+                    notes: prev.notes
+                        ? `${prev.notes}\n\nFrom Purchase Request: ${requestNos.join(", ")}`
+                        : `From Purchase Request: ${requestNos.join(", ")}`,
+                }));
+            } catch (error) {
+                console.error("Failed to prefill from purchase request:", error);
+            }
+        };
+
+        prefillFromPurchaseRequests();
+    }, [company?.id, searchParams]);
+
+    useEffect(() => {
+        if (!products.length) return;
+        setItems((prevItems) => {
+            let changed = false;
+            const nextItems = prevItems.map((item: any) => {
+                if (!item?.product_id) return item;
+                const currentPrice = Number(item?.purchase_price || 0);
+                if (currentPrice > 0) return item;
+
+                const matchedProduct = products.find((p: any) => String(p?.id) === String(item.product_id));
+                if (!matchedProduct) return item;
+
+                const priceFromProduct = getProductPurchasePrice(matchedProduct);
+                if (!priceFromProduct) return item;
+
+                changed = true;
+                const quantity = Number(item?.quantity || 1);
+                const discountPercent = Number(item?.discount_percent || 0);
+                const itemTotal = quantity * priceFromProduct;
+                const discount = discountPercent > 0 ? itemTotal * (discountPercent / 100) : 0;
+                const taxable = itemTotal - discount;
+                const gstRate = Number(item?.gst_rate || 0);
+                const tax = taxable * (gstRate / 100);
+
+                return {
+                    ...item,
+                    purchase_price: priceFromProduct,
+                    unit_cost: priceFromProduct,
+                    discount_amount: discount,
+                    tax_amount: tax,
+                    total_amount: taxable + tax,
+                };
+            });
+            return changed ? nextItems : prevItems;
+        });
+    }, [products]);
 
     const loadNextPurchaseOrderNumber = async () => {
         if (!company?.id) return;

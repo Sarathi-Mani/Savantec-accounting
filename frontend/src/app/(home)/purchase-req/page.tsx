@@ -508,17 +508,67 @@ export default function PurchaseRequestsPage() {
     }
   };
 
-  const getRequestBrandNames = (request: PurchaseRequest): string => {
-    const names = new Set<string>();
-    (request.items || []).forEach((item: any) => {
+  const getMatchingItemsForDisplay = (request: PurchaseRequest): Array<any> => {
+    const selectedBrandName = (
+      brands.find((b) => String(b.id) === String(brandFilter))?.name || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    return (request.items || []).filter((item: any) => {
+      const itemName = (item?.item || "").trim();
       const pid = item?.product_id ? String(item.product_id) : "";
-      if (pid && productBrandNameMap[pid]) {
-        names.add(productBrandNameMap[pid]);
-      } else if (item?.make) {
-        names.add(String(item.make));
-      }
+      const brandName = (
+        (pid && productBrandNameMap[pid]) ||
+        item?.make ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+      const matchesItem = !itemFilter || itemName === itemFilter;
+      const matchesBrand = !brandFilter || (selectedBrandName && brandName === selectedBrandName);
+
+      return matchesItem && matchesBrand;
+    });
+  };
+
+  const getRequestItemNames = (request: PurchaseRequest): string => {
+    const names = new Set<string>();
+    getMatchingItemsForDisplay(request).forEach((item: any) => {
+      const name = (item?.item || "").trim();
+      if (name) names.add(name);
     });
     return names.size > 0 ? Array.from(names).join(", ") : "-";
+  };
+
+  const getRequestBrandNames = (request: PurchaseRequest): string => {
+    const names = new Set<string>();
+    getMatchingItemsForDisplay(request).forEach((item: any) => {
+      const pid = item?.product_id ? String(item.product_id) : "";
+      const brand = (pid && productBrandNameMap[pid]) || item?.make || "";
+      const brandName = String(brand).trim();
+      if (brandName) names.add(brandName);
+    });
+    return names.size > 0 ? Array.from(names).join(", ") : "-";
+  };
+
+  const getRequestDisplayStats = (request: PurchaseRequest): { itemCount: number; quantity: number } => {
+    const hasItemOrBrandFilter = Boolean(itemFilter || brandFilter);
+    if (!hasItemOrBrandFilter) {
+      return {
+        itemCount: request.total_items || 0,
+        quantity: request.total_quantity || 0,
+      };
+    }
+
+    const matchingItems = getMatchingItemsForDisplay(request);
+    const quantity = matchingItems.reduce((sum: number, item: any) => sum + Number(item?.quantity || 0), 0);
+
+    return {
+      itemCount: matchingItems.length,
+      quantity,
+    };
   };
 
   const fetchCustomers = (source: PurchaseRequest[]) => {
@@ -1097,6 +1147,16 @@ export default function PurchaseRequestsPage() {
     const params = new URLSearchParams();
     params.set("from", "purchase-req");
     params.set("purchase_request_ids", requestIds.join(","));
+    if (itemFilter) {
+      params.set("item_filter", itemFilter);
+    }
+    if (brandFilter) {
+      params.set("brand_filter", brandFilter);
+      const selectedBrandName = brands.find((b) => String(b.id) === String(brandFilter))?.name;
+      if (selectedBrandName) {
+        params.set("brand_filter_name", selectedBrandName);
+      }
+    }
     router.push(`/purchase/purchase-orders/new?${params.toString()}`);
   };
 
@@ -1663,14 +1723,8 @@ export default function PurchaseRequestsPage() {
               ) : (
                 pagedRequests.map((request, index) => {
                   const profileInitials = request.customer_name?.charAt(0) || 'C';
-                  const requestItemSummary =
-                    Array.from(
-                      new Set(
-                        (request.items || [])
-                          .map((item) => (item?.item || "").trim())
-                          .filter(Boolean)
-                      )
-                    ).join(", ") || "-";
+                  const requestItemSummary = getRequestItemNames(request);
+                  const requestDisplayStats = getRequestDisplayStats(request);
 
                   return (
                     <tr
@@ -1739,13 +1793,13 @@ export default function PurchaseRequestsPage() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-2 font-medium text-gray-900 dark:text-white">
                             <Package className="w-4 h-4 text-gray-400" />
-                            {request.total_items || 0}
+                            {requestDisplayStats.itemCount}
                           </div>
                         </td>
                       )}
                       {visibleColumns.quantity && (
                         <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                          {request.total_quantity || 0}
+                          {requestDisplayStats.quantity}
                         </td>
                       )}
                       {visibleColumns.status && (

@@ -43,16 +43,14 @@ const PrintView = ({
   visibleColumns,
   formatDate,
   getStatusText,
-  formatCurrencyINR,
-  convertToINR,
+  formatCurrency,
   companyName,
 }: {
   orders: PurchaseOrder[];
   visibleColumns: Record<string, boolean>;
   formatDate: (dateString: string) => string;
   getStatusText: (status: string) => string;
-  formatCurrencyINR: (amount: number) => string;
-  convertToINR: (amount: number, currency: string, exchangeRate: number) => number;
+  formatCurrency: (amount: number, currency: string) => string;
   companyName: string;
 }) => {
   const printRef = useRef<HTMLDivElement>(null);
@@ -149,7 +147,7 @@ const PrintView = ({
                   borderRight: '1px solid #ddd',
                   fontWeight: 'bold'
                 }}>
-                  Total Amount (INR)
+                  Total Amount
                 </th>
               )}
               {visibleColumns.createdBy && (
@@ -236,7 +234,7 @@ const PrintView = ({
                     borderRight: '1px solid #ddd',
                     fontWeight: '500'
                   }}>
-                    {formatCurrencyINR(convertToINR(order.total_amount, order.currency, order.exchange_rate || 1))}
+                    {formatCurrency(order.total_amount, order.currency || "INR")}
                   </td>
                 )}
                 {visibleColumns.createdBy && (
@@ -297,13 +295,6 @@ interface PurchaseOrderResponse {
     pages: number;
   };
 }
-
-const formatNumberINR = (amount: number) => {
-  return new Intl.NumberFormat('en-IN', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-};
 
 export default function PurchaseOrderListPage() {
   const { company } = useAuth();
@@ -373,21 +364,6 @@ export default function PurchaseOrderListPage() {
     if (toDate) params.append("to_date", toDate);
 
     return params;
-  };
-
-  const convertToINR = (amount: number, currency: string, exchangeRate: number = 1): number => {
-    if (currency === 'INR') {
-      return amount;
-    }
-    return amount * exchangeRate;
-  };
-
-  const formatCurrencyINR = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-    }).format(amount);
   };
 
   const formatCurrency = (amount: number, currency: string) => {
@@ -629,8 +605,97 @@ export default function PurchaseOrderListPage() {
     }
   };
 
-  const handlePDF = (orderId: string) => {
-    window.open(`/purchase/purchase-orders/${orderId}/pdf`, "_blank");
+  const handlePDF = async (orderId: string) => {
+    try {
+      const token = getToken();
+      if (!companyId || !token) {
+        throw new Error("Authentication required");
+      }
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${companyId}/orders/purchase/${orderId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to load purchase order details");
+      }
+
+      const order: any = await response.json();
+      const currency = order.currency || "INR";
+      const fileName = `${order.order_number || `purchase-order-${orderId}`}.pdf`;
+      const formatOrderCurrency = (amount: any) =>
+        new Intl.NumberFormat("en-IN", {
+          style: "currency",
+          currency,
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(Number(amount || 0));
+
+      const getItemRate = (item: any): number => {
+        const raw = item?.rate ?? item?.purchase_price ?? item?.unit_price ?? 0;
+        const val = Number(raw);
+        return Number.isFinite(val) ? val : 0;
+      };
+
+      const doc = new jsPDF();
+      autoTable(doc, {
+        startY: 24,
+        head: [["#", "Item", "Qty", "Rate", "Tax", "Total"]],
+        body: (order.items || []).map((item: any, index: number) => [
+          String(index + 1),
+          item?.product_name || item?.description || "N/A",
+          String(item?.quantity || 0),
+          formatOrderCurrency(getItemRate(item)),
+          formatOrderCurrency(item?.tax_amount || 0),
+          formatOrderCurrency(item?.total_amount || 0),
+        ]),
+        theme: "grid",
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+          overflow: "linebreak",
+          font: "helvetica",
+        },
+        headStyles: {
+          fillColor: [41, 128, 185],
+          textColor: 255,
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [245, 245, 245],
+        },
+        didDrawPage: (data) => {
+          doc.setFontSize(16);
+          doc.text(`Purchase Order: ${order.order_number || "N/A"}`, data.settings.margin.left, 12);
+
+          doc.setFontSize(10);
+          doc.text(company?.name || "", data.settings.margin.left, 18);
+          doc.text(
+            `Generated: ${new Date().toLocaleDateString("en-IN")}`,
+            doc.internal.pageSize.width - 60,
+            12
+          );
+          doc.text(`Supplier: ${order.vendor_name || order.vendor?.name || "N/A"}`, data.settings.margin.left, 22);
+        },
+      });
+
+      const finalY = (doc as any).lastAutoTable?.finalY || 40;
+      doc.setFontSize(10);
+      doc.text(`Subtotal: ${formatOrderCurrency(order.subtotal || 0)}`, 14, finalY + 10);
+      doc.text(`Tax: ${formatOrderCurrency(order.tax_amount || 0)}`, 14, finalY + 16);
+      doc.text(`Total: ${formatOrderCurrency(order.total_amount || 0)}`, 14, finalY + 22);
+
+      doc.save(fileName);
+    } catch (error) {
+      console.error("Individual PDF download failed:", error);
+      alert("Failed to download PDF");
+    }
   };
 
   const handlePrintOrder = (orderId: string) => {
@@ -741,8 +806,8 @@ export default function PurchaseOrderListPage() {
         }
 
         if (visibleColumns.totalAmount) {
-          if (!headers.includes("Total Amount (INR)")) headers.push("Total Amount (INR)");
-          row.push(formatCurrencyINR(convertToINR(order.total_amount, order.currency, order.exchange_rate || 1)));
+          if (!headers.includes("Total Amount")) headers.push("Total Amount");
+          row.push(formatCurrency(order.total_amount, order.currency || "INR"));
         }
 
         if (visibleColumns.createdBy) {
@@ -797,10 +862,8 @@ export default function PurchaseOrderListPage() {
         }
 
         if (visibleColumns.totalAmount) {
-          row["Total Amount (Original Currency)"] = order.total_amount;
-          row["Original Currency"] = order.currency;
-          row["Exchange Rate"] = order.exchange_rate || 1;
-          row["Total Amount (INR)"] = convertToINR(order.total_amount, order.currency, order.exchange_rate || 1);
+          row["Total Amount"] = formatCurrency(order.total_amount, order.currency || "INR");
+          row["Currency"] = order.currency || "INR";
         }
 
         if (visibleColumns.createdBy) {
@@ -865,8 +928,8 @@ export default function PurchaseOrderListPage() {
         }
 
         if (visibleColumns.totalAmount) {
-          if (!headers.includes("Total (INR)")) headers.push("Total (INR)");
-          row.push(formatNumberINR(convertToINR(order.total_amount, order.currency, order.exchange_rate || 1)));
+          if (!headers.includes("Total Amount")) headers.push("Total Amount");
+          row.push(formatCurrency(order.total_amount, order.currency || "INR"));
         }
 
         if (visibleColumns.createdBy) {
@@ -956,7 +1019,7 @@ export default function PurchaseOrderListPage() {
         }
 
         if (visibleColumns.totalAmount) {
-          row["Total Amount (INR)"] = convertToINR(order.total_amount, order.currency, order.exchange_rate || 1);
+          row["Total Amount"] = formatCurrency(order.total_amount, order.currency || "INR");
         }
 
         if (visibleColumns.createdBy) {
@@ -1009,8 +1072,7 @@ export default function PurchaseOrderListPage() {
           visibleColumns={visibleColumns}
           formatDate={formatDate}
           getStatusText={getStatusText}
-          formatCurrencyINR={formatCurrencyINR}
-          convertToINR={convertToINR}
+          formatCurrency={formatCurrency}
           companyName={company?.name || ''}
         />
       )}
@@ -1457,13 +1519,8 @@ export default function PurchaseOrderListPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex flex-col">
                           <span className="font-medium text-gray-900 dark:text-white">
-                            {formatCurrencyINR(convertToINR(order.total_amount, order.currency, order.exchange_rate || 1))}
+                            {formatCurrency(order.total_amount, order.currency || "INR")}
                           </span>
-                          {order.currency !== 'INR' && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {formatCurrency(order.total_amount, order.currency)}
-                            </span>
-                          )}
                         </div>
                       </td>
                     )}
