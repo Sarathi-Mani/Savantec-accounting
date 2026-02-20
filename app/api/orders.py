@@ -831,6 +831,17 @@ async def cancel_sales_order(
 
 # ============== Purchase Order Endpoints ==============
 
+@router.get("/purchase/next-number")
+async def get_next_purchase_order_number(
+    company_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get next available purchase order number."""
+    company = get_company_or_404(company_id, current_user, db)
+    service = OrderService(db)
+    return {"order_number": service.get_next_purchase_order_number(company)}
+
 @router.post("/purchase", response_model=PurchaseOrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_purchase_order(
     company_id: str,

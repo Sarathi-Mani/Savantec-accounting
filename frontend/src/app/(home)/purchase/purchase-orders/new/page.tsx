@@ -408,12 +408,8 @@ export default function AddPurchaseOrderPage() {
 
         try {
             setLoadingPurchaseOrderNumber(true);
-            // Generate purchase order number (you can modify this logic)
-            const today = new Date();
-            const year = today.getFullYear();
-            const month = String(today.getMonth() + 1).padStart(2, '0');
-            const poNumber = `PO-${year}${month}-001`;
-            setNextPurchaseOrderNumber(poNumber);
+            const response = await ordersApi.getNextPurchaseOrderNumber(company.id);
+            setNextPurchaseOrderNumber(response?.order_number || "");
         } catch (error) {
             console.error("Failed to load next purchase order number:", error);
         } finally {

@@ -177,6 +177,7 @@ export default function EditPurchaseOrderPage() {
     const { company, user } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [purchaseOrderNumber, setPurchaseOrderNumber] = useState("");
     const [showOtherFields, setShowOtherFields] = useState(false);
     const [showAddCurrencyModal, setShowAddCurrencyModal] = useState(false);
     const [newCurrency, setNewCurrency] = useState({ code: "", name: "" });
@@ -262,6 +263,7 @@ export default function EditPurchaseOrderPage() {
         try {
             setIsLoading(true);
             const response = await ordersApi.getPurchaseOrder(company!.id, params.id as string);
+            setPurchaseOrderNumber(response.order_number || "");
             
             // Populate form data
             setFormData({
@@ -777,6 +779,17 @@ export default function EditPurchaseOrderPage() {
                                         options={company ? [{ value: company.id, label: company.name }] : []}
                                         required={true}
                                         placeholder="Select Company"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                        Purchase Order Number <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={purchaseOrderNumber}
+                                        className="w-full rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 outline-none dark:border-dark-3 dark:bg-dark-2"
+                                        readOnly
                                     />
                                 </div>
                               

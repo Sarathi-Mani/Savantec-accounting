@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+import re
 
 from app.database.models import (
     Company, Customer, Product, SalesOrder, SalesOrderItem,CreatorType  ,
@@ -22,6 +23,26 @@ class OrderService:
         self.inventory_service = InventoryService(db)
     
     # ============== Sales Orders ==============
+
+    def get_next_purchase_order_number(self, company: Company) -> str:
+        """Generate next purchase order number in PO-00001 format."""
+        numbers = self.db.query(PurchaseOrder.order_number).filter(
+            PurchaseOrder.company_id == company.id,
+            PurchaseOrder.order_number.isnot(None),
+        ).all()
+
+        max_num = 0
+        pattern = re.compile(r"^PO-(\d+)$", re.IGNORECASE)
+        for (order_number,) in numbers:
+            raw = str(order_number or "").strip()
+            match = pattern.match(raw)
+            if not match:
+                continue
+            parsed = int(match.group(1))
+            if parsed > max_num:
+                max_num = parsed
+
+        return f"PO-{max_num + 1:05d}"
     
     def create_sales_order(
         self,
@@ -484,10 +505,7 @@ class OrderService:
             print(f"  tax_amount: {item.get('tax_amount')}")
             print(f"  total_amount: {item.get('total_amount')}")
         
-        order_count = self.db.query(PurchaseOrder).filter(
-            PurchaseOrder.company_id == company.id
-        ).count()
-        order_number = f"PO-{order_count + 1:05d}"
+        order_number = self.get_next_purchase_order_number(company)
         
         print(f"\nDEBUG: Generated order number: {order_number}")
         
