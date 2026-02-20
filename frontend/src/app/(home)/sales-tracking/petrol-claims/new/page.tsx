@@ -59,7 +59,7 @@ export default function NewPetrolClaimPage() {
         `${API_BASE}/api/companies/${companyId}/trips?${params}`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );
@@ -113,7 +113,7 @@ export default function NewPetrolClaimPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );

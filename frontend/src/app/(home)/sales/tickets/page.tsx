@@ -66,7 +66,7 @@ export default function TicketsListPage() {
       const response = await fetch(
         `${API_BASE}/companies/${companyId}/sales-tickets?${params}`,
         {
-          headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+          headers: { Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}` },
         }
       );
 

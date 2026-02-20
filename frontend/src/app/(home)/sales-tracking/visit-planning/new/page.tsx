@@ -63,7 +63,7 @@ export default function NewVisitPlanPage() {
         `${API_BASE}/api/companies/${companyId}/employees`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );
@@ -82,7 +82,7 @@ export default function NewVisitPlanPage() {
         `${API_BASE}/api/companies/${companyId}/customers`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );
@@ -101,7 +101,7 @@ export default function NewVisitPlanPage() {
         `${API_BASE}/api/companies/${companyId}/enquiries?status=pending`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );
@@ -204,7 +204,7 @@ export default function NewVisitPlanPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
           body: JSON.stringify(visitPlanData),
         }

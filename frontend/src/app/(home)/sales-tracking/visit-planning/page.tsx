@@ -79,7 +79,7 @@ export default function VisitPlanningPage() {
         `${API_BASE}/api/companies/${companyId}/employees`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );
@@ -98,7 +98,7 @@ export default function VisitPlanningPage() {
         `${API_BASE}/api/companies/${companyId}/customers`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );
@@ -117,7 +117,7 @@ export default function VisitPlanningPage() {
         `${API_BASE}/api/companies/${companyId}/enquiries`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );
@@ -145,7 +145,7 @@ export default function VisitPlanningPage() {
         `${API_BASE}/api/companies/${companyId}/engineers/${engineerFilter || "all"}/visit-plans?${params}`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );
@@ -176,7 +176,7 @@ export default function VisitPlanningPage() {
           {
             method: "DELETE",
             headers: {
-              Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+              Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
             },
           }
         );

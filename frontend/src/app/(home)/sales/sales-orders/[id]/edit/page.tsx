@@ -260,7 +260,7 @@ export default function EditSalesOrderPage() {
         const userType = localStorage.getItem("user_type");
         return userType === "employee"
             ? localStorage.getItem("employee_token")
-            : localStorage.getItem("access_token");
+            : localStorage.getItem("employee_token") || localStorage.getItem("access_token");
     };
 
     // Round off state
@@ -418,7 +418,7 @@ export default function EditSalesOrderPage() {
             setLoading(prev => ({ ...prev, salesmen: true }));
 
             // Use the sales-engineers API endpoint
-            const token = localStorage.getItem("access_token");
+            const token = localStorage.getItem("employee_token") || localStorage.getItem("access_token");
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_API_URL}/companies/${company!.id}/sales-engineers`,
                 {

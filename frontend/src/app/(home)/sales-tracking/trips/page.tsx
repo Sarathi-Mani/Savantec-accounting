@@ -76,7 +76,7 @@ export default function TripsPage() {
   }, [statusFilter, engineerFilter, validityFilter, fromDate, toDate]);
 
   const fetchSalesmen = async () => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("employee_token") || localStorage.getItem("access_token") : null;
     if (!token || !companyId) return;
 
     try {
@@ -176,7 +176,7 @@ export default function TripsPage() {
         `${API_BASE}/companies/${companyId}/trips?${params}`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );

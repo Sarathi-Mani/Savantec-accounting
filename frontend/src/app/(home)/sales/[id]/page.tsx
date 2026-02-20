@@ -119,7 +119,7 @@ export default function SalesInvoiceViewPage() {
                 `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/customers/${customer.id}/contact-persons`,
                 {
                   headers: {
-                    Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+                    Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
                   },
                 }
               );

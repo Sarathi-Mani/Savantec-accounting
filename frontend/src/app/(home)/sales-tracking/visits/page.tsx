@@ -78,7 +78,7 @@ export default function VisitsPage() {
         `${API_BASE}/companies/${companyId}/employees`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );
@@ -97,7 +97,7 @@ export default function VisitsPage() {
         `${API_BASE}/companies/${companyId}/customers`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );
@@ -126,7 +126,7 @@ export default function VisitsPage() {
         `${API_BASE}/companies/${companyId}/visits?${params}`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );

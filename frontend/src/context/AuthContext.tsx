@@ -66,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (userType === "employee") {
       return localStorage.getItem("employee_token");
     } else {
-      return localStorage.getItem("access_token");
+      return localStorage.getItem("employee_token") || localStorage.getItem("access_token");
     }
   };
 
@@ -127,7 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
         } else {
-          const token = localStorage.getItem("access_token");
+          const token = localStorage.getItem("employee_token") || localStorage.getItem("access_token");
           const storedUser = localStorage.getItem("user");
           const storedCompanyId = localStorage.getItem("company_id");
 

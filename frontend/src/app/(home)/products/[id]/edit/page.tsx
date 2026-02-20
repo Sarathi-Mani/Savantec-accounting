@@ -138,11 +138,14 @@ export default function EditProductPage() {
 
   useEffect(() => {
     const unitPrice = formData.unit_price || 0;
-    const gstRate = parseFloat(formData.gst_rate) || 18;
+    const discount = formData.discount || 0;
     const profitMargin = formData.profit_margin || 0;
 
-    const taxAmount = unitPrice * (gstRate / 100);
-    const purchasePrice = unitPrice + taxAmount;
+    const discountAmount =
+      formData.discount_type === "fixed"
+        ? discount
+        : (unitPrice * discount) / 100;
+    const purchasePrice = Math.max(unitPrice - discountAmount, 0);
     const profitAmount = purchasePrice * (profitMargin / 100);
     const salesPrice = purchasePrice + profitAmount;
 
@@ -151,7 +154,7 @@ export default function EditProductPage() {
       purchase_price: Number(purchasePrice.toFixed(2)),
       sales_price: Number(salesPrice.toFixed(2)),
     }));
-  }, [formData.unit_price, formData.gst_rate, formData.profit_margin]);
+  }, [formData.unit_price, formData.discount, formData.discount_type, formData.profit_margin]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -217,7 +220,7 @@ export default function EditProductPage() {
 
   const uploadImages = async (companyId: string, currentProductId: string, main: File | null, additional: File | null) => {
     try {
-      const token = localStorage.getItem("access_token");
+      const token = localStorage.getItem("employee_token") || localStorage.getItem("access_token");
 
       if (main) {
         const mainFormData = new FormData();
@@ -605,7 +608,7 @@ export default function EditProductPage() {
                     readOnly
                     className="w-full rounded-lg border border-stroke bg-gray-50 px-4 py-3 text-dark-6 dark:border-dark-3 dark:bg-dark-2"
                   />
-                  <p className="mt-1 text-xs text-dark-6">Auto Calculated: Price + GST Amount</p>
+                  <p className="mt-1 text-xs text-dark-6">Auto Calculated: Unit Price - Discount (GST excluded)</p>
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Profit Margin (%)</label>

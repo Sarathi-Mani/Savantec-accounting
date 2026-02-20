@@ -35,7 +35,7 @@ export default function StockJournalPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
 
   const getToken = () =>
-    typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    typeof window !== "undefined" ? localStorage.getItem("employee_token") || localStorage.getItem("access_token") : null;
 
   useEffect(() => {
     const fetchJournals = async () => {

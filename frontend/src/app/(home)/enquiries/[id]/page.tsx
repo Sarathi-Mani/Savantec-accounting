@@ -104,7 +104,7 @@ useEffect(() => {
       `${API_BASE}/companies/${companyId}/enquiries/${enquiryId}`,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+          Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
         },
       }
     );

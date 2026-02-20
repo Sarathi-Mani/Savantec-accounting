@@ -73,7 +73,7 @@ export default function PetrolClaimsPage() {
         `${API_BASE}/api/companies/${companyId}/employees`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );
@@ -101,7 +101,7 @@ export default function PetrolClaimsPage() {
         `${API_BASE}/api/companies/${companyId}/petrol-claims?${params}`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );

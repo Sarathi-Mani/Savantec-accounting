@@ -159,7 +159,7 @@ export default function TicketFlowPage() {
       const response = await fetch(
         `${API_BASE}/companies/${companyId}/sales-tickets/${ticketId}/flow`,
         {
-          headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+          headers: { Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}` },
         }
       );
 
@@ -185,7 +185,7 @@ export default function TicketFlowPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
           body: JSON.stringify({ note: newNote }),
         }

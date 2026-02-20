@@ -5,6 +5,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from typing import List, Optional, Tuple, Dict, Any
 from fastapi import UploadFile
+from decimal import Decimal
 
 from app.database.models import Product, Company
 from app.schemas.product import ProductCreate, ProductUpdate
@@ -33,6 +34,19 @@ class ProductService:
         }
         tax_type = tax_type_map.get(data.gst_rate, "GST 18%")
         
+        unit_price = Decimal(str(data.unit_price or 0))
+        discount_value = Decimal(str(getattr(data, "discount", 0) or 0))
+        discount_type = getattr(data, "discount_type", "percentage") or "percentage"
+        profit_margin = Decimal(str(getattr(data, "profit_margin", 0) or 0))
+
+        if discount_type == "fixed":
+            discount_amount = discount_value
+        else:
+            discount_amount = (unit_price * discount_value) / Decimal("100")
+
+        purchase_price = max(unit_price - discount_amount, Decimal("0"))
+        sales_price = purchase_price + ((purchase_price * profit_margin) / Decimal("100"))
+
         # Build product data - only include fields that exist in Product model
         product_data = {
             "company_id": company.id,
@@ -41,11 +55,16 @@ class ProductService:
             "description": data.description,
             "sku": data.sku,
             "hsn_code": data.hsn_code,
-            "price": data.unit_price,  # maps to price field
-            "sales_price": data.unit_price,
-            "unit_price": data.unit_price,
+            "price": unit_price,
+            "unit_price": unit_price,
             "unit": data.unit,
             "tax_type": tax_type,
+            "seller_points": int(getattr(data, "seller_points", 0) or 0),
+            "discount_type": discount_type,
+            "discount": discount_value,
+            "purchase_price": purchase_price,
+            "profit_margin": profit_margin,
+            "sales_price": sales_price,
             "brand_id": data.brand_id if data.brand_id else None,
             "category_id": data.category_id if data.category_id else None,
             "opening_stock": int(data.opening_stock) if data.opening_stock else 0,
@@ -56,7 +75,7 @@ class ProductService:
             "is_service": getattr(data, 'is_service', False),
             "is_active": True,
             "approval_status": "approved",
-            "created_by": company.user_id  # Assuming company has owner_id
+            "created_by": company.user_id
         }
         
         # Add standard_cost if provided
@@ -204,11 +223,17 @@ class ProductService:
             "description": product.description,
             "sku": product.sku,
             "hsn_code": product.hsn_code,
-            "unit_price": float(product.price) if product.price else 0.0,
+            "unit_price": float(product.unit_price) if product.unit_price is not None else (float(product.price) if product.price else 0.0),
             "unit": product.unit,
             "gst_rate": gst_rate,
             "is_active": product.is_active,
             "is_service": getattr(product, 'is_service', False),
+            "seller_points": int(getattr(product, "seller_points", 0) or 0),
+            "discount_type": str(getattr(product, "discount_type", "percentage") or "percentage"),
+            "discount": float(getattr(product, "discount", 0) or 0),
+            "purchase_price": float(getattr(product, "purchase_price", 0) or 0),
+            "profit_margin": float(getattr(product, "profit_margin", 0) or 0),
+            "sales_price": float(getattr(product, "sales_price", 0) or 0),
             "created_at": product.created_at,
             "updated_at": product.updated_at,
             "current_stock": float(getattr(product, 'quantity', 0)) if hasattr(product, 'quantity') else 0.0,
@@ -421,7 +446,6 @@ class ProductService:
             # Map unit_price to price and sales_price
             if field == 'unit_price':
                 product.price = value
-                product.sales_price = value
                 product.unit_price = value
             elif field == 'gst_rate':
                 # Convert gst_rate to tax_type
@@ -447,6 +471,24 @@ class ProductService:
             elif hasattr(product, field):
                 setattr(product, field, value)
         
+        unit_price = Decimal(str(product.unit_price or product.price or 0))
+        discount_value = Decimal(str(getattr(product, "discount", 0) or 0))
+        discount_type = str(getattr(product, "discount_type", "percentage") or "percentage")
+        profit_margin = Decimal(str(getattr(product, "profit_margin", 0) or 0))
+
+        if discount_type == "fixed":
+            discount_amount = discount_value
+        else:
+            discount_amount = (unit_price * discount_value) / Decimal("100")
+
+        purchase_price = max(unit_price - discount_amount, Decimal("0"))
+        sales_price = purchase_price + ((purchase_price * profit_margin) / Decimal("100"))
+
+        product.price = unit_price
+        product.unit_price = unit_price
+        product.purchase_price = purchase_price
+        product.sales_price = sales_price
+
         # Handle image updates
         if main_image or additional_image:
             self.update_product_images(product, main_image, additional_image)

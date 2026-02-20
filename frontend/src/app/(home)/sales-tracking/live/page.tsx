@@ -90,7 +90,7 @@ export default function LiveTrackingPage() {
         `${API_BASE}/companies/${companyId}/live-tracking`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );

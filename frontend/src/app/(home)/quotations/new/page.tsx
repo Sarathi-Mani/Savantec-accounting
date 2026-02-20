@@ -130,8 +130,7 @@ export default function NewQuotationPage() {
   const getAuthToken = () => {
     if (typeof window === "undefined") return null;
     return (
-      localStorage.getItem("employee_token") ||
-      localStorage.getItem("access_token")
+      localStorage.getItem("employee_token") || localStorage.getItem("access_token")
     );
   };
   const [loading, setLoading] = useState(false);

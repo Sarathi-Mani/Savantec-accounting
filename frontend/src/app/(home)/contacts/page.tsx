@@ -68,7 +68,7 @@ export default function ContactsPage() {
       const response = await fetch(
         `${API_BASE}/companies/${companyId}/contacts?${params}`,
         {
-          headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+          headers: { Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}` },
         }
       );
 
@@ -86,7 +86,7 @@ export default function ContactsPage() {
   const fetchCustomers = async () => {
     try {
       const response = await fetch(`${API_BASE}/companies/${companyId}/customers?page_size=100`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+        headers: { Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}` },
       });
       if (response.ok) {
         const data = await response.json();
@@ -150,7 +150,7 @@ export default function ContactsPage() {
         method: editingContact ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+          Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
         },
         body: JSON.stringify(formData),
       });
@@ -174,7 +174,7 @@ export default function ContactsPage() {
         `${API_BASE}/companies/${companyId}/contacts/${contactId}`,
         {
           method: "DELETE",
-          headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+          headers: { Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}` },
         }
       );
 

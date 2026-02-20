@@ -58,7 +58,7 @@ export default function ClaimApprovalPage() {
         `${API_BASE}/api/companies/${companyId}/petrol-claims?status=submitted`,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
         }
       );
@@ -104,7 +104,7 @@ export default function ClaimApprovalPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
           },
           body: JSON.stringify({
             notes: approvalNotes || `${action === "approve" ? "Approved" : "Rejected"} by admin`,
@@ -145,7 +145,7 @@ export default function ClaimApprovalPage() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+              Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
             },
             body: JSON.stringify({
               notes: approvalNotes || `Bulk ${bulkAction === "approve" ? "Approved" : "Rejected"} by admin`,

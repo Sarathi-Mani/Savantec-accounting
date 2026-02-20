@@ -382,7 +382,7 @@ const fetchContactPersons = async (customerId: string) => {
         } else {
             // If not, try to fetch from API endpoint
             try {
-                const token = localStorage.getItem("access_token");
+                const token = localStorage.getItem("employee_token") || localStorage.getItem("access_token");
                 const response = await fetch(
                     `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/customers/${customerId}/contact-persons`,
                     {
@@ -474,7 +474,7 @@ const fetchContactPersons = async (customerId: string) => {
         setLoading(prev => ({ ...prev, salesmen: true }));
         
         // Get authentication token
-        const token = localStorage.getItem("access_token");
+        const token = localStorage.getItem("employee_token") || localStorage.getItem("access_token");
         if (!token) {
             console.error("No authentication token found");
             setSalesmen([]);
@@ -556,7 +556,7 @@ const salesmanOptions = useMemo(() => {
         
         try {
             setLoading(prev => ({ ...prev, bankAccounts: true }));
-            const token = localStorage.getItem("access_token");
+            const token = localStorage.getItem("employee_token") || localStorage.getItem("access_token");
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/bank-accounts`,
                 {
