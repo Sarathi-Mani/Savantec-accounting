@@ -8,9 +8,43 @@ import { customersApi, productsApi, invoicesApi, ordersApi, proformaInvoicesApi 
 import { salesmenApi } from "@/services/api"; // Add this import
 import { employeesApi } from "@/services/api"; // Add this import
 import Select from 'react-select';
+import CreatableSelect from "react-select/creatable";
 import { useRef } from "react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api";
+
+const DEFAULT_COUNTRIES = [
+    "India",
+    "United States",
+    "United Kingdom",
+    "Canada",
+    "Australia",
+    "United Arab Emirates",
+    "Saudi Arabia",
+    "Qatar",
+    "Kuwait",
+    "Oman",
+    "Singapore",
+    "Malaysia",
+    "Thailand",
+    "Indonesia",
+    "Philippines",
+    "China",
+    "Japan",
+    "South Korea",
+    "Germany",
+    "France",
+    "Italy",
+    "Netherlands",
+    "South Africa",
+    "Nigeria",
+    "Kenya",
+    "Brazil",
+    "Argentina",
+    "Sri Lanka",
+    "Bangladesh",
+    "Nepal",
+] as const;
 
 
 const normalizeInvoiceNumberForVoucherType = (invoiceNumber: string, _voucherType: string): string => {
@@ -209,6 +243,9 @@ export default function AddSalesPage() {
 
     const [productSearch, setProductSearch] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [countryOptions, setCountryOptions] = useState<{ value: string; label: string }[]>(
+        DEFAULT_COUNTRIES.map((country) => ({ value: country, label: country })),
+    );
 
     const [showPaymentSection, setShowPaymentSection] = useState(false);
     const [paymentData, setPaymentData] = useState({
@@ -836,6 +873,27 @@ export default function AddSalesPage() {
     // Calculate totals once
     const totals = calculateTotals();
 
+    const ensureCountryOption = (country: string) => {
+        const trimmedCountry = country.trim();
+        if (!trimmedCountry) return;
+
+        setCountryOptions((prev) => {
+            const exists = prev.some((option) => option.value.toLowerCase() === trimmedCountry.toLowerCase());
+            if (exists) return prev;
+            return [...prev, { value: trimmedCountry, label: trimmedCountry }];
+        });
+    };
+
+    const handleCountrySelect = (countryValue: string) => {
+        const trimmedCountry = countryValue.trim();
+        if (!trimmedCountry) {
+            setFormData((prev) => ({ ...prev, country: "" }));
+            return;
+        }
+        ensureCountryOption(trimmedCountry);
+        setFormData((prev) => ({ ...prev, country: trimmedCountry }));
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!company?.id) return;
@@ -1418,44 +1476,66 @@ export default function AddSalesPage() {
                             <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Shipping Address</h2>
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div>
-                                    <SelectField
-                                        label="Country"
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                        Country
+                                    </label>
+                                    <CreatableSelect
                                         name="country"
-                                        value={formData.country}
-                                        onChange={(name, value) => setFormData({ ...formData, [name]: value })}
-                                        options={[
-                                            { value: "India", label: "India" },
-                                            { value: "United States", label: "United States" },
-                                            { value: "United Kingdom", label: "United Kingdom" },
-                                            { value: "Canada", label: "Canada" },
-                                            { value: "Australia", label: "Australia" },
-                                            { value: "United Arab Emirates", label: "United Arab Emirates" },
-                                            { value: "Saudi Arabia", label: "Saudi Arabia" },
-                                            { value: "Qatar", label: "Qatar" },
-                                            { value: "Kuwait", label: "Kuwait" },
-                                            { value: "Oman", label: "Oman" },
-                                            { value: "Singapore", label: "Singapore" },
-                                            { value: "Malaysia", label: "Malaysia" },
-                                            { value: "Thailand", label: "Thailand" },
-                                            { value: "Indonesia", label: "Indonesia" },
-                                            { value: "Philippines", label: "Philippines" },
-                                            { value: "China", label: "China" },
-                                            { value: "Japan", label: "Japan" },
-                                            { value: "South Korea", label: "South Korea" },
-                                            { value: "Germany", label: "Germany" },
-                                            { value: "France", label: "France" },
-                                            { value: "Italy", label: "Italy" },
-                                            { value: "Netherlands", label: "Netherlands" },
-                                            { value: "South Africa", label: "South Africa" },
-                                            { value: "Nigeria", label: "Nigeria" },
-                                            { value: "Kenya", label: "Kenya" },
-                                            { value: "Brazil", label: "Brazil" },
-                                            { value: "Argentina", label: "Argentina" },
-                                            { value: "Sri Lanka", label: "Sri Lanka" },
-                                            { value: "Bangladesh", label: "Bangladesh" },
-                                            { value: "Nepal", label: "Nepal" }
-                                        ]}
-                                        placeholder="Select Country"
+                                        value={
+                                            countryOptions.find((option) => option.value === formData.country) ||
+                                            (formData.country
+                                                ? { value: formData.country, label: formData.country }
+                                                : null)
+                                        }
+                                        options={countryOptions}
+                                        onChange={(selected) => handleCountrySelect(selected?.value || "")}
+                                        onCreateOption={handleCountrySelect}
+                                        formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
+                                        isClearable
+                                        placeholder="Select or type country"
+                                        styles={{
+                                            control: (base: any, state: any) => ({
+                                                ...base,
+                                                minHeight: "42px",
+                                                borderRadius: "0.5rem",
+                                                borderWidth: "1px",
+                                                borderStyle: "solid",
+                                                borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
+                                                boxShadow: state.isFocused
+                                                    ? "0 0 0 2px rgba(99,102,241,0.4)"
+                                                    : "none",
+                                                backgroundColor: "transparent",
+                                                "&:hover": {
+                                                    borderColor: "#6366f1",
+                                                },
+                                            }),
+                                            valueContainer: (base: any) => ({
+                                                ...base,
+                                                padding: "0 12px",
+                                            }),
+                                            input: (base: any) => ({
+                                                ...base,
+                                                margin: 0,
+                                                padding: 0,
+                                            }),
+                                            indicatorsContainer: (base: any) => ({
+                                                ...base,
+                                                height: "42px",
+                                            }),
+                                            option: (base: any, state: any) => ({
+                                                ...base,
+                                                backgroundColor: state.isSelected
+                                                    ? "#6366f1"
+                                                    : state.isFocused
+                                                        ? "#eef2ff"
+                                                        : "white",
+                                                color: state.isSelected ? "white" : "#111827",
+                                            }),
+                                            menu: (base: any) => ({
+                                                ...base,
+                                                zIndex: 50,
+                                            }),
+                                        }}
                                     />
                                 </div>
                                 <div>
