@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { dashboardApi, invoicesApi, ordersApi } from "@/services/api";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   TrendingUp,
   Users,
@@ -123,7 +123,7 @@ interface TimeRangeMetrics {
 
 export default function SalesDashboardPage() {
   const router = useRouter();
-  const { company } = useAuth();
+  const { company, user, isEmployee } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -140,6 +140,26 @@ export default function SalesDashboardPage() {
     total_igst: 0,
     avg_order_value: 0,
   });
+
+  const isSalesEngineer = useMemo(() => {
+    if (!isEmployee || !user) return false;
+    const designationName =
+      typeof user.designation === "string"
+        ? user.designation
+        : user.designation?.name || "";
+    return /sales\s*engineer/i.test(designationName);
+  }, [isEmployee, user]);
+
+  const getBaseAmount = (row: any): number => {
+    const n = Number(row?.subtotal ?? row?.taxable_amount ?? row?.total_amount ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const getDisplayAmount = (row: any): number => {
+    if (isSalesEngineer) return getBaseAmount(row);
+    const n = Number(row?.total_amount ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  };
 
   // Format currency (handles NaN, null, undefined)
   const formatCurrency = (amount: number | undefined | null): string => {
@@ -258,7 +278,7 @@ export default function SalesDashboardPage() {
       
       // Check if invoice is within the time range
       if (invoiceDate >= startDate && invoiceDate <= now) {
-        const amt = Number(invoice.total_amount) || 0;
+        const amt = getDisplayAmount(invoice);
         const paid = Number(invoice.amount_paid) || 0;
         const due = Number(invoice.balance_due) || 0;
         const cgst = Number(invoice.cgst_amount) || 0;
@@ -296,7 +316,6 @@ export default function SalesDashboardPage() {
       
       // Fetch dashboard summary from invoice API
       const dashboardResponse = await invoicesApi.getDashboardSummary(company.id);
-      setDashboardData(dashboardResponse as any);
 
       // Fetch invoices for detailed summary
       const invoiceResponse = await invoicesApi.list(company.id, {
@@ -326,7 +345,7 @@ export default function SalesDashboardPage() {
         const isCurrentMonth = invoiceDate.getMonth() === currentMonth && 
                                invoiceDate.getFullYear() === currentYear;
         
-        const amt = Number(invoice.total_amount) || 0;
+        const amt = getDisplayAmount(invoice);
         const paid = Number(invoice.amount_paid) || 0;
         const due = Number(invoice.balance_due) || 0;
         const cgst = Number(invoice.cgst_amount) || 0;
@@ -353,6 +372,39 @@ export default function SalesDashboardPage() {
           overdueAmount += due;
         }
       });
+
+      const normalizedDashboard = (() => {
+        if (!isSalesEngineer) return dashboardResponse as any;
+
+        const customerMap = new Map<string, { customer_name: string; invoice_count: number; total_amount: number }>();
+        for (const inv of invoices) {
+          const customerName = inv.customer_name || "Walk-in Customer";
+          const amount = getDisplayAmount(inv);
+          if (!customerMap.has(customerName)) {
+            customerMap.set(customerName, { customer_name: customerName, invoice_count: 0, total_amount: 0 });
+          }
+          const row = customerMap.get(customerName)!;
+          row.invoice_count += 1;
+          row.total_amount += amount;
+        }
+
+        const topCustomers = Array.from(customerMap.values())
+          .sort((a, b) => b.total_amount - a.total_amount)
+          .slice(0, 10);
+
+        const recentInvoices = (dashboardResponse?.recent_invoices || []).map((inv: any) => ({
+          ...inv,
+          total_amount: getDisplayAmount(inv),
+        }));
+
+        return {
+          ...(dashboardResponse as any),
+          top_customers: topCustomers,
+          recent_invoices: recentInvoices,
+        };
+      })();
+
+      setDashboardData(normalizedDashboard as any);
 
       setSalesSummary({
         total_invoices: (invoiceResponse as any).total_invoices || invoiceResponse.total || invoices.length,
@@ -432,7 +484,7 @@ export default function SalesDashboardPage() {
       invoices.forEach(invoice => {
         const invoiceDate = new Date(invoice.invoice_date);
         const dateKey = invoiceDate.toISOString().split('T')[0];
-        const amount = Number(invoice.total_amount) || 0;
+        const amount = getDisplayAmount(invoice);
         const paid = Number(invoice.amount_paid) || 0;
         const due = Number(invoice.balance_due) || 0;
         const cgst = Number(invoice.cgst_amount) || 0;
@@ -484,7 +536,10 @@ export default function SalesDashboardPage() {
             }
             const productData = productMap.get(productName)!;
             productData.quantity += Number(item.quantity) || 0;
-            productData.revenue += Number(item.total_amount) || Number(item.quantity) * Number(item.rate) || 0;
+            const itemRevenue = isSalesEngineer
+              ? (Number(item.taxable_amount) || Number(item.quantity) * Number(item.rate) || 0)
+              : (Number(item.total_amount) || Number(item.quantity) * Number(item.rate) || 0);
+            productData.revenue += itemRevenue;
           });
         }
       });
@@ -709,6 +764,7 @@ export default function SalesDashboardPage() {
           </div>
 
           {/* Pending Payments for Time Range */}
+          {!isSalesEngineer && (
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -735,6 +791,7 @@ export default function SalesDashboardPage() {
               </div>
             </div>
           </div>
+          )}
 
           {/* Total Invoices for Time Range */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
@@ -915,7 +972,8 @@ export default function SalesDashboardPage() {
         </div>
       </div>
 
-      {/* GST Summary - NOW TIME RANGE BASED */}
+      {/* GST Summary - hidden for Sales Engineer */}
+      {!isSalesEngineer && (
       <div className="px-6 py-4">
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
           <div className="flex items-center justify-between mb-4">
@@ -1033,6 +1091,7 @@ export default function SalesDashboardPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* Top Products Chart */}
       <div className="px-6 py-4">
@@ -1147,7 +1206,7 @@ export default function SalesDashboardPage() {
                     </div>
                     <div className="text-right">
                       <div className="font-medium text-gray-900 dark:text-white">
-                        {formatCurrency(invoice.total_amount)}
+                        {formatCurrency(getDisplayAmount(invoice))}
                       </div>
                       <div className="text-sm text-green-600">
                         Paid: {formatCurrency(invoice.amount_paid)}
@@ -1209,14 +1268,14 @@ export default function SalesDashboardPage() {
                     </div>
                     <div className="text-right">
                       <p className="font-medium text-gray-900 dark:text-white">
-                        {formatCurrency(customer.total_amount)}
+                        {formatCurrency(isSalesEngineer ? getBaseAmount(customer) : customer.total_amount)}
                       </p>
                       <div className="w-24 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mt-1">
                         <div 
                           className="h-full bg-green-500 rounded-full"
                           style={{
                             width: dashboardData.top_customers[0]?.total_amount
-                              ? `${(customer.total_amount / dashboardData.top_customers[0].total_amount) * 100}%`
+                              ? `${((isSalesEngineer ? getBaseAmount(customer) : customer.total_amount) / dashboardData.top_customers[0].total_amount) * 100}%`
                               : '0%'
                           }}
                         ></div>

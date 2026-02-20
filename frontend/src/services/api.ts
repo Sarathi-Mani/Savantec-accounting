@@ -756,7 +756,7 @@ export const invoicesApi = {
   },
 
   getDashboardSummary: async (companyId: string): Promise<any> => {
-    const response = await api.get(`/companies/${companyId}/invoices/dashboard-summary`);
+    const response = await api.get(`/companies/${companyId}/dashboard/summary`);
     return response.data;
   },
 };

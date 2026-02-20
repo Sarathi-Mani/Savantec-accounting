@@ -16,6 +16,7 @@ from app.database.models import (
 )
 from app.database.payroll_models import Employee
 
+ACTIVE_INVOICE_STATUSES = ["pending", "paid", "partially_paid", "completed"]
 
 class SalesDashboardService:
     """Service for sales dashboard analytics."""
@@ -544,7 +545,7 @@ class SalesDashboardService:
                 Invoice.company_id == company_id,
                 Invoice.invoice_date >= from_date,
                 Invoice.invoice_date <= to_date,
-                Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.COMPLETED])
+                Invoice.status.in_(ACTIVE_INVOICE_STATUSES)
             )
         ).group_by(Brand.id, Brand.name).all()
         
@@ -606,7 +607,7 @@ class SalesDashboardService:
                 Invoice.company_id == company_id,
                 Invoice.invoice_date >= from_date,
                 Invoice.invoice_date <= to_date,
-                Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.COMPLETED])
+                Invoice.status.in_(ACTIVE_INVOICE_STATUSES)
             )
         ).group_by(Customer.billing_state, Customer.billing_state_code).all()
         
@@ -675,7 +676,7 @@ class SalesDashboardService:
                 Invoice.company_id == company_id,
                 Invoice.invoice_date >= from_date,
                 Invoice.invoice_date <= to_date,
-                Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.COMPLETED])
+                Invoice.status.in_(ACTIVE_INVOICE_STATUSES)
             )
         ).group_by(Category.id, Category.name).all()
         
@@ -749,7 +750,8 @@ class SalesDashboardService:
             # Quotations count and value
             quotations = self.db.query(
                 func.count(Quotation.id).label("count"),
-                func.sum(Quotation.total_amount).label("value")
+                # Engineer dashboard should use no-tax values.
+                func.sum(Quotation.subtotal).label("value")
             ).filter(
                 Quotation.company_id == company_id,
                 Quotation.sales_person_id == employee.id,
@@ -763,13 +765,14 @@ class SalesDashboardService:
             # Invoices (conversions) count and value
             invoices = self.db.query(
                 func.count(Invoice.id).label("count"),
-                func.sum(Invoice.total_amount).label("value")
+                # Engineer dashboard should use no-tax values.
+                func.sum(Invoice.subtotal).label("value")
             ).filter(
                 Invoice.company_id == company_id,
                 Invoice.sales_person_id == employee.id,
                 Invoice.invoice_date >= from_date,
                 Invoice.invoice_date <= to_date,
-                Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.COMPLETED])
+                Invoice.status.in_(ACTIVE_INVOICE_STATUSES)
             ).first()
             
             invoice_count = invoices.count or 0
@@ -838,21 +841,21 @@ class SalesDashboardService:
         ).filter(
             Invoice.company_id == company_id,
             func.date(Invoice.invoice_date) == today,
-            Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.COMPLETED])
+            Invoice.status.in_(ACTIVE_INVOICE_STATUSES)
         ).first()
         
         # Monthly stats
         monthly_sales = self.db.query(func.sum(Invoice.total_amount)).filter(
             Invoice.company_id == company_id,
             Invoice.invoice_date >= month_start,
-            Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.COMPLETED])
+            Invoice.status.in_(ACTIVE_INVOICE_STATUSES)
         ).scalar() or Decimal("0")
         
         # Yearly stats  
         yearly_sales = self.db.query(func.sum(Invoice.total_amount)).filter(
             Invoice.company_id == company_id,
             Invoice.invoice_date >= year_start,
-            Invoice.status.in_([InvoiceStatus.PENDING, InvoiceStatus.PAID, InvoiceStatus.PARTIALLY_PAID, InvoiceStatus.COMPLETED])
+            Invoice.status.in_(ACTIVE_INVOICE_STATUSES)
         ).scalar() or Decimal("0")
         
         # Pending payments

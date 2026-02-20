@@ -294,12 +294,15 @@ def get_engineer_dashboard(
         "invoices": 0,
         "invoice_value": 0,
         "conversion_rate": 0,
-        "target_amount": 0,
-        "achievement_percent": 0,
     }
     
     # Get pending enquiries
-    from app.database.models import Enquiry, Quotation, EnquiryStatus
+    from app.database.models import (
+        Enquiry,
+        Quotation,
+        EnquiryStatus,
+        QuotationStatus,
+    )
     
     pending_enquiries = db.query(Enquiry).filter(
         Enquiry.company_id == company_id,
@@ -308,8 +311,6 @@ def get_engineer_dashboard(
     ).count()
     
     # Get pending quotations (not converted)
-    from app.database.models import QuotationStatus
-    
     pending_quotations = db.query(Quotation).filter(
         Quotation.company_id == company_id,
         Quotation.sales_person_id == employee_id,
@@ -326,6 +327,10 @@ def get_engineer_dashboard(
     ).all()
     
     pending_visits = 0
+
+    # Sales Engineer dashboard should not expose target metrics.
+    my_stats.pop("target_amount", None)
+    my_stats.pop("achievement_percent", None)
     
     return {
         "employee_id": employee_id,
