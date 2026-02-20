@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactElement } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
@@ -39,6 +39,21 @@ import {
   Receipt,
 } from "lucide-react";
 
+type PurchaseRow = {
+  id: string;
+  purchaseDate: string;
+  dueDate: string;
+  purchaseCode: string;
+  purchaseStatus: "Received" | "Pending";
+  referenceNo: string;
+  supplierName: string;
+  total: number;
+  currencyCode: string;
+  paidAmount: number;
+  paymentStatus: "Paid" | "Partial" | "Unpaid";
+  rawStatus: string;
+};
+
 // Print component for purchase invoices
 const PrintView = ({
   purchases,
@@ -52,8 +67,8 @@ const PrintView = ({
   purchases: PurchaseRow[];
   visibleColumns: Record<string, boolean>;
   formatDate: (dateString: string) => string;
-  getPaymentStatusBadge: (status: string) => JSX.Element | null;
-  getPurchaseStatusBadge: (status: string) => JSX.Element | null;
+  getPaymentStatusBadge: (status: string) => ReactElement | null;
+  getPurchaseStatusBadge: (status: string) => ReactElement | null;
   isOverdue: (dueDate: string) => boolean;
   companyName: string;
 }) => {
@@ -349,21 +364,6 @@ const PrintView = ({
 export default function PurchaseListPage() {
   const router = useRouter();
   const { company } = useAuth();
-
-  type PurchaseRow = {
-    id: string;
-    purchaseDate: string;
-    dueDate: string;
-    purchaseCode: string;
-    purchaseStatus: "Received" | "Pending";
-    referenceNo: string;
-    supplierName: string;
-    total: number;
-    currencyCode: string;
-    paidAmount: number;
-    paymentStatus: "Paid" | "Partial" | "Unpaid";
-    rawStatus: string;
-  };
 
   const [purchases, setPurchases] = useState<PurchaseRow[]>([]);
   const [loading, setLoading] = useState(false);

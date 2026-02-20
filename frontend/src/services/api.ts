@@ -2365,6 +2365,7 @@ export const purchasesApi = {
       from_date?: string;
       to_date?: string;
       purchase_type?: string;
+      search?: string;
     }
   ): Promise<PurchaseListResponse> => {
     // Add company_id to query params
