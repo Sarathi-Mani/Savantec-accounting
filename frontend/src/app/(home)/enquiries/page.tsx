@@ -127,7 +127,7 @@ const isConvertedToQuotationStatus = (status: string): boolean => {
 
 export default function EnquiriesPage() {
   const router = useRouter();
-  const { company } = useAuth();
+  const { company, getToken, isEmployee } = useAuth();
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -189,6 +189,12 @@ export default function EnquiriesPage() {
   const companyId =
     company?.id || (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
 
+  const getAuthHeaders = (): Record<string, string> | null => {
+    const token = getToken();
+    if (!token) return null;
+    return { Authorization: `Bearer ${token}` };
+  };
+
   const buildQueryParams = (forExport = false) => {
     const params = new URLSearchParams();
     if (statusFilter) params.append("status", statusFilter);
@@ -247,15 +253,16 @@ export default function EnquiriesPage() {
 
   const fetchDropdownData = async () => {
     try {
-      const authHeader = {
-        Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-      };
+      const authHeader = getAuthHeaders();
+      if (!authHeader) return;
 
       // Fetch companies (for company filter)
-      const companiesResponse = await fetch(`${API_BASE}/companies`, { headers: authHeader });
-      if (companiesResponse.ok) {
-        const companiesData = await companiesResponse.json();
-        setCompanies(companiesData);
+      if (!isEmployee) {
+        const companiesResponse = await fetch(`${API_BASE}/companies`, { headers: authHeader });
+        if (companiesResponse.ok) {
+          const companiesData = await companiesResponse.json();
+          setCompanies(companiesData);
+        }
       }
 
       // Fetch Indian states from backend (GST state codes)
@@ -324,14 +331,17 @@ export default function EnquiriesPage() {
   const fetchEnquiries = async () => {
     try {
       setLoading(true);
+      const authHeaders = getAuthHeaders();
+      if (!authHeaders) {
+        setLoading(false);
+        return;
+      }
       const params = buildQueryParams();
 
       const response = await fetch(
         `${API_BASE}/companies/${companyId}/enquiries?${params}`,
         {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-          },
+          headers: authHeaders,
         }
       );
 
@@ -351,6 +361,11 @@ export default function EnquiriesPage() {
     try {
       setReportLoading(true);
       setReportError("");
+      const authHeaders = getAuthHeaders();
+      if (!authHeaders) {
+        setReportLoading(false);
+        return;
+      }
 
       const params = new URLSearchParams();
       if (fromDate) params.append("from_date", fromDate);
@@ -359,13 +374,13 @@ export default function EnquiriesPage() {
 
       const [engineerRes, stateRes, brandRes] = await Promise.all([
         fetch(`${API_BASE}/companies/${companyId}/enquiries/reports/by-engineer${qs ? `?${qs}` : ""}`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+          headers: authHeaders,
         }),
         fetch(`${API_BASE}/companies/${companyId}/enquiries/reports/by-state${qs ? `?${qs}` : ""}`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+          headers: authHeaders,
         }),
         fetch(`${API_BASE}/companies/${companyId}/enquiries/reports/by-brand${qs ? `?${qs}` : ""}`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+          headers: authHeaders,
         }),
       ]);
 
@@ -392,14 +407,14 @@ export default function EnquiriesPage() {
 
   const fetchAllEnquiriesForExport = useCallback(async (): Promise<Enquiry[]> => {
     try {
+      const authHeaders = getAuthHeaders();
+      if (!authHeaders) return [];
       const params = buildQueryParams(true);
 
       const response = await fetch(
         `${API_BASE}/companies/${companyId}/enquiries?${params.toString()}`,
         {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-          },
+          headers: authHeaders,
         }
       );
 
@@ -413,7 +428,7 @@ export default function EnquiriesPage() {
       console.error("Export fetch failed:", error);
       return [];
     }
-  }, [companyId, statusFilter, fromDate, toDate, salesmanFilter, companyFilter, engineerFilter, brandFilter, stateFilter]);
+  }, [companyId, statusFilter, fromDate, toDate, salesmanFilter, companyFilter, engineerFilter, brandFilter, stateFilter, getToken]);
 
   const getExportData = async (): Promise<Enquiry[]> => {
     if (cachedExportData) return cachedExportData;
@@ -423,13 +438,13 @@ export default function EnquiriesPage() {
   const handleDeleteEnquiry = async (enquiryId: string, enquiryNumber: string) => {
     if (window.confirm(`Are you sure you want to delete enquiry ${enquiryNumber}? This action cannot be undone.`)) {
       try {
+        const authHeaders = getAuthHeaders();
+        if (!authHeaders) return;
         const response = await fetch(
           `${API_BASE}/companies/${companyId}/enquiries/${enquiryId}`,
           {
             method: "DELETE",
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-            },
+            headers: authHeaders,
           }
         );
 
