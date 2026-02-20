@@ -447,7 +447,7 @@ export default function EditSalesPage() {
 
             try {
                 setLoadingInvoiceNumber(true);
-                const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+                const token = typeof window !== "undefined" ? localStorage.getItem("employee_token") || localStorage.getItem("access_token") : null;
 
                 // Backend API call
                 const response = await fetch(
@@ -522,7 +522,7 @@ export default function EditSalesPage() {
             setLoading(prev => ({ ...prev, salesmen: true }));
 
             // Check if we have a token
-            const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+            const token = typeof window !== "undefined" ? localStorage.getItem("employee_token") || localStorage.getItem("access_token") : null;
             if (!token || !company?.id) {
                 console.error("No access token or company ID found");
                 return;

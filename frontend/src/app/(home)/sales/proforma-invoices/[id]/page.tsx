@@ -135,7 +135,7 @@ export default function ProformaInvoiceViewPage() {
     const loadSalesEngineers = async () => {
       if (!company?.id) return;
       try {
-        const token = localStorage.getItem("access_token");
+        const token = localStorage.getItem("employee_token") || localStorage.getItem("access_token");
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/sales-engineers`,
           {
@@ -189,7 +189,7 @@ export default function ProformaInvoiceViewPage() {
     const fetchContactPersons = async () => {
       if (!company?.id || !invoice?.customer_id) return;
       try {
-        const token = localStorage.getItem("access_token");
+        const token = localStorage.getItem("employee_token") || localStorage.getItem("access_token");
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/customers/${invoice.customer_id}/contact-persons`,
           {

@@ -1,6 +1,6 @@
 """Product schemas."""
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional,Dict
+from typing import Optional, Dict
 from datetime import datetime
 from decimal import Decimal
 
@@ -11,15 +11,21 @@ class ProductCreate(BaseModel):
     description: Optional[str] = None
     sku: Optional[str] = Field(None, max_length=50)
     hsn_code: Optional[str] = Field(None, max_length=8)
-    
+
     unit_price: Decimal = Field(..., gt=0, decimal_places=2)
     unit: str = "unit"
-    
     gst_rate: str = "18"
-   
+
+    seller_points: int = 0
+    discount_type: str = "percentage"
+    discount: Decimal = Field(default=Decimal("0"), ge=0, decimal_places=2)
+    purchase_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
+    profit_margin: Decimal = Field(default=Decimal("0"), ge=0, decimal_places=2)
+    sales_price: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
+    is_inclusive: bool = False
 
     is_service: bool = False
-    
+
     # New fields for mapping
     brand_id: Optional[str] = None
     category_id: Optional[str] = None
@@ -35,6 +41,14 @@ class ProductCreate(BaseModel):
         valid_rates = ["0", "5", "12", "18", "28"]
         if v not in valid_rates:
             raise ValueError(f"GST rate must be one of: {', '.join(valid_rates)}")
+        return v
+
+    @field_validator("discount_type")
+    @classmethod
+    def validate_discount_type(cls, v):
+        valid_types = ["percentage", "fixed"]
+        if v not in valid_types:
+            raise ValueError("discount_type must be 'percentage' or 'fixed'")
         return v
 
     @field_validator("hsn_code")
@@ -53,13 +67,20 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     sku: Optional[str] = Field(None, max_length=50)
     hsn_code: Optional[str] = Field(None, max_length=8)
-    
+
     unit_price: Optional[Decimal] = Field(None, gt=0, decimal_places=2)
     unit: Optional[str] = None
-    
     gst_rate: Optional[str] = None
+
+    seller_points: Optional[int] = None
+    discount_type: Optional[str] = None
+    discount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
+    purchase_price: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
+    profit_margin: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
+    sales_price: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
+    is_inclusive: Optional[bool] = None
+
     godown_id: Optional[str] = None
-  
     is_service: Optional[bool] = None
     is_active: Optional[bool] = None
 
@@ -73,6 +94,13 @@ class ProductResponse(BaseModel):
     unit_price: float
     unit: str
     gst_rate: str
+    seller_points: int = 0
+    discount_type: str = "percentage"
+    discount: float = 0.0
+    purchase_price: float = 0.0
+    profit_margin: float = 0.0
+    sales_price: float = 0.0
+    is_inclusive: bool = False
     is_service: bool
     # Image fields
     image: Optional[str] = None
@@ -90,9 +118,10 @@ class ProductResponse(BaseModel):
     category: Optional[Dict] = None
     godown_id: Optional[str] = None
     godown_name: Optional[str] = None
-    
+
     class Config:
-        from_attributes = True      
+        from_attributes = True
+
 
 class ProductListResponse(BaseModel):
     """Schema for product list response."""
@@ -100,4 +129,3 @@ class ProductListResponse(BaseModel):
     total: int
     page: int
     page_size: int
-

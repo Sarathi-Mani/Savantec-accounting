@@ -49,8 +49,7 @@ export default function NewDeliveryChallanPage() {
   const getToken = () => {
     if (typeof window === "undefined") return null;
     return (
-      localStorage.getItem("employee_token") ||
-      localStorage.getItem("access_token")
+      localStorage.getItem("employee_token") || localStorage.getItem("access_token")
     );
   };
   const searchParams = useSearchParams();

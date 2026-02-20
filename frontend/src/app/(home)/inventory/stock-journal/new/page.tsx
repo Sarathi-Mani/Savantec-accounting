@@ -82,7 +82,7 @@ export default function NewStockJournalPage() {
   const [error, setError] = useState<string | null>(null);
 
   const getToken = () =>
-    typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    typeof window !== "undefined" ? localStorage.getItem("employee_token") || localStorage.getItem("access_token") : null;
 
   // Load products and godowns
   useEffect(() => {

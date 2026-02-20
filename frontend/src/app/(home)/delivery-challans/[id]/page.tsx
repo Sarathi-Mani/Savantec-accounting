@@ -84,8 +84,7 @@ export default function DeliveryChallanDetailPage() {
   const getToken = () => {
     if (typeof window === "undefined") return null;
     return (
-      localStorage.getItem("employee_token") ||
-      localStorage.getItem("access_token")
+      localStorage.getItem("employee_token") || localStorage.getItem("access_token")
     );
   };
 

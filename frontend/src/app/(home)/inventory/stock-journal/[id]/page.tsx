@@ -60,7 +60,7 @@ export default function StockJournalDetailPage() {
   const [cancelReason, setCancelReason] = useState("");
 
   const getToken = () =>
-    typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    typeof window !== "undefined" ? localStorage.getItem("employee_token") || localStorage.getItem("access_token") : null;
 
   const fetchJournal = async () => {
     const token = getToken();

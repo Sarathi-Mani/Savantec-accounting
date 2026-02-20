@@ -352,7 +352,7 @@ export default function PurchaseOrderListPage() {
       if (userType === "employee") {
         return localStorage.getItem("employee_token");
       }
-      return localStorage.getItem("access_token") || localStorage.getItem("employee_token");
+      return localStorage.getItem("employee_token") || localStorage.getItem("access_token");
     }
     return null;
   };

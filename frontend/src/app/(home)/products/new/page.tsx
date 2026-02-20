@@ -18,6 +18,12 @@ interface Category {
 export default function NewProductPage() {
   const { company } = useAuth();
   const router = useRouter();
+  const getToken = () => {
+    if (typeof window === "undefined") return null;
+    return (
+      localStorage.getItem("employee_token") || localStorage.getItem("access_token")
+    );
+  };
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
@@ -99,12 +105,13 @@ export default function NewProductPage() {
   useEffect(() => {
     const unitPrice = formData.unit_price || 0;
     const discount = formData.discount || 0;
-    const gstRate = parseFloat(formData.gst_rate) || 18;
-    const profitMargin = formData.profit_margin || 0;
+     const profitMargin = formData.profit_margin || 0;
 
-    // Calculate purchase price (unit price + tax)
-    const taxAmount = unitPrice * (gstRate / 100);
-    const purchasePrice = unitPrice + taxAmount;
+    const discountAmount =
+      formData.discount_type === "fixed"
+        ? discount
+        : (unitPrice * discount) / 100;
+    const purchasePrice = Math.max(unitPrice - discountAmount, 0);
 
     // Calculate sales price (purchase price + profit margin)
     const profitAmount = purchasePrice * (profitMargin / 100);
@@ -115,7 +122,7 @@ export default function NewProductPage() {
       purchase_price: Number(purchasePrice.toFixed(2)),
       sales_price: Number(salesPrice.toFixed(2))
     }));
-  }, [formData.unit_price, formData.discount, formData.gst_rate, formData.profit_margin]);
+  }, [formData.unit_price, formData.discount, formData.discount_type, formData.profit_margin]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -208,6 +215,12 @@ const handleSubmit = async (e: React.FormEvent) => {
     formDataToSend.append('is_inclusive', formData.is_inclusive.toString());
     formDataToSend.append('unit_price', formData.unit_price.toString());
     formDataToSend.append('gst_rate', formData.gst_rate);
+    formDataToSend.append('discount_type', formData.discount_type);
+    formDataToSend.append('discount', formData.discount.toString());
+    formDataToSend.append('purchase_price', formData.purchase_price.toString());
+    formDataToSend.append('profit_margin', formData.profit_margin.toString());
+    formDataToSend.append('sales_price', formData.sales_price.toString());
+    formDataToSend.append('seller_points', formData.seller_points.toString());
 
     // Send selected godown when chosen from Company dropdown
     if (companySelection.startsWith("godown:")) {
@@ -224,7 +237,7 @@ const handleSubmit = async (e: React.FormEvent) => {
 
     console.log("Sending form data with images");
 
-    const token = localStorage.getItem("access_token");
+    const token = getToken();
     const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/products`;
     
     const response = await fetch(apiUrl, {
@@ -290,7 +303,7 @@ const handleSubmit = async (e: React.FormEvent) => {
 // Helper function to upload images
 const uploadImages = async (companyId: string, productId: string, mainImage: File | null, additionalImage: File | null) => {
   try {
-    const token = localStorage.getItem("access_token");
+    const token = getToken();
     
     if (mainImage) {
       const mainImageFormData = new FormData();
@@ -664,7 +677,7 @@ const uploadImages = async (companyId: string, productId: string, mainImage: Fil
                     readOnly
                     className="w-full rounded-lg border border-stroke bg-gray-50 px-4 py-3 text-dark-6 dark:border-dark-3 dark:bg-dark-2"
                   />
-                  <p className="mt-1 text-xs text-dark-6">Auto Calculated: Price + GST Amount</p>
+                  <p className="mt-1 text-xs text-dark-6">Auto Calculated: Unit Price - Discount (GST excluded)</p>
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-medium text-dark dark:text-white">

@@ -29,7 +29,7 @@ export default function ProformaInvoicesPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const getToken = () =>
-    typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    typeof window !== "undefined" ? localStorage.getItem("employee_token") || localStorage.getItem("access_token") : null;
 
   const fetchInvoices = async () => {
       const token = getToken();

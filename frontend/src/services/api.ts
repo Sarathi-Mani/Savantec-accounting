@@ -32,16 +32,7 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-
-    // FIX: Check for employee token too
-    const userType = localStorage.getItem('user_type');
-    let token;
-
-    if (userType === 'employee') {
-      token = localStorage.getItem('employee_token');
-    } else {
-      token = localStorage.getItem('access_token');
-    }
+    const token = localStorage.getItem('employee_token') || localStorage.getItem('access_token');
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;

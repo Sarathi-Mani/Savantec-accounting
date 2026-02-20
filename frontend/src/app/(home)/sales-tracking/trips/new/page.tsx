@@ -35,7 +35,7 @@ export default function NewTripPage() {
 
   const fetchEngineers = async () => {
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+      const token = typeof window !== "undefined" ? localStorage.getItem("employee_token") || localStorage.getItem("access_token") : null;
       if (!token || !companyId) {
         console.error("No access token or company ID found");
         return;
@@ -185,7 +185,7 @@ export default function NewTripPage() {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+                Authorization: `Bearer ${localStorage.getItem("employee_token") || localStorage.getItem("access_token")}`,
               },
               body: JSON.stringify(tripData),
             }

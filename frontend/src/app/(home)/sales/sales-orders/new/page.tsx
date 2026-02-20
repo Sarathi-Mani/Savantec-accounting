@@ -392,7 +392,7 @@ export default function AddSalesOrderPage() {
             setLoading(prev => ({ ...prev, salesmen: true }));
 
             // Use the sales-engineers API endpoint
-            const token = localStorage.getItem("access_token");
+            const token = localStorage.getItem("employee_token") || localStorage.getItem("access_token");
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_API_URL}/companies/${company!.id}/sales-engineers`,
                 {
@@ -494,7 +494,7 @@ export default function AddSalesOrderPage() {
 
     const prefillFromQuotation = async (quotationId: string) => {
         if (!company?.id) return;
-        const token = localStorage.getItem("access_token");
+        const token = localStorage.getItem("employee_token") || localStorage.getItem("access_token");
         if (!token) return;
 
         setPrefillLoading(true);
@@ -582,7 +582,7 @@ export default function AddSalesOrderPage() {
             } else {
                 // If not, try to fetch from API endpoint
                 try {
-                    const token = localStorage.getItem("access_token");
+                    const token = localStorage.getItem("employee_token") || localStorage.getItem("access_token");
                     const response = await fetch(
                         `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/customers/${customerId}/contact-persons`,
                         {

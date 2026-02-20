@@ -199,7 +199,7 @@ export default function AddPurchaseReturnPage() {
         if (userType === "employee") {
             return localStorage.getItem("employee_token");
         }
-        return localStorage.getItem("access_token");
+        return localStorage.getItem("employee_token") || localStorage.getItem("access_token");
     };
 
     const [productSearch, setProductSearch] = useState("");
