@@ -826,7 +826,7 @@ class Customer(Base):
     
     # Basic Information
     name = Column(String(255), nullable=False)
-    contact = Column(String(15), nullable=False)
+    contact = Column(String(255), nullable=False)
     email = Column(String(255))
     mobile = Column(String(15))
     
@@ -5944,5 +5944,6 @@ INDIAN_STATE_CODES = {
     "97": "Other Territory",
     "99": "Centre Jurisdiction",
 }
+
 
 

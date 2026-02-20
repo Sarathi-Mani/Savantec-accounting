@@ -1,5 +1,5 @@
 """Category API endpoints."""
-from typing import Optional
+from typing import Any, Dict, List, Optional, Union
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,7 @@ from app.auth.dependencies import get_current_active_user
 router = APIRouter(prefix="/companies/{company_id}/categories", tags=["categories"])
 
 
-def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
+def get_company_or_404(company_id: str, user: Union[User, Dict[str, Any]], db: Session) -> Company:
     """Helper to get company or raise 404."""
     service = CompanyService(db)
     company = service.get_company(company_id, user)
@@ -23,6 +23,54 @@ def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
             detail="Company not found"
         )
     return company
+
+
+def _extract_permissions(current_user: Dict[str, Any]) -> List[str]:
+    """Extract permission keys from employee auth payload."""
+    direct_permissions = current_user.get("permissions")
+    if isinstance(direct_permissions, list):
+        return [str(p).strip().lower() for p in direct_permissions if p is not None]
+
+    designation = current_user.get("designation")
+    if isinstance(designation, dict):
+        designation_permissions = designation.get("permissions")
+        if isinstance(designation_permissions, list):
+            return [str(p).strip().lower() for p in designation_permissions if p is not None]
+
+    return []
+
+
+def get_creator_user_id_or_403(
+    current_user: Union[User, Dict[str, Any]],
+    company: Company
+) -> str:
+    """Resolve creator user ID for write operations with employee permission checks."""
+    if isinstance(current_user, User):
+        return current_user.id
+
+    if isinstance(current_user, dict):
+        if current_user.get("is_employee"):
+            permissions = _extract_permissions(current_user)
+            # Keep backward compatibility with existing designation key mapping.
+            # In many setups, categories are controlled by "variant" permission.
+            if "category" not in permissions and "variant" not in permissions:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Insufficient permission: category/variant"
+                )
+
+            # Category.created_by references users.id, so store company owner user id.
+            return company.user_id
+
+        if current_user.get("type") == "user":
+            user_data = current_user.get("data")
+            if user_data is not None and hasattr(user_data, "id"):
+                return user_data.id
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid authentication data"
+    )
 
 
 @router.get("/", response_model=CategoryListResponse)
@@ -67,14 +115,15 @@ async def search_categories(
 async def create_category(
     company_id: str,
     category_data: CategoryCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: Union[User, Dict[str, Any]] = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """Create a new category."""
     company = get_company_or_404(company_id, current_user, db)
     service = CategoryService(db)
+    creator_user_id = get_creator_user_id_or_403(current_user, company)
     try:
-        category = service.create_category(company, category_data, current_user.id)
+        category = service.create_category(company, category_data, creator_user_id)
         return category
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

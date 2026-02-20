@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple, Dict, Any
 from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP
 import uuid
+import re
 
 from app.database.models import (
     Purchase, PurchaseItem, PurchaseImportItem, PurchaseExpenseItem, PurchasePayment,
@@ -25,20 +26,53 @@ class PurchaseService:
         """Round amount to 2 decimal places."""
         return Decimal(amount).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     
-    def _get_next_purchase_number(self, company_id: str) -> str:
-        """Generate next purchase number."""
-        today = datetime.utcnow()
-        year = today.year
-        month = today.month
-        
-        # Get the count for this month
-        count = self.db.query(Purchase).filter(
+    def _normalize_to_datetime(self, value: Optional[Any]) -> datetime:
+        """Normalize supported date-like values to datetime."""
+        if value is None:
+            return datetime.utcnow()
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, date):
+            return datetime.combine(value, datetime.min.time())
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except Exception:
+                return datetime.utcnow()
+        return datetime.utcnow()
+
+    def _get_purchase_fy_prefix(self, value: Optional[Any] = None) -> str:
+        """Financial-year prefix, e.g. PUR/2025-2026/."""
+        dt = self._normalize_to_datetime(value)
+        start_year = dt.year if dt.month >= 4 else dt.year - 1
+        end_year = start_year + 1
+        return f"PUR/{start_year}-{end_year}/"
+
+    def _get_next_purchase_number(self, company_id: str, value: Optional[Any] = None) -> str:
+        """Generate next purchase number by FY and max suffix."""
+        prefix = self._get_purchase_fy_prefix(value)
+
+        rows = self.db.query(Purchase.purchase_number).filter(
             Purchase.company_id == company_id,
-            func.extract('year', Purchase.created_at) == year,
-            func.extract('month', Purchase.created_at) == month
-        ).count()
-        
-        return f"PUR-{year}{month:02d}-{count + 1:03d}"
+            Purchase.purchase_number.isnot(None),
+            Purchase.purchase_number.like(f"{prefix}%"),
+        ).all()
+
+        max_num = 0
+        for (purchase_number,) in rows:
+            raw = str(purchase_number or "").strip()
+            match = re.search(r"(\d+)$", raw)
+            if not match:
+                continue
+            parsed = int(match.group(1))
+            if parsed > max_num:
+                max_num = parsed
+
+        return f"{prefix}{max_num + 1:04d}"
+
+    def get_next_purchase_number(self, company_id: str, value: Optional[Any] = None) -> str:
+        """Public helper for next purchase number."""
+        return self._get_next_purchase_number(company_id, value)
     
     def _calculate_item_totals(self, item: dict) -> Dict[str, Decimal]:
         """Calculate totals for a regular purchase item with currency conversion."""
@@ -174,9 +208,10 @@ class PurchaseService:
         # ============================================
         print("\n🔢 STEP 3: Generating purchase number")
         # Use purchase-specific numbering to avoid collisions with other invoice modules.
-        purchase_number = self._get_next_purchase_number(company_id)
+        invoice_date_for_number = additional_data.get("invoice_date")
+        purchase_number = self._get_next_purchase_number(company_id, invoice_date_for_number)
         while self.db.query(Purchase).filter(Purchase.purchase_number == purchase_number).first():
-            purchase_number = self._get_next_purchase_number(company_id)
+            purchase_number = self._get_next_purchase_number(company_id, invoice_date_for_number)
         print(f"✅ Generated purchase number: {purchase_number}")
         
         # ============================================

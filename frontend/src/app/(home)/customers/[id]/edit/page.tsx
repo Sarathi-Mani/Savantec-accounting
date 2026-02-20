@@ -451,16 +451,11 @@ export default function EditCustomerPage() {
     }
 
     if (!formData.contact.trim()) {
-      setError("Primary contact number is required");
+      setError("Primary contact is required");
       return false;
     }
 
-    // Validate contact number format
     const contactRegex = /^[0-9]{10}$/;
-    if (formData.contact && !contactRegex.test(formData.contact.replace(/\D/g, ''))) {
-      setError("Please enter a valid 10-digit contact number");
-      return false;
-    }
 
     // Validate email if provided
     if (formData.email && !isValidEmail(formData.email)) {
@@ -809,11 +804,11 @@ export default function EditCustomerPage() {
                       Primary Contact <span className="text-red-500">*</span>
                     </label>
                     <input
-                      type="tel"
+                      type="text"
                       name="contact"
                       value={formData.contact}
                       onChange={handleChange}
-                      placeholder="Enter contact number"
+                      placeholder="Enter primary contact"
                       required
                       className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                     />
@@ -1497,3 +1492,4 @@ export default function EditCustomerPage() {
     </div>
   );
 }
+
