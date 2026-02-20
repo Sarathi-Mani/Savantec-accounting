@@ -186,16 +186,10 @@ export default function VendorEditPage() {
     }
 
     if (!formData.contact.trim()) {
-      setFormError("Primary contact number is required");
+      setFormError("Primary contact is required");
       return false;
     }
 
-    // Validate contact number
-    const contactRegex = /^[0-9]{10}$/;
-    if (formData.contact && !contactRegex.test(formData.contact.replace(/\D/g, ''))) {
-      setFormError("Please enter a valid 10-digit contact number");
-      return false;
-    }
 
     // Validate email if provided
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
@@ -386,11 +380,11 @@ export default function VendorEditPage() {
                   Primary Contact <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="tel"
+                  type="text"
                   name="contact"
                   value={formData.contact}
                   onChange={handleChange}
-                  placeholder="Enter contact number"
+                  placeholder="Enter primary contact"
                   required
                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                 />
