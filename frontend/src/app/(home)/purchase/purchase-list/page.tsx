@@ -422,7 +422,7 @@ export default function PurchaseListPage() {
       id: purchase.id,
       purchaseDate: purchase.invoice_date,
       dueDate: purchase.due_date || purchase.invoice_date,
-      purchaseCode: purchase.invoice_number || `PUR-${purchase.id.slice(0, 8).toUpperCase()}`,
+      purchaseCode: purchase.purchase_number || purchase.invoice_number || `PUR-${purchase.id.slice(0, 8).toUpperCase()}`,
       purchaseStatus,
       referenceNo: purchase.vendor_invoice_number || "-",
       supplierName: purchase.vendor_name || "Unknown Vendor",

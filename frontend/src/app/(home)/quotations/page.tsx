@@ -58,7 +58,13 @@ export default function QuotationsPage() {
 
   const [cachedExportData, setCachedExportData] = useState<Quotation[] | null>(null);
 
-  const getToken = () => typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const getToken = () => {
+    if (typeof window === "undefined") return null;
+    return (
+      localStorage.getItem("employee_token") ||
+      localStorage.getItem("access_token")
+    );
+  };
 
   useEffect(() => {
     fetchQuotations();
@@ -89,6 +95,9 @@ export default function QuotationsPage() {
       );
       if (response.ok) {
         setData(await response.json());
+      } else {
+        const errorText = await response.text();
+        console.error("Failed to fetch quotations:", response.status, errorText);
       }
     } catch (error) {
       console.error("Failed to fetch quotations:", error);

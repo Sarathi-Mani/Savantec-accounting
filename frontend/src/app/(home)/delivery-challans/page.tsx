@@ -38,7 +38,13 @@ export default function DeliveryChallansPage() {
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
 
-  const getToken = () => typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const getToken = () => {
+    if (typeof window === "undefined") return null;
+    return (
+      localStorage.getItem("employee_token") ||
+      localStorage.getItem("access_token")
+    );
+  };
 
   useEffect(() => {
     const fetchDCs = async () => {
@@ -66,6 +72,9 @@ export default function DeliveryChallansPage() {
         );
         if (response.ok) {
           setData(await response.json());
+        } else {
+          const errorText = await response.text();
+          console.error("Failed to fetch delivery challans:", response.status, errorText);
         }
       } catch (error) {
         console.error("Failed to fetch delivery challans:", error);

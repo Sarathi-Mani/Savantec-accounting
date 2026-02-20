@@ -28,6 +28,29 @@ def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
     return company
 
 
+def _resolve_creator_user_id(current_user: Any, company: Company) -> str:
+    """Resolve a valid users.id for created_by/user_id FKs."""
+    if isinstance(current_user, User):
+        return current_user.id
+
+    if isinstance(current_user, dict):
+        if current_user.get("is_employee"):
+            # purchases.created_by references users.id, so use company owner id
+            return company.user_id
+
+        user_data = current_user.get("data")
+        if user_data is not None and hasattr(user_data, "id"):
+            return str(user_data.id)
+
+        if current_user.get("id"):
+            return str(current_user.get("id"))
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid authentication data",
+    )
+
+
 # ==================== SCHEMAS ====================
 
 class PurchaseItemCreate(BaseModel):
@@ -452,9 +475,10 @@ async def create_purchase(
     
     try:
         print("⏳ Creating purchase...")
+        creator_user_id = _resolve_creator_user_id(current_user, company)
         purchase = purchase_service.create_purchase(
             company_id=company.id,
-            user_id=current_user.id,
+            user_id=creator_user_id,
             vendor_id=data.vendor_id,
             purchase_type=data.purchase_type,
             items=items,
@@ -684,10 +708,11 @@ async def add_payment_to_purchase(
     payment_data = data.model_dump()
     
     try:
+        creator_user_id = _resolve_creator_user_id(current_user, company)
         payment = purchase_service.add_payment_to_purchase(
             purchase_id=purchase.id,
             company_id=company.id,
-            user_id=current_user.id,
+            user_id=creator_user_id,
             payment_data=payment_data
         )
     except ValueError as e:

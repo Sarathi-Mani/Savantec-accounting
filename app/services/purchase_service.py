@@ -41,34 +41,17 @@ class PurchaseService:
                 return datetime.utcnow()
         return datetime.utcnow()
 
-    def _get_purchase_fy_prefix(self, value: Optional[Any] = None) -> str:
-        """Financial-year prefix, e.g. PUR/2025-2026/."""
-        dt = self._normalize_to_datetime(value)
-        start_year = dt.year if dt.month >= 4 else dt.year - 1
-        end_year = start_year + 1
-        return f"PUR/{start_year}-{end_year}/"
-
     def _get_next_purchase_number(self, company_id: str, value: Optional[Any] = None) -> str:
-        """Generate next purchase number by FY and max suffix."""
-        prefix = self._get_purchase_fy_prefix(value)
-
-        rows = self.db.query(Purchase.purchase_number).filter(
-            Purchase.company_id == company_id,
-            Purchase.purchase_number.isnot(None),
-            Purchase.purchase_number.like(f"{prefix}%"),
-        ).all()
-
-        max_num = 0
-        for (purchase_number,) in rows:
-            raw = str(purchase_number or "").strip()
-            match = re.search(r"(\d+)$", raw)
-            if not match:
-                continue
-            parsed = int(match.group(1))
-            if parsed > max_num:
-                max_num = parsed
-
-        return f"{prefix}{max_num + 1:04d}"
+        """Generate purchase number in PUR-XXXXXXXX format."""
+        while True:
+            suffix = uuid.uuid4().hex[:8].upper()
+            candidate = f"PUR-{suffix}"
+            exists = self.db.query(Purchase.id).filter(
+                Purchase.company_id == company_id,
+                Purchase.purchase_number == candidate,
+            ).first()
+            if not exists:
+                return candidate
 
     def get_next_purchase_number(self, company_id: str, value: Optional[Any] = None) -> str:
         """Public helper for next purchase number."""
@@ -255,6 +238,14 @@ class PurchaseService:
         purchase = Purchase(**purchase_data)
         self.db.add(purchase)
         self.db.flush()
+        # Safety: if any DB-side logic overrides purchase_number, force API format before commit.
+        if not re.match(r"^PUR-[A-Z0-9]{8}$", str(purchase.purchase_number or "")):
+            print(
+                f"⚠️ purchase_number overridden to '{purchase.purchase_number}', "
+                f"forcing format '{purchase_number}'"
+            )
+            purchase.purchase_number = purchase_number
+            self.db.flush()
         print(f"✅ Purchase instance created with ID: {purchase.id}")
         
         # ============================================

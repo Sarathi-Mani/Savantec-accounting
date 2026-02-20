@@ -418,21 +418,25 @@ export default function AddPurchasePage() {
         },
     ]);
 
+    const resolvedCompanyId =
+        company?.id ||
+        (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
+
     // Load data on component mount
     useEffect(() => {
-        if (company?.id && purchaseId) {
+        if (resolvedCompanyId && purchaseId) {
             loadSuppliers();
             loadProducts();
             loadPurchaseForEdit();
         }
-    }, [company?.id, purchaseId]);
+    }, [resolvedCompanyId, purchaseId]);
 
     const loadPurchaseForEdit = async () => {
-        if (!company?.id || !purchaseId) return;
+        if (!resolvedCompanyId || !purchaseId) return;
         try {
             setLoadingPurchaseNumber(true);
             setIsPageLoading(true);
-            const purchase: any = await purchasesApi.get(company.id, purchaseId);
+            const purchase: any = await purchasesApi.get(resolvedCompanyId, purchaseId);
 
             const paymentType = purchase.payment_type || "INR";
             const exchangeRate = Number(purchase.exchange_rate || 1);
@@ -1094,9 +1098,11 @@ const calculateTotals = () => {
             
             console.log('✅ Purchase updated successfully! Response:', response);
             const respData = (response as any)?.data ?? response as any;
-const purchaseNumber = respData.purchase_number || respData.data?.purchase_number || 
-                      respData.invoice_number || respData.data?.invoice_number ||
-                      `PUR-${Date.now()}`;
+            const purchaseNumber =
+                respData.purchase_number ||
+                respData.data?.purchase_number ||
+                nextPurchaseNumber ||
+                "";
             alert(`Purchase ${purchaseNumber} updated successfully!`);
             router.push(`/purchase/purchase-list`);
 
@@ -1752,48 +1758,17 @@ useEffect(() => {
                                         </div>
                                     </div>
                                 </div>
-
-                                {/* Item Search */}
-                                <div className="mb-4 flex gap-2">
-                                    <div className="relative flex-1">
-                                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                                            <svg className="h-5 w-5 text-dark-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                            </svg>
-                                        </div>
-                                        <input
-                                            type="text"
-                                            value={productSearch}
-                                            onChange={(e) => handleProductSearch(e.target.value)}
-                                            placeholder="Item name / Barcode / Itemcode / Description"
-                                            className="w-full rounded-lg border py-2.5 pl-10 pr-4"
-                                        />
-                                        {searchResults.length > 0 && (
-                                            <div className="absolute z-50 mt-1 w-full rounded-lg border bg-white shadow">
-                                                {searchResults.map(product => (
-                                                    <div
-                                                        key={product.id}
-                                                        onClick={() => handleSearchSelect(product)}
-                                                        className="cursor-pointer px-4 py-2 hover:bg-gray-100"
-                                                    >
-                                                        {product.name} {product.sku && `(${product.sku})`}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={addItem}
-                                        className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
-                                    >
-                                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                        </svg>
-                                    </button>
-                                </div>
-
-                                {/* Items Table - Different columns based on purchase type */}
+                            <div className="mb-4 flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => addItem()}
+                                    className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
+                                >
+                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                </button>
+                            </div>{/* Items Table - Different columns based on purchase type */}
                                 <div className="overflow-x-auto">
                                     <table className="w-full">
                                         <thead>
@@ -2417,6 +2392,7 @@ useEffect(() => {
         </div>
     );
 }
+
 
 
 

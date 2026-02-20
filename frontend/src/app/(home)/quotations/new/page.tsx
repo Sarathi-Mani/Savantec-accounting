@@ -127,6 +127,13 @@ export default function NewQuotationPage() {
   const editQuotationId = searchParams.get("edit_id");
   const enquiryIdForPrefill = searchParams.get("enquiry_id");
   const isEditMode = Boolean(editQuotationId);
+  const getAuthToken = () => {
+    if (typeof window === "undefined") return null;
+    return (
+      localStorage.getItem("employee_token") ||
+      localStorage.getItem("access_token")
+    );
+  };
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -153,7 +160,7 @@ const fetchNextQuotationNumber = async () => {
   if (!company?.id) return "QT-0001";
   
   try {
-    const token = localStorage.getItem("access_token");
+    const token = getAuthToken();
     const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/next-number`;
     console.log("Fetching next number from:", apiUrl);
     
@@ -213,7 +220,7 @@ const fetchNextQuotationNumber = async () => {
       setIsFetchingQuotation(true);
       setCopyError("");
       
-      const token = localStorage.getItem("access_token");
+      const token = getAuthToken();
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations?search=${encodeURIComponent(quotationNumber)}&page_size=100`,
         {
@@ -264,7 +271,7 @@ const fetchNextQuotationNumber = async () => {
     if (!company?.id || !customerId) return null;
     
     try {
-      const token = localStorage.getItem("access_token");
+      const token = getAuthToken();
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/customers/${customerId}`,
         {
@@ -292,7 +299,7 @@ const fetchNextQuotationNumber = async () => {
     if (!company?.id || !enquiryId) return;
 
     try {
-      const token = localStorage.getItem("access_token");
+      const token = getAuthToken();
       if (!token) return;
 
       const response = await fetch(
@@ -587,7 +594,7 @@ const fetchNextQuotationNumber = async () => {
     if (!company?.id || !quotationId) return;
 
     try {
-      const token = localStorage.getItem("access_token");
+      const token = getAuthToken();
       if (!token) return;
 
       const response = await fetch(
@@ -805,7 +812,7 @@ const fetchNextQuotationNumber = async () => {
     // Fetch Excel notes if available
     if (quotation.excel_notes_file_url && company?.id) {
       try {
-        const token = localStorage.getItem("access_token");
+        const token = getAuthToken();
         const excelResponse = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${quotation.id}/excel-notes`,
           {
@@ -1603,7 +1610,7 @@ const productOptions = useMemo(() =>
         apiUrl,
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+            Authorization: `Bearer ${getAuthToken()}`,
           },
         }
       );
@@ -1804,7 +1811,7 @@ const productOptions = useMemo(() =>
     if (!company?.id) return;
     
     try {
-      const token = localStorage.getItem("access_token");
+      const token = getAuthToken();
       if (!token) {
         showToast("Authentication required", "error");
         return;
@@ -2205,7 +2212,7 @@ const productOptions = useMemo(() =>
       return;
     }
 
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    const token = typeof window !== "undefined" ? getAuthToken() : null;
     if (!company?.id || !token) {
       showToast("Authentication required", "error");
       return;
@@ -4361,3 +4368,4 @@ const itemsForBackend = items
     </div>
   );
 }
+

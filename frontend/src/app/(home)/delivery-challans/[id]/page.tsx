@@ -81,7 +81,13 @@ export default function DeliveryChallanDetailPage() {
   const [godowns, setGodowns] = useState<Godown[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
 
-  const getToken = () => typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const getToken = () => {
+    if (typeof window === "undefined") return null;
+    return (
+      localStorage.getItem("employee_token") ||
+      localStorage.getItem("access_token")
+    );
+  };
 
   useEffect(() => {
     const fetchDC = async () => {
