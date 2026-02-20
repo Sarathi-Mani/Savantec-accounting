@@ -2510,7 +2510,7 @@ class Vendor(Base):
     
     # Basic Information
     name = Column(String(255), nullable=False, index=True)
-    contact = Column(String(15), nullable=False)  # Primary contact number
+    contact = Column(String(255), nullable=False)  # Primary contact (text)
     email = Column(String(255))
     mobile = Column(String(15))
     

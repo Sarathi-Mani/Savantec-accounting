@@ -126,7 +126,7 @@ class VendorCreate(BaseModel):
     """Schema for creating a vendor."""
     # Basic Information
     name: str = Field(..., min_length=1, max_length=255)
-    contact: str = Field(..., min_length=10, max_length=15)
+    contact: str = Field(..., min_length=1, max_length=255)
     email: Optional[EmailStr] = None
     mobile: Optional[str] = Field(None, min_length=10, max_length=15)
     
@@ -179,17 +179,19 @@ class VendorCreate(BaseModel):
         return v.upper()
     
     @validator('contact')
-    def validate_phone(cls, v):
-        digits = ''.join(filter(str.isdigit, v))
-        if len(digits) < 10:
-            raise ValueError('Contact number must be at least 10 digits')
-        return digits
+    def validate_contact(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError('Primary contact is required')
+        return v
     
     class Config:
         json_schema_extra = {
             "example": {
                 "name": "ABC Suppliers",
-                "contact": "9876543210",
+                "contact": "Ravi Kumar",
                 "email": "contact@abcsuppliers.com",
                 "tax_number": "27ABCDE1234F1Z5",
                 "pan_number": "ABCDE1234F",
@@ -208,7 +210,7 @@ class VendorCreate(BaseModel):
 class VendorUpdate(BaseModel):
     """Schema for updating a vendor."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
-    contact: Optional[str] = Field(None, min_length=10, max_length=15)
+    contact: Optional[str] = Field(None, min_length=1, max_length=255)
     email: Optional[EmailStr] = None
     mobile: Optional[str] = Field(None, min_length=10, max_length=15)
     tax_number: Optional[str] = Field(None, max_length=15)
