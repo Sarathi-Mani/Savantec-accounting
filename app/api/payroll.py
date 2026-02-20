@@ -34,63 +34,20 @@ from app.services.loan_service import LoanService
 from app.services.pf_service import PFService
 from app.services.esi_service import ESIService
 from app.services.pt_service import PTService
+from app.services.company_service import CompanyService
 
 router = APIRouter(prefix="/companies/{company_id}/payroll", tags=["Payroll"])
 
 
 def get_company_or_404(company_id: str, current_user, db: Session) -> Company:
     """Get company or raise 404 - handles both users and employees."""
-    # Remove the type hint "User" from current_user parameter
-    
-    # Handle employee (dict) case
-    if isinstance(current_user, dict) and current_user.get("is_employee"):
-        # For employees, they can only access their own company
-        if str(current_user.get("company_id")) != company_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to access this company"
-            )
-        
-        # Get the company for employee
-        company = db.query(Company).filter(Company.id == company_id).first()
-        if not company:
-            raise HTTPException(status_code=404, detail="Company not found")
-        
-        return company
-    
-    # Handle regular user (User object) case
-    elif isinstance(current_user, User):
-        company = db.query(Company).filter(
-            Company.id == company_id,
-            Company.user_id == current_user.id
-        ).first()
-        
-        if not company:
-            raise HTTPException(status_code=404, detail="Company not found")
-        
-        return company
-    
-    # Handle user in dict format (from get_current_active_user)
-    elif isinstance(current_user, dict) and current_user.get("type") == "user":
-        user_data = current_user.get("data")
-        if not user_data or not hasattr(user_data, "id"):
-            raise HTTPException(status_code=401, detail="Invalid user data")
-        
-        company = db.query(Company).filter(
-            Company.id == company_id,
-            Company.user_id == user_data.id
-        ).first()
-        
-        if not company:
-            raise HTTPException(status_code=404, detail="Company not found")
-        
-        return company
-    
-    else:
+    company = CompanyService(db).get_company(company_id, current_user)
+    if not company:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication data"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Company not found"
         )
+    return company
 
 pwd_context = CryptContext(
     schemes=["bcrypt", "pbkdf2_sha256"],

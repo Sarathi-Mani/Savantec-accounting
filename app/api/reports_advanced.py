@@ -11,6 +11,7 @@ from io import BytesIO
 from app.database.connection import get_db
 from app.database.models import User, Company
 from app.auth.dependencies import get_current_active_user
+from app.services.company_service import CompanyService
 from app.services.ledger_report_service import LedgerReportService
 from app.services.aging_report_service import AgingReportService
 from app.services.ratio_analysis_service import RatioAnalysisService
@@ -21,10 +22,7 @@ router = APIRouter(tags=["Reports"])
 
 def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
     """Get company or raise 404."""
-    company = db.query(Company).filter(
-        Company.id == company_id,
-        Company.user_id == user.id
-    ).first()
+    company = CompanyService(db).get_company(company_id, user)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company

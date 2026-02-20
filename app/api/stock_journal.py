@@ -12,6 +12,7 @@ from app.database.models import (
 )
 from app.auth.dependencies import get_current_active_user
 from app.services.stock_journal_service import StockJournalService
+from app.services.company_service import CompanyService
 
 
 router = APIRouter(tags=["Stock Journal"])
@@ -19,7 +20,7 @@ router = APIRouter(tags=["Stock Journal"])
 
 def get_company_or_404(company_id: str, current_user: User, db: Session) -> Company:
     """Get company or raise 404."""
-    company = db.query(Company).filter(Company.id == company_id).first()
+    company = CompanyService(db).get_company(company_id, current_user)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company
