@@ -17,16 +17,14 @@ from app.services.bank_reconciliation_service import BankReconciliationService
 from app.services.recurring_transaction_service import RecurringTransactionService
 from app.services.cash_flow_forecast_service import CashFlowForecastService
 from app.services.bank_statement_import_service import BankStatementImportService
+from app.services.company_service import CompanyService
 
 router = APIRouter(tags=["Banking"])
 
 
 def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
     """Get company or raise 404."""
-    company = db.query(Company).filter(
-        Company.id == company_id,
-        Company.user_id == user.id
-    ).first()
+    company = CompanyService(db).get_company(company_id, user)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company

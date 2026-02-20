@@ -12,21 +12,39 @@ from app.database.payroll_models import Employee
 
 from app.services.order_service import OrderService
 from app.services.invoice_service import InvoiceService
+from app.services.company_service import CompanyService
 from app.schemas.invoice import InvoiceCreate, InvoiceResponse, InvoiceItemCreate, VoucherType
 from app.auth.dependencies import get_current_active_user
 from app.database.models import User, CreatorType  ,Company, OrderStatus, PurchaseOrder, Vendor  # Add PurchaseOrd 
 router = APIRouter(prefix="/companies/{company_id}/orders", tags=["Orders"])
 
 
-def get_company_or_404(company_id: str, current_user: User, db: Session) -> Company:
+def get_company_or_404(company_id: str, current_user: Any, db: Session) -> Company:
     """Get company or raise 404."""
-    company = db.query(Company).filter(
-        Company.id == company_id,
-        Company.user_id == current_user.id
-    ).first()
+    company = CompanyService(db).get_company(company_id, current_user)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company
+
+
+def _resolve_creator_user_id(current_user: Any, company: Company) -> str:
+    """Resolve creator user id for entities that reference users.id."""
+    if isinstance(current_user, User):
+        return current_user.id
+
+    if isinstance(current_user, dict):
+        if current_user.get("is_employee"):
+            return company.user_id
+
+        if current_user.get("type") == "user":
+            user_data = current_user.get("data")
+            if user_data is not None and hasattr(user_data, "id"):
+                return str(user_data.id)
+
+        if current_user.get("id"):
+            return str(current_user.get("id"))
+
+    raise HTTPException(status_code=401, detail="Invalid authentication data")
 
 
 def get_contact_person_name(db: Session, contact_person_id: Optional[str]) -> Optional[str]:
@@ -878,7 +896,7 @@ async def create_purchase_order(
         
         items_dict.append(item_dict)
     
-    creator_id = data.creator_id or current_user.id
+    creator_id = data.creator_id or _resolve_creator_user_id(current_user, company)
     creator_type = data.creator_type.value  # Convert enum to string
     # Convert Decimal fields to strings for service layer
     order = service.create_purchase_order(

@@ -15,6 +15,19 @@ security = HTTPBearer(auto_error=False)
 EMPLOYEE_SECRET_KEY = "employee-secret-key-change-in-production"
 ALGORITHM = "HS256"
 
+
+class AuthPayload(dict):
+    """Dict payload with attribute access for backward compatibility."""
+
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError as exc:
+            raise AttributeError(key) from exc
+
+    def __setattr__(self, key, value):
+        self[key] = value
+
 async def get_token_from_header(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ) -> Optional[str]:
@@ -100,7 +113,7 @@ async def get_current_user(
                     designation_id = designation_id or str(employee.designation_id)
             
             # Return employee data as dict (not User object)
-            return {
+            return AuthPayload({
                 "type": "employee",
                 "id": employee_id,
                 "company_id": company_id,
@@ -109,7 +122,7 @@ async def get_current_user(
                 "designation_id": designation_id,
                 "permissions": permissions,
                 "is_employee": True
-            }
+            })
     except JWTError:
         # Not an employee token, continue to try other token types
         pass
@@ -133,11 +146,11 @@ async def get_current_user(
             db.refresh(user)
         
         # Mark as regular user
-        return {
+        return AuthPayload({
             "type": "user",
             "data": user,
             "is_employee": False
-        }
+        })
     
     # THIRD: Verify token with Supabase (regular user)
     supabase_user = await verify_supabase_token(token)
@@ -160,11 +173,11 @@ async def get_current_user(
         db.refresh(user)
     
     # Mark as regular user
-    return {
+    return AuthPayload({
         "type": "user",
         "data": user,
         "is_employee": False
-    }
+    })
 
 async def get_current_active_user(
     current_user: Union[User, Dict[str, Any]] = Depends(get_current_user)

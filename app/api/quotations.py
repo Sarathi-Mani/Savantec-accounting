@@ -15,6 +15,7 @@ from app.database.connection import get_db
 from app.database.models import User, Company, Customer, QuotationStatus, ContactPerson,Quotation
 from app.auth.dependencies import get_current_active_user
 from app.services.quotation_service import QuotationService
+from app.services.company_service import CompanyService
 import traceback
 
 # Import payroll models
@@ -33,16 +34,7 @@ router = APIRouter(tags=["Quotations"])
 
 def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
     """Get company or raise 404."""
-    if isinstance(user, dict) and user.get("is_employee"):
-        if str(user.get("company_id")) != str(company_id):
-            raise HTTPException(status_code=404, detail="Company not found")
-        company = db.query(Company).filter(Company.id == company_id).first()
-    else:
-        user_id = user.get("id") if isinstance(user, dict) else user.id
-        company = db.query(Company).filter(
-            Company.id == company_id,
-            Company.user_id == user_id
-        ).first()
+    company = CompanyService(db).get_company(company_id, user)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company
@@ -451,13 +443,7 @@ async def get_customer_contact_persons(
     db: Session = Depends(get_db)
 ):
     """Get contact persons for a specific customer."""
-    # Verify company belongs to user
-    company = db.query(Company).filter(
-        Company.id == company_id,
-        Company.user_id == current_user.id
-    ).first()
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
+    company = get_company_or_404(company_id, current_user, db)
     
     # Check if customer exists and belongs to company
     customer = db.query(Customer).filter(
@@ -503,13 +489,7 @@ async def create_quotation(
         except Exception as _debug_err:
             print(f"[EQ-DEBUG][quotation:create] debug_error={_debug_err}")
         
-        # Verify company belongs to user
-        company = db.query(Company).filter(
-            Company.id == company_id,
-            Company.user_id == current_user.id
-        ).first()
-        if not company:
-            raise HTTPException(status_code=404, detail="Company not found")
+        company = get_company_or_404(company_id, current_user, db)
         
         # Parse dates
         def parse_date(date_str):

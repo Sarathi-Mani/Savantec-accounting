@@ -929,8 +929,14 @@ async def bulk_update_purchase_requests(
         company_id=company.id,
         purchase_request_ids=data.purchase_request_ids,
         update_data=update_data,
-        updated_by_user_id=current_user.id if current_user.__class__.__name__ == 'User' else None,
-        updated_by_employee_id=current_user.id if current_user.__class__.__name__ == 'Employee' else None
+        updated_by_user_id=(
+            current_user.id
+            if isinstance(current_user, User) or (isinstance(current_user, dict) and not current_user.get("is_employee"))
+            else None
+        ),
+        updated_by_employee_id=(
+            current_user.id if isinstance(current_user, dict) and current_user.get("is_employee") else None
+        )
     )
     
     return {

@@ -9,6 +9,7 @@ from app.auth.dependencies import get_current_user, get_current_active_user
 from app.services.accounting_service import AccountingService
 from app.services.bank_import_service import BankImportService
 from app.services.report_service import ReportService
+from app.services.company_service import CompanyService
 from app.schemas.accounting import (
     AccountCreate, AccountUpdate, AccountResponse, AccountWithChildren, AccountLedgerResponse,
     TransactionCreate, TransactionResponse, TransactionListResponse, TransactionEntryResponse,
@@ -23,10 +24,7 @@ router = APIRouter(prefix="/companies/{company_id}", tags=["Accounting"])
 
 def get_company_or_404(company_id: str, current_user: User, db: Session) -> Company:
     """Get company or raise 404."""
-    company = db.query(Company).filter(
-        Company.id == company_id,
-        Company.user_id == current_user.id
-    ).first()
+    company = CompanyService(db).get_company(company_id, current_user)
     
     if not company:
         raise HTTPException(
