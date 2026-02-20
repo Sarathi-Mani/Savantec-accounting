@@ -2342,6 +2342,19 @@ export interface InputGSTSummary {
 // ============== Purchase Invoice API ==============
 
 export const purchasesApi = {
+  nextNumber: async (
+    companyId: string,
+    purchaseDate?: string
+  ): Promise<{ purchase_number: string }> => {
+    const response = await api.get(`/purchases/next-number`, {
+      params: {
+        company_id: companyId,
+        ...(purchaseDate ? { purchase_date: purchaseDate } : {}),
+      },
+    });
+    return response.data;
+  },
+
   list: async (
     companyId: string,
     params?: {

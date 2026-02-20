@@ -348,7 +348,11 @@ export default function PurchaseOrderListPage() {
 
   const getToken = () => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("access_token");
+      const userType = localStorage.getItem("user_type");
+      if (userType === "employee") {
+        return localStorage.getItem("employee_token");
+      }
+      return localStorage.getItem("access_token") || localStorage.getItem("employee_token");
     }
     return null;
   };
