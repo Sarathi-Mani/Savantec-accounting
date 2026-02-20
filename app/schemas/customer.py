@@ -107,7 +107,7 @@ class CustomerBase(BaseModel):
     """Base customer schema."""
     # Basic Information
     name: str = Field(..., min_length=2, max_length=255)
-    contact: str = Field(..., min_length=1, max_length=20)
+    contact: str = Field(..., min_length=1, max_length=255)
     email: Optional[EmailStr] = None
     mobile: Optional[str] = Field(None, max_length=20)
     
@@ -176,15 +176,25 @@ class CustomerBase(BaseModel):
                 raise ValueError("Invalid PAN number format")
         return v
     
-    @field_validator("contact", "mobile")
+    @field_validator("contact")
     @classmethod
-    def validate_contact_numbers(cls, v):
-        """Validate contact number format."""
+    def validate_contact(cls, v):
+        """Validate primary contact as free text."""
+        if v is None:
+            return v
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("Primary contact is required")
+        return cleaned
+
+    @field_validator("mobile")
+    @classmethod
+    def validate_mobile_number(cls, v):
+        """Validate mobile number format."""
         if v:
-            # Remove all non-digit characters
             cleaned = "".join(filter(str.isdigit, v))
             if len(cleaned) != 10:
-                raise ValueError("Contact number must be 10 digits")
+                raise ValueError("Mobile number must be 10 digits")
             return cleaned
         return v
     
@@ -233,7 +243,7 @@ class CustomerCreate(CustomerBase):
 class CustomerUpdate(BaseModel):
     """Schema for updating a customer."""
     name: Optional[str] = Field(None, min_length=2, max_length=255)
-    contact: Optional[str] = Field(None, min_length=1, max_length=20)
+    contact: Optional[str] = Field(None, min_length=1, max_length=255)
     email: Optional[EmailStr] = None
     mobile: Optional[str] = Field(None, max_length=20)
     
@@ -272,6 +282,26 @@ class CustomerUpdate(BaseModel):
     
     customer_type: Optional[str] = None
     is_active: Optional[bool] = None
+
+    @field_validator("contact")
+    @classmethod
+    def validate_contact(cls, v):
+        if v is None:
+            return v
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("Primary contact is required")
+        return cleaned
+
+    @field_validator("mobile")
+    @classmethod
+    def validate_mobile_number(cls, v):
+        if v:
+            cleaned = "".join(filter(str.isdigit, v))
+            if len(cleaned) != 10:
+                raise ValueError("Mobile number must be 10 digits")
+            return cleaned
+        return v
     
     model_config = ConfigDict(populate_by_name=True)
 
@@ -425,3 +455,4 @@ class CustomerTypeResponse(BaseModel):
 
 class CustomerTypeListResponse(BaseModel):
     customer_types: List[CustomerTypeResponse]
+

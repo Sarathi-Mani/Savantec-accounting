@@ -556,6 +556,20 @@ async def list_purchases(
     )
 
 
+@router.get("/next-number")
+async def get_next_purchase_number(
+    company_id: str = Query(..., description="Company ID"),
+    purchase_date: Optional[date] = Query(None, description="Purchase date for FY"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get next available purchase number (FY based)."""
+    company = get_company_or_404(company_id, current_user, db)
+    service = PurchaseService(db)
+    number = service.get_next_purchase_number(company.id, purchase_date)
+    return {"purchase_number": number}
+
+
 @router.get("/{purchase_id}", response_model=PurchaseResponse)
 async def get_purchase(
     company_id: str = Query(..., description="Company ID"),

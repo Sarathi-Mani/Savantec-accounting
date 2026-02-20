@@ -424,16 +424,18 @@ export default function AddPurchasePage() {
         }
     }, [company?.id]);
 
+    useEffect(() => {
+        if (!company?.id) return;
+        loadNextPurchaseNumber();
+    }, [company?.id, formData.purchase_date]);
+
     const loadNextPurchaseNumber = async () => {
         if (!company?.id) return;
 
         try {
             setLoadingPurchaseNumber(true);
-            const today = new Date();
-            const year = today.getFullYear();
-            const month = String(today.getMonth() + 1).padStart(2, '0');
-            const purchaseNumber = `PUR-${year}${month}-001`;
-            setNextPurchaseNumber(purchaseNumber);
+            const response = await purchasesApi.nextNumber(company.id, formData.purchase_date || undefined);
+            setNextPurchaseNumber(response?.purchase_number || "");
         } catch (error) {
             console.error("Failed to load next purchase number:", error);
         } finally {
