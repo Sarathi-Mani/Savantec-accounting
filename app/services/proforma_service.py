@@ -3,6 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
+import re
 
 from app.database.models import (
     Company, Customer, Product, ProformaInvoice, ProformaInvoiceItem
@@ -14,6 +15,39 @@ class ProformaInvoiceService:
     
     def __init__(self, db: Session):
         self.db = db
+
+    def _get_financial_year_prefix(self, dt: Optional[datetime] = None) -> str:
+        """Return PF prefix using Apr-Mar financial year, e.g. PF/2026-2027/."""
+        current = dt or datetime.utcnow()
+        start_year = current.year if current.month >= 4 else current.year - 1
+        end_year = start_year + 1
+        return f"PF/{start_year}-{end_year}/"
+
+    def _get_next_proforma_invoice_number(self, company: Company, dt: Optional[datetime] = None) -> str:
+        """Generate next proforma invoice number using max numeric suffix for current FY prefix."""
+        prefix = self._get_financial_year_prefix(dt)
+
+        rows = self.db.query(ProformaInvoice.invoice_number).filter(
+            ProformaInvoice.company_id == company.id,
+            ProformaInvoice.invoice_number.isnot(None),
+            ProformaInvoice.invoice_number.like(f"{prefix}%"),
+        ).all()
+
+        max_num = 0
+        for (invoice_number,) in rows:
+            raw = str(invoice_number or "").strip()
+            match = re.search(r"(\d+)$", raw)
+            if not match:
+                continue
+            parsed = int(match.group(1))
+            if parsed > max_num:
+                max_num = parsed
+
+        return f"{prefix}{max_num + 1:04d}"
+
+    def get_next_proforma_invoice_number(self, company: Company, dt: Optional[datetime] = None) -> str:
+        """Public helper to fetch next proforma invoice number."""
+        return self._get_next_proforma_invoice_number(company, dt)
     
     def create_proforma_invoice(
         self,
@@ -59,11 +93,8 @@ class ProformaInvoiceService:
             print(f"  item_code: '{item.get('item_code')}'")
             print(f"  product_id: '{item.get('product_id')}'")
         
-        # Generate proforma invoice number
-        invoice_count = self.db.query(ProformaInvoice).filter(
-            ProformaInvoice.company_id == company.id
-        ).count()
-        invoice_number = f"PF/{datetime.now().year}-{datetime.now().year+1}/{invoice_count + 1:04d}"
+        # Generate proforma invoice number using max suffix + 1 (avoids duplicate from count-based logic)
+        invoice_number = self._get_next_proforma_invoice_number(company, proforma_date)
         
         print(f"DEBUG: Proforma invoice number: {invoice_number}")
         

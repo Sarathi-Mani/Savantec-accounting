@@ -324,6 +324,22 @@ async def create_proforma_invoice(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/next-number")
+async def get_next_proforma_invoice_number(
+    company_id: str,
+    proforma_date: Optional[date] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Get next available proforma invoice number for selected date/FY."""
+    company = get_company_or_404(company_id, current_user, db)
+    service = ProformaInvoiceService(db)
+
+    dt = datetime.combine(proforma_date, datetime.min.time()) if proforma_date else None
+    next_number = service.get_next_proforma_invoice_number(company, dt)
+    return {"invoice_number": next_number}
+
+
 @router.get("/", response_model=List[ProformaInvoiceResponse])
 async def list_proforma_invoices(
     company_id: str,

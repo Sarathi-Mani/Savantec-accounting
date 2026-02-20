@@ -164,6 +164,7 @@ export default function EditSalesOrderPage() {
     const { company, user } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLoadingOrder, setIsLoadingOrder] = useState(true);
+    const [salesOrderCode, setSalesOrderCode] = useState("");
     const [showTerms, setShowTerms] = useState(true);
     const [showOtherFields, setShowOtherFields] = useState(false);
 
@@ -298,11 +299,19 @@ export default function EditSalesOrderPage() {
         return "pending";
     };
 
+    const salesOrderCodeParts = useMemo(() => {
+        const code = (salesOrderCode || "").trim();
+        const match = code.match(/^(.*\/)(\d+)$/);
+        if (!match) return { prefix: code, sequence: "" };
+        return { prefix: match[1], sequence: match[2] };
+    }, [salesOrderCode]);
+
     const loadOrder = async (id: string) => {
         try {
             setIsLoadingOrder(true);
             const order = await ordersApi.getSalesOrder(company!.id, id) as any;
             if (!order) return;
+            setSalesOrderCode(order.order_number || "");
 
             setFormData(prev => ({
                 ...prev,
@@ -1144,13 +1153,13 @@ export default function EditSalesOrderPage() {
                                     <div className="flex gap-2">
                                         <input
                                             type="text"
-                                            value="SO/25-26/"
+                                            value={salesOrderCodeParts.prefix}
                                             className="flex-1 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 outline-none dark:border-dark-3 dark:bg-dark-2"
                                             readOnly
                                         />
                                         <input
                                             type="text"
-                                            value="1159"
+                                            value={salesOrderCodeParts.sequence}
                                             className="w-24 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                             readOnly
                                         />

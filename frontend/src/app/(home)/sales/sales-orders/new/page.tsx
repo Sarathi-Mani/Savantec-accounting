@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
-import { customersApi, productsApi, salesOrdersApi } from "@/services/api";
+import { customersApi, productsApi, salesOrdersApi, ordersApi } from "@/services/api";
 import { employeesApi } from "@/services/api";
 import Select from 'react-select';
 import { useRef } from "react";
@@ -177,6 +177,8 @@ export default function AddSalesOrderPage() {
     const [prefillLoading, setPrefillLoading] = useState(false);
     const [prefillError, setPrefillError] = useState("");
     const [prefillContactPerson, setPrefillContactPerson] = useState("");
+    const [nextSalesOrderCode, setNextSalesOrderCode] = useState("");
+    const [loadingSalesOrderCode, setLoadingSalesOrderCode] = useState(false);
 
     const [loading, setLoading] = useState({
         customers: false,
@@ -266,8 +268,72 @@ export default function AddSalesOrderPage() {
             loadCustomers();
             loadProducts();
             loadSalesmen();
+            loadNextSalesOrderCode();
         }
     }, [company?.id]);
+
+    const getDefaultSalesOrderCode = () => {
+        const year = new Date().getFullYear();
+        return `SO/${year}-${year + 1}/0001`;
+    };
+
+    const getNextSalesOrderCodeFromList = (orderNumbers: string[]) => {
+        let maxNumber = 0;
+        let prefix = "";
+        let width = 4;
+
+        for (const orderNumber of orderNumbers) {
+            const value = String(orderNumber || "").trim();
+            if (!value) continue;
+
+            const match = value.match(/^(.*\/)(\d+)$/);
+            if (!match) continue;
+
+            const currentPrefix = match[1];
+            const currentNum = parseInt(match[2], 10);
+            const currentWidth = match[2].length;
+
+            if (Number.isNaN(currentNum)) continue;
+
+            if (currentNum > maxNumber) {
+                maxNumber = currentNum;
+                prefix = currentPrefix;
+                width = currentWidth;
+            }
+        }
+
+        if (!prefix) {
+            return getDefaultSalesOrderCode();
+        }
+
+        return `${prefix}${String(maxNumber + 1).padStart(width, "0")}`;
+    };
+
+    const loadNextSalesOrderCode = async () => {
+        if (!company?.id) return;
+
+        try {
+            setLoadingSalesOrderCode(true);
+            const orders = await ordersApi.listSalesOrders(company.id);
+            const orderNumbers = (orders || []).map((order: any) => order?.order_number).filter(Boolean);
+            setNextSalesOrderCode(getNextSalesOrderCodeFromList(orderNumbers));
+        } catch (error) {
+            console.error("Failed to load next sales order number:", error);
+            setNextSalesOrderCode(getDefaultSalesOrderCode());
+        } finally {
+            setLoadingSalesOrderCode(false);
+        }
+    };
+
+    const salesOrderCodeParts = useMemo(() => {
+        const fallback = getDefaultSalesOrderCode();
+        const code = (nextSalesOrderCode || fallback).trim();
+        const match = code.match(/^(.*\/)(\d+)$/);
+        if (!match) {
+            return { prefix: code, sequence: "" };
+        }
+        return { prefix: match[1], sequence: match[2] };
+    }, [nextSalesOrderCode]);
 
     useEffect(() => {
         const quotationId = searchParams?.get("fromQuotation");
@@ -1115,13 +1181,13 @@ export default function AddSalesOrderPage() {
                                     <div className="flex gap-2">
                                         <input
                                             type="text"
-                                            value="SO/25-26/"
+                                            value={loadingSalesOrderCode ? "Loading..." : salesOrderCodeParts.prefix}
                                             className="flex-1 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 outline-none dark:border-dark-3 dark:bg-dark-2"
                                             readOnly
                                         />
                                         <input
                                             type="text"
-                                            value="1159"
+                                            value={loadingSalesOrderCode ? "" : salesOrderCodeParts.sequence}
                                             className="w-24 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                             readOnly
                                         />

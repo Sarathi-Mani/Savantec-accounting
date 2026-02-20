@@ -417,6 +417,13 @@ export const proformaInvoicesApi = {
     return response.data;
   },
 
+  nextNumber: async (companyId: string, proformaDate?: string) => {
+    const response = await api.get(`/companies/${companyId}/proforma-invoices/next-number`, {
+      params: { proforma_date: proformaDate || undefined },
+    });
+    return response.data;
+  },
+
   create: async (companyId: string, data: ProformaInvoiceCreate) => {
     const response = await api.post(`/companies/${companyId}/proforma-invoices`, data);
     return response.data;

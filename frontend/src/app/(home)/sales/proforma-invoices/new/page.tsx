@@ -166,6 +166,8 @@ export default function AddProformaInvoicePage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showTerms, setShowTerms] = useState(true);
     const [showOtherFields, setShowOtherFields] = useState(false);
+    const [proformaCode, setProformaCode] = useState("");
+    const [loadingProformaCode, setLoadingProformaCode] = useState(false);
 const [contactPersons, setContactPersons] = useState<any[]>([]);
     const [productSearch, setProductSearch] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -264,10 +266,45 @@ const [contactPersons, setContactPersons] = useState<any[]>([]);
     }, [company?.id]);
 
     useEffect(() => {
+        if (!company?.id || isEditMode) return;
+        loadNextProformaCode();
+    }, [company?.id, isEditMode, formData.proforma_date]);
+
+    const getDefaultProformaCode = () => {
+        const baseDate = formData.proforma_date ? new Date(`${formData.proforma_date}T00:00:00`) : new Date();
+        const startYear = baseDate.getMonth() >= 3 ? baseDate.getFullYear() : baseDate.getFullYear() - 1;
+        const endYear = startYear + 1;
+        return `PF/${startYear}-${endYear}/0001`;
+    };
+
+    const loadNextProformaCode = async () => {
+        if (!company?.id) return;
+        try {
+            setLoadingProformaCode(true);
+            const response: any = await proformaInvoicesApi.nextNumber(company.id, formData.proforma_date || undefined);
+            setProformaCode(response?.invoice_number || getDefaultProformaCode());
+        } catch (error) {
+            console.error("Failed to load next proforma code:", error);
+            setProformaCode(getDefaultProformaCode());
+        } finally {
+            setLoadingProformaCode(false);
+        }
+    };
+
+    const proformaCodeParts = useMemo(() => {
+        const fallback = getDefaultProformaCode();
+        const code = (proformaCode || fallback).trim();
+        const match = code.match(/^(.*\/)(\d+)$/);
+        if (!match) return { prefix: code, sequence: "" };
+        return { prefix: match[1], sequence: match[2] };
+    }, [proformaCode]);
+
+    useEffect(() => {
         const loadExisting = async () => {
             if (!company?.id || !editId) return;
             try {
                 const existing = await proformaInvoicesApi.get(company.id, editId);
+                setProformaCode(existing.invoice_number || existing.proforma_number || "");
                 setFormData(prev => ({
                     ...prev,
                     customer_id: existing.customer_id || "",
@@ -874,13 +911,13 @@ const customerOptions = useMemo(() => {
                                     <div className="flex gap-2">
                                         <input
                                             type="text"
-                                            value="PF/25-26/"
+                                            value={loadingProformaCode && !isEditMode ? "Loading..." : proformaCodeParts.prefix}
                                             className="flex-1 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 outline-none dark:border-dark-3 dark:bg-dark-2"
                                             readOnly
                                         />
                                         <input
                                             type="text"
-                                            value="551"
+                                            value={loadingProformaCode && !isEditMode ? "" : proformaCodeParts.sequence}
                                             className="w-24 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                             readOnly
                                         />
