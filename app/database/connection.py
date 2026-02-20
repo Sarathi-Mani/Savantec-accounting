@@ -12,7 +12,15 @@ DATABASE_URL = settings.DATABASE_URL or "sqlite:///./gst_invoice.db"
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
-    engine = create_engine(DATABASE_URL)
+    # Keep pooled Postgres connections healthy across idle periods/reloads.
+    # This prevents intermittent OperationalError -> 503 responses.
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        pool_size=5,
+        max_overflow=10,
+    )
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

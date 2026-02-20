@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { customersApi, getErrorMessage } from "@/services/api";
+import { customerTypesApi, customersApi, getErrorMessage } from "@/services/api";
 import CreatableSelect from "react-select/creatable";
 
 interface ContactPerson {
@@ -29,6 +29,7 @@ interface FormData {
   gst_registration_type: string;
   pan_number: string;
   vendor_code: string;
+  customer_type: string;
   
   // Opening Balance
   opening_balance: string;
@@ -164,6 +165,12 @@ export default function CreateCustomerPage() {
   const [countryOptions, setCountryOptions] = useState<{ value: string; label: string }[]>(
     DEFAULT_COUNTRIES.map((country) => ({ value: country, label: country })),
   );
+  const [customerTypeOptions, setCustomerTypeOptions] = useState<string[]>([
+    "b2b",
+    "b2c",
+    "export",
+    "sez",
+  ]);
 
   const [formData, setFormData] = useState<FormData>({
     // Basic Info
@@ -175,6 +182,7 @@ export default function CreateCustomerPage() {
     gst_registration_type: "",
     pan_number: "",
     vendor_code: "",
+    customer_type: "b2b",
     
     // Opening Balance
     opening_balance: "",
@@ -209,6 +217,32 @@ export default function CreateCustomerPage() {
     shipping_country: "India",
     shipping_zip: "",
   });
+
+  useEffect(() => {
+    const loadCustomerTypes = async () => {
+      if (!company?.id) return;
+      try {
+        const response = await customerTypesApi.list(company.id);
+        const names = (response.customer_types || [])
+          .map((item) => item.name?.trim())
+          .filter((item): item is string => Boolean(item));
+
+        if (names.length > 0) {
+          setCustomerTypeOptions(names);
+          setFormData((prev) => {
+            if (names.includes(prev.customer_type)) {
+              return prev;
+            }
+            return { ...prev, customer_type: names[0] };
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load customer types:", err);
+      }
+    };
+
+    loadCustomerTypes();
+  }, [company?.id]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -558,6 +592,7 @@ const handleSubmit = async (e: React.FormEvent) => {
   gst_registration_type: formData.gst_registration_type || "",
   pan_number: formData.pan_number || "",
   vendor_code: formData.vendor_code || "",
+  customer_type: formData.customer_type || "b2b",
   
   // ⬇️⬇️⬇️ CONVERT THESE TO STRINGS ⬇️⬇️⬇️
   opening_balance: formData.opening_balance ? String(parseFloat(formData.opening_balance)) : "0",
@@ -738,6 +773,24 @@ const handleSubmit = async (e: React.FormEvent) => {
                       className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Customer Type
+                  </label>
+                  <select
+                    name="customer_type"
+                    value={formData.customer_type}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  >
+                    {customerTypeOptions.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>

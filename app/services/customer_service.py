@@ -4,13 +4,20 @@ from sqlalchemy import func
 from typing import List, Optional, Tuple, Dict, Any
 from datetime import datetime
 from decimal import Decimal
-import uuid
-import json
-from app.database.models import Customer, Company, OpeningBalanceItem, ContactPerson
+from app.database.models import (
+    Customer,
+    Company,
+    OpeningBalanceItem,
+    ContactPerson,
+    CustomerTypeMaster,
+)
 from app.services.geocoding_service import GeocodingService
 from app.schemas.customer import (
-    CustomerCreate, CustomerUpdate, OpeningBalanceItemCreate, 
-    ContactPersonCreate, OpeningBalanceType, OpeningBalanceMode
+    CustomerCreate,
+    CustomerUpdate,
+    CustomerTypeCreate,
+    OpeningBalanceType,
+    OpeningBalanceMode,
 )
 
 
@@ -126,7 +133,7 @@ class CustomerService:
             advance_balance=advance_balance,
             
             # Additional Information
-            customer_type=data.customer_type.value if data.customer_type else "b2b",
+            customer_type=(data.customer_type.strip() if data.customer_type else "b2b"),
             
             # System defaults
             is_active=True,
@@ -181,6 +188,75 @@ class CustomerService:
         self.db.commit()
         self.db.refresh(customer)
         return customer
+
+    def list_customer_types(self, company: Company) -> List[CustomerTypeMaster]:
+        """List active customer types for a company."""
+        return (
+            self.db.query(CustomerTypeMaster)
+            .filter(
+                CustomerTypeMaster.company_id == company.id,
+                CustomerTypeMaster.is_active == True,
+            )
+            .order_by(CustomerTypeMaster.name.asc())
+            .all()
+        )
+
+    def create_customer_type(self, company: Company, data: CustomerTypeCreate) -> CustomerTypeMaster:
+        """Create a customer type in company scope."""
+        cleaned_name = data.name.strip()
+        existing = (
+            self.db.query(CustomerTypeMaster)
+            .filter(
+                CustomerTypeMaster.company_id == company.id,
+                func.lower(CustomerTypeMaster.name) == func.lower(cleaned_name),
+                CustomerTypeMaster.is_active == True,
+            )
+            .first()
+        )
+        if existing:
+            raise ValueError("Customer type already exists")
+
+        customer_type = CustomerTypeMaster(
+            company_id=company.id,
+            name=cleaned_name,
+            is_active=True,
+        )
+        self.db.add(customer_type)
+        self.db.commit()
+        self.db.refresh(customer_type)
+        return customer_type
+
+    def delete_customer_type(self, company: Company, customer_type_id: str) -> bool:
+        """Soft delete a customer type if not used by active customers."""
+        record = (
+            self.db.query(CustomerTypeMaster)
+            .filter(
+                CustomerTypeMaster.id == customer_type_id,
+                CustomerTypeMaster.company_id == company.id,
+                CustomerTypeMaster.is_active == True,
+            )
+            .first()
+        )
+        if not record:
+            raise ValueError("Customer type not found")
+
+        in_use = (
+            self.db.query(Customer.id)
+            .filter(
+                Customer.company_id == company.id,
+                Customer.is_active == True,
+                func.lower(Customer.customer_type) == func.lower(record.name),
+            )
+            .first()
+            is not None
+        )
+        if in_use:
+            raise ValueError("This customer type is used by existing customers")
+
+        record.is_active = False
+        record.updated_at = datetime.utcnow()
+        self.db.commit()
+        return True
     
     def get_customer(self, customer_id: str, company: Company) -> Optional[Customer]:
         """Get a customer by ID (must belong to company)."""

@@ -1,5 +1,5 @@
 """Customer schemas."""
-from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict, condecimal
+from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
 from typing import Optional, List, Any, Dict
 from datetime import datetime, date
 from decimal import Decimal
@@ -31,13 +31,6 @@ class GSTRegistrationType(str, Enum):
     INPUT_SERVICE = "Input Service Distributor"
     EMBASSY = "Embassy/UN Body"
     NON_RESIDENT = "Non-Resident Taxpayer"
-
-
-class CustomerType(str, Enum):
-    B2B = "b2b"
-    B2C = "b2c"
-    EXPORT = "export"
-    SEZ = "sez"
 
 
 # Opening Balance Item Schema (for split mode)
@@ -159,7 +152,7 @@ class CustomerBase(BaseModel):
     shipping_zip: Optional[str] = Field(None, max_length=10)
     
     # Additional Info
-    customer_type: Optional[CustomerType] = CustomerType.B2B
+    customer_type: Optional[str] = "b2b"
     
     @field_validator("tax_number")
     @classmethod
@@ -216,6 +209,18 @@ class CustomerBase(BaseModel):
             except ValueError:
                 raise ValueError("Credit days must be a whole number")
         return v
+
+    @field_validator("customer_type")
+    @classmethod
+    def validate_customer_type(cls, v):
+        if v is None:
+            return v
+        cleaned = v.strip()
+        if not cleaned:
+            return None
+        if len(cleaned) > 100:
+            raise ValueError("Customer type must be 100 characters or less")
+        return cleaned
     
     model_config = ConfigDict(populate_by_name=True)
 
@@ -265,7 +270,7 @@ class CustomerUpdate(BaseModel):
     shipping_country: Optional[str] = None
     shipping_zip: Optional[str] = Field(None, max_length=10)
     
-    customer_type: Optional[CustomerType] = None
+    customer_type: Optional[str] = None
     is_active: Optional[bool] = None
     
     model_config = ConfigDict(populate_by_name=True)
@@ -389,3 +394,34 @@ class CustomerExportRequest(BaseModel):
     columns: Optional[List[str]] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
+
+
+class CustomerTypeBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v):
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("Customer type name is required")
+        return cleaned
+
+
+class CustomerTypeCreate(CustomerTypeBase):
+    pass
+
+
+class CustomerTypeResponse(BaseModel):
+    id: str
+    company_id: str
+    name: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomerTypeListResponse(BaseModel):
+    customer_types: List[CustomerTypeResponse]

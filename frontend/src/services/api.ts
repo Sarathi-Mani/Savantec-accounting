@@ -244,6 +244,19 @@ export interface Customer {
 
 }
 
+export interface CustomerType {
+  id: string;
+  company_id: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerTypeListResponse {
+  customer_types: CustomerType[];
+}
+
 // Update OpeningBalanceItem interface
 export interface OpeningBalanceItem {
   id: string;
@@ -817,6 +830,7 @@ export const customersApi = {
     shipping_state?: string;
     shipping_country: string;
     shipping_zip?: string;
+    customer_type?: string;
   }): Promise<Customer> => {
     const response = await api.post(`/companies/${companyId}/customers`, data);
     return response.data;
@@ -829,6 +843,22 @@ export const customersApi = {
 
   delete: async (companyId: string, customerId: string): Promise<void> => {
     await api.delete(`/companies/${companyId}/customers/${customerId}`);
+  },
+};
+
+export const customerTypesApi = {
+  list: async (companyId: string): Promise<CustomerTypeListResponse> => {
+    const response = await api.get(`/companies/${companyId}/customers/types`);
+    return response.data;
+  },
+
+  create: async (companyId: string, data: { name: string }): Promise<CustomerType> => {
+    const response = await api.post(`/companies/${companyId}/customers/types`, data);
+    return response.data;
+  },
+
+  delete: async (companyId: string, customerTypeId: string): Promise<void> => {
+    await api.delete(`/companies/${companyId}/customers/types/${customerTypeId}`);
   },
 };
 
@@ -1835,6 +1865,11 @@ export const ordersApi = {
     params?: { vendor_id?: string; status?: OrderStatus }
   ): Promise<PurchaseOrder[]> => {
     const response = await api.get(`/companies/${companyId}/orders/purchase`, { params });
+    return response.data;
+  },
+
+  getNextPurchaseOrderNumber: async (companyId: string): Promise<{ order_number: string }> => {
+    const response = await api.get(`/companies/${companyId}/orders/purchase/next-number`);
     return response.data;
   },
 

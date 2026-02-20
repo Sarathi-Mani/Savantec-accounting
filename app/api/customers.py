@@ -4,7 +4,15 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 from app.database.connection import get_db
 from app.database.models import User, Company
-from app.schemas.customer import CustomerCreate, CustomerUpdate, CustomerResponse, CustomerListResponse
+from app.schemas.customer import (
+    CustomerCreate,
+    CustomerUpdate,
+    CustomerResponse,
+    CustomerListResponse,
+    CustomerTypeCreate,
+    CustomerTypeResponse,
+    CustomerTypeListResponse,
+)
 from app.services.customer_service import CustomerService
 from app.services.company_service import CompanyService
 from app.auth.dependencies import get_current_active_user
@@ -105,6 +113,55 @@ async def search_customers(
     service = CustomerService(db)
     customers = service.search_customers(company, q, limit)
     return [CustomerResponse.model_validate(c) for c in customers]
+
+
+@router.get("/types", response_model=CustomerTypeListResponse)
+async def list_customer_types(
+    company_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """List customer types for a company."""
+    company = get_company_or_404(company_id, current_user, db)
+    service = CustomerService(db)
+    customer_types = service.list_customer_types(company)
+    return CustomerTypeListResponse(
+        customer_types=[CustomerTypeResponse.model_validate(item) for item in customer_types]
+    )
+
+
+@router.post("/types", response_model=CustomerTypeResponse, status_code=status.HTTP_201_CREATED)
+async def create_customer_type(
+    company_id: str,
+    data: CustomerTypeCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Create a customer type for a company."""
+    company = get_company_or_404(company_id, current_user, db)
+    service = CustomerService(db)
+    try:
+        customer_type = service.create_customer_type(company, data)
+        return CustomerTypeResponse.model_validate(customer_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.delete("/types/{customer_type_id}")
+async def delete_customer_type(
+    company_id: str,
+    customer_type_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a customer type for a company."""
+    company = get_company_or_404(company_id, current_user, db)
+    service = CustomerService(db)
+    try:
+        service.delete_customer_type(company, customer_type_id)
+        return {"message": "Customer type deleted successfully"}
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 @router.get("/nearby")

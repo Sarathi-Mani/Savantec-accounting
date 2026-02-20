@@ -1,3 +1,4 @@
+import { icons } from "lucide-react";
 import * as Icons from "../icons";
 
 export const NAV_DATA = [
@@ -41,30 +42,30 @@ export const NAV_DATA = [
   },
 
   {
-  label: "SALES TRACKING",
-  items: [
-    {
-      title: "Live Tracking",
-      url: "/sales-tracking/admin-live-tracking",
-      icon: Icons.Target,
-      items: [],
-    },
-    {
-      title: "Nearby Customers",
-      url: "/sales-tracking/nearby-customers",
-      icon: Icons.UserCircle,
-      items: [],
-    },
-    {
-      title: "Trips & Visits",
-      icon: Icons.Truck,
-      items: [
-        { title: "All Trips", url: "/sales-tracking/trips" },
-        { title: "All Visits", url: "/sales-tracking/visits" },
-      ],
-    },
-  ],
-},
+    label: "SALES TRACKING",
+    items: [
+      {
+        title: "Live Tracking",
+        url: "/sales-tracking/admin-live-tracking",
+        icon: Icons.Target,
+        items: [],
+      },
+      {
+        title: "Nearby Customers",
+        url: "/sales-tracking/nearby-customers",
+        icon: Icons.UserCircle,
+        items: [],
+      },
+      {
+        title: "Trips & Visits",
+        icon: Icons.Truck,
+        items: [
+          { title: "All Trips", url: "/sales-tracking/trips" },
+          { title: "All Visits", url: "/sales-tracking/visits" },
+        ],
+      },
+    ],
+  },
   {
     label: "PRODUCTS",
     items: [
@@ -296,9 +297,12 @@ export const NAV_DATA = [
       },
       {
         title: "Customers",
-        url: "/customers",
         icon: Icons.User,
-        items: [],
+        items: [
+          { title: "All Customers", url: "/customers" },
+          { title: "New Customer", url: "/customers/new" },
+          { title: "Customer Types", url: "/customers/types" },
+        ]
       },
       {
         title: "Sales Orders",

@@ -171,6 +171,7 @@ async def startup_event():
 @app.exception_handler(OperationalError)
 async def database_operational_error_handler(request: Request, exc: OperationalError):
     """Return a clean API response when database connectivity is temporarily unavailable."""
+    print(f"[DB-ERROR] OperationalError on {request.url.path}: {exc}")
     return JSONResponse(
         status_code=503,
         content={

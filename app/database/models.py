@@ -654,6 +654,7 @@ class Company(Base):
     # Relationships
     owner = relationship("User", foreign_keys=[user_id], back_populates="companies")
     customers = relationship("Customer", back_populates="company", cascade="all, delete-orphan")
+    customer_types = relationship("CustomerTypeMaster", back_populates="company", cascade="all, delete-orphan")
     items = relationship("Product", back_populates="company", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="company", cascade="all, delete-orphan")
     bank_accounts = relationship("BankAccount", back_populates="company", cascade="all, delete-orphan")
@@ -790,7 +791,32 @@ class ContactPerson(Base):
     
     customer = relationship("Customer", back_populates="contact_persons")
 
-# Find the Customer model and update it to look like this:
+
+class CustomerTypeMaster(Base):
+    __tablename__ = "customer_types"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(
+        String(36),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name = Column(String(100), nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    company = relationship("Company", back_populates="customer_types")
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "name", name="uq_customer_types_company_name"),
+        Index("idx_customer_types_company_name", "company_id", "name"),
+    )
+
+    def __repr__(self):
+        return f"<CustomerTypeMaster(id={self.id}, name='{self.name}', company_id={self.company_id})>"
+
 
 class Customer(Base):
     __tablename__ = "customers"
@@ -862,7 +888,7 @@ class Customer(Base):
     shipping_zip = Column(String(20))
     
     # Customer Type
-    customer_type = Column(String(20), default="b2b")
+    customer_type = Column(String(100), default="b2b")
     
     # Contact Person Info
     contact_person_name = Column(String(255))
