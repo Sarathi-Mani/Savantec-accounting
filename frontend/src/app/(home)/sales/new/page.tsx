@@ -817,25 +817,16 @@ export default function AddSalesPage() {
         const couponValue = formData.couponValue || 0;
         const discountOnAll = formData.discountOnAll || 0;
 
-        // Function to apply tax based on selected type
-        const calculateWithTax = (baseAmount: number, taxType: string) => {
-            if (taxType === 'fixed' || taxType === 'percentage') {
-                return baseAmount;
-            }
-
-            // Extract tax percentage from string like "tax@18%"
+        const getTaxRate = (taxType: string): number => {
             const match = taxType.match(/tax@(\d+)%/);
-            if (match) {
-                const taxRate = parseInt(match[1]);
-                return baseAmount * (1 + taxRate / 100);
-            }
-
-            return baseAmount;
+            return match ? Number(match[1]) : 0;
         };
 
-        // Calculate charges with tax
-        const freightCharges = calculateWithTax(freightBase, formData.freightType);
-        const pfCharges = calculateWithTax(pfBase, formData.pfType);
+        const freightTax = freightBase * (getTaxRate(formData.freightType) / 100);
+        const pfTax = pfBase * (getTaxRate(formData.pfType) / 100);
+        const chargesTax = freightTax + pfTax;
+        const freightWithTax = freightBase + freightTax;
+        const pfWithTax = pfBase + pfTax;
 
         // Calculate discount on all based on type
         const discountAllAmount = formData.discountType === 'percentage'
@@ -845,7 +836,7 @@ export default function AddSalesPage() {
         // Calculate totals step by step
         const totalBeforeTax = subtotal;
         const totalAfterTax = totalBeforeTax + totalTax;
-        const totalAfterCharges = totalAfterTax + freightCharges + pfCharges;
+        const totalAfterCharges = totalAfterTax + freightBase + pfBase + chargesTax;
         const totalAfterCoupon = totalAfterCharges - couponValue;
         const totalAfterDiscountAll = totalAfterCoupon - discountAllAmount;
         const grandTotal = totalAfterDiscountAll + (formData.roundOff || 0);
@@ -858,8 +849,11 @@ export default function AddSalesPage() {
             igstTotal: Number(igstTotal.toFixed(2)),
             itemDiscount: Number(totalItemDiscount.toFixed(2)),
             totalBeforeCharges: Number(totalAfterTax.toFixed(2)),
-            freight: Number(freightCharges.toFixed(2)),
-            pf: Number(pfCharges.toFixed(2)),
+            freight: Number(freightBase.toFixed(2)),
+            pf: Number(pfBase.toFixed(2)),
+            chargesTax: Number(chargesTax.toFixed(2)),
+            freightWithTax: Number(freightWithTax.toFixed(2)),
+            pfWithTax: Number(pfWithTax.toFixed(2)),
             couponDiscount: Number(couponValue.toFixed(2)),
             discountAll: Number(discountAllAmount.toFixed(2)),
             roundOff: Number(formData.roundOff || 0),
@@ -1787,19 +1781,19 @@ export default function AddSalesPage() {
                                         {/* In the Charges & Discounts section */}
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
-                                            <div className="flex gap-2">
+                                            <div className="flex flex-col gap-2 sm:flex-row">
                                                 <input
                                                     type="number"
                                                     value={formData.freightCharges}
                                                     onChange={(e) => setFormData({ ...formData, freightCharges: parseFloat(e.target.value) || 0 })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="min-w-0 flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                     step="0.01"
                                                 />
                                                 <select
                                                     value={formData.freightType}
                                                     onChange={(e) => setFormData({ ...formData, freightType: e.target.value })}
-                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3 sm:w-28 sm:flex-none"
                                                 >
                                                     <option value="fixed">Fixed</option>
                                                     <option value="tax@0%">Tax@0%</option>
@@ -1811,26 +1805,26 @@ export default function AddSalesPage() {
                                             </div>
                                             {formData.freightType.startsWith('tax@') && formData.freightCharges > 0 && (
                                                 <div className="mt-1 text-xs text-dark-6">
-                                                    Base: ₹{formData.freightCharges.toFixed(2)} + {formData.freightType.replace('tax@', '')} tax = ₹{totals.freight.toFixed(2)}
+                                                    Base: ₹{formData.freightCharges.toFixed(2)} + {formData.freightType.replace('tax@', '')} tax = ₹{totals.freightWithTax.toFixed(2)}
                                                 </div>
                                             )}
                                         </div>
 
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                            <div className="flex gap-2">
+                                            <div className="flex flex-col gap-2 sm:flex-row">
                                                 <input
                                                     type="number"
                                                     value={formData.pfCharges}
                                                     onChange={(e) => setFormData({ ...formData, pfCharges: parseFloat(e.target.value) || 0 })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="min-w-0 flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                     step="0.01"
                                                 />
                                                 <select
                                                     value={formData.pfType}
                                                     onChange={(e) => setFormData({ ...formData, pfType: e.target.value })}
-                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3 sm:w-28 sm:flex-none"
                                                 >
                                                     <option value="fixed">Fixed</option>
                                                     <option value="tax@0%">Tax@0%</option>
@@ -1842,33 +1836,9 @@ export default function AddSalesPage() {
                                             </div>
                                             {formData.pfType.startsWith('tax@') && formData.pfCharges > 0 && (
                                                 <div className="mt-1 text-xs text-dark-6">
-                                                    Base: ₹{formData.pfCharges.toFixed(2)} + {formData.pfType.replace('tax@', '')} tax = ₹{totals.pf.toFixed(2)}
+                                                    Base: ₹{formData.pfCharges.toFixed(2)} + {formData.pfType.replace('tax@', '')} tax = ₹{totals.pfWithTax.toFixed(2)}
                                                 </div>
                                             )}
-                                        </div>
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={formData.pfCharges}
-                                                    onChange={(e) => setFormData({ ...formData, pfCharges: parseFloat(e.target.value) })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                />
-                                                <select
-                                                    value={formData.pfType}
-                                                    onChange={(e) => setFormData({ ...formData, pfType: e.target.value })}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="fixed">Fixed</option>
-                                                    <option value="tax@18%">Tax@18%</option>
-                                                    <option value="tax@0%">Tax@0%</option>
-                                                    <option value="tax@5%">Tax@5%</option>
-                                                    <option value="tax@28%">Tax@28%</option>
-                                                    <option value="tax@12%">Tax@12%</option>
-                                                </select>
-                                            </div>
                                         </div>
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount Coupon Code</label>
@@ -1950,6 +1920,10 @@ export default function AddSalesPage() {
                                             <span className="font-medium text-dark dark:text-white">₹{totals.pf.toLocaleString('en-IN')}</span>
                                         </div>
                                         <div className="flex justify-between">
+                                            <span className="text-dark-6">Tax</span>
+                                            <span className="font-medium text-dark dark:text-white">₹{totals.chargesTax.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between">
                                             <span className="text-dark-6">Coupon Discount</span>
                                             <span className="font-medium text-red-600">-₹{totals.couponDiscount.toLocaleString('en-IN')}</span>
                                         </div>
@@ -1957,10 +1931,10 @@ export default function AddSalesPage() {
                                             <span className="text-dark-6">Discount on All</span>
                                             <span className="font-medium text-red-600">-₹{totals.discountAll.toLocaleString('en-IN')}</span>
                                         </div>
-                                        <div className="flex justify-between items-center">
+                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                             <span className="text-dark-6">Round Off</span>
 
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex flex-wrap items-center justify-end gap-2">
                                                 {/* - Button: Makes amount negative */}
                                                 <button
                                                     type="button"
@@ -1994,7 +1968,7 @@ export default function AddSalesPage() {
                                                                 roundOff: currentSign * inputValue
                                                             }));
                                                         }}
-                                                        className="w-32 px-10 py-2 text-center border border-stroke dark:border-dark-3 rounded-lg bg-transparent outline-none focus:border-primary"
+                                                        className="w-24 px-8 py-2 text-center border border-stroke dark:border-dark-3 rounded-lg bg-transparent outline-none focus:border-primary sm:w-32 sm:px-10"
                                                         step="0.01"
                                                         min="0"
                                                     />
