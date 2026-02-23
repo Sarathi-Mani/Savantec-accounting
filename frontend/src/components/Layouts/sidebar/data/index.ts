@@ -17,12 +17,12 @@ export const NAV_DATA = [
         icon: Icons.PieChart,
         items: [],
       },
-      {
-        title: "Quick Entry",
-        url: "/quick-entry",
-        icon: Icons.FourCircle,
-        items: [],
-      },
+      // {
+      //   title: "Quick Entry",
+      //   url: "/quick-entry",
+      //   icon: Icons.FourCircle,
+      //   items: [],
+      // },
     ],
   },
   {
@@ -199,19 +199,19 @@ export const NAV_DATA = [
         ],
       },
 
-      {
-        title: "Sales Tickets",
-        url: "/sales/tickets",
-        icon: Icons.Ticket,
-        items: [],
-      },
+      // {
+      //   title: "Sales Tickets",
+      //   url: "/sales/tickets",
+      //   icon: Icons.Ticket,
+      //   items: [],
+      // },
 
-      {
-        title: "Contacts",
-        url: "/contacts",
-        icon: Icons.UserCircle,
-        items: [],
-      },
+      // {
+      //   title: "Contacts",
+      //   url: "/contacts",
+      //   icon: Icons.UserCircle,
+      //   items: [],
+      // },
     ],
   },
 
@@ -266,7 +266,7 @@ export const NAV_DATA = [
   },
 
   {
-    label: "SALES",
+    label: "Quotations",
     items: [
       {
         title: "Quotations",
@@ -277,24 +277,16 @@ export const NAV_DATA = [
           { title: "Compare Quotations", url: "/quotations/compare" },
         ],
       },
-      {
-        title: "Invoices",
-        icon: Icons.Invoice,
-        items: [
-          { title: "All Invoices", url: "/invoices" },
-          { title: "Create Invoice", url: "/invoices/new" },
-          { title: "Credit Notes", url: "/invoices/credit-notes" },
-        ],
-      },
-      {
-        title: "Delivery Challans",
-        icon: Icons.Truck,
-        items: [
-          { title: "All Challans", url: "/delivery-challans" },
-          { title: "DC Out (Dispatch)", url: "/delivery-challans/new?type=dc_out" },
-          { title: "DC In (Returns)", url: "/delivery-challans/new?type=dc_in" },
-        ],
-      },
+      // {
+      //   title: "Invoices",
+      //   icon: Icons.Invoice,
+      //   items: [
+      //     { title: "All Invoices", url: "/invoices" },
+      //     { title: "Create Invoice", url: "/invoices/new" },
+      //     { title: "Credit Notes", url: "/invoices/credit-notes" },
+      //   ],
+      // },
+     
       {
         title: "Customers",
         icon: Icons.User,
@@ -304,51 +296,37 @@ export const NAV_DATA = [
           { title: "Customer Types", url: "/customers/types" },
         ]
       },
-      {
-        title: "Sales Orders",
-        url: "/orders/sales",
-        icon: Icons.ListOrdered,
-        items: [],
-      },
-      {
-        title: "Delivery Notes",
-        url: "/delivery-notes",
-        icon: Icons.Truck,
-        items: [],
-      },
-      {
-        title: "Bill Allocation",
-        url: "/accounting/bill-allocation",
-        icon: Icons.Receipt,
-        items: [],
-      },
+      // {
+      //   title: "Sales Orders",
+      //   url: "/orders/sales",
+      //   icon: Icons.ListOrdered,
+      //   items: [],
+      // },
+      // {
+      //   title: "Delivery Notes",
+      //   url: "/delivery-notes",
+      //   icon: Icons.Truck,
+      //   items: [],
+      // },
+      // {
+      //   title: "Bill Allocation",
+      //   url: "/accounting/bill-allocation",
+      //   icon: Icons.Receipt,
+      //   items: [],
+      // },
     ],
   },
   {
-    label: "PURCHASE",
+    label: "Delivery Challan",
     items: [
-
-      {
-        title: "Purchase Invoices",
-        icon: Icons.ReceiptText,
+ {
+        title: "Delivery Challans",
+        icon: Icons.Truck,
         items: [
-          { title: "All Bills", url: "/purchase/invoices" },
-          { title: "Create Bill", url: "/purchase/invoices/new" },
-          { title: "Debit Notes", url: "/purchase/debit-notes" },
+          { title: "All Challans", url: "/delivery-challans" },
+          { title: "DC Out (Dispatch)", url: "/delivery-challans/new?type=dc_out" },
+          { title: "DC In (Returns)", url: "/delivery-challans/new?type=dc_in" },
         ],
-      },
-
-      {
-        title: "Purchase Orders",
-        url: "/orders/purchase",
-        icon: Icons.ShoppingCart,
-        items: [],
-      },
-      {
-        title: "Receipt Notes",
-        url: "/receipt-notes",
-        icon: Icons.Download,
-        items: [],
       },
     ],
   },
