@@ -75,6 +75,7 @@ const PrintView = ({
   getCustomerGSTIN,
   calculateSubtotal,
   companyName,
+  onComplete,
 }: {
   invoices: Invoice[];
   visibleColumns: Record<string, boolean>;
@@ -85,18 +86,32 @@ const PrintView = ({
   getCustomerGSTIN: (invoice: Invoice) => string;
   calculateSubtotal: (invoice: Invoice) => number;
   companyName: string;
+  onComplete: () => void;
 }) => {
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (printRef.current) {
       const printContents = printRef.current.innerHTML;
-      const originalContents = document.body.innerHTML;
+      const printWindow = window.open("", "_blank", "width=1024,height=768");
 
-      document.body.innerHTML = printContents;
-      window.print();
-      document.body.innerHTML = originalContents;
-      window.location.reload();
+      if (!printWindow) {
+        onComplete();
+        return;
+      }
+
+      printWindow.document.open();
+      printWindow.document.write("<html><head><title>Print</title></head><body></body></html>");
+      printWindow.document.close();
+
+      if (printWindow.document.body) {
+        printWindow.document.body.innerHTML = printContents;
+      }
+
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+      onComplete();
     }
   }, []);
 
@@ -539,6 +554,22 @@ export default function SalesListPage() {
   // UI state
   const [showFilters, setShowFilters] = useState(false);
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
+  useEffect(() => {
+    const handleColumnDropdownOutside = (event: Event) => {
+      const target = event.target as Element | null;
+      if (!target) return;
+      if (!target.closest(".column-dropdown-container")) {
+        setShowColumnDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleColumnDropdownOutside);
+    document.addEventListener("touchstart", handleColumnDropdownOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleColumnDropdownOutside);
+      document.removeEventListener("touchstart", handleColumnDropdownOutside);
+    };
+  }, []);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
   const [showPrintView, setShowPrintView] = useState(false);
   const [invoicesToPrint, setInvoicesToPrint] = useState<Invoice[]>([]);
@@ -1229,6 +1260,7 @@ export default function SalesListPage() {
     <div className="w-full">
       {showPrintView && (
         <PrintView
+          onComplete={() => setShowPrintView(false)}
           invoices={invoicesToPrint}
           visibleColumns={visibleColumns}
           formatCurrency={formatCurrency}
@@ -1868,4 +1900,7 @@ export default function SalesListPage() {
     </div>
   );
 }
+
+
+
 

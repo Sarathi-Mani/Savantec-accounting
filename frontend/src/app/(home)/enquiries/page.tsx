@@ -148,6 +148,22 @@ export default function EnquiriesPage() {
   // UI state
   const [showFilters, setShowFilters] = useState(false);
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
+  useEffect(() => {
+    const handleColumnDropdownOutside = (event: Event) => {
+      const target = event.target as Element | null;
+      if (!target) return;
+      if (!target.closest(".column-dropdown-container")) {
+        setShowColumnDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleColumnDropdownOutside);
+    document.addEventListener("touchstart", handleColumnDropdownOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleColumnDropdownOutside);
+      document.removeEventListener("touchstart", handleColumnDropdownOutside);
+    };
+  }, []);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
   
   // Export loading states
@@ -1469,4 +1485,6 @@ export default function EnquiriesPage() {
     </div>
   );
 }
+
+
 

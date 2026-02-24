@@ -45,6 +45,7 @@ const PrintView = ({
   getStatusText,
   formatCurrency,
   companyName,
+  onComplete,
 }: {
   orders: PurchaseOrder[];
   visibleColumns: Record<string, boolean>;
@@ -52,18 +53,32 @@ const PrintView = ({
   getStatusText: (status: string) => string;
   formatCurrency: (amount: number, currency: string) => string;
   companyName: string;
+  onComplete: () => void;
 }) => {
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (printRef.current) {
       const printContents = printRef.current.innerHTML;
-      const originalContents = document.body.innerHTML;
+      const printWindow = window.open("", "_blank", "width=1024,height=768");
 
-      document.body.innerHTML = printContents;
-      window.print();
-      document.body.innerHTML = originalContents;
-      window.location.reload();
+      if (!printWindow) {
+        onComplete();
+        return;
+      }
+
+      printWindow.document.open();
+      printWindow.document.write("<html><head><title>Print</title></head><body></body></html>");
+      printWindow.document.close();
+
+      if (printWindow.document.body) {
+        printWindow.document.body.innerHTML = printContents;
+      }
+
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+      onComplete();
     }
   }, []);
 
@@ -1072,6 +1087,7 @@ export default function PurchaseOrderListPage() {
     <div className="w-full">
       {showPrintView && (
         <PrintView
+          onComplete={() => setShowPrintView(false)}
           orders={ordersToPrint}
           visibleColumns={visibleColumns}
           formatDate={formatDate}
@@ -1676,4 +1692,5 @@ export default function PurchaseOrderListPage() {
     </div>
   );
 }
+
 

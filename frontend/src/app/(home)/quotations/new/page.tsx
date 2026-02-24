@@ -4096,7 +4096,6 @@ const itemsForBackend = items
                                   onChange={(e) => updateCell(rowIndex, colIndex, e.target.value)}
                                   onPaste={(e) => handlePasteEnhanced(e, rowIndex, colIndex)}
                                   onFocus={() => setActiveCell({ row: rowIndex, col: colIndex })}
-                                  placeholder={`${getColumnLetter(colIndex)}${rowIndex + 1}`}
                                   className={`w-full h-full px-3 py-2 text-sm border-0 focus:ring-2 focus:ring-blue-500 focus:z-20 focus:outline-none ${
                                     cell.isFormula 
                                       ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' 

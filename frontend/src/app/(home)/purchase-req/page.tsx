@@ -90,6 +90,7 @@ const PrintView = ({
   getStatusText,
   getStatusBadgeClass,
   companyName,
+  onComplete,
 }: {
   purchaseRequests: PurchaseRequest[];
   visibleColumns: Record<string, boolean>;
@@ -97,18 +98,32 @@ const PrintView = ({
   getStatusText: (status: string) => string;
   getStatusBadgeClass: (status: string) => string;
   companyName: string;
+  onComplete: () => void;
 }) => {
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (printRef.current) {
       const printContents = printRef.current.innerHTML;
-      const originalContents = document.body.innerHTML;
+      const printWindow = window.open("", "_blank", "width=1024,height=768");
 
-      document.body.innerHTML = printContents;
-      window.print();
-      document.body.innerHTML = originalContents;
-      window.location.reload();
+      if (!printWindow) {
+        onComplete();
+        return;
+      }
+
+      printWindow.document.open();
+      printWindow.document.write("<html><head><title>Print</title></head><body></body></html>");
+      printWindow.document.close();
+
+      if (printWindow.document.body) {
+        printWindow.document.body.innerHTML = printContents;
+      }
+
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+      onComplete();
     }
   }, []);
 
@@ -355,6 +370,22 @@ export default function PurchaseRequestsPage() {
   // UI state
   const [showFilters, setShowFilters] = useState(false);
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
+  useEffect(() => {
+    const handleColumnDropdownOutside = (event: Event) => {
+      const target = event.target as Element | null;
+      if (!target) return;
+      if (!target.closest(".column-dropdown-container")) {
+        setShowColumnDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleColumnDropdownOutside);
+    document.addEventListener("touchstart", handleColumnDropdownOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleColumnDropdownOutside);
+      document.removeEventListener("touchstart", handleColumnDropdownOutside);
+    };
+  }, []);
   const [showPrintView, setShowPrintView] = useState(false);
   const [requestsToPrint, setRequestsToPrint] = useState<PurchaseRequest[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -1190,6 +1221,7 @@ export default function PurchaseRequestsPage() {
     <div className="w-full">
       {showPrintView && (
         <PrintView
+          onComplete={() => setShowPrintView(false)}
           purchaseRequests={requestsToPrint}
           visibleColumns={visibleColumns}
           formatDate={formatDate}
@@ -1966,4 +1998,7 @@ export default function PurchaseRequestsPage() {
     </div>
   );
 }
+
+
+
 
