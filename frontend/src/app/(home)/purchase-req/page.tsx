@@ -1631,8 +1631,8 @@ export default function PurchaseRequestsPage() {
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="overflow-x-hidden">
+          <table className="w-full table-fixed">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
               <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
                 <th className="text-left px-4 py-3 whitespace-nowrap w-14">
@@ -1644,46 +1644,46 @@ export default function PurchaseRequestsPage() {
                     className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
                   />
                 </th>
-                <th className="text-left px-6 py-3 whitespace-nowrap w-20">
+                <th className="text-left px-3 py-3 ">
                   S.No
                 </th>
                 {visibleColumns.requestNumber && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     Request #
                   </th>
                 )}
                 {visibleColumns.customer && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-64">
+                  <th className="text-left px-3 py-3 ">
                     Customer
                   </th>
                 )}
                 {visibleColumns.requestDate && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Request Date
                   </th>
                 )}
                 {visibleColumns.createdBy && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-64">
+                  <th className="text-left px-3 py-3 ">
                     Created By
                   </th>
                 )}
                 {visibleColumns.items && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     Items
                   </th>
                 )}
                 {visibleColumns.quantity && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     Quantity
                   </th>
                 )}
                 {visibleColumns.status && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Status
                   </th>
                 )}
                 {visibleColumns.actions && (
-                  <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-right px-3 py-3 ">
                     Actions
                   </th>
                 )}
@@ -1740,11 +1740,11 @@ export default function PurchaseRequestsPage() {
                           className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
                         />
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                      <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                         {(currentPage - 1) * pageSize + index + 1}
                       </td>
                       {visibleColumns.requestNumber && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
                               <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
@@ -1758,7 +1758,7 @@ export default function PurchaseRequestsPage() {
                         </td>
                       )}
                       {visibleColumns.customer && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="min-w-0 max-w-[240px]">
                             <div className="font-medium text-gray-900 dark:text-white truncate">
                               {request.customer_name || '-'}
@@ -1773,7 +1773,7 @@ export default function PurchaseRequestsPage() {
                         </td>
                       )}
                       {visibleColumns.requestDate && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           <div className="flex items-center gap-2">
                             <Calendar className="w-4 h-4 text-gray-400" />
                             {formatDate(request.request_date || request.created_at)}
@@ -1781,7 +1781,7 @@ export default function PurchaseRequestsPage() {
                         </td>
                       )}
                       {visibleColumns.createdBy && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="min-w-0 max-w-[280px]">
                             <div className="font-medium text-gray-900 dark:text-white truncate">
                               {getCreatedByDisplay(request)}
@@ -1790,7 +1790,7 @@ export default function PurchaseRequestsPage() {
                         </td>
                       )}
                       {visibleColumns.items && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="flex items-center gap-2 font-medium text-gray-900 dark:text-white">
                             <Package className="w-4 h-4 text-gray-400" />
                             {requestDisplayStats.itemCount}
@@ -1798,12 +1798,12 @@ export default function PurchaseRequestsPage() {
                         </td>
                       )}
                       {visibleColumns.quantity && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           {requestDisplayStats.quantity}
                         </td>
                       )}
                       {visibleColumns.status && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <span
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                               getStatusBadgeClass(request.status)
@@ -1818,7 +1818,7 @@ export default function PurchaseRequestsPage() {
                         </td>
                       )}
                       {visibleColumns.actions && (
-                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                        <td className="px-3 py-4 text-right align-top">
                           <div className="relative action-dropdown-container inline-block">
                             <button
                               onClick={() =>
@@ -1966,3 +1966,4 @@ export default function PurchaseRequestsPage() {
     </div>
   );
 }
+

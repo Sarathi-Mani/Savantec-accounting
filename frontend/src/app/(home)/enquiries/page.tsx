@@ -1228,52 +1228,52 @@ export default function EnquiriesPage() {
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="overflow-x-hidden">
+          <table className="w-full table-fixed">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
               <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
                 {visibleColumns.date && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     Date
                   </th>
                 )}
                 {visibleColumns.enquiryNo && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Enquiry No
                   </th>
                 )}
                 {visibleColumns.company && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-64">
+                  <th className="text-left px-3 py-3 ">
                     Company / Customer
                   </th>
                 )}
                 {visibleColumns.contactPerson && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Contact Person
                   </th>
                 )}
                 {visibleColumns.quantity && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     Quantity
                   </th>
                 )}
                 {visibleColumns.status && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Status
                   </th>
                 )}
                 {visibleColumns.salesEngineer && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Sales Engineer
                   </th>
                 )}
                 {visibleColumns.remarks && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-64">
+                  <th className="text-left px-3 py-3 ">
                     Remarks
                   </th>
                 )}
                 {visibleColumns.actions && (
-                  <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-right px-3 py-3 ">
                     Actions
                   </th>
                 )}
@@ -1318,7 +1318,7 @@ export default function EnquiriesPage() {
                       className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                     >
                       {visibleColumns.date && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="text-gray-900 dark:text-white">
                             {formatDate(enquiry.enquiry_date)}
                           </div>
@@ -1335,7 +1335,7 @@ export default function EnquiriesPage() {
                         </td>
                       )}
                       {visibleColumns.company && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="flex items-center gap-2">
                             <Building className="w-4 h-4 text-gray-400 flex-shrink-0" />
                             <div className="min-w-0 max-w-[240px]">
@@ -1359,7 +1359,7 @@ export default function EnquiriesPage() {
                         </td>
                       )}
                       {visibleColumns.contactPerson && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="flex items-center gap-2">
                             <Users className="w-4 h-4 text-gray-400" />
                             <span>{enquiry.prospect_name || enquiry.contact_name || "-"}</span>
@@ -1367,14 +1367,14 @@ export default function EnquiriesPage() {
                         </td>
                       )}
                       {visibleColumns.quantity && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="text-gray-900 dark:text-white font-medium">
                             {getTotalQuantity(enquiry)}
                           </div>
                         </td>
                       )}
                       {visibleColumns.status && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <span
                             className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
                               getStatusBadgeClass(enquiry.status)
@@ -1385,7 +1385,7 @@ export default function EnquiriesPage() {
                         </td>
                       )}
                       {visibleColumns.salesEngineer && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="text-gray-900 dark:text-white">
                             {enquiry.salesman?.name || enquiry.sales_person_name || "-"}
                           </div>
@@ -1399,7 +1399,7 @@ export default function EnquiriesPage() {
                         </td>
                       )}
                       {visibleColumns.actions && (
-                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                        <td className="px-3 py-4 text-right align-top">
                           <div className="relative action-dropdown-container inline-block">
                             <button
                               onClick={() =>
@@ -1469,3 +1469,4 @@ export default function EnquiriesPage() {
     </div>
   );
 }
+

@@ -1565,60 +1565,60 @@ export default function SalesListPage() {
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="overflow-x-hidden">
+          <table className="w-full table-fixed">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
               <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                <th className="text-left px-6 py-3 whitespace-nowrap w-20">
+                <th className="text-left px-3 py-3 ">
                   S.No
                 </th>
                 {visibleColumns.invoiceDate && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     Sales Date
                   </th>
                 )}
                 {visibleColumns.dueDate && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Due Date
                   </th>
                 )}
                 {visibleColumns.invoiceNumber && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Invoice No.
                   </th>
                 )}
                 {visibleColumns.referenceNo && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Reference No.
                   </th>
                 )}
                 {visibleColumns.customerName && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-80">
+                  <th className="text-left px-3 py-3 ">
                     Customer Name
                   </th>
                 )}
                 {visibleColumns.subtotal && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Subtotal
                   </th>
                 )}
                 {visibleColumns.total && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Total
                   </th>
                 )}
                 {visibleColumns.paidAmount && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Paid
                   </th>
                 )}
                 {visibleColumns.status && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Status
                   </th>
                 )}
                 {visibleColumns.actions && (
-                  <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-right px-3 py-3 ">
                     Actions
                   </th>
                 )}
@@ -1666,16 +1666,16 @@ export default function SalesListPage() {
                       key={invoice.id}
                       className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                     >
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                      <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                         {(currentPage - 1) * pageSize + index + 1}
                       </td>
                       {visibleColumns.invoiceDate && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           {formatDate(invoice.invoice_date)}
                         </td>
                       )}
                       {visibleColumns.dueDate && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="flex flex-col gap-1">
                             <span className={`${isOverdue ? 'text-red-600 font-medium' : 'text-gray-700 dark:text-gray-300'}`}>
                               {formatDate(invoice.due_date) || '-'}
@@ -1689,7 +1689,7 @@ export default function SalesListPage() {
                         </td>
                       )}
                       {visibleColumns.invoiceNumber && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="min-w-0 max-w-[240px]">
                             <div className="font-medium text-blue-600 dark:text-blue-400">
                               <Link href={`/sales/${invoice.id}`} className="hover:underline">
@@ -1706,12 +1706,12 @@ export default function SalesListPage() {
                         </td>
                       )}
                       {visibleColumns.referenceNo && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           {invoice.reference_no || '-'}
                         </td>
                       )}
                       {visibleColumns.customerName && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="min-w-0 max-w-[240px]">
                             <div className="font-medium text-gray-900 dark:text-white">
                               {getCustomerDisplayName(invoice)}
@@ -1730,12 +1730,12 @@ export default function SalesListPage() {
                         </td>
                       )}
                       {visibleColumns.subtotal && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           {formatCurrency(calculateSubtotal(invoice))}
                         </td>
                       )}
                       {visibleColumns.total && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="font-bold text-gray-900 dark:text-white">
                             {formatCurrency(invoice.total_amount || 0)}
                           </div>
@@ -1747,7 +1747,7 @@ export default function SalesListPage() {
                         </td>
                       )}
                       {visibleColumns.paidAmount && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className={`font-bold ${invoice.amount_paid > 0 ? 'text-green-600' : 'text-gray-700 dark:text-gray-300'}`}>
                             {formatCurrency(invoice.amount_paid || 0)}
                           </div>
@@ -1759,7 +1759,7 @@ export default function SalesListPage() {
                         </td>
                       )}
                       {visibleColumns.status && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <span
                             className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(invoice.status)}`}
                           >
@@ -1771,7 +1771,7 @@ export default function SalesListPage() {
                         </td>
                       )}
                       {visibleColumns.actions && (
-                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                        <td className="px-3 py-4 text-right align-top">
                           <div className="relative action-dropdown-container inline-block">
                             <button
                               onClick={() =>
@@ -1868,3 +1868,4 @@ export default function SalesListPage() {
     </div>
   );
 }
+

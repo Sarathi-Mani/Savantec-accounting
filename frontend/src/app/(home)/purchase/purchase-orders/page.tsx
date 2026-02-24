@@ -1379,50 +1379,50 @@ export default function PurchaseOrderListPage() {
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="overflow-x-hidden">
+          <table className="w-full table-fixed">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
               <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                <th className="text-left px-6 py-3 whitespace-nowrap w-20">
+                <th className="text-left px-3 py-3 ">
                   S.No
                 </th>
                 {visibleColumns.orderDate && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     Order Date
                   </th>
                 )}
                 {visibleColumns.orderNumber && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Order Number
                   </th>
                 )}
                 {visibleColumns.status && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Status
                   </th>
                 )}
                 {visibleColumns.referenceNumber && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Reference No.
                   </th>
                 )}
                 {visibleColumns.vendorName && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-64">
+                  <th className="text-left px-3 py-3 ">
                     Supplier Name
                   </th>
                 )}
                 {visibleColumns.totalAmount && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Total Amount
                   </th>
                 )}
                 {visibleColumns.createdBy && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Created By
                   </th>
                 )}
                 {visibleColumns.actions && (
-                  <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-right px-3 py-3 ">
                     Actions
                   </th>
                 )}
@@ -1465,11 +1465,11 @@ export default function PurchaseOrderListPage() {
                     key={order.id}
                     className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                   >
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                    <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                       {(currentPage - 1) * pageSize + index + 1}
                     </td>
                     {visibleColumns.orderDate && (
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 align-top break-words">
                         <div className="flex items-center gap-2">
                           <Calendar className="w-4 h-4 text-gray-400" />
                           {formatDate(order.order_date)}
@@ -1477,7 +1477,7 @@ export default function PurchaseOrderListPage() {
                       </td>
                     )}
                     {visibleColumns.orderNumber && (
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 align-top break-words">
                         <div className="font-medium text-gray-900 dark:text-white">
                           <Link 
                             href={`/purchase/purchase-orders/${order.id}`}
@@ -1489,7 +1489,7 @@ export default function PurchaseOrderListPage() {
                       </td>
                     )}
                     {visibleColumns.status && (
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 align-top break-words">
                         <span
                           className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
                             getStatusBadgeClass(order.status)
@@ -1505,12 +1505,12 @@ export default function PurchaseOrderListPage() {
                       </td>
                     )}
                     {visibleColumns.referenceNumber && (
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                      <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                         {order.reference_number || '-'}
                       </td>
                     )}
                     {visibleColumns.vendorName && (
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 align-top break-words">
                         <div className="flex items-center gap-2">
                           <Users className="w-4 h-4 text-gray-400" />
                           <span className="text-gray-700 dark:text-gray-300">
@@ -1520,7 +1520,7 @@ export default function PurchaseOrderListPage() {
                       </td>
                     )}
                     {visibleColumns.totalAmount && (
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 align-top break-words">
                         <div className="flex flex-col">
                           <span className="font-medium text-gray-900 dark:text-white">
                             {formatCurrency(order.total_amount, order.currency || "INR")}
@@ -1529,7 +1529,7 @@ export default function PurchaseOrderListPage() {
                       </td>
                     )}
                     {visibleColumns.createdBy && (
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 align-top break-words">
                         <div className="flex items-center gap-2">
                           <User className="w-4 h-4 text-gray-400" />
                           <span className="text-gray-700 dark:text-gray-300">
@@ -1539,7 +1539,7 @@ export default function PurchaseOrderListPage() {
                       </td>
                     )}
                     {visibleColumns.actions && (
-                      <td className="px-6 py-4 text-right whitespace-nowrap">
+                      <td className="px-3 py-4 text-right align-top">
                         <div className="relative action-dropdown-container inline-block">
                           <button
                             onClick={() =>
@@ -1676,3 +1676,4 @@ export default function PurchaseOrderListPage() {
     </div>
   );
 }
+

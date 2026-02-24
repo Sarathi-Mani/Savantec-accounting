@@ -482,3 +482,42 @@ input[type="search"]::-webkit-search-cancel-button {
 .custom-gradient-1 {
   background-image: linear-gradient(145deg, #eef 0%, #fff8fc 100%);
 }
+
+/* Compact table style for home list pages */
+.list-table-tune table {
+  width: 100%;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.list-table-tune table thead th,
+.list-table-tune table tbody td {
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+  white-space: normal !important;
+  word-break: break-word;
+}
+
+.list-table-tune table tbody svg {
+  display: none !important;
+}
+
+.list-table-tune table tbody .action-dropdown-container svg,
+.list-table-tune table tbody td:last-child button svg {
+  display: inline-block !important;
+}
+
+.list-table-tune table thead th:first-child,
+.list-table-tune table tbody td:first-child {
+  width: 80px !important;
+  max-width: 80px;
+  text-align: center;
+}
+
+.list-table-tune table thead th:last-child,
+.list-table-tune table tbody td:last-child {
+  width: 72px !important;
+  max-width: 72px;
+  padding-left: 0.125rem !important;
+  padding-right: 0.25rem !important;
+}

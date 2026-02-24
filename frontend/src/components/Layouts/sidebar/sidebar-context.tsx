@@ -1,7 +1,7 @@
 "use client";
 
 import { useIsMobile } from "@/hooks/use-mobile";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 type SidebarState = "expanded" | "collapsed";
 
@@ -32,12 +32,14 @@ export function SidebarProvider({
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const isMobile = useIsMobile();
+  const desktopStateRef = useRef(defaultOpen);
 
   useEffect(() => {
     if (isMobile) {
+      desktopStateRef.current = isOpen;
       setIsOpen(false);
     } else {
-      setIsOpen(true);
+      setIsOpen(desktopStateRef.current);
     }
   }, [isMobile]);
 

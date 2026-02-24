@@ -132,12 +132,12 @@ export default function ProformaInvoicesPage() {
 
       {/* Table */}
       <div className="overflow-hidden rounded-lg bg-white shadow-1 dark:bg-gray-dark">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-hidden">
           <table className="w-full table-auto">
             <thead>
               <tr className="border-b border-stroke dark:border-dark-3">
                 <th className="px-4 py-4 text-left font-medium text-dark dark:text-white">Invoice #</th>
-                <th className="px-4 py-4 text-left font-medium text-dark dark:text-white whitespace-nowrap w-64">Customer</th>
+                <th className="px-4 py-4 text-left font-medium text-dark dark:text-white ">Customer</th>
                 <th className="px-4 py-4 text-left font-medium text-dark dark:text-white">Date</th>
                 <th className="px-4 py-4 text-left font-medium text-dark dark:text-white">Due Date</th>
                 <th className="px-4 py-4 text-left font-medium text-dark dark:text-white">Reference</th>
@@ -271,3 +271,4 @@ export default function ProformaInvoicesPage() {
     </div>
   );
 }
+

@@ -1201,55 +1201,55 @@ export default function EmployeesPage() {
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="overflow-x-hidden">
+          <table className="w-full table-fixed">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
               <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                <th className="text-left px-6 py-3 whitespace-nowrap w-20">
+                <th className="text-left px-3 py-3 ">
                   S.No
                 </th>
                 {visibleColumns.employeeCode && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     Employee Code
                   </th>
                 )}
                 {visibleColumns.name && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-64">
+                  <th className="text-left px-3 py-3 ">
                     Employee Name
                   </th>
                 )}
                 {visibleColumns.phone && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Phone
                   </th>
                 )}
                 {visibleColumns.email && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Email
                   </th>
                 )}
                 {visibleColumns.department && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Department
                   </th>
                 )}
                 {visibleColumns.designation && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Designation
                   </th>
                 )}
                 {visibleColumns.joiningDate && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Joining Date
                   </th>
                 )}
                 {visibleColumns.status && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Status
                   </th>
                 )}
                 {visibleColumns.actions && (
-                  <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-right px-3 py-3 ">
                     Actions
                   </th>
                 )}
@@ -1295,11 +1295,11 @@ export default function EmployeesPage() {
                         key={employee.id}
                         className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                       >
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           {(currentPage - 1) * pageSize + index + 1}
                         </td>
                         {visibleColumns.employeeCode && (
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-3 py-4 align-top break-words">
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
                                 <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
@@ -1313,7 +1313,7 @@ export default function EmployeesPage() {
                           </td>
                         )}
                         {visibleColumns.name && (
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-3 py-4 align-top break-words">
                             <div className="min-w-0 max-w-[240px]">
                               <div className="font-medium text-gray-900 dark:text-white truncate">
                                 {employee.full_name || `${employee.first_name} ${employee.last_name || ''}`}
@@ -1325,7 +1325,7 @@ export default function EmployeesPage() {
                           </td>
                         )}
                         {visibleColumns.phone && (
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-3 py-4 align-top break-words">
                             <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
                               <Phone className="w-4 h-4 flex-shrink-0" />
                               <span>{employee.phone || '-'}</span>
@@ -1333,7 +1333,7 @@ export default function EmployeesPage() {
                           </td>
                         )}
                         {visibleColumns.email && (
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-3 py-4 align-top break-words">
                             <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
                               <Mail className="w-4 h-4 flex-shrink-0" />
                               <span className="truncate max-w-[180px]">{employee.email || '-'}</span>
@@ -1341,7 +1341,7 @@ export default function EmployeesPage() {
                           </td>
                         )}
                         {visibleColumns.department && (
-                          <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                          <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                             <div className="flex items-center gap-2">
                               <Building className="w-4 h-4 text-gray-400" />
                               {getDepartmentName(employee.department_id)}
@@ -1349,7 +1349,7 @@ export default function EmployeesPage() {
                           </td>
                         )}
                         {visibleColumns.designation && (
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-3 py-4 align-top break-words">
                             <div className="flex items-center gap-2 font-medium text-gray-900 dark:text-white">
                               <Briefcase className="w-4 h-4 text-gray-400" />
                               {getDesignationName(employee.designation_id)}
@@ -1357,7 +1357,7 @@ export default function EmployeesPage() {
                           </td>
                         )}
                         {visibleColumns.joiningDate && (
-                          <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                          <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                             <div className="flex items-center gap-2">
                               <Calendar className="w-4 h-4 text-gray-400" />
                               {formatDate(employee.date_of_joining)}
@@ -1365,7 +1365,7 @@ export default function EmployeesPage() {
                           </td>
                         )}
                         {visibleColumns.status && (
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-3 py-4 align-top break-words">
                             <span
                               className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
                                 getStatusBadgeClass(employee.status)
@@ -1380,7 +1380,7 @@ export default function EmployeesPage() {
                           </td>
                         )}
                         {visibleColumns.actions && (
-                          <td className="px-6 py-4 text-right whitespace-nowrap">
+                          <td className="px-3 py-4 text-right align-top">
                             <div className="relative action-dropdown-container inline-block">
                               <button
                                 onClick={() =>
@@ -1469,3 +1469,4 @@ export default function EmployeesPage() {
     </div>
   );
 }
+

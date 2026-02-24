@@ -1022,60 +1022,60 @@ export default function VendorsPage() {
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="overflow-x-hidden">
+          <table className="w-full table-fixed">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
               <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                <th className="text-left px-6 py-3 whitespace-nowrap w-20">
+                <th className="text-left px-3 py-3 ">
                   S.No
                 </th>
                 {visibleColumns.vendorId && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Vendor ID
                   </th>
                 )}
                 {visibleColumns.name && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-80">
+                  <th className="text-left px-3 py-3 ">
                     Vendor Name
                   </th>
                 )}
                 {visibleColumns.contact && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Contact
                   </th>
                 )}
                 {visibleColumns.email && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Email
                   </th>
                 )}
                 {visibleColumns.gstin && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     GSTIN
                   </th>
                 )}
                 {visibleColumns.pan && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     PAN
                   </th>
                 )}
                 {visibleColumns.location && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Location
                   </th>
                 )}
                 {visibleColumns.openingBalance && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Opening Balance
                   </th>
                 )}
                 {visibleColumns.status && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     Status
                   </th>
                 )}
                 {visibleColumns.actions && (
-                  <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-right px-3 py-3 ">
                     Actions
                   </th>
                 )}
@@ -1118,18 +1118,18 @@ export default function VendorsPage() {
                     key={vendor.id}
                     className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                   >
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                    <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                       {(currentPage - 1) * pageSize + index + 1}
                     </td>
                     {visibleColumns.vendorId && (
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 align-top break-words">
                         <div className="font-medium text-blue-600 dark:text-blue-400">
                           {vendor.vendor_code || '-'}
                         </div>
                       </td>
                     )}
                     {visibleColumns.name && (
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 align-top break-words">
                         <div className="min-w-0 max-w-[240px]">
                           <div className="font-medium text-gray-900 dark:text-white">
                             {vendor.name}
@@ -1139,7 +1139,7 @@ export default function VendorsPage() {
                       </td>
                     )}
                     {visibleColumns.contact && (
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 align-top break-words">
                         <div className="flex items-center gap-2">
                           <Phone className="w-4 h-4 text-gray-400" />
                           <span>{vendor.contact || '-'}</span>
@@ -1147,7 +1147,7 @@ export default function VendorsPage() {
                       </td>
                     )}
                     {visibleColumns.email && (
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 align-top break-words">
                         <div className="flex items-center gap-2">
                           <Mail className="w-4 h-4 text-gray-400" />
                           <span className="truncate">{vendor.email || '-'}</span>
@@ -1155,7 +1155,7 @@ export default function VendorsPage() {
                       </td>
                     )}
                     {visibleColumns.gstin && (
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                      <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                         <div className="flex items-center gap-2">
                           <Shield className="w-4 h-4 text-gray-400" />
                           {vendor.tax_number || '-'}
@@ -1163,12 +1163,12 @@ export default function VendorsPage() {
                       </td>
                     )}
                     {visibleColumns.pan && (
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                      <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                         {vendor.pan_number || '-'}
                       </td>
                     )}
                     {visibleColumns.location && (
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 align-top break-words">
                         {vendor.billing_city ? (
                           <div className="flex items-center gap-2">
                             <MapPin className="w-4 h-4 text-gray-400" />
@@ -1180,7 +1180,7 @@ export default function VendorsPage() {
                       </td>
                     )}
                     {visibleColumns.openingBalance && (
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 align-top break-words">
                         <div className="flex flex-col gap-1">
                           <div className={`font-bold ${vendor.opening_balance_type === 'outstanding' ? 'text-red-600' : 'text-green-600'}`}>
                             {formatCurrency(vendor.opening_balance || 0)}
@@ -1196,7 +1196,7 @@ export default function VendorsPage() {
                       </td>
                     )}
                     {visibleColumns.status && (
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4 align-top break-words">
                         <span
                           className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(vendor.is_active)}`}
                         >
@@ -1205,7 +1205,7 @@ export default function VendorsPage() {
                       </td>
                     )}
                     {visibleColumns.actions && (
-                      <td className="px-6 py-4 text-right whitespace-nowrap">
+                      <td className="px-3 py-4 text-right align-top">
                         <div className="relative action-dropdown-container inline-block">
                           <button
                             onClick={() =>
@@ -1291,3 +1291,4 @@ export default function VendorsPage() {
     </div>
   );
 }
+

@@ -1270,65 +1270,65 @@ export default function PurchaseListPage() {
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="overflow-x-hidden">
+          <table className="w-full table-fixed">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
               <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                <th className="text-left px-6 py-3 whitespace-nowrap w-20">
+                <th className="text-left px-3 py-3">
                   S.No
                 </th>
                 {visibleColumns.purchaseDate && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3">
                     Purchase Date
                   </th>
                 )}
                 {visibleColumns.dueDate && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3">
                     Due Date
                   </th>
                 )}
                 {visibleColumns.purchaseCode && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3">
                     Purchase Code
                   </th>
                 )}
                 {visibleColumns.purchaseStatus && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3">
                     Purchase Status
                   </th>
                 )}
                 {visibleColumns.referenceNo && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3">
                     Reference No
                   </th>
                 )}
                 {visibleColumns.supplierName && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-80">
+                  <th className="text-left px-3 py-3">
                     Supplier Name
                   </th>
                 )}
                 {visibleColumns.total && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3">
                     Total
                   </th>
                 )}
                 {visibleColumns.currencyCode && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-24">
+                  <th className="text-left px-3 py-3">
                     Currency
                   </th>
                 )}
                 {visibleColumns.paidAmount && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3">
                     Paid
                   </th>
                 )}
                 {visibleColumns.paymentStatus && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3">
                     Payment Status
                   </th>
                 )}
                 {visibleColumns.actions && (
-                  <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-right px-3 py-3">
                     Actions
                   </th>
                 )}
@@ -1337,7 +1337,7 @@ export default function PurchaseListPage() {
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-sm text-gray-700 dark:text-gray-300">
               {loading ? (
                 <tr>
-                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length + 1} className="px-6 py-8 text-center">
+                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length + 1} className="px-3 py-8 text-center">
                     <div className="flex items-center justify-center">
                       <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
                     </div>
@@ -1345,7 +1345,7 @@ export default function PurchaseListPage() {
                 </tr>
               ) : paginatedPurchases.length === 0 ? (
                 <tr>
-                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length + 1} className="px-6 py-8 text-center">
+                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length + 1} className="px-3 py-8 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <ShoppingBag className="w-12 h-12 text-gray-400 mb-2" />
                       <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
@@ -1375,22 +1375,22 @@ export default function PurchaseListPage() {
                       key={purchase.id}
                       className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                     >
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                      <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                         {(page - 1) * pageSize + index + 1}
                       </td>
                       {visibleColumns.purchaseDate && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           {formatDate(purchase.purchaseDate)}
                         </td>
                       )}
                       {visibleColumns.dueDate && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="flex flex-col gap-1">
                             <span className={`${isOverdueDue ? 'text-red-600 font-medium' : 'text-gray-700 dark:text-gray-300'}`}>
                               {formatDate(purchase.dueDate)}
                             </span>
                             {isOverdueDue && (
-                              <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                              <span className="inline-flex px-2.5 py-0.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                                 Overdue by {overdueDays} day{overdueDays !== 1 ? 's' : ''}
                               </span>
                             )}
@@ -1398,7 +1398,7 @@ export default function PurchaseListPage() {
                         </td>
                       )}
                       {visibleColumns.purchaseCode && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="min-w-0 max-w-[240px]">
                             <div className="font-medium text-blue-600 dark:text-blue-400">
                               <Link href={`/purchase/${purchase.id}`} className="hover:underline">
@@ -1409,17 +1409,17 @@ export default function PurchaseListPage() {
                         </td>
                       )}
                       {visibleColumns.purchaseStatus && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           {getPurchaseStatusBadge(purchase.purchaseStatus)}
                         </td>
                       )}
                       {visibleColumns.referenceNo && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           {purchase.referenceNo}
                         </td>
                       )}
                       {visibleColumns.supplierName && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="min-w-0 max-w-[240px]">
                             <div className="font-medium text-gray-900 dark:text-white">
                               <div className="flex items-center gap-2">
@@ -1431,19 +1431,19 @@ export default function PurchaseListPage() {
                         </td>
                       )}
                       {visibleColumns.total && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="font-bold text-gray-900 dark:text-white">
                             Rs. {purchase.total.toLocaleString("en-IN")}
                           </div>
                         </td>
                       )}
                       {visibleColumns.currencyCode && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           {purchase.currencyCode}
                         </td>
                       )}
                       {visibleColumns.paidAmount && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className={`font-bold ${purchase.paidAmount > 0 ? 'text-green-600' : 'text-gray-700 dark:text-gray-300'}`}>
                             Rs. {purchase.paidAmount.toLocaleString("en-IN")}
                           </div>
@@ -1455,12 +1455,12 @@ export default function PurchaseListPage() {
                         </td>
                       )}
                       {visibleColumns.paymentStatus && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           {getPaymentStatusBadge(purchase.paymentStatus)}
                         </td>
                       )}
                       {visibleColumns.actions && (
-                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                        <td className="px-3 py-4 text-right align-top">
                           <div className="relative action-dropdown-container inline-block">
                             <button
                               onClick={() =>
@@ -1548,3 +1548,4 @@ export default function PurchaseListPage() {
     </div>
   );
 }
+

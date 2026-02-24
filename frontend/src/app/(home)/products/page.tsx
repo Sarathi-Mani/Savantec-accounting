@@ -1164,60 +1164,60 @@ export default function ProductsPage() {
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="overflow-x-hidden">
+          <table className="w-full table-fixed">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
               <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                <th className="text-left px-6 py-3 whitespace-nowrap w-20">
+                <th className="text-left px-3 py-3 ">
                   S.No
                 </th>
                 {visibleColumns.name && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-80">
+                  <th className="text-left px-3 py-3 ">
                     Product Name
                   </th>
                 )}
                 {visibleColumns.brand && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Brand
                   </th>
                 )}
                 {visibleColumns.category && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Category
                   </th>
                 )}
                 {visibleColumns.store && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Store Name
                   </th>
                 )}
                 {visibleColumns.hsn && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     HSN/SAC
                   </th>
                 )}
                 {visibleColumns.type && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     Type
                   </th>
                 )}
                 {visibleColumns.price && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     Price
                   </th>
                 )}
                 {visibleColumns.gst && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     GST %
                   </th>
                 )}
                 {visibleColumns.stock && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     Stock
                   </th>
                 )}
                 {visibleColumns.actions && (
-                  <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-right px-3 py-3 ">
                     Actions
                   </th>
                 )}
@@ -1265,11 +1265,11 @@ export default function ProductsPage() {
                       key={product.id}
                       className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                     >
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                      <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                         {(currentPage - 1) * pageSize + index + 1}
                       </td>
                       {visibleColumns.name && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="min-w-0 max-w-[240px]">
                             <div className="font-medium text-gray-900 dark:text-white">
                               {product.name}
@@ -1288,7 +1288,7 @@ export default function ProductsPage() {
                         </td>
                       )}
                       {visibleColumns.brand && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           {getBrandName(product as ProductWithMeta) !== "-" ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-700 px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:text-gray-300">
                               <Tag className="w-3 h-3" />
@@ -1300,7 +1300,7 @@ export default function ProductsPage() {
                         </td>
                       )}
                       {visibleColumns.category && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           {getCategoryName(product as ProductWithMeta) !== "-" ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-700 px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:text-gray-300">
                               <Building className="w-3 h-3" />
@@ -1312,19 +1312,19 @@ export default function ProductsPage() {
                         </td>
                       )}
                       {visibleColumns.store && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           {getStoreName(product as ProductWithMeta, company?.name)}
                         </td>
                       )}
                       {visibleColumns.hsn && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           <div className="flex items-center gap-2">
                             {product.hsn_code || '-'}
                           </div>
                         </td>
                       )}
                       {visibleColumns.type && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <span
                             className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${getTypeBadgeClass(product.is_service)}`}
                           >
@@ -1333,21 +1333,21 @@ export default function ProductsPage() {
                         </td>
                       )}
                       {visibleColumns.price && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
                             {formatCurrency(toNumber(product.unit_price))}
                           </div>
                         </td>
                       )}
                       {visibleColumns.gst && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           <div className="flex items-center gap-2">
                             {toNumber(product.gst_rate)}%
                           </div>
                         </td>
                       )}
                       {visibleColumns.stock && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           {product.is_service || stockValue === null ? (
                             <span className="text-gray-500 dark:text-gray-400">-</span>
                           ) : (
@@ -1360,7 +1360,7 @@ export default function ProductsPage() {
                         </td>
                       )}
                       {visibleColumns.actions && (
-                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                        <td className="px-3 py-4 text-right align-top">
                           <div className="relative action-dropdown-container inline-block">
                             <button
                               onClick={() =>
@@ -1447,3 +1447,4 @@ export default function ProductsPage() {
     </div>
   );
 }
+

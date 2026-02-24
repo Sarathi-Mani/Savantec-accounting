@@ -671,57 +671,57 @@ export default function CustomersPage() {
       {/* <div className="p-6"> */}
         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="w-full">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-hidden">
               <table className="w-full table-fixed">
                 <thead className="bg-gray-200 dark:bg-gray-700/50">
                   <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
                     {visibleColumns.customerId && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                      <th className="text-left px-3 py-3 ">
                         Customer ID
                       </th>
                     )}
                     {visibleColumns.name && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap w-64">
+                      <th className="text-left px-3 py-3 ">
                         Name
                       </th>
                     )}
                     {visibleColumns.contact && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                      <th className="text-left px-3 py-3 ">
                         Contact
                       </th>
                     )}
                     {visibleColumns.email && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                      <th className="text-left px-3 py-3 ">
                         Email
                       </th>
                     )}
                     {visibleColumns.gstin && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                      <th className="text-left px-3 py-3 ">
                         GSTIN
                       </th>
                     )}
                     {visibleColumns.type && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                      <th className="text-left px-3 py-3 ">
                         Type
                       </th>
                     )}
                     {visibleColumns.dueAmount && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                      <th className="text-left px-3 py-3 ">
                         Due Amount
                       </th>
                     )}
                     {visibleColumns.creditLimit && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                      <th className="text-left px-3 py-3 ">
                         Credit Limit
                       </th>
                     )}
                     {visibleColumns.status && (
-                      <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                      <th className="text-left px-3 py-3 ">
                         Status
                       </th>
                     )}
                     {visibleColumns.actions && (
-                      <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                      <th className="text-right px-3 py-3 ">
                         Actions
                       </th>
                     )}
@@ -772,14 +772,14 @@ export default function CustomersPage() {
                           className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                         >
                           {visibleColumns.customerId && (
-                            <td className="px-6 py-4 whitespace-nowrap">
+                            <td className="px-3 py-4 align-top break-words">
                               <div className="font-medium text-blue-600 dark:text-blue-400">
                                 {customer.customer_code || <span className="text-gray-500">N/A</span>}
                               </div>
                             </td>
                           )}
                           {visibleColumns.name && (
-                            <td className="px-6 py-4 whitespace-nowrap">
+                            <td className="px-3 py-4 align-top break-words">
                               <div className="flex items-center gap-2">
                                 <Users className="w-4 h-4 text-gray-400 flex-shrink-0" />
                                 <div className="min-w-0 max-w-[240px]">
@@ -797,7 +797,7 @@ export default function CustomersPage() {
                             </td>
                           )}
                           {visibleColumns.contact && (
-                            <td className="px-6 py-4 whitespace-nowrap">
+                            <td className="px-3 py-4 align-top break-words">
                               <div className="flex items-center gap-2">
                                 <Phone className="w-4 h-4 text-gray-400" />
                                 <span>{customer.mobile || customer.contact || '-'}</span>
@@ -805,7 +805,7 @@ export default function CustomersPage() {
                             </td>
                           )}
                           {visibleColumns.email && (
-                            <td className="px-6 py-4 whitespace-nowrap">
+                            <td className="px-3 py-4 align-top break-words">
                               <div className="flex items-center gap-2">
                                 <Mail className="w-4 h-4 text-gray-400" />
                                 <span className="truncate">{customer.email || '-'}</span>
@@ -813,34 +813,34 @@ export default function CustomersPage() {
                             </td>
                           )}
                           {visibleColumns.gstin && (
-                            <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                            <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                               {customer.tax_number || customer.gstin || '-'}
                             </td>
                           )}
                           {visibleColumns.type && (
-                            <td className="px-6 py-4 whitespace-nowrap">
+                            <td className="px-3 py-4 align-top break-words">
                               {getTypeBadge(customer.customer_type || '')}
                             </td>
                           )}
                           {visibleColumns.dueAmount && (
-                            <td className="px-6 py-4 whitespace-nowrap">
+                            <td className="px-3 py-4 align-top break-words">
                               <div className={`font-medium ${isOverdue ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>
                                 {formatCurrency(toSafeNumber(customer.outstanding_balance))}
                               </div>
                             </td>
                           )}
                           {visibleColumns.creditLimit && (
-                            <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                            <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                               {formatCurrency(toSafeNumber(customer.credit_limit))}
                             </td>
                           )}
                           {visibleColumns.status && (
-                            <td className="px-6 py-4 whitespace-nowrap">
+                            <td className="px-3 py-4 align-top break-words">
                               {getStatusBadge(toSafeNumber(customer.outstanding_balance), toSafeNumber(customer.credit_limit))}
                             </td>
                           )}
                           {visibleColumns.actions && (
-                            <td className="px-6 py-4 text-right whitespace-nowrap">
+                            <td className="px-3 py-4 text-right align-top">
                               <div className="relative action-dropdown-container inline-block">
                                 <button
                                   onClick={() =>
@@ -997,3 +997,4 @@ export default function CustomersPage() {
     // </div>
   );
 }
+

@@ -1522,65 +1522,65 @@ export default function SalesReturnsPage() {
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
+        <div className="overflow-x-hidden">
+          <table className="w-full table-fixed">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
               <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                <th className="text-left px-6 py-3 whitespace-nowrap w-20">
+                <th className="text-left px-3 py-3 ">
                   S.No
                 </th>
                 {visibleColumns.returnDate && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-32">
+                  <th className="text-left px-3 py-3 ">
                     Return Date
                   </th>
                 )}
                 {visibleColumns.invoiceNumber && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Sales Code
                   </th>
                 )}
                 {visibleColumns.returnNumber && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Return Code
                   </th>
                 )}
                 {visibleColumns.status && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Return Status
                   </th>
                 )}
                 {visibleColumns.referenceNo && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Reference No.
                   </th>
                 )}
                 {visibleColumns.customerName && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-80">
+                  <th className="text-left px-3 py-3 ">
                     Customer Name
                   </th>
                 )}
                 {visibleColumns.totalAmount && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Total
                   </th>
                 )}
                 {visibleColumns.paidPayment && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Paid Payment
                   </th>
                 )}
                 {visibleColumns.paymentStatus && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Payment Status
                   </th>
                 )}
                 {visibleColumns.createdBy && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-48">
+                  <th className="text-left px-3 py-3 ">
                     Created by
                   </th>
                 )}
                 {visibleColumns.actions && (
-                  <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-right px-3 py-3 ">
                     Actions
                   </th>
                 )}
@@ -1630,21 +1630,21 @@ export default function SalesReturnsPage() {
                       key={r.id}
                       className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                     >
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                      <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                         {(currentPage - 1) * pageSize + index + 1}
                       </td>
                       {visibleColumns.returnDate && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           {formatDate(r.return_date)}
                         </td>
                       )}
                       {visibleColumns.invoiceNumber && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           {r.invoice_number || "-"}
                         </td>
                       )}
                       {visibleColumns.returnNumber && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="font-medium text-blue-600 dark:text-blue-400">
                             <Link href={`/sales/sales-returns/${r.id}`} className="hover:underline">
                               {r.return_number || 'N/A'}
@@ -1653,7 +1653,7 @@ export default function SalesReturnsPage() {
                         </td>
                       )}
                       {visibleColumns.status && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <span
                             className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}
                           >
@@ -1662,12 +1662,12 @@ export default function SalesReturnsPage() {
                         </td>
                       )}
                       {visibleColumns.referenceNo && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           {r.reference_no || "-"}
                         </td>
                       )}
                       {visibleColumns.customerName && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="min-w-0 max-w-[240px]">
                             <div className="font-medium text-gray-900 dark:text-white">
                               {r.customer_name || "-"}
@@ -1676,7 +1676,7 @@ export default function SalesReturnsPage() {
                         </td>
                       )}
                       {visibleColumns.totalAmount && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="font-bold text-red-600">
                             {formatCurrency(Number(r.total_amount) || 0)}
                           </div>
@@ -1688,7 +1688,7 @@ export default function SalesReturnsPage() {
                         </td>
                       )}
                       {visibleColumns.paidPayment && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className={`font-bold ${paidAmount > 0 ? 'text-green-600' : 'text-gray-700 dark:text-gray-300'}`}>
                             {formatCurrency(paidAmount)}
                           </div>
@@ -1700,7 +1700,7 @@ export default function SalesReturnsPage() {
                         </td>
                       )}
                       {visibleColumns.paymentStatus && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <span
                             className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
                               paymentStatusText === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
@@ -1714,12 +1714,12 @@ export default function SalesReturnsPage() {
                         </td>
                       )}
                       {visibleColumns.createdBy && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           {r.created_by_name || r.created_by || "-"}
                         </td>
                       )}
                       {visibleColumns.actions && (
-                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                        <td className="px-3 py-4 text-right align-top">
                           <div className="relative action-dropdown-container inline-block">
                             <button
                               onClick={() =>
@@ -1881,3 +1881,4 @@ export default function SalesReturnsPage() {
     </div>
   );
 }
+

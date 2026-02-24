@@ -389,7 +389,7 @@ export default function QuotationsPage() {
         </div>
         <Link
           href="/quotations/new"
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 font-medium text-white transition hover:bg-opacity-90"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-3 py-3 font-medium text-white transition hover:bg-opacity-90"
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -451,7 +451,7 @@ export default function QuotationsPage() {
 
       {/* Table */}
       <div className="overflow-hidden rounded-lg bg-white shadow-1 dark:bg-gray-dark">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-hidden">
           <table className="w-full table-auto">
             <thead>
               <tr className="border-b border-stroke dark:border-dark-3">
@@ -470,7 +470,7 @@ export default function QuotationsPage() {
                 <th className="px-4 py-4 text-left font-medium text-dark dark:text-white">
                   Reference No.
                 </th>
-                <th className="px-4 py-4 text-left font-medium text-dark dark:text-white whitespace-nowrap w-64">
+                <th className="px-4 py-4 text-left font-medium text-dark dark:text-white ">
                   Customer Name
                 </th>
                 <th className="px-4 py-4 text-left font-medium text-dark dark:text-white">
@@ -698,3 +698,4 @@ export default function QuotationsPage() {
     </div>
   );
 }
+

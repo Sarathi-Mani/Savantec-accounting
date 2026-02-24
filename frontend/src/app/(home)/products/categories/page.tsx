@@ -712,30 +712,30 @@ export default function CategoriesPage() {
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-visible">
-        <div className="overflow-x-auto overflow-y-visible">
-          <table className="w-full">
+        <div className="overflow-x-hidden overflow-y-visible">
+          <table className="w-full table-fixed">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
               <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                <th className="text-left px-6 py-3 whitespace-nowrap w-20">
+                <th className="text-left px-3 py-3 ">
                   S.No
                 </th>
                 {visibleColumns.name && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-64">
+                  <th className="text-left px-3 py-3 ">
                     Category Name
                   </th>
                 )}
                 {visibleColumns.description && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-96">
+                  <th className="text-left px-3 py-3 ">
                     Description
                   </th>
                 )}
                 {visibleColumns.createdAt && (
-                  <th className="text-left px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-left px-3 py-3 ">
                     Created Date
                   </th>
                 )}
                 {visibleColumns.actions && (
-                  <th className="text-right px-6 py-3 whitespace-nowrap w-40">
+                  <th className="text-right px-3 py-3 ">
                     Actions
                   </th>
                 )}
@@ -779,11 +779,11 @@ export default function CategoriesPage() {
                       key={category.id}
                       className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                     >
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                      <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                         {(currentPage - 1) * pageSize + index + 1}
                       </td>
                       {visibleColumns.name && (
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-4 align-top break-words">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
                               <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
@@ -806,7 +806,7 @@ export default function CategoriesPage() {
                         </td>
                       )}
                       {visibleColumns.createdAt && (
-                        <td className="px-6 py-4 whitespace-nowrap text-gray-700 dark:text-gray-300">
+                        <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                           <div className="flex items-center gap-2">
                             <Calendar className="w-4 h-4 text-gray-400" />
                             {formatDate(category.created_at)}
@@ -814,7 +814,7 @@ export default function CategoriesPage() {
                         </td>
                       )}
                       {visibleColumns.actions && (
-                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                        <td className="px-3 py-4 text-right align-top">
                           <div className="relative action-dropdown-container inline-block">
                             <button
                               onClick={() =>
@@ -903,3 +903,4 @@ export default function CategoriesPage() {
     </div>
   );
 }
+

@@ -45,7 +45,7 @@ export default function HomeLayout({
       <div className="flex min-w-0 flex-1 flex-col bg-gray-2 dark:bg-[#020d1a]">
         <Header />
 
-        <main className="relative mx-auto w-full max-w-screen-2xl p-4 md:p-6 2xl:p-10">
+        <main className="list-table-tune relative mx-auto w-full max-w-screen-2xl p-4 md:p-6 2xl:p-10">
           {!company && (
             <div className="mb-6 rounded-lg bg-yellow-50 p-4 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400">
               <p className="font-medium">No company profile found</p>
