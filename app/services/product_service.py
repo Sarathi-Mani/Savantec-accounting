@@ -54,6 +54,7 @@ class ProductService:
             "name": data.name,
             "description": data.description,
             "sku": data.sku,
+            "barcode": data.barcode,
             "hsn_code": data.hsn_code,
             "price": unit_price,
             "unit_price": unit_price,
@@ -222,6 +223,7 @@ class ProductService:
             "name": product.name,
             "description": product.description,
             "sku": product.sku,
+            "barcode": getattr(product, "barcode", None),
             "hsn_code": product.hsn_code,
             "unit_price": float(product.unit_price) if product.unit_price is not None else (float(product.price) if product.price else 0.0),
             "unit": product.unit,
@@ -517,6 +519,7 @@ class ProductService:
             query = query.filter(
                 (Product.name.ilike(search_filter)) |
                 (Product.sku.ilike(search_filter)) |
+                (Product.barcode.ilike(search_filter)) |
                 (Product.hsn_code.ilike(search_filter)) |
                 (Product.description.ilike(search_filter))
             )
@@ -575,5 +578,6 @@ class ProductService:
             Product.is_active == True,
             (Product.name.ilike(search_filter)) |
             (Product.sku.ilike(search_filter)) |
+            (Product.barcode.ilike(search_filter)) |
             (Product.hsn_code.ilike(search_filter))
         ).limit(limit).all()

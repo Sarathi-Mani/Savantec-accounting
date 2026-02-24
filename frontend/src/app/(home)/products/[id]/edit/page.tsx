@@ -29,6 +29,9 @@ export default function EditProductPage() {
   const router = useRouter();
   const params = useParams();
   const productId = params.id as string;
+  const companyId =
+    company?.id ||
+    (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -70,16 +73,16 @@ export default function EditProductPage() {
 
   useEffect(() => {
     const fetchInitialData = async () => {
-      if (!company?.id || !productId) return;
+      if (!companyId || !productId) return;
 
       try {
         setLoading(true);
 
         const [brandsResult, categoriesResult, godownsResult, product] = await Promise.all([
-          brandsApi.list(company.id, { page: 1, page_size: 100 }),
-          categoriesApi.list(company.id, { page: 1, page_size: 100 }),
-          inventoryApi.listGodowns(company.id),
-          productsApi.get(company.id, productId),
+          brandsApi.list(companyId, { page: 1, page_size: 100 }),
+          categoriesApi.list(companyId, { page: 1, page_size: 100 }),
+          inventoryApi.listGodowns(companyId),
+          productsApi.get(companyId, productId),
         ]);
 
         setBrands(brandsResult.brands || brandsResult.data || []);
@@ -89,10 +92,10 @@ export default function EditProductPage() {
         setFormData({
           name: product.name || "",
           hsn_code: product.hsn_code || "",
-          barcode: (product as any).barcode || "",
+          barcode: product.barcode || "",
           sku: product.sku || "",
-          brand_id: (product as any).brand_id || "",
-          category_id: (product as any).category_id || "",
+          brand_id: (product as any).brand_id || (product as any).brand?.id || "",
+          category_id: (product as any).category_id || (product as any).category?.id || "",
           unit: product.unit || "unit",
           alert_quantity: Number((product as any).alert_quantity ?? (product as any).min_stock_level ?? 0),
           opening_stock: Number((product as any).opening_stock ?? 0),
@@ -134,7 +137,7 @@ export default function EditProductPage() {
     };
 
     fetchInitialData();
-  }, [company?.id, productId]);
+  }, [companyId, productId]);
 
   useEffect(() => {
     const unitPrice = formData.unit_price || 0;
@@ -252,7 +255,7 @@ export default function EditProductPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!company?.id || !productId) return;
+    if (!companyId || !productId) return;
 
     if (!formData.name.trim()) {
       setError("Item name is required");
@@ -301,10 +304,10 @@ export default function EditProductPage() {
         payload.godown_id = companySelection.replace("godown:", "");
       }
 
-      await productsApi.update(company.id, productId, payload);
+      await productsApi.update(companyId, productId, payload);
 
       if (mainImage || additionalImage) {
-        await uploadImages(company.id, productId, mainImage, additionalImage);
+        await uploadImages(companyId, productId, mainImage, additionalImage);
       }
 
       router.push("/products");

@@ -295,6 +295,7 @@ export interface Product {
   name: string;
   description?: string;
   sku?: string;
+  barcode?: string;
   hsn_code?: string;
   unit_price: number;
   unit: string;

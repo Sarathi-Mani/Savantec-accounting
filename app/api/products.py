@@ -32,6 +32,7 @@ async def create_product(
     name: str = Form(...),
     description: Optional[str] = Form(None),
     sku: Optional[str] = Form(None),
+    barcode: Optional[str] = Form(None),
     hsn_code: Optional[str] = Form(None),
     unit_price: float = Form(0.0),
     unit: str = Form("unit"),
@@ -61,6 +62,7 @@ async def create_product(
         name=name,
         description=description,
         sku=sku,
+        barcode=barcode,
         hsn_code=hsn_code,
         unit_price=unit_price,
         unit=unit,
@@ -100,6 +102,7 @@ async def update_product(
     name: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     sku: Optional[str] = Form(None),
+    barcode: Optional[str] = Form(None),
     hsn_code: Optional[str] = Form(None),
     unit_price: Optional[float] = Form(None),
     unit: Optional[str] = Form(None),
@@ -139,6 +142,8 @@ async def update_product(
         update_data["description"] = description
     if sku is not None:
         update_data["sku"] = sku
+    if barcode is not None:
+        update_data["barcode"] = barcode
     if hsn_code is not None:
         update_data["hsn_code"] = hsn_code
     if unit_price is not None:

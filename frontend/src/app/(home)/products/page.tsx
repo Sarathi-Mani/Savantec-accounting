@@ -425,6 +425,23 @@ export default function ProductsPage() {
     fetchGodowns();
   }, [companyId]);
 
+  useEffect(() => {
+    const handleClickOutsideActionMenu = (event: Event) => {
+      if (!activeActionMenu) return;
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest(".action-dropdown-container")) {
+        setActiveActionMenu(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutsideActionMenu);
+    document.addEventListener("touchstart", handleClickOutsideActionMenu);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutsideActionMenu);
+      document.removeEventListener("touchstart", handleClickOutsideActionMenu);
+    };
+  }, [activeActionMenu]);
+
   const fetchProducts = async () => {
     try {
       setLoading(true);
@@ -1359,7 +1376,7 @@ export default function ProductsPage() {
                             {activeActionMenu === product.id && (
                               <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                                 <Link
-                                  href={`/products/${product.id}/edit`}
+                                  href={`/products/${product.id}`}
                                   onClick={() => setActiveActionMenu(null)}
                                   className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                                 >

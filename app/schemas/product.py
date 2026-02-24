@@ -10,6 +10,7 @@ class ProductCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     sku: Optional[str] = Field(None, max_length=50)
+    barcode: Optional[str] = Field(None, max_length=100)
     hsn_code: Optional[str] = Field(None, max_length=8)
 
     unit_price: Decimal = Field(..., gt=0, decimal_places=2)
@@ -66,6 +67,7 @@ class ProductUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     sku: Optional[str] = Field(None, max_length=50)
+    barcode: Optional[str] = Field(None, max_length=100)
     hsn_code: Optional[str] = Field(None, max_length=8)
 
     unit_price: Optional[Decimal] = Field(None, gt=0, decimal_places=2)
@@ -90,6 +92,7 @@ class ProductResponse(BaseModel):
     name: str
     description: Optional[str] = None
     sku: Optional[str] = None
+    barcode: Optional[str] = None
     hsn_code: Optional[str] = None
     unit_price: float
     unit: str
