@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { customersApi, getErrorMessage } from "@/services/api";
+import { customerTypesApi, customersApi, getErrorMessage } from "@/services/api";
 import CreatableSelect from "react-select/creatable";
 
 interface ContactPerson {
@@ -17,6 +17,7 @@ interface OpeningBalanceItem {
   id?: string;
   date: string;
   voucher_name: string;
+  balance_type: "outstanding" | "advance";
   days: string;
   amount: string;
 }
@@ -170,6 +171,12 @@ export default function EditCustomerPage() {
   const [countryOptions, setCountryOptions] = useState<{ value: string; label: string }[]>(
     DEFAULT_COUNTRIES.map((country) => ({ value: country, label: country })),
   );
+  const [customerTypeOptions, setCustomerTypeOptions] = useState<string[]>([
+    "b2b",
+    "b2c",
+    "export",
+    "sez",
+  ]);
 
   const [formData, setFormData] = useState<FormData>({
     // Basic Info
@@ -219,6 +226,26 @@ export default function EditCustomerPage() {
     is_active: true,
   });
 
+  useEffect(() => {
+    const loadCustomerTypes = async () => {
+      if (!company?.id) return;
+      try {
+        const response = await customerTypesApi.list(company.id);
+        const names = (response.customer_types || [])
+          .map((item) => item.name?.trim())
+          .filter((item): item is string => Boolean(item));
+
+        if (names.length > 0) {
+          setCustomerTypeOptions(names);
+        }
+      } catch (err) {
+        console.error("Failed to load customer types:", err);
+      }
+    };
+
+    loadCustomerTypes();
+  }, [company?.id]);
+
   // Fetch customer data on component mount
   useEffect(() => {
     const fetchCustomer = async () => {
@@ -232,13 +259,18 @@ export default function EditCustomerPage() {
         const customer = await customersApi.get(company.id, customerId);
         
         // Format opening balance split items
-        const openingBalanceSplit = customer.opening_balance_items?.map(item => ({
-          id: item.id,
-          date: item.date || "",
-          voucher_name: item.voucher_name || "",
-          days: item.days ? item.days.toString() : "",
-          amount: item.amount ? item.amount.toString() : ""
-        })) || [];
+        const openingBalanceSplit = customer.opening_balance_items?.map(item => {
+          const rawAmount = Number(item.amount || 0);
+          const normalizedType: "outstanding" | "advance" = rawAmount < 0 ? "advance" : "outstanding";
+          return {
+            id: item.id,
+            date: item.date || "",
+            voucher_name: item.voucher_name || "",
+            balance_type: normalizedType,
+            days: item.days ? item.days.toString() : "",
+            amount: String(Math.abs(rawAmount)),
+          };
+        }) || [];
 
         // Format contact persons
         const contactPersons = customer.contact_persons?.map(person => ({
@@ -259,7 +291,7 @@ export default function EditCustomerPage() {
           pan_number: customer.pan_number || "",
           vendor_code: customer.vendor_code || "",
           
-          opening_balance: customer.opening_balance?.toString() || "",
+          opening_balance: customer.opening_balance != null ? String(Math.abs(Number(customer.opening_balance))) : "",
           opening_balance_type: (customer.opening_balance_type as "outstanding" | "advance") || "outstanding",
           opening_balance_mode: (customer.opening_balance_mode as "single" | "split") || "single",
           opening_balance_split: openingBalanceSplit,
@@ -281,10 +313,18 @@ export default function EditCustomerPage() {
           shipping_country: customer.shipping_country || "India",
           shipping_zip: customer.shipping_zip || "",
           
-          customer_code: customer.customer_code || "",
+          customer_code: customer.customer_code || customer.vendor_code || "",
           customer_type: customer.customer_type || "b2b",
           is_active: customer.is_active !== false,
         });
+
+        if (customer.customer_type && customer.customer_type.trim()) {
+          setCustomerTypeOptions((prev) => {
+            const type = customer.customer_type!.trim();
+            if (prev.includes(type)) return prev;
+            return [...prev, type];
+          });
+        }
 
         setCountryOptions((prev) => {
           const options = [...prev];
@@ -414,7 +454,7 @@ export default function EditCustomerPage() {
       ...prev,
       opening_balance_split: [
         ...prev.opening_balance_split,
-        { date: "", voucher_name: "", days: "", amount: "" }
+        { date: "", voucher_name: "", balance_type: "outstanding", days: "", amount: "" }
       ]
     }));
   };
@@ -507,6 +547,11 @@ export default function EditCustomerPage() {
           setError(`Please enter a voucher name for item ${index + 1}`);
           return false;
         }
+
+        if (!item.balance_type) {
+          setError(`Please select balance type for item ${index + 1}`);
+          return false;
+        }
         
         // Validate days
         if (item.days && isNaN(parseInt(item.days))) {
@@ -573,6 +618,13 @@ export default function EditCustomerPage() {
     setShowGstOptions(false);
   };
 
+  const getSplitNetBalance = () => {
+    return formData.opening_balance_split.reduce((total, item) => {
+      const amount = parseFloat(item.amount) || 0;
+      return total + (item.balance_type === "advance" ? -amount : amount);
+    }, 0);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -589,6 +641,9 @@ export default function EditCustomerPage() {
     setError(null);
 
     try {
+      const splitNetBalance = getSplitNetBalance();
+      const splitNetType: "outstanding" | "advance" = splitNetBalance < 0 ? "advance" : "outstanding";
+
       // Prepare data for API
       const apiData: any = {
         name: formData.name,
@@ -604,21 +659,25 @@ export default function EditCustomerPage() {
         is_active: formData.is_active,
         
         // Convert numeric fields to strings
-        opening_balance: formData.opening_balance ? String(parseFloat(formData.opening_balance)) : "0",
+        opening_balance: formData.opening_balance_mode === "split"
+          ? String(Math.abs(splitNetBalance))
+          : (formData.opening_balance ? String(parseFloat(formData.opening_balance)) : "0"),
         credit_limit: formData.credit_limit ? String(parseFloat(formData.credit_limit)) : "0",
         credit_days: formData.credit_days ? String(parseInt(formData.credit_days)) : "0",
         
-        opening_balance_type: formData.opening_balance_type || "",
+        opening_balance_type: formData.opening_balance_mode === "split"
+          ? splitNetType
+          : (formData.opening_balance_type || ""),
         opening_balance_mode: formData.opening_balance_mode || "",
         
         // For opening_balance_split - also convert to strings
         opening_balance_split: formData.opening_balance_mode === "split" ? 
           formData.opening_balance_split.map(item => ({
-            id: item.id, // Include id for existing items
             date: item.date,
             voucher_name: item.voucher_name,
+            balance_type: item.balance_type,
             days: item.days ? String(parseInt(item.days)) : "0",
-            amount: String(parseFloat(item.amount))
+            amount: String(Math.abs(parseFloat(item.amount) || 0))
           })) : [],
         
         // Contact persons
@@ -663,9 +722,7 @@ export default function EditCustomerPage() {
 
   const calculateTotalOpeningBalance = () => {
     if (formData.opening_balance_mode === "split") {
-      return formData.opening_balance_split.reduce((sum, item) => {
-        return sum + (parseFloat(item.amount) || 0);
-      }, 0);
+      return Math.abs(getSplitNetBalance());
     }
     return parseFloat(formData.opening_balance) || 0;
   };
@@ -721,41 +778,8 @@ export default function EditCustomerPage() {
         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
           <div className="grid gap-6 md:grid-cols-2">
             <div>
-              <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Customer Identification</h2>
+              <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Customer Type</h2>
               <div className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                    Customer Code
-                  </label>
-                  <input
-                    type="text"
-                    name="customer_code"
-                    value={formData.customer_code}
-                    onChange={handleChange}
-                    placeholder="Enter customer code"
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                  />
-                </div>
-              </div>
-            </div>
-            
-            <div>
-              <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Status</h2>
-              <div className="space-y-4">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="is_active"
-                    name="is_active"
-                    checked={formData.is_active}
-                    onChange={handleChange}
-                    className="h-4 w-4 rounded border-stroke text-primary focus:ring-primary dark:border-dark-3"
-                  />
-                  <label htmlFor="is_active" className="ml-2 text-sm font-medium text-dark dark:text-white">
-                    Active Customer
-                  </label>
-                </div>
-                
                 <div>
                   <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                     Customer Type
@@ -766,10 +790,11 @@ export default function EditCustomerPage() {
                     onChange={handleChange}
                     className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                   >
-                    <option value="b2b">Business (B2B)</option>
-                    <option value="b2c">Consumer (B2C)</option>
-                    <option value="export">Export</option>
-                    <option value="sez">SEZ</option>
+                    {customerTypeOptions.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -979,20 +1004,22 @@ export default function EditCustomerPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Balance Type
-                </label>
-                <select
-                  name="opening_balance_type"
-                  value={formData.opening_balance_type}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                >
-                  <option value="outstanding">Outstanding (Customer Owes)</option>
-                  <option value="advance">Advance (You Owe Customer)</option>
-                </select>
-              </div>
+              {formData.opening_balance_mode === "single" && (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Balance Type
+                  </label>
+                  <select
+                    name="opening_balance_type"
+                    value={formData.opening_balance_type}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  >
+                    <option value="outstanding">Outstanding (Customer Owes)</option>
+                    <option value="advance">Advance (You Owe Customer)</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             {formData.opening_balance_mode === "single" ? (
@@ -1044,7 +1071,7 @@ export default function EditCustomerPage() {
                       >
                         <div className="grid items-center gap-4 md:grid-cols-12">
                           <div className="md:col-span-11">
-                            <div className="grid gap-4 sm:grid-cols-4">
+                            <div className="grid gap-4 sm:grid-cols-5">
                               <div>
                                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                                   {index === 0 ? "Date" : ""}
@@ -1068,6 +1095,20 @@ export default function EditCustomerPage() {
                                   placeholder="Enter voucher name"
                                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
                                 />
+                              </div>
+
+                              <div>
+                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                  {index === 0 ? "Balance Type" : ""}
+                                </label>
+                                <select
+                                  value={item.balance_type}
+                                  onChange={(e) => handleOpeningBalanceItemChange(index, "balance_type", e.target.value)}
+                                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
+                                >
+                                  <option value="outstanding">Outstanding</option>
+                                  <option value="advance">Advance</option>
+                                </select>
                               </div>
 
                               <div>
@@ -1120,7 +1161,7 @@ export default function EditCustomerPage() {
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-dark dark:text-white">Total Opening Balance:</span>
                     <span className="text-lg font-semibold text-primary">
-                      ₹{calculateTotalOpeningBalance().toFixed(2)}
+                      ₹{calculateTotalOpeningBalance().toFixed(2)} ({getSplitNetBalance() < 0 ? "advance" : "outstanding"})
                     </span>
                   </div>
                 </div>
@@ -1492,4 +1533,5 @@ export default function EditCustomerPage() {
     </div>
   );
 }
+
 

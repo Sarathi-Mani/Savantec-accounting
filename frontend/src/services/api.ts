@@ -254,6 +254,7 @@ export interface OpeningBalanceItem {
   customer_id: string;
   date: string;
   voucher_name: string;
+  balance_type?: string;
   days?: number;
   amount: number;
   created_at?: string;

@@ -777,6 +777,12 @@ class OpeningBalanceItem(Base):
     
     customer = relationship("Customer", back_populates="opening_balance_items")
 
+    @property
+    def balance_type(self):
+        if self.amount is None:
+            return "outstanding"
+        return "advance" if self.amount < 0 else "outstanding"
+
 
 class ContactPerson(Base):
     __tablename__ = "contact_persons"
@@ -2665,6 +2671,12 @@ class VendorOpeningBalanceItem(Base):
     
     # Relationship
     vendor = relationship("Vendor", back_populates="opening_balance_items")
+
+    @property
+    def balance_type(self):
+        if self.amount is None:
+            return "outstanding"
+        return "advance" if self.amount < 0 else "outstanding"
     
     def to_dict(self):
         """Convert to dictionary for API response"""
@@ -2673,8 +2685,9 @@ class VendorOpeningBalanceItem(Base):
             "vendor_id": self.vendor_id,
             "date": self.date.isoformat() if self.date else None,
             "voucher_name": self.voucher_name,
+            "balance_type": self.balance_type,
             "days": self.days,
-            "amount": float(self.amount) if self.amount else 0.00,
+            "amount": abs(float(self.amount)) if self.amount else 0.00,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }

@@ -9,14 +9,16 @@ class OpeningBalanceItemCreate(BaseModel):
     """Schema for creating opening balance item."""
     date: date
     voucher_name: str = Field(..., min_length=1, max_length=255)
+    balance_type: Optional[Literal["outstanding", "advance"]] = "outstanding"
     days: Optional[int] = Field(None, ge=0)
-    amount: Decimal = Field(..., ge=0)
+    amount: Decimal = Field(...)
     
     class Config:
         json_schema_extra = {
             "example": {
                 "date": "2024-01-01",
                 "voucher_name": "Opening Balance",
+                "balance_type": "outstanding",
                 "days": 0,
                 "amount": 10000.00
             }
@@ -29,6 +31,7 @@ class OpeningBalanceItemResponse(BaseModel):
     vendor_id: str
     date: date
     voucher_name: str
+    balance_type: Optional[str]
     days: Optional[int]
     amount: Decimal
     created_at: datetime
@@ -128,12 +131,12 @@ class VendorCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     contact: str = Field(..., min_length=1, max_length=255)
     email: Optional[EmailStr] = None
-    mobile: Optional[str] = Field(None, min_length=10, max_length=15)
+    mobile: Optional[str] = Field(None, max_length=15)
     
     # Tax Information
     tax_number: Optional[str] = Field(None, max_length=15)  # GST number
     gst_registration_type: Optional[str] = Field(None, max_length=50)
-    pan_number: Optional[str] = Field(None, min_length=10, max_length=10)
+    pan_number: Optional[str] = Field(None, max_length=10)
     vendor_code: Optional[str] = Field(None, max_length=50)
     
     # Opening Balance
@@ -168,10 +171,23 @@ class VendorCreate(BaseModel):
     shipping_country: Optional[str] = Field("India", max_length=100)
     shipping_zip: Optional[str] = Field(None, max_length=20)
     
-    @validator('pan_number')
+    @validator('mobile', pre=True)
+    def normalize_mobile(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            return v or None
+        return v
+
+    @validator('pan_number', pre=True)
     def validate_pan(cls, v):
         if v is None:
-            return v
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return None
         import re
         pattern = r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$'
         if not re.match(pattern, v.upper()):
@@ -212,10 +228,10 @@ class VendorUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     contact: Optional[str] = Field(None, min_length=1, max_length=255)
     email: Optional[EmailStr] = None
-    mobile: Optional[str] = Field(None, min_length=10, max_length=15)
+    mobile: Optional[str] = Field(None, max_length=15)
     tax_number: Optional[str] = Field(None, max_length=15)
     gst_registration_type: Optional[str] = Field(None, max_length=50)
-    pan_number: Optional[str] = Field(None, min_length=10, max_length=10)
+    pan_number: Optional[str] = Field(None, max_length=10)
     vendor_code: Optional[str] = Field(None, max_length=50)
     opening_balance: Optional[Decimal] = Field(None, ge=0)
     opening_balance_type: Optional[Literal["outstanding", "advance"]] = None

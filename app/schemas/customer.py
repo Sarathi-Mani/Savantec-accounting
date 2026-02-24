@@ -38,6 +38,7 @@ class OpeningBalanceItemCreate(BaseModel):
     """Schema for opening balance item in split mode."""
     date: date
     voucher_name: str = Field(..., min_length=1, max_length=255)
+    balance_type: Optional[OpeningBalanceType] = OpeningBalanceType.OUTSTANDING
     days: Optional[str] = None
     amount: str = Field(...)
     
@@ -69,6 +70,7 @@ class OpeningBalanceItemResponse(BaseModel):
     customer_id: str
     date: date
     voucher_name: str
+    balance_type: Optional[str] = None
     days: Optional[int] = None
     amount: Decimal
     created_at: datetime

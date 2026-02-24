@@ -69,8 +69,17 @@ class VendorService:
             
             # Calculate opening balance
             opening_balance = Decimal('0')
+            opening_balance_type = data.opening_balance_type
             if data.opening_balance_mode == "split" and data.opening_balance_split:
-                opening_balance = sum(item.amount for item in data.opening_balance_split)
+                net_balance = Decimal('0')
+                for item in data.opening_balance_split:
+                    item_amount = item.amount or Decimal('0')
+                    item_type = item.balance_type or ("advance" if item_amount < 0 else "outstanding")
+                    item_amount = abs(item_amount)
+                    signed_amount = -item_amount if item_type == "advance" else item_amount
+                    net_balance += signed_amount
+                opening_balance = abs(net_balance)
+                opening_balance_type = "advance" if net_balance < 0 else "outstanding"
             else:
                 opening_balance = data.opening_balance or Decimal('0')
             
@@ -86,7 +95,7 @@ class VendorService:
                 pan_number=data.pan_number,
                 vendor_code=vendor_code,
                 opening_balance=opening_balance,
-                opening_balance_type=data.opening_balance_type,
+                opening_balance_type=opening_balance_type,
                 opening_balance_mode=data.opening_balance_mode,
                 credit_limit=data.credit_limit or Decimal('0'),
                 credit_days=data.credit_days or 0,
@@ -112,12 +121,16 @@ class VendorService:
             # Create opening balance items
             if data.opening_balance_mode == "split" and data.opening_balance_split:
                 for item_data in data.opening_balance_split:
+                    raw_amount = item_data.amount or Decimal('0')
+                    item_type = item_data.balance_type or ("advance" if raw_amount < 0 else "outstanding")
+                    normalized_amount = abs(raw_amount)
+                    signed_amount = -normalized_amount if item_type == "advance" else normalized_amount
                     item = VendorOpeningBalanceItem(
                         vendor_id=vendor.id,
                         date=item_data.date,
                         voucher_name=item_data.voucher_name,
                         days=item_data.days or 0,
-                        amount=item_data.amount
+                        amount=signed_amount
                     )
                     self.db.add(item)
             
@@ -252,12 +265,16 @@ class VendorService:
     
     def add_opening_balance_item(self, vendor: Vendor, data: OpeningBalanceItemCreate) -> VendorOpeningBalanceItem:
         """Add an opening balance item."""
+        raw_amount = data.amount or Decimal('0')
+        item_type = data.balance_type or ("advance" if raw_amount < 0 else "outstanding")
+        normalized_amount = abs(raw_amount)
+        signed_amount = -normalized_amount if item_type == "advance" else normalized_amount
         item = VendorOpeningBalanceItem(
             vendor_id=vendor.id,
             date=data.date,
             voucher_name=data.voucher_name,
             days=data.days or 0,
-            amount=data.amount
+            amount=signed_amount
         )
         self.db.add(item)
         self.db.commit()

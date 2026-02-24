@@ -53,6 +53,14 @@ const toSafeNumber = (value: unknown): number => {
   return 0;
 };
 
+const getNetDueAmount = (customer: Customer): number => {
+  const outstanding = toSafeNumber(customer.outstanding_balance);
+  const advance = toSafeNumber(customer.advance_balance);
+  if (outstanding > 0) return outstanding;
+  if (advance > 0) return -advance;
+  return 0;
+};
+
 export default function CustomersPage() {
   const { company } = useAuth();
   const [data, setData] = useState<CustomerListResponse | null>(null);
@@ -155,6 +163,10 @@ export default function CustomersPage() {
     return await fetchAllCustomersForExport();
   };
 
+  useEffect(() => {
+    fetchAllCustomersForExport();
+  }, [fetchAllCustomersForExport]);
+
 
 
 
@@ -185,9 +197,13 @@ export default function CustomersPage() {
         c.email || "-",
         c.tax_number || c.gstin || "-",
         getTypeLabel(c.customer_type || ""),
-        formatCurrency(toSafeNumber(c.outstanding_balance)),
+        formatCurrency(getNetDueAmount(c)),
         formatCurrency(toSafeNumber(c.credit_limit)),
-        getStatusText(toSafeNumber(c.outstanding_balance), toSafeNumber(c.credit_limit)),
+        getStatusText(
+          toSafeNumber(c.outstanding_balance),
+          toSafeNumber(c.credit_limit),
+          toSafeNumber(c.advance_balance),
+        ),
       ]);
 
     const text = [headers.join("	"), ...rows.map(r => r.join("	"))].join("\n");
@@ -217,9 +233,13 @@ export default function CustomersPage() {
         "Email": c.email || "-",
         "GSTIN": c.tax_number || c.gstin || "-",
         "Type": getTypeLabel(c.customer_type || ""),
-        "Due Amount": toSafeNumber(c.outstanding_balance),
+        "Due Amount": getNetDueAmount(c),
         "Credit Limit": toSafeNumber(c.credit_limit),
-        "Status": getStatusText(toSafeNumber(c.outstanding_balance), toSafeNumber(c.credit_limit)),
+        "Status": getStatusText(
+          toSafeNumber(c.outstanding_balance),
+          toSafeNumber(c.credit_limit),
+          toSafeNumber(c.advance_balance),
+        ),
         "Trade Name": c.trade_name || "-",
         "State": c.state || "-",
         "City": c.city || "-",
@@ -261,9 +281,13 @@ export default function CustomersPage() {
           c.customer_code || "N/A",
           c.name,
           getTypeLabel(c.customer_type || ""),
-          formatCurrency(toSafeNumber(c.outstanding_balance)),
+          formatCurrency(getNetDueAmount(c)),
           formatCurrency(toSafeNumber(c.credit_limit)),
-          getStatusText(toSafeNumber(c.outstanding_balance), toSafeNumber(c.credit_limit)),
+          getStatusText(
+            toSafeNumber(c.outstanding_balance),
+            toSafeNumber(c.credit_limit),
+            toSafeNumber(c.advance_balance),
+          ),
         ]),
       });
 
@@ -292,9 +316,13 @@ export default function CustomersPage() {
         "Email": c.email || "-",
         "GSTIN": c.tax_number || c.gstin || "-",
         "Type": getTypeLabel(c.customer_type || ""),
-        "Due Amount": toSafeNumber(c.outstanding_balance),
+        "Due Amount": getNetDueAmount(c),
         "Credit Limit": toSafeNumber(c.credit_limit),
-        "Status": getStatusText(toSafeNumber(c.outstanding_balance), toSafeNumber(c.credit_limit)),
+        "Status": getStatusText(
+          toSafeNumber(c.outstanding_balance),
+          toSafeNumber(c.credit_limit),
+          toSafeNumber(c.advance_balance),
+        ),
       }));
 
       const ws = XLSX.utils.json_to_sheet(exportData);
@@ -315,15 +343,17 @@ export default function CustomersPage() {
     setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const getStatusColor = (outstanding: number, creditLimit: number) => {
+  const getStatusColor = (outstanding: number, creditLimit: number, advance: number = 0) => {
     if (outstanding > creditLimit) return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
     if (outstanding > 0) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
+    if (advance > 0) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
     return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
   };
 
-  const getStatusText = (outstanding: number, creditLimit: number) => {
+  const getStatusText = (outstanding: number, creditLimit: number, advance: number = 0) => {
     if (outstanding > creditLimit) return 'Overdue';
     if (outstanding > 0) return 'Pending';
+    if (advance > 0) return 'Advance';
     return 'Paid';
   };
 
@@ -333,23 +363,27 @@ export default function CustomersPage() {
       const status = getStatusText(
         toSafeNumber(c.outstanding_balance),
         toSafeNumber(c.credit_limit),
+        toSafeNumber(c.advance_balance),
       ).toLowerCase();
       return status === statusFilter.toLowerCase();
     });
   };
 
   const displayCustomers = applyStatusFilter(data?.customers || []);
+  const summaryCustomers = applyStatusFilter(cachedExportData || data?.customers || []);
 
 
-  const getStatusBadge = (outstanding: number, creditLimit: number) => {
-    const text = getStatusText(outstanding, creditLimit);
-    const colorClass = getStatusColor(outstanding, creditLimit);
+  const getStatusBadge = (outstanding: number, creditLimit: number, advance: number = 0) => {
+    const text = getStatusText(outstanding, creditLimit, advance);
+    const colorClass = getStatusColor(outstanding, creditLimit, advance);
 
     let icon = null;
     if (outstanding > creditLimit) {
       icon = <AlertCircle className="w-3 h-3 mr-1" />;
     } else if (outstanding > 0) {
       icon = <Clock className="w-3 h-3 mr-1" />;
+    } else if (advance > 0) {
+      icon = <CreditCard className="w-3 h-3 mr-1" />;
     } else {
       icon = <CheckCircle className="w-3 h-3 mr-1" />;
     }
@@ -465,7 +499,7 @@ export default function CustomersPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {formatCurrency(data?.customers?.reduce((sum, customer) => sum + toSafeNumber(customer.outstanding_balance), 0) || 0)}
+                  {formatCurrency(summaryCustomers.reduce((sum, customer) => sum + toSafeNumber(customer.outstanding_balance), 0))}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Total Outstanding
@@ -477,29 +511,12 @@ export default function CustomersPage() {
             </div>
           </div>
 
-          {/* B2B Customers */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {data?.customers?.filter(c => c.customer_type === 'b2b').length || 0}
-                </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  B2B Customers
-                </p>
-              </div>
-              <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-                <Building className="w-6 h-6 text-green-600 dark:text-green-400" />
-              </div>
-            </div>
-          </div>
-
           {/* Active Customers */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {data?.customers?.filter(c => toSafeNumber(c.outstanding_balance) <= toSafeNumber(c.credit_limit)).length || 0}
+                  {summaryCustomers.filter((c) => toSafeNumber(c.outstanding_balance) <= toSafeNumber(c.credit_limit)).length}
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Active Customers
@@ -655,6 +672,7 @@ export default function CustomersPage() {
               <option value="paid">Paid</option>
               <option value="pending">Pending</option>
               <option value="overdue">Overdue</option>
+              <option value="advance">Advance</option>
             </select>
 
             <button
@@ -764,7 +782,10 @@ export default function CustomersPage() {
                     </tr>
                   ) : (
                     displayCustomers.map((customer) => {
-                      const isOverdue = toSafeNumber(customer.outstanding_balance) > toSafeNumber(customer.credit_limit);
+                      const outstanding = toSafeNumber(customer.outstanding_balance);
+                      const advance = toSafeNumber(customer.advance_balance);
+                      const netDue = getNetDueAmount(customer);
+                      const isOverdue = outstanding > toSafeNumber(customer.credit_limit);
                       
                       return (
                         <tr
@@ -824,8 +845,8 @@ export default function CustomersPage() {
                           )}
                           {visibleColumns.dueAmount && (
                             <td className="px-3 py-4 align-top break-words">
-                              <div className={`font-medium ${isOverdue ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>
-                                {formatCurrency(toSafeNumber(customer.outstanding_balance))}
+                              <div className={`font-medium ${isOverdue ? 'text-red-600' : netDue < 0 ? 'text-green-600' : 'text-gray-900 dark:text-white'}`}>
+                                {formatCurrency(netDue)}
                               </div>
                             </td>
                           )}
@@ -836,7 +857,7 @@ export default function CustomersPage() {
                           )}
                           {visibleColumns.status && (
                             <td className="px-3 py-4 align-top break-words">
-                              {getStatusBadge(toSafeNumber(customer.outstanding_balance), toSafeNumber(customer.credit_limit))}
+                              {getStatusBadge(outstanding, toSafeNumber(customer.credit_limit), advance)}
                             </td>
                           )}
                           {visibleColumns.actions && (

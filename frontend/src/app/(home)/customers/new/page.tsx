@@ -15,6 +15,7 @@ interface ContactPerson {
 interface OpeningBalanceItem {
   date: string;
   voucher_name: string;
+  balance_type: "outstanding" | "advance";
   days: string;
   amount: string;
 }
@@ -332,7 +333,7 @@ export default function CreateCustomerPage() {
       ...prev,
       opening_balance_split: [
         ...prev.opening_balance_split,
-        { date: "", voucher_name: "", days: "", amount: "" }
+        { date: "", voucher_name: "", balance_type: "outstanding", days: "", amount: "" }
       ]
     }));
   };
@@ -423,6 +424,11 @@ export default function CreateCustomerPage() {
         // Validate voucher name
         if (!item.voucher_name.trim()) {
           setError(`Please enter a voucher name for item ${index + 1}`);
+          return false;
+        }
+
+        if (!item.balance_type) {
+          setError(`Please select balance type for item ${index + 1}`);
           return false;
         }
         
@@ -552,6 +558,13 @@ export default function CreateCustomerPage() {
     setShowGstOptions(false);
   };
 
+  const getSplitNetBalance = () => {
+    return formData.opening_balance_split.reduce((total, item) => {
+      const amount = parseFloat(item.amount) || 0;
+      return total + (item.balance_type === "advance" ? -amount : amount);
+    }, 0);
+  };
+
 const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   
@@ -568,6 +581,9 @@ const handleSubmit = async (e: React.FormEvent) => {
   setError(null);
 
   try {
+    const splitNetBalance = getSplitNetBalance();
+    const splitNetType: "outstanding" | "advance" = splitNetBalance < 0 ? "advance" : "outstanding";
+
     // Auto-fetch location if not already available
     if (!formData.location_lat || !formData.location_lng) {
       const hasLocationInputs =
@@ -590,11 +606,15 @@ const handleSubmit = async (e: React.FormEvent) => {
   customer_type: formData.customer_type || "b2b",
   
   // ⬇️⬇️⬇️ CONVERT THESE TO STRINGS ⬇️⬇️⬇️
-  opening_balance: formData.opening_balance ? String(parseFloat(formData.opening_balance)) : "0",
+  opening_balance: formData.opening_balance_mode === "split"
+    ? String(Math.abs(splitNetBalance))
+    : (formData.opening_balance ? String(parseFloat(formData.opening_balance)) : "0"),
   credit_limit: formData.credit_limit ? String(parseFloat(formData.credit_limit)) : "0",
   credit_days: formData.credit_days ? String(parseInt(formData.credit_days)) : "0",
   
-  opening_balance_type: formData.opening_balance_type || "",
+  opening_balance_type: formData.opening_balance_mode === "split"
+    ? splitNetType
+    : (formData.opening_balance_type || ""),
   opening_balance_mode: formData.opening_balance_mode || "",
   
   // For opening_balance_split - also convert to strings
@@ -602,8 +622,9 @@ const handleSubmit = async (e: React.FormEvent) => {
     formData.opening_balance_split.map(item => ({
       date: item.date,
       voucher_name: item.voucher_name,
+      balance_type: item.balance_type,
       days: item.days ? String(parseInt(item.days)) : "0", // Convert to string
-      amount: String(parseFloat(item.amount)) // Convert to string
+      amount: String(Math.abs(parseFloat(item.amount) || 0))
     })) : [],
   
   // Contact persons
@@ -650,9 +671,7 @@ const handleSubmit = async (e: React.FormEvent) => {
 };
   const calculateTotalOpeningBalance = () => {
     if (formData.opening_balance_mode === "split") {
-      return formData.opening_balance_split.reduce((sum, item) => {
-        return sum + (parseFloat(item.amount) || 0);
-      }, 0);
+      return Math.abs(getSplitNetBalance());
     }
     return parseFloat(formData.opening_balance) || 0;
   };
@@ -908,20 +927,22 @@ const handleSubmit = async (e: React.FormEvent) => {
                 </div>
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Balance Type
-                </label>
-                <select
-                  name="opening_balance_type"
-                  value={formData.opening_balance_type}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                >
-                  <option value="outstanding">Outstanding (Customer Owes)</option>
-                  <option value="advance">Advance (You Owe Customer)</option>
-                </select>
-              </div>
+              {formData.opening_balance_mode === "single" && (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Balance Type
+                  </label>
+                  <select
+                    name="opening_balance_type"
+                    value={formData.opening_balance_type}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  >
+                    <option value="outstanding">Outstanding (Customer Owes)</option>
+                    <option value="advance">Advance (You Owe Customer)</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             {formData.opening_balance_mode === "single" ? (
@@ -973,7 +994,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                       >
                         <div className="grid items-center gap-4 md:grid-cols-12">
                           <div className="md:col-span-11">
-                            <div className="grid gap-4 sm:grid-cols-4">
+                            <div className="grid gap-4 sm:grid-cols-5">
                               <div>
                                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                                   {index === 0 ? "Date" : ""}
@@ -997,6 +1018,20 @@ const handleSubmit = async (e: React.FormEvent) => {
                                   placeholder="Enter voucher name"
                                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
                                 />
+                              </div>
+
+                              <div>
+                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                  {index === 0 ? "Balance Type" : ""}
+                                </label>
+                                <select
+                                  value={item.balance_type}
+                                  onChange={(e) => handleOpeningBalanceItemChange(index, "balance_type", e.target.value)}
+                                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
+                                >
+                                  <option value="outstanding">Outstanding</option>
+                                  <option value="advance">Advance</option>
+                                </select>
                               </div>
 
                               <div>
@@ -1049,7 +1084,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-dark dark:text-white">Total Opening Balance:</span>
                     <span className="text-lg font-semibold text-primary">
-                      ₹{calculateTotalOpeningBalance().toFixed(2)}
+                      ₹{calculateTotalOpeningBalance().toFixed(2)} ({getSplitNetBalance() < 0 ? "advance" : "outstanding"})
                     </span>
                   </div>
                 </div>

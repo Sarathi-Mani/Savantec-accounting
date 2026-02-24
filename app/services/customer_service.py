@@ -150,27 +150,39 @@ class CustomerService:
         if (data.opening_balance_mode == OpeningBalanceMode.SPLIT and 
             data.opening_balance_split):
             
-            total_split_amount = Decimal('0')
+            net_split_balance = Decimal('0')
             for item_data in data.opening_balance_split:
+                raw_amount = Decimal(item_data.amount)
+                item_type = item_data.balance_type.value if item_data.balance_type else (
+                    OpeningBalanceType.ADVANCE.value if raw_amount < 0 else OpeningBalanceType.OUTSTANDING.value
+                )
+                normalized_amount = abs(raw_amount)
+                signed_amount = -normalized_amount if item_type == OpeningBalanceType.ADVANCE.value else normalized_amount
+
                 item = OpeningBalanceItem(
                     customer_id=customer.id,
                     date=item_data.date,
                     
                     voucher_name=item_data.voucher_name,
                     days=int(item_data.days) if item_data.days else None,
-                    amount=Decimal(item_data.amount)
+                    amount=signed_amount
                 )
                 self.db.add(item)
-                total_split_amount += Decimal(item_data.amount)
+                net_split_balance += signed_amount
             
-            # Update customer opening balance from split items
-            customer.opening_balance = total_split_amount
-            
-            # Recalculate outstanding/advance based on total split amount
-            if data.opening_balance_type == OpeningBalanceType.OUTSTANDING:
-                customer.outstanding_balance = total_split_amount
+            normalized_total = abs(net_split_balance)
+            customer.opening_balance = normalized_total
+            customer.opening_balance_type = (
+                OpeningBalanceType.ADVANCE.value
+                if net_split_balance < 0
+                else OpeningBalanceType.OUTSTANDING.value
+            )
+            if net_split_balance < 0:
+                customer.outstanding_balance = Decimal('0')
+                customer.advance_balance = normalized_total
             else:
-                customer.advance_balance = total_split_amount
+                customer.outstanding_balance = normalized_total
+                customer.advance_balance = Decimal('0')
         
         # Create contact persons
         if data.contact_persons:
@@ -262,8 +274,7 @@ class CustomerService:
         """Get a customer by ID (must belong to company)."""
         return self.db.query(Customer).filter(
             Customer.id == customer_id,
-            Customer.company_id == company.id,
-            Customer.is_active == True
+            Customer.company_id == company.id
         ).first()
     
     def get_customers(
@@ -341,30 +352,41 @@ class CustomerService:
             ).delete()
             
             # Add new split items
-            total_split_amount = Decimal('0')
+            net_split_balance = Decimal('0')
             for item_data in update_data['opening_balance_split']:
+                raw_amount = Decimal(item_data['amount'])
+                split_type = item_data.get('balance_type')
+                if isinstance(split_type, OpeningBalanceType):
+                    split_type = split_type.value
+                item_type = split_type or (
+                    OpeningBalanceType.ADVANCE.value if raw_amount < 0 else OpeningBalanceType.OUTSTANDING.value
+                )
+                normalized_amount = abs(raw_amount)
+                signed_amount = -normalized_amount if item_type == OpeningBalanceType.ADVANCE.value else normalized_amount
+
                 item = OpeningBalanceItem(
                     customer_id=customer.id,
                     date=item_data['date'],
                     voucher_name=item_data['voucher_name'],
                     days=int(item_data['days']) if item_data.get('days') else None,
-                    amount=Decimal(item_data['amount'])
+                    amount=signed_amount
                 )
                 self.db.add(item)
-                total_split_amount += Decimal(item_data['amount'])
+                net_split_balance += signed_amount
             
-            # Update opening balance from split items
-            update_data['opening_balance'] = total_split_amount
-            
-            # Recalculate outstanding/advance
-            opening_balance_type = update_data.get('opening_balance_type', 
-                                                 customer.opening_balance_type)
-            if opening_balance_type == OpeningBalanceType.OUTSTANDING.value:
-                update_data['outstanding_balance'] = total_split_amount
-                update_data['advance_balance'] = Decimal('0')
-            else:
-                update_data['advance_balance'] = total_split_amount
+            normalized_total = abs(net_split_balance)
+            update_data['opening_balance'] = normalized_total
+            update_data['opening_balance_type'] = (
+                OpeningBalanceType.ADVANCE.value
+                if net_split_balance < 0
+                else OpeningBalanceType.OUTSTANDING.value
+            )
+            if net_split_balance < 0:
                 update_data['outstanding_balance'] = Decimal('0')
+                update_data['advance_balance'] = normalized_total
+            else:
+                update_data['outstanding_balance'] = normalized_total
+                update_data['advance_balance'] = Decimal('0')
         
         # Update contact persons if provided
         if 'contact_persons' in update_data:
