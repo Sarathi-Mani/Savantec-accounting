@@ -3982,11 +3982,11 @@ const itemsForBackend = items
           </div>
 
           {/* Summary and Terms Section */}
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-6 md:grid-cols-2">
             {/* Excel Grid Section */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white whitespace-nowrap">
                   Additional Notes (Excel Grid)
                 </h2>
                 <div className="flex flex-wrap gap-2 mt-2 sm:mt-0">
@@ -4134,7 +4134,7 @@ const itemsForBackend = items
 
             {/* Summary Section */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 whitespace-nowrap">
                 Summary
               </h2>
               <div className="space-y-3">
