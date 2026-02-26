@@ -127,9 +127,15 @@ export default function ViewQuotationPage() {
   };
 
   // Safe date formatting function
-  const formatDate = (dateString: string | Date) => {
+  const formatDate = (dateString?: string | Date | null) => {
     try {
+      if (!dateString) {
+        return "-";
+      }
       const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+      if (!(date instanceof Date)) {
+        return "-";
+      }
       if (isNaN(date.getTime())) {
         return "Invalid Date";
       }

@@ -1080,7 +1080,7 @@ class AccountingService:
         inventory_account = self.get_account_by_code("1200", company)  # Inventory
         
         if not all([cogs_account, inventory_account]):
-            print(f"Warning: COGS or Inventory account not found for company {company.id}")
+            # print(f"Warning: COGS or Inventory account not found for company {company.id}")
             return None
         
         # Calculate total cost value from stock entries

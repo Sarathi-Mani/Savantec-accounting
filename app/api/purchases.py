@@ -384,28 +384,28 @@ async def create_purchase(
     - purchase-import: Purchase with import items
     - purchase-expenses: Expense-only purchase
     """
-    print("=" * 80)
-    print("🚀 PURCHASE API: create_purchase() CALLED")
-    print("=" * 80)
+    # print("=" * 80)
+    # print("🚀 PURCHASE API: create_purchase() CALLED")
+    # print("=" * 80)
     
-    print(f"📥 REQUEST DETAILS:")
-    print(f"   Company ID: {company_id}")
-    print(f"   User: {current_user.email} (ID: {current_user.id})")
-    print(f"   Purchase Type: {data.purchase_type}")
-    print(f"   Vendor ID: {data.vendor_id}")
-    print(f"   Purchase Date: {data.purchase_date}")
+    # print(f"📥 REQUEST DETAILS:")
+    # print(f"   Company ID: {company_id}")
+    # print(f"   User: {current_user.email} (ID: {current_user.id})")
+    # print(f"   Purchase Type: {data.purchase_type}")
+    # print(f"   Vendor ID: {data.vendor_id}")
+    # print(f"   Purchase Date: {data.purchase_date}")
     
     # ============================================
     # STEP 1: VALIDATE COMPANY
     # ============================================
-    print("\n🏢 STEP 1: Validating company")
+    # print("\n🏢 STEP 1: Validating company")
     company = get_company_or_404(company_id, current_user, db)
-    print(f"✅ Company validated: {company.name} (ID: {company.id})")
+    # print(f"✅ Company validated: {company.name} (ID: {company.id})")
     
     # ============================================
     # STEP 2: VALIDATE VENDOR
     # ============================================
-    print("\n🏪 STEP 2: Validating vendor")
+    # print("\n🏪 STEP 2: Validating vendor")
     vendor_service = VendorService(db)
     vendor = vendor_service.get_vendor(data.vendor_id, company)
     if not vendor:
@@ -414,12 +414,12 @@ async def create_purchase(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Vendor not found"
         )
-    print(f"✅ Vendor validated: {vendor.name or vendor.vendor_code} (ID: {vendor.id})")
+    # print(f"✅ Vendor validated: {vendor.name or vendor.vendor_code} (ID: {vendor.id})")
 
     # ============================================
     # STEP 3: PREPARE DATA FOR SERVICE
     # ============================================
-    print("\n📝 STEP 3: Preparing data for service")
+    # print("\n📝 STEP 3: Preparing data for service")
     
     # Convert data for service
     items = [item.model_dump() for item in data.items]
@@ -427,7 +427,7 @@ async def create_purchase(
     expense_items = [item.model_dump() for item in data.expense_items] if data.expense_items else None
     payment_data = data.payment.model_dump() if data.payment else None
     
-    print(f"   Items: {len(items)} regular items")
+    # print(f"   Items: {len(items)} regular items")
     if import_items:
         print(f"   Import Items: {len(import_items)} import items")
     if expense_items:
@@ -462,7 +462,7 @@ async def create_purchase(
         "contact_email": data.contact_email,
     }
     
-    print("\n   Additional Data Fields:")
+    # print("\n   Additional Data Fields:")
     for key, value in additional_data.items():
         if value:  # Only show non-empty values
             print(f"     {key}: {value}")
@@ -470,7 +470,7 @@ async def create_purchase(
     # ============================================
     # STEP 4: CALL SERVICE
     # ============================================
-    print("\n⚙️ STEP 4: Calling purchase service")
+    # print("\n⚙️ STEP 4: Calling purchase service")
     purchase_service = PurchaseService(db)
     
     try:
@@ -489,8 +489,8 @@ async def create_purchase(
         )
         
         print(f"✅ Purchase created successfully!")
-        print(f"   Purchase Number: {purchase.purchase_number}")
-        print(f"   Total Amount: {purchase.total_amount}")
+        # print(f"   Purchase Number: {purchase.purchase_number}")
+        # print(f"   Total Amount: {purchase.total_amount}")
         
     except ValueError as e:
         print(f"❌ Validation error: {str(e)}")
@@ -905,7 +905,7 @@ async def get_purchases_by_vendor(
 def _build_purchase_response(purchase) -> PurchaseResponse:
     """Build purchase response with all related data."""
     
-    print(f"🔧 Building response for purchase {purchase.purchase_number}")
+    # print(f"🔧 Building response for purchase {purchase.purchase_number}")
     
     try:
         # Convert items
@@ -1041,20 +1041,20 @@ def _build_purchase_response(purchase) -> PurchaseResponse:
             "updated_at": purchase.updated_at,
         }
         
-        print(f"✅ Response data prepared. Creating PurchaseResponse...")
+        # print(f"✅ Response data prepared. Creating PurchaseResponse...")
         
         # Try to create the response
         response = PurchaseResponse(**response_data)
-        print(f"🎉 Response created successfully!")
+        # print(f"🎉 Response created successfully!")
         return response
         
     except Exception as e:
-        print(f"❌ ERROR in _build_purchase_response: {str(e)}")
+        # print(f"❌ ERROR in _build_purchase_response: {str(e)}")
         import traceback
-        print(f"Stack trace:\n{traceback.format_exc()}")
+        # print(f"Stack trace:\n{traceback.format_exc()}")
         
         # Debug: Print the problematic field
-        print(f"Response data keys: {list(response_data.keys()) if 'response_data' in locals() else 'No data'}")
+        # print(f"Response data keys: {list(response_data.keys()) if 'response_data' in locals() else 'No data'}")
         
         # Try to get Pydantic validation errors
         if hasattr(e, 'errors'):

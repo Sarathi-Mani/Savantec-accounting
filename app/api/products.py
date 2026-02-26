@@ -51,9 +51,9 @@ async def create_product(
     db: Session = Depends(get_db)
 ):
     """Create a new product/service with optional images."""
-    print(f"=== API DEBUG: create_product endpoint called ===")
-    print(f"Company ID: {company_id}")
-    print(f"Product name: {name}")
+    # print(f"=== API DEBUG: create_product endpoint called ===")
+    # print(f"Company ID: {company_id}")
+    # print(f"Product name: {name}")
     
     company = get_company_or_404(company_id, current_user, db)
     
@@ -87,9 +87,9 @@ async def create_product(
     
     # Get product with full details INCLUDING IMAGE URLs
     product_response_data = service.get_product_with_stock(product)
-    print(f"=== API DEBUG: Created product with ID: {product.id} ===")
-    print(f"Product response keys: {list(product_response_data.keys())}")
-    print(f"Has image_url: {'image_url' in product_response_data}")
+    # print(f"=== API DEBUG: Created product with ID: {product.id} ===")
+    # print(f"Product response keys: {list(product_response_data.keys())}")
+    # print(f"Has image_url: {'image_url' in product_response_data}")
     
     return ProductResponse(**product_response_data)
 
@@ -121,8 +121,8 @@ async def update_product(
     db: Session = Depends(get_db)
 ):
     """Update a product with optional image updates."""
-    print(f"=== API DEBUG: update_product endpoint called ===")
-    print(f"Company ID: {company_id}, Product ID: {product_id}")
+    # print(f"=== API DEBUG: update_product endpoint called ===")
+    # print(f"Company ID: {company_id}, Product ID: {product_id}")
     
     company = get_company_or_404(company_id, current_user, db)
     service = ProductService(db, upload_base_path="uploads")
@@ -178,8 +178,8 @@ async def update_product(
     
     # Get updated product with full details INCLUDING IMAGE URLs
     product_response_data = service.get_product_with_stock(updated_product)
-    print(f"=== API DEBUG: Updated product ===")
-    print(f"Product response keys: {list(product_response_data.keys())}")
+    # print(f"=== API DEBUG: Updated product ===")
+    # print(f"Product response keys: {list(product_response_data.keys())}")
     
     return ProductResponse(**product_response_data)
 
@@ -195,10 +195,10 @@ async def list_products(
     db: Session = Depends(get_db)
 ):
     """List products for a company."""
-    print(f"=== API DEBUG: list_products endpoint called ===")
-    print(f"Company ID: {company_id}")
-    print(f"Search: {search}")
-    print(f"Page: {page}, Page Size: {page_size}")
+    # print(f"=== API DEBUG: list_products endpoint called ===")
+    # print(f"Company ID: {company_id}")
+    # print(f"Search: {search}")
+    # print(f"Page: {page}, Page Size: {page_size}")
     
     company = get_company_or_404(company_id, current_user, db)
     service = ProductService(db, upload_base_path="uploads")
@@ -212,11 +212,11 @@ async def list_products(
         product_data = service.get_product_with_stock(product)
         product_responses.append(ProductResponse(**product_data))
     
-    print(f"=== API DEBUG: Returning {len(product_responses)} products ===")
+    # print(f"=== API DEBUG: Returning {len(product_responses)} products ===")
     if product_responses:
         first_product = product_responses[0]
-        print(f"First product keys: {list(first_product.dict().keys())}")
-        print(f"First product has image_url: {hasattr(first_product, 'image_url')}")
+        # print(f"First product keys: {list(first_product.dict().keys())}")
+        # print(f"First product has image_url: {hasattr(first_product, 'image_url')}")
     
     return ProductListResponse(
         products=product_responses,
@@ -235,9 +235,9 @@ async def search_products(
     db: Session = Depends(get_db)
 ):
     """Quick search for products (autocomplete)."""
-    print(f"=== API DEBUG: search_products endpoint called ===")
-    print(f"Company ID: {company_id}")
-    print(f"Search query: {q}, Limit: {limit}")
+    # print(f"=== API DEBUG: search_products endpoint called ===")
+    # print(f"Company ID: {company_id}")
+    # print(f"Search query: {q}, Limit: {limit}")
     
     company = get_company_or_404(company_id, current_user, db)
     service = ProductService(db, upload_base_path="uploads")
@@ -249,7 +249,7 @@ async def search_products(
         product_data = service.get_product_with_stock(product)
         product_responses.append(ProductResponse(**product_data))
     
-    print(f"=== API DEBUG: Found {len(product_responses)} products ===")
+    # print(f"=== API DEBUG: Found {len(product_responses)} products ===")
     return product_responses
 
 
@@ -261,8 +261,8 @@ async def get_product(
     db: Session = Depends(get_db)
 ):
     """Get a product by ID."""
-    print(f"=== API DEBUG: get_product endpoint called ===")
-    print(f"Company ID: {company_id}, Product ID: {product_id}")
+    # print(f"=== API DEBUG: get_product endpoint called ===")
+    # print(f"Company ID: {company_id}, Product ID: {product_id}")
     
     company = get_company_or_404(company_id, current_user, db)
     service = ProductService(db, upload_base_path="uploads")
@@ -276,11 +276,11 @@ async def get_product(
     
     # Get product with full details INCLUDING IMAGE URLs
     product_response_data = service.get_product_with_stock(product)
-    print(f"=== API DEBUG: Product response data ===")
-    print(f"Product name: {product_response_data.get('name')}")
-    print(f"Product has image_url: {'image_url' in product_response_data}")
-    print(f"Product image_url: {product_response_data.get('image_url')}")
-    print(f"All keys: {list(product_response_data.keys())}")
+    # print(f"=== API DEBUG: Product response data ===")
+    # print(f"Product name: {product_response_data.get('name')}")
+    # print(f"Product has image_url: {'image_url' in product_response_data}")
+    # print(f"Product image_url: {product_response_data.get('image_url')}")
+    # print(f"All keys: {list(product_response_data.keys())}")
     
     return ProductResponse(**product_response_data)
 
@@ -293,7 +293,7 @@ async def delete_product(
     db: Session = Depends(get_db)
 ):
     """Delete a product (soft delete)."""
-    print(f"=== API DEBUG: delete_product endpoint called ===")
+    # print(f"=== API DEBUG: delete_product endpoint called ===")
     company = get_company_or_404(company_id, current_user, db)
     service = ProductService(db, upload_base_path="uploads")
     product = service.get_product(product_id, company=company)
@@ -318,7 +318,7 @@ async def upload_product_images(
     db: Session = Depends(get_db)
 ):
     """Upload images for an existing product."""
-    print(f"=== API DEBUG: upload_product_images endpoint called ===")
+    # print(f"=== API DEBUG: upload_product_images endpoint called ===")
     company = get_company_or_404(company_id, current_user, db)
     service = ProductService(db, upload_base_path="uploads")
     product = service.get_product(product_id, company=company)
@@ -340,8 +340,8 @@ async def upload_product_images(
     
     # Get updated product with full details INCLUDING IMAGE URLs
     product_response_data = service.get_product_with_stock(product)
-    print(f"=== API DEBUG: Images uploaded ===")
-    print(f"Product has image_url: {'image_url' in product_response_data}")
+    # print(f"=== API DEBUG: Images uploaded ===")
+    # print(f"Product has image_url: {'image_url' in product_response_data}")
     
     return ProductResponse(**product_response_data)
 
@@ -354,7 +354,7 @@ async def get_product_images(
     db: Session = Depends(get_db)
 ):
     """Get product images."""
-    print(f"=== API DEBUG: get_product_images endpoint called ===")
+    # print(f"=== API DEBUG: get_product_images endpoint called ===")
     company = get_company_or_404(company_id, current_user, db)
     service = ProductService(db, upload_base_path="uploads")
     product = service.get_product(product_id, company=company)
@@ -381,7 +381,7 @@ async def get_product_images(
             "path": product_response_data.get("additional_image")
         }
     
-    print(f"=== API DEBUG: Returning image info ===")
-    print(f"Images info keys: {list(images_info.keys())}")
+    # print(f"=== API DEBUG: Returning image info ===")
+    # print(f"Images info keys: {list(images_info.keys())}")
     
     return images_info

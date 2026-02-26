@@ -299,19 +299,19 @@ async def create_proforma_invoice(
             items=items_response,
         )
         
-        print(f"API: Response built successfully")
+        # print(f"API: Response built successfully")
         
         # Test serialization
         try:
             response_json = response.model_dump_json()
-            print(f"API: Response serialized to JSON successfully")
+            # print(f"API: Response serialized to JSON successfully")
             print(f"API: First item in response: {items_response[0].model_dump() if items_response else 'No items'}")
         except Exception as json_error:
-            print(f"API: JSON serialization error: {json_error}")
+            # print(f"API: JSON serialization error: {json_error}")
             import traceback
             traceback.print_exc()
         
-        print("=" * 80)
+        # print("=" * 80)
         return response
         
     except Exception as e:

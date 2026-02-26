@@ -227,20 +227,20 @@ def get_company(db: Session, company_id: str) -> Company:
 def enrich_enquiry(enquiry: Enquiry, db: Session) -> EnquiryResponse:
     """Add related names to enquiry response."""
     response = EnquiryResponse.model_validate(enquiry)
-    try:
-        print(
-            f"[EQ-DEBUG][enquiry:get] enquiry_id={enquiry.id} "
-            f"products_interested_count={len(enquiry.products_interested or [])} "
-            f"items_count={len(enquiry.items or [])}"
-        )
-        if enquiry.products_interested and len(enquiry.products_interested) > 0:
-            first = enquiry.products_interested[0]
-            print(
-                "[EQ-DEBUG][enquiry:get] first_products_interested="
-                f"{json.dumps(first, default=str)}"
-            )
-    except Exception as _debug_err:
-        print(f"[EQ-DEBUG][enquiry:get] debug_error={_debug_err}")
+    # try:
+    #     print(
+    #         f"[EQ-DEBUG][enquiry:get] enquiry_id={enquiry.id} "
+    #         f"products_interested_count={len(enquiry.products_interested or [])} "
+    #         f"items_count={len(enquiry.items or [])}"
+    #     )
+    #     if enquiry.products_interested and len(enquiry.products_interested) > 0:
+    #         first = enquiry.products_interested[0]
+    #         print(
+    #             "[EQ-DEBUG][enquiry:get] first_products_interested="
+    #             f"{json.dumps(first, default=str)}"
+    #         )
+    # except Exception as _debug_err:
+    #     print(f"[EQ-DEBUG][enquiry:get] debug_error={_debug_err}")
     
     if enquiry.customer:
         response.customer_name = enquiry.customer.name
@@ -920,18 +920,18 @@ def update_enquiry_edit(
     
     # Update enquiry items if provided
     if data.items is not None:
-        try:
-            print(
-                f"[EQ-DEBUG][enquiry:edit] enquiry_id={enquiry_id} "
-                f"incoming_items_count={len(data.items)}"
-            )
-            if len(data.items) > 0:
-                print(
-                    "[EQ-DEBUG][enquiry:edit] first_incoming_item="
-                    f"{json.dumps(data.items[0], default=str)}"
-                )
-        except Exception as _debug_err:
-            print(f"[EQ-DEBUG][enquiry:edit] debug_error={_debug_err}")
+        # try:
+        #     print(
+        #         f"[EQ-DEBUG][enquiry:edit] enquiry_id={enquiry_id} "
+        #         f"incoming_items_count={len(data.items)}"
+        #     )
+        #     if len(data.items) > 0:
+        #         print(
+        #             "[EQ-DEBUG][enquiry:edit] first_incoming_item="
+        #             f"{json.dumps(data.items[0], default=str)}"
+        #         )
+        # except Exception as _debug_err:
+        #     print(f"[EQ-DEBUG][enquiry:edit] debug_error={_debug_err}")
         # First, delete existing items
         db.query(EnquiryItem).filter(EnquiryItem.enquiry_id == enquiry_id).delete()
         
@@ -977,17 +977,17 @@ def update_enquiry_edit(
                 "image_url": item_data.get('existing_image')
             })
         enquiry.products_interested = products_interested
-        try:
-            print(
-                f"[EQ-DEBUG][enquiry:edit] saved_products_interested_count={len(products_interested)}"
-            )
-            if len(products_interested) > 0:
-                print(
-                    "[EQ-DEBUG][enquiry:edit] first_saved_products_interested="
-                    f"{json.dumps(products_interested[0], default=str)}"
-                )
-        except Exception as _debug_err:
-            print(f"[EQ-DEBUG][enquiry:edit] debug_error_after_save={_debug_err}")
+        # try:
+        #     print(
+        #         f"[EQ-DEBUG][enquiry:edit] saved_products_interested_count={len(products_interested)}"
+        #     )
+        #     if len(products_interested) > 0:
+        #         print(
+        #             "[EQ-DEBUG][enquiry:edit] first_saved_products_interested="
+        #             f"{json.dumps(products_interested[0], default=str)}"
+        #         )
+        # except Exception as _debug_err:
+        #     print(f"[EQ-DEBUG][enquiry:edit] debug_error_after_save={_debug_err}")
     
     # Update the enquiry
     if update_data:

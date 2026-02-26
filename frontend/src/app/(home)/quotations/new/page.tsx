@@ -3,7 +3,7 @@
 import { useAuth } from "@/context/AuthContext";
 import { customersApi, productsApi, salesmenApi } from "@/services/api";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Select from "react-select";
 
 interface QuotationItem {
@@ -175,7 +175,8 @@ export default function NewQuotationPage() {
 
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [selectedContactPerson, setSelectedContactPerson] = useState<any>(null);
-  const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: "success" | "error" | "info" | "warning" }>>([]);
+  const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: "success" | "error" | "info" | "warning" }>>([]);
+  const toastCounterRef = useRef(0);
   const [activeCell, setActiveCell] = useState<{row: number, col: number} | null>(null);
   const [showCopyModal, setShowCopyModal] = useState(false);
   const [copyQuotationNumber, setCopyQuotationNumber] = useState("");
@@ -257,9 +258,10 @@ export default function NewQuotationPage() {
     return aliases[normalizedInput];
   };
   
-  // Generate quotation code function
+  // Kept for backward compatibility in a few UI defaults.
+  // Actual quotation number should come from fetchNextQuotationNumber().
   const generateQuotationCode = useCallback(() => {
-    return `QT-0001`;
+    return "";
   }, []);
 
   const fetchNextQuotationNumber = async () => {
@@ -975,15 +977,17 @@ export default function NewQuotationPage() {
       return;
     }
 
+    const nextQuotationNumber = await fetchNextQuotationNumber();
+
     setFormData(prev => ({
       ...prev,
-      quotation_code: generateQuotationCode(),
+      quotation_code: nextQuotationNumber,
       quotation_date: new Date().toISOString().split("T")[0],
       validity_days: quotation.validity_days || 30,
       customer_id: quotation.customer_id || "",
       notes: quotation.notes || "",
       terms: quotation.terms || "",
-      subject: `Quotation ${generateQuotationCode()} - Copy of ${quotation.quotation_number}`,
+      subject: `Quotation ${nextQuotationNumber} - Copy of ${quotation.quotation_number}`,
       status: "open",
       salesman_id: quotation.sales_person_id || "",
       reference: quotation.reference || "",
@@ -1201,7 +1205,7 @@ export default function NewQuotationPage() {
     quotation_search_type: "item",
     notes: "",
     terms: "", 
-    subject: `Quotation ${generateQuotationCode()}`,
+    subject: "",
     tax_regime: undefined,
     status: "open",
     salesman_id: "",
@@ -1240,7 +1244,8 @@ export default function NewQuotationPage() {
   });
 
   const showToast = (message: string, type: "success" | "error" | "info" | "warning" = "success") => {
-    const id = Date.now();
+    toastCounterRef.current += 1;
+    const id = `${Date.now()}-${toastCounterRef.current}`;
     setToasts(prev => [...prev, { id, message, type }]);
     
     setTimeout(() => {
@@ -2692,7 +2697,7 @@ const productOptions = useMemo(() =>
     return csv.trim();
   };
 
-  const removeToast = (id: number) => {
+  const removeToast = (id: string) => {
     setToasts(prev => prev.filter(toast => toast.id !== id));
   };
 
@@ -3344,10 +3349,10 @@ const productOptions = useMemo(() =>
                             value={
                               productOptions.find(opt => opt.value === item.product_id) ||
                               (!item.product_id && item.description
-                                ? { value: `manual-${index}`, label: item.description }
+                                ? ({ value: `manual-${index}`, label: item.description } as any)
                                 : null)
                             }
-                            onChange={(option) => {
+                            onChange={(option: any) => {
                               if (option) {
                                 const selectedProduct = option.product || products.find(p => p.id === option.value);
                                 if (selectedProduct) {
@@ -3430,7 +3435,7 @@ const productOptions = useMemo(() =>
                             menuPlacement="auto"
                             isClearable
                             isSearchable
-                            formatOptionLabel={(option, { context }) => (
+                            formatOptionLabel={(option: any, { context }: any) => (
                               <div className="flex items-center gap-2">
                                 {option.image_url && (
                                   <img
@@ -3649,10 +3654,10 @@ const productOptions = useMemo(() =>
                                 value={
                                   productOptions.find(opt => opt.value === item.product_id) ||
                                   (!item.product_id && item.description
-                                    ? { value: `manual-${itemIndex}`, label: item.description }
+                                    ? ({ value: `manual-${itemIndex}`, label: item.description } as any)
                                     : null)
                                 }
-                                onChange={(option) => {
+                                onChange={(option: any) => {
                                   if (option) {
                                     const selectedProduct = option.product || products.find(p => p.id === option.value);
                                     if (selectedProduct) {
@@ -3725,7 +3730,7 @@ const productOptions = useMemo(() =>
                                 menuPlacement="auto"
                                 isClearable
                                 isSearchable
-                                formatOptionLabel={(option) => (
+                                formatOptionLabel={(option: any) => (
                                   <div className="flex items-center gap-2">
                                     {option.image_url && (
                                       <img

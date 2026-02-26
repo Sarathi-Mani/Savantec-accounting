@@ -59,7 +59,7 @@ class PurchaseService:
     
     def _calculate_item_totals(self, item: dict) -> Dict[str, Decimal]:
         """Calculate totals for a regular purchase item with currency conversion."""
-        print(f"DEBUG ITEM DATA: {item}")
+        # print(f"DEBUG ITEM DATA: {item}")
         quantity = Decimal(str(item.get("quantity", 1)))
         purchase_price = Decimal(str(item.get("purchase_price", 0)))
         discount_percent = Decimal(str(item.get("discount_percent", 0)))
@@ -67,11 +67,11 @@ class PurchaseService:
         
         currency = item.get("currency", "INR")
         exchange_rate = Decimal(str(item.get("exchange_rate", 1.0)))
-        print(f"DEBUG CURRENCY: {currency}, EXCHANGE_RATE: {exchange_rate}")
+        # print(f"DEBUG CURRENCY: {currency}, EXCHANGE_RATE: {exchange_rate}")
         # Convert to INR if needed
         if currency != "INR":
             price_inr = purchase_price * exchange_rate
-            print(f"  Currency Conversion: {currency} {purchase_price} × {exchange_rate} = ₹{price_inr:.2f}")
+            # print(f"  Currency Conversion: {currency} {purchase_price} × {exchange_rate} = ₹{price_inr:.2f}")
             effective_price = price_inr
         else:
             effective_price = purchase_price
@@ -100,9 +100,9 @@ class PurchaseService:
         
         # Log the calculation
         if currency != "INR":
-            print(f"  Taxable Amount (INR): ₹{taxable_amount:.2f}")
-            print(f"  Tax Amount (INR): ₹{total_tax:.2f}")
-            print(f"  Total Amount (INR): ₹{total_amount:.2f}")
+           print(f"  Taxable Amount (INR): ₹{taxable_amount:.2f}")
+           print(f"  Tax Amount (INR): ₹{total_tax:.2f}")
+           print(f"  Total Amount (INR): ₹{total_amount:.2f}")
         
         return {
             "item_total": item_total,
@@ -133,74 +133,74 @@ class PurchaseService:
     ) -> Purchase:
         """Create a new purchase (all types)."""
         
-        print("=" * 80)
-        print("🚀 PURCHASE SERVICE: create_purchase() STARTED")
-        print("=" * 80)
+        # print("=" * 80)
+        # print("🚀 PURCHASE SERVICE: create_purchase() STARTED")
+        # print("=" * 80)
         
         # ============================================
         # STEP 1: VALIDATE PURCHASE TYPE
         # ============================================
-        print("📋 STEP 1: Validating purchase type")
-        print(f"📥 Received purchase_type: '{purchase_type}' (type: {type(purchase_type)})")
+        # print("📋 STEP 1: Validating purchase type")
+        # print(f"📥 Received purchase_type: '{purchase_type}' (type: {type(purchase_type)})")
         
         # Convert string to PurchaseType enum
         try:
             normalized_type = purchase_type.lower().strip()
-            print(f"   Normalized (lowercase): '{normalized_type}'")
+            # print(f"   Normalized (lowercase): '{normalized_type}'")
             
             # Replace hyphen with underscore for enum matching
             normalized_type = normalized_type.replace("-", "_")
-            print(f"   Normalized (hyphen→underscore): '{normalized_type}'")
+            # print(f"   Normalized (hyphen→underscore): '{normalized_type}'")
             
             # Try to create enum
             purchase_type_enum = PurchaseType(normalized_type)
-            print(f"✅ Created PurchaseType enum: {purchase_type_enum}")
+            # print(f"✅ Created PurchaseType enum: {purchase_type_enum}")
             
             # Show all valid values
             valid_values = [e.value for e in PurchaseType]
-            print(f"   All valid enum values: {valid_values}")
+            # print(f"   All valid enum values: {valid_values}")
             
         except ValueError as e:
-            print(f"❌ ERROR: Invalid purchase type")
-            print(f"   Error: {e}")
+            # print(f"❌ ERROR: Invalid purchase type")
+            # print(f"   Error: {e}")
             valid_values = [e.value for e in PurchaseType]
-            print(f"   Valid values are: {valid_values}")
+            # print(f"   Valid values are: {valid_values}")
             raise ValueError(f"Invalid purchase type: '{purchase_type}'. Valid values: {valid_values}")
         
         # ============================================
         # STEP 2: VALIDATE COMPANY AND VENDOR
         # ============================================
-        print("\n🏢 STEP 2: Validating company and vendor")
-        print(f"   Company ID: {company_id}")
-        print(f"   Vendor ID: {vendor_id}")
-        print(f"   User ID: {user_id}")
+        # print("\n🏢 STEP 2: Validating company and vendor")
+        # print(f"   Company ID: {company_id}")
+        # print(f"   Vendor ID: {vendor_id}")
+        # print(f"   User ID: {user_id}")
         
         company = self.db.query(Company).filter(Company.id == company_id).first()
         if not company:
-            print("❌ Company not found")
+            # print("❌ Company not found")
             raise ValueError("Company not found")
-        print(f"✅ Company found: {company.name} (ID: {company.id})")
+        # print(f"✅ Company found: {company.name} (ID: {company.id})")
         
         vendor = self.db.query(Vendor).filter(Vendor.id == vendor_id).first()
         if not vendor:
-            print("❌ Vendor not found")
+            # print("❌ Vendor not found")
             raise ValueError("Vendor not found")
-        print(f"✅ Vendor found: {vendor.name or vendor.vendor_code} (ID: {vendor.id})")
+        # print(f"✅ Vendor found: {vendor.name or vendor.vendor_code} (ID: {vendor.id})")
         # ============================================
         # STEP 3: GENERATE PURCHASE NUMBER
         # ============================================
-        print("\n🔢 STEP 3: Generating purchase number")
+        # print("\n🔢 STEP 3: Generating purchase number")
         # Use purchase-specific numbering to avoid collisions with other invoice modules.
         invoice_date_for_number = additional_data.get("invoice_date")
         purchase_number = self._get_next_purchase_number(company_id, invoice_date_for_number)
         while self.db.query(Purchase).filter(Purchase.purchase_number == purchase_number).first():
             purchase_number = self._get_next_purchase_number(company_id, invoice_date_for_number)
-        print(f"✅ Generated purchase number: {purchase_number}")
+        # print(f"✅ Generated purchase number: {purchase_number}")
         
         # ============================================
         # STEP 4: PREPARE PURCHASE DATA
         # ============================================
-        print("\n📝 STEP 4: Preparing purchase data")
+        # print("\n📝 STEP 4: Preparing purchase data")
         
         # Base purchase data
         purchase_data = {
@@ -213,49 +213,49 @@ class PurchaseService:
             "status": PurchaseInvoiceStatus.DRAFT,
         }
         
-        print("   Base purchase data:")
+        # print("   Base purchase data:")
         for key, value in purchase_data.items():
             if key != "id":
                 print(f"     {key}: {value}")
         
         # Add additional data
-        print("\n   Additional data received:")
+        # print("\n   Additional data received:")
         additional_count = 0
         for key, value in additional_data.items():
             if hasattr(Purchase, key):
                 purchase_data[key] = value
-                print(f"     ✅ {key}: {value} (type: {type(value)})")
+                # print(f"     ✅ {key}: {value} (type: {type(value)})")
                 additional_count += 1
             else:
                 print(f"     ❌ {key}: {value} (SKIPPED - not in Purchase model)")
         
-        print(f"   Total additional fields added: {additional_count}")
+        # print(f"   Total additional fields added: {additional_count}")
         
         # ============================================
         # STEP 5: CREATE PURCHASE INSTANCE
         # ============================================
-        print("\n💾 STEP 5: Creating purchase instance")
+        # print("\n💾 STEP 5: Creating purchase instance")
         purchase = Purchase(**purchase_data)
         self.db.add(purchase)
         self.db.flush()
         # Safety: if any DB-side logic overrides purchase_number, force API format before commit.
         if not re.match(r"^PUR-[A-Z0-9]{8}$", str(purchase.purchase_number or "")):
-            print(
-                f"⚠️ purchase_number overridden to '{purchase.purchase_number}', "
-                f"forcing format '{purchase_number}'"
-            )
+            # print(
+            #     f"⚠️ purchase_number overridden to '{purchase.purchase_number}', "
+            #     f"forcing format '{purchase_number}'"
+            # )
             purchase.purchase_number = purchase_number
             self.db.flush()
-        print(f"✅ Purchase instance created with ID: {purchase.id}")
+        # print(f"✅ Purchase instance created with ID: {purchase.id}")
         
         # ============================================
         # STEP 6: PROCESS ITEMS BASED ON PURCHASE TYPE
         # ============================================
-        print(f"\n📦 STEP 6: Processing items based on purchase type")
-        print(f"   Purchase type: {purchase_type_enum}")
-        print(f"   Received {len(items)} regular items")
-        print(f"   Received {len(import_items or [])} import items")
-        print(f"   Received {len(expense_items or [])} expense items")
+        # print(f"\n📦 STEP 6: Processing items based on purchase type")
+        # print(f"   Purchase type: {purchase_type_enum}")
+        # print(f"   Received {len(items)} regular items")
+        # print(f"   Received {len(import_items or [])} import items")
+        # print(f"   Received {len(expense_items or [])} expense items")
         
         total_subtotal = Decimal("0")
         total_tax = Decimal("0")
@@ -269,7 +269,7 @@ class PurchaseService:
             print(f"\n📦 STEP 6A: Processing {len(items)} regular items")
             
             for idx, item_data in enumerate(items, 1):
-                print(f"\n   Regular Item #{idx}:")
+                # print(f"\n   Regular Item #{idx}:")
                 
                 product_id = item_data.get("product_id")
                 if product_id:
@@ -278,22 +278,22 @@ class PurchaseService:
                         Product.company_id == company_id
                     ).first()
                     if not product:
-                        print(f"❌ Product {product_id} not found")
+                        # print(f"❌ Product {product_id} not found")
                         raise ValueError(f"Product {product_id} not found")
-                    print(f"     Product: {product.name} (ID: {product.id})")
-                print(f"DEBUG: Processing item #{idx} data:")
-                print(f"  Full item_data: {item_data}")
-                print(f"  Currency: {item_data.get('currency')}")
-                print(f"  Exchange rate: {item_data.get('exchange_rate')}")
+                    # print(f"     Product: {product.name} (ID: {product.id})")
+                # print(f"DEBUG: Processing item #{idx} data:")
+                # print(f"  Full item_data: {item_data}")
+                # print(f"  Currency: {item_data.get('currency')}")
+                # print(f"  Exchange rate: {item_data.get('exchange_rate')}")
                 # Calculate item totals
                 totals = self._calculate_item_totals(item_data)
-                print(f"     Quantity: {item_data.get('quantity', 1)}")
-                print(f"     Price: {item_data.get('purchase_price', 0)}")
-                print(f"     GST Rate: {item_data.get('gst_rate', 18)}%")
-                print(f"     Taxable Amount: {totals['taxable_amount']}")
-                print(f"     Tax Amount: {totals['total_tax']}")
-                print(f"     Total Amount: {totals['total_amount']}")
-                print(f"     Currency: {item_data.get('currency', 'INR')}")
+                # print(f"     Quantity: {item_data.get('quantity', 1)}")
+                # print(f"     Price: {item_data.get('purchase_price', 0)}")
+                # print(f"     GST Rate: {item_data.get('gst_rate', 18)}%")
+                # print(f"     Taxable Amount: {totals['taxable_amount']}")
+                # print(f"     Tax Amount: {totals['total_tax']}")
+                # print(f"     Total Amount: {totals['total_amount']}")
+                # print(f"     Currency: {item_data.get('currency', 'INR')}")
     
                 # Create purchase item
                 purchase_item = PurchaseItem(
@@ -329,15 +329,15 @@ class PurchaseService:
                 total_tax += totals["total_tax"]
                 total_discount += totals["discount_amount"]
             
-            print(f"\n✅ Processed {item_count} regular items")
-            print(f"   Subtotal from items: {total_subtotal}")
-            print(f"   Total tax: {total_tax}")
-            print(f"   Total discount: {total_discount}")
+            # print(f"\n✅ Processed {item_count} regular items")
+            # print(f"   Subtotal from items: {total_subtotal}")
+            # print(f"   Total tax: {total_tax}")
+            # print(f"   Total discount: {total_discount}")
         
         elif purchase_type_enum == PurchaseType.PURCHASE_EXPENSES:
-            print(f"\n📦 STEP 6B: Skipping regular items for expense purchase")
-            print(f"   Received {len(items)} regular items, but expense purchases don't use regular items")
-            print(f"   Regular items will be ignored for expense purchases")
+            # print(f"\n📦 STEP 6B: Skipping regular items for expense purchase")
+            # print(f"   Received {len(items)} regular items, but expense purchases don't use regular items")
+            # print(f"   Regular items will be ignored for expense purchases")
             # Clear items for expense purchases since they shouldn't have regular items
             items = []
             item_count = 0
@@ -346,10 +346,10 @@ class PurchaseService:
         # STEP 7: PROCESS IMPORT ITEMS (if applicable)
         # ============================================
         if import_items and purchase_type_enum in [PurchaseType.PURCHASE, PurchaseType.PURCHASE_IMPORT]:
-            print(f"\n📦 STEP 7: Processing {len(import_items)} import items")
+            # print(f"\n📦 STEP 7: Processing {len(import_items)} import items")
             
             for idx, import_item_data in enumerate(import_items, 1):
-                print(f"\n   Import Item #{idx}:")
+                # print(f"\n   Import Item #{idx}:")
                 
                 # Calculate import item amount
                 quantity = Decimal(str(import_item_data.get("quantity", 1)))
@@ -360,12 +360,12 @@ class PurchaseService:
                 discount = self._round_amount(item_total * discount_percent / 100)
                 amount = item_total - discount
                 
-                print(f"     Name: {import_item_data.get('name', '')}")
-                print(f"     Quantity: {quantity}")
-                print(f"     Rate: {rate}")
-                print(f"     Currency: {import_item_data.get('currency', 'INR')}")
-                print(f"     Discount: {discount_percent}%")
-                print(f"     Amount: {amount}")
+                # print(f"     Name: {import_item_data.get('name', '')}")
+                # print(f"     Quantity: {quantity}")
+                # print(f"     Rate: {rate}")
+                # print(f"     Currency: {import_item_data.get('currency', 'INR')}")
+                # print(f"     Discount: {discount_percent}%")
+                # print(f"     Amount: {amount}")
                 
                 import_item = PurchaseImportItem(
                     id=generate_uuid(),
@@ -382,16 +382,16 @@ class PurchaseService:
                 
                 import_total += amount
             
-            print(f"✅ Total import amount: {import_total}")
+            # print(f"✅ Total import amount: {import_total}")
         
         # ============================================
         # STEP 8: PROCESS EXPENSE ITEMS (if applicable)
         # ============================================
         if expense_items and purchase_type_enum == PurchaseType.PURCHASE_EXPENSES:
-            print(f"\n💰 STEP 8: Processing {len(expense_items)} expense items")
+            # print(f"\n💰 STEP 8: Processing {len(expense_items)} expense items")
             
             for idx, expense_item_data in enumerate(expense_items, 1):
-                print(f"\n   Expense Item #{idx}:")
+                # print(f"\n   Expense Item #{idx}:")
                 
                 amount = Decimal(str(expense_item_data.get("amount", 0)))
                 if amount <= 0:
@@ -399,9 +399,9 @@ class PurchaseService:
                     rate = Decimal(str(expense_item_data.get("rate", 0)))
                     amount = rate
                 
-                print(f"     Particulars: {expense_item_data.get('particulars', '')}")
-                print(f"     Rate: {expense_item_data.get('rate', 0)}")
-                print(f"     Amount: {amount}")
+                # print(f"     Particulars: {expense_item_data.get('particulars', '')}")
+                # print(f"     Rate: {expense_item_data.get('rate', 0)}")
+                # print(f"     Amount: {amount}")
                 
                 expense_item = PurchaseExpenseItem(
                     id=generate_uuid(),
@@ -415,12 +415,12 @@ class PurchaseService:
                 
                 expense_total += amount
             
-            print(f"✅ Total expense amount: {expense_total}")
+            # print(f"✅ Total expense amount: {expense_total}")
         
         # ============================================
         # STEP 9: CALCULATE FINAL TOTALS
         # ============================================
-        print("\n🧮 STEP 9: Calculating final totals")
+        # print("\n🧮 STEP 9: Calculating final totals")
         
         # Get charges from additional data
         freight_charges = Decimal(str(additional_data.get("freight_charges", 0)))
@@ -429,16 +429,16 @@ class PurchaseService:
         discount_type = additional_data.get("discount_type", "percentage")
         round_off = Decimal(str(additional_data.get("round_off", 0)))
         
-        print(f"   Freight Charges: {freight_charges}")
-        print(f"   P&F Charges: {pf_charges}")
-        print(f"   Discount on All: {discount_on_all} ({discount_type})")
-        print(f"   Round Off: {round_off}")
+        # print(f"   Freight Charges: {freight_charges}")
+        # print(f"   P&F Charges: {pf_charges}")
+        # print(f"   Discount on All: {discount_on_all} ({discount_type})")
+        # print(f"   Round Off: {round_off}")
         freight_type = additional_data.get("freight_type", "fixed")
         pf_type = additional_data.get("pf_type", "fixed")
-        print(f"   Freight Charges: {freight_charges} (type: {freight_type})")
-        print(f"   P&F Charges: {pf_charges} (type: {pf_type})")
-        print(f"   Discount on All: {discount_on_all} ({discount_type})")
-        print(f"   Round Off: {round_off}")
+        # print(f"   Freight Charges: {freight_charges} (type: {freight_type})")
+        # print(f"   P&F Charges: {pf_charges} (type: {pf_type})")
+        # print(f"   Discount on All: {discount_on_all} ({discount_type})")
+        # print(f"   Round Off: {round_off}")
 
 
         freight_tax = Decimal("0")
@@ -448,7 +448,7 @@ class PurchaseService:
               tax_rate_str = freight_type.replace('tax', '')
               tax_rate = Decimal(tax_rate_str)
               freight_tax = self._round_amount(freight_charges * tax_rate / 100)
-              print(f"   Freight Tax ({tax_rate}%): {freight_tax}")
+              # print(f"   Freight Tax ({tax_rate}%): {freight_tax}")
               total_tax += freight_tax  # Add to total tax
            except (ValueError, AttributeError) as e:
                print(f"   Error parsing freight tax rate: {e}")
@@ -461,7 +461,7 @@ class PurchaseService:
              tax_rate_str = pf_type.replace('tax', '')
              tax_rate = Decimal(tax_rate_str)
              pf_tax = self._round_amount(pf_charges * tax_rate / 100)
-             print(f"   P&F Tax ({tax_rate}%): {pf_tax}")
+             # print(f"   P&F Tax ({tax_rate}%): {pf_tax}")
              total_tax += pf_tax  # Add to total tax
            except (ValueError, AttributeError) as e:
               print(f"   Error parsing P&F tax rate: {e}")
@@ -473,21 +473,21 @@ class PurchaseService:
         # Calculate base amount based on purchase type
         if purchase_type_enum == PurchaseType.PURCHASE_EXPENSES:
             base_amount = expense_total
-            print(f"   Base amount (expenses only): {base_amount}")
+            # print(f"   Base amount (expenses only): {base_amount}")
         elif purchase_type_enum == PurchaseType.PURCHASE_IMPORT:
             base_amount = total_subtotal + import_total
-            print(f"   Base amount (regular + import): {base_amount} = {total_subtotal} + {import_total}")
+            # print(f"   Base amount (regular + import): {base_amount} = {total_subtotal} + {import_total}")
         else:
             base_amount = total_subtotal + import_total
-            print(f"   Base amount (regular): {base_amount} = {total_subtotal} + {import_total}")
+            # print(f"   Base amount (regular): {base_amount} = {total_subtotal} + {import_total}")
         
         # Calculate discount on all based on type
         if discount_type == "percentage":
             discount_all_amount = self._round_amount(base_amount * discount_on_all / 100)
-            print(f"   Discount on all ({discount_on_all}%): {discount_all_amount}")
+            # print(f"   Discount on all ({discount_on_all}%): {discount_all_amount}")
         else:
             discount_all_amount = discount_on_all
-            print(f"   Discount on all (fixed): {discount_all_amount}")
+            # print(f"   Discount on all (fixed): {discount_all_amount}")
         
         # Calculate final totals
         final_subtotal = base_amount
@@ -499,21 +499,21 @@ class PurchaseService:
         total_after_discount = total_after_charges - discount_all_amount
         grand_total = total_after_discount + round_off
         
-        print("\n   📊 FINAL CALCULATION:")
-        print(f"     1. Subtotal: {final_subtotal}")
-        print(f"     2. Add Tax: +{final_total_tax}")
-        print(f"        → After Tax: {total_after_item_tax}")
-        print(f"     3. Add Charges: +{freight_charges} (freight) + {pf_charges} (P&F)")
-        print(f"        → After Charges: {total_after_charges}")
-        print(f"     4. Apply Discount: -{discount_all_amount}")
-        print(f"        → After Discount: {total_after_discount}")
-        print(f"     5. Apply Round Off: {'+' if round_off >= 0 else ''}{round_off}")
-        print(f"        → GRAND TOTAL: {grand_total}")
+        # print("\n   📊 FINAL CALCULATION:")
+        # print(f"     1. Subtotal: {final_subtotal}")
+        # print(f"     2. Add Tax: +{final_total_tax}")
+        # print(f"        → After Tax: {total_after_item_tax}")
+        # print(f"     3. Add Charges: +{freight_charges} (freight) + {pf_charges} (P&F)")
+        # print(f"        → After Charges: {total_after_charges}")
+        # print(f"     4. Apply Discount: -{discount_all_amount}")
+        # print(f"        → After Discount: {total_after_discount}")
+        # print(f"     5. Apply Round Off: {'+' if round_off >= 0 else ''}{round_off}")
+        # print(f"        → GRAND TOTAL: {grand_total}")
         
         # ============================================
         # STEP 10: UPDATE PURCHASE TOTALS
         # ============================================
-        print("\n💳 STEP 10: Updating purchase totals")
+        # print("\n💳 STEP 10: Updating purchase totals")
         
         purchase.subtotal = final_subtotal
         purchase.total_tax = final_total_tax
@@ -533,15 +533,15 @@ class PurchaseService:
         purchase.grand_total = grand_total
         purchase.balance_due = grand_total
         
-        print("✅ Purchase totals updated")
+        # print("✅ Purchase totals updated")
         
         # ============================================
         # STEP 11: PROCESS PAYMENT (if provided)
         # ============================================
         if payment_data and payment_data.get("amount", 0) > 0:
-            print(f"\n💵 STEP 11: Processing payment of {payment_data.get('amount')}")
+            # print(f"\n💵 STEP 11: Processing payment of {payment_data.get('amount')}")
             self._create_payment(purchase, payment_data, user_id)
-            print("✅ Payment processed")
+            # print("✅ Payment processed")
         else:
             print("\n💵 STEP 11: No payment data provided")
         
@@ -549,27 +549,27 @@ class PurchaseService:
         # STEP 12: UPDATE STOCK
         # ============================================
         if items and purchase_type_enum in [PurchaseType.PURCHASE, PurchaseType.PURCHASE_IMPORT]:
-            print(f"\n📊 STEP 12: Updating stock for {len(items)} items")
+            # print(f"\n📊 STEP 12: Updating stock for {len(items)} items")
             self._update_stock_for_purchase(purchase)
-            print("✅ Stock updated")
+            # print("✅ Stock updated")
         else:
-            print("\n📊 STEP 12: No regular items or expense purchase, skipping stock update")
+             print("\n📊 STEP 12: No regular items or expense purchase, skipping stock update")
         
         # ============================================
         # STEP 13: COMMIT AND RETURN
         # ============================================
-        print("\n💾 STEP 13: Committing transaction")
+        # print("\n💾 STEP 13: Committing transaction")
         self.db.commit()
         self.db.refresh(purchase)
         
-        print("=" * 80)
-        print(f"✅ PURCHASE CREATED SUCCESSFULLY!")
-        print(f"   Purchase Number: {purchase.purchase_number}")
-        print(f"   Vendor: {vendor.name or vendor.vendor_code}")
-        print(f"   Type: {purchase.purchase_type}")
-        print(f"   Total Amount: {purchase.total_amount}")
-        print(f"   Status: {purchase.status}")
-        print("=" * 80)
+        # print("=" * 80)
+        # print(f"✅ PURCHASE CREATED SUCCESSFULLY!")
+        # print(f"   Purchase Number: {purchase.purchase_number}")
+        # print(f"   Vendor: {vendor.name or vendor.vendor_code}")
+        # print(f"   Type: {purchase.purchase_type}")
+        # print(f"   Total Amount: {purchase.total_amount}")
+        # print(f"   Status: {purchase.status}")
+        # print("=" * 80)
         
         return purchase 
     def _create_payment(self, purchase: Purchase, payment_data: Dict[str, Any], user_id: str):
@@ -692,7 +692,7 @@ class PurchaseService:
             return transaction
             
         except Exception as e:
-            print(f"Error creating payment accounting entry: {e}")
+            # print(f"Error creating payment accounting entry: {e}")
             return None
     
     def _update_stock_for_purchase(self, purchase: Purchase):

@@ -17,7 +17,7 @@ def create_sales_order_tables() -> None:
         ],
         checkfirst=True,
     )
-    print("Sales order tables ensured: sales_orders, sales_order_items")
+    # print("Sales order tables ensured: sales_orders, sales_order_items")
 
 
 if __name__ == "__main__":

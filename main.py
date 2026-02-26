@@ -162,7 +162,7 @@ async def startup_event():
     print(f"[WEB] Frontend: http://localhost:6767")
     
     # Debug: Print all routes
-    print("\n[DEBUG] Registered routes (purchases only):")
+    # print("\n[DEBUG] Registered routes (purchases only):")
     for route in app.routes:
         if hasattr(route, "methods") and "purchases" in str(route.path):
             print(f"  {route.methods} {route.path}")

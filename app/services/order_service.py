@@ -80,11 +80,11 @@ class OrderService:
         
     ) -> SalesOrder:
         """Create a new sales order."""
-        print("=" * 80)
-        print("DEBUG: START create_sales_order")
-        print(f"DEBUG: Company: {company.id}")
-        print(f"DEBUG: Customer: {customer_id}")
-        print(f"DEBUG: Items count: {len(items)}")
+        # print("=" * 80)
+        # print("DEBUG: START create_sales_order")
+        # print(f"DEBUG: Company: {company.id}")
+        # print(f"DEBUG: Customer: {customer_id}")
+        # print(f"DEBUG: Items count: {len(items)}")
         
         for idx, item in enumerate(items):
             print(f"\nDEBUG: Item {idx} raw data:")
@@ -97,7 +97,7 @@ class OrderService:
         ).count()
         order_number = f"SO/{datetime.now().year}-{datetime.now().year+1}/{order_count + 1:04d}"
         
-        print(f"DEBUG: Order number: {order_number}")
+        # print(f"DEBUG: Order number: {order_number}")
         
         # Map status string to OrderStatus enum
         status_map = {
@@ -149,20 +149,20 @@ class OrderService:
         
         self.db.add(order)
         self.db.flush()
-        print(f"DEBUG: Order created with ID: {order.id}")
+        # print(f"DEBUG: Order created with ID: {order.id}")
         
         # Store created items
         created_items = []
         
         # Create items regardless of totals calculation
         for idx, item_data in enumerate(items):
-            print(f"\nDEBUG: Processing item {idx}:")
+            # print(f"\nDEBUG: Processing item {idx}:")
             
             qty = Decimal(str(item_data.get("quantity", 0)))
             unit_price = Decimal(str(item_data.get("unit_price", item_data.get("rate", 0))))
             gst_rate = Decimal(str(item_data.get("gst_rate", 18)))
             
-            print(f"  DEBUG: Quantity: {qty}, Unit Price: {unit_price}, GST: {gst_rate}")
+            # print(f"  DEBUG: Quantity: {qty}, Unit Price: {unit_price}, GST: {gst_rate}")
             
             # Calculate item totals
             item_total = qty * unit_price
@@ -171,7 +171,7 @@ class OrderService:
             
             # FIX: Handle item_code - ALWAYS ensure non-empty
             item_code_value = str(item_data.get("item_code", "")).strip() 
-            print(f"  DEBUG: Final item_code: '{item_code_value}'")
+            # print(f"  DEBUG: Final item_code: '{item_code_value}'")
             
             # Create sales order item
             item = SalesOrderItem(
@@ -192,11 +192,11 @@ class OrderService:
             
             self.db.add(item)
             created_items.append(item)
-            print(f"  DEBUG: Item object created with item_code='{item.item_code}'")
+            # print(f"  DEBUG: Item object created with item_code='{item.item_code}'")
         
         # Calculate totals if not provided
         if not subtotal or not total_tax or not total_amount:
-            print("DEBUG: Calculating totals from items")
+            # print("DEBUG: Calculating totals from items")
             calculated_subtotal = sum(item.quantity * item.unit_price for item in created_items)
             calculated_total_tax = sum(item.tax_amount for item in created_items)
             calculated_total_qty = sum(item.quantity for item in created_items)
@@ -211,25 +211,25 @@ class OrderService:
             order.total_amount = final_total
             order.quantity_ordered = calculated_total_qty
             
-            print(f"DEBUG: Calculated - Subtotal: {final_subtotal}, Tax: {calculated_total_tax}, Total: {final_total}")
+            # print(f"DEBUG: Calculated - Subtotal: {final_subtotal}, Tax: {calculated_total_tax}, Total: {final_total}")
         
-        print(f"\nDEBUG: {len(created_items)} items created:")
+        # print(f"\nDEBUG: {len(created_items)} items created:")
         for idx, item in enumerate(created_items):
             print(f"  Item {idx}: item_code='{item.item_code}'")
         
         try:
-            print("\nDEBUG: Attempting to commit...")
+            # print("\nDEBUG: Attempting to commit...")
             self.db.commit()
             self.db.refresh(order)
-            print(f"DEBUG: SUCCESS! Sales order {order.order_number} created")
-            print("=" * 80)
+            # print(f"DEBUG: SUCCESS! Sales order {order.order_number} created")
+            # print("=" * 80)
             return order
         except Exception as e:
-            print(f"\nDEBUG: ERROR during commit: {e}")
+            # print(f"\nDEBUG: ERROR during commit: {e}")
             import traceback
             traceback.print_exc()
             self.db.rollback()
-            print("=" * 80)
+            # print("=" * 80)
             raise
     def get_sales_orders(
         self,
@@ -482,32 +482,32 @@ class OrderService:
         creator_type: CreatorType = CreatorType.USER,
     ) -> PurchaseOrder:
         """Create a new purchase order."""
-        print("=" * 80)
-        print("DEBUG: START create_purchase_order")
-        print(f"DEBUG: Company: {company.id}")
-        print(f"DEBUG: Vendor: {vendor_id}")
-        print(f"DEBUG: Created by: {creator_type}") 
-        print(f"DEBUG: Items count: {len(items)}")
-        print(f"DEBUG: Currency: {currency}, Exchange Rate: {exchange_rate}")
-        print(f"DEBUG: Freight: {freight_charges}, Other Charges: {other_charges}")
-        print(f"DEBUG: Discount on All: {discount_on_all}, Round Off: {round_off}")
+        # print("=" * 80)
+        # print("DEBUG: START create_purchase_order")
+        # print(f"DEBUG: Company: {company.id}")
+        # print(f"DEBUG: Vendor: {vendor_id}")
+        # print(f"DEBUG: Created by: {creator_type}") 
+        # print(f"DEBUG: Items count: {len(items)}")
+        # print(f"DEBUG: Currency: {currency}, Exchange Rate: {exchange_rate}")
+        # print(f"DEBUG: Freight: {freight_charges}, Other Charges: {other_charges}")
+        # print(f"DEBUG: Discount on All: {discount_on_all}, Round Off: {round_off}")
         
         # Debug each item
-        for idx, item in enumerate(items):
-            print(f"\nDEBUG: Item {idx} raw data:")
-            print(f"  product_id: {item.get('product_id')}")
-            print(f"  item_code: '{item.get('item_code')}'")
-            print(f"  quantity: {item.get('quantity')}")
-            print(f"  rate: {item.get('rate')}")
-            print(f"  discount_percent: {item.get('discount_percent')}")
-            print(f"  discount_amount: {item.get('discount_amount')}")
-            print(f"  gst_rate: {item.get('gst_rate')}")
-            print(f"  tax_amount: {item.get('tax_amount')}")
-            print(f"  total_amount: {item.get('total_amount')}")
+        # for idx, item in enumerate(items):
+        #     print(f"\nDEBUG: Item {idx} raw data:")
+        #     print(f"  product_id: {item.get('product_id')}")
+        #     print(f"  item_code: '{item.get('item_code')}'")
+        #     print(f"  quantity: {item.get('quantity')}")
+        #     print(f"  rate: {item.get('rate')}")
+        #     print(f"  discount_percent: {item.get('discount_percent')}")
+        #     print(f"  discount_amount: {item.get('discount_amount')}")
+        #     print(f"  gst_rate: {item.get('gst_rate')}")
+        #     print(f"  tax_amount: {item.get('tax_amount')}")
+        #     print(f"  total_amount: {item.get('total_amount')}")
         
         order_number = self.get_next_purchase_order_number(company)
         
-        print(f"\nDEBUG: Generated order number: {order_number}")
+        # print(f"\nDEBUG: Generated order number: {order_number}")
         
         # Create the purchase order with basic info
         order = PurchaseOrder(
@@ -533,14 +533,14 @@ class OrderService:
         
         self.db.add(order)
         self.db.flush()
-        print(f"DEBUG: Order created with ID: {order.id}")
+        # print(f"DEBUG: Order created with ID: {order.id}")
         
         # Store created items
         created_items = []
         
         # Create items
         for idx, item_data in enumerate(items):
-            print(f"\nDEBUG: Processing item {idx}:")
+            # print(f"\nDEBUG: Processing item {idx}:")
             
             qty = Decimal(str(item_data.get("quantity", 0)))
             rate = Decimal(str(item_data.get("rate", 0)))
@@ -550,14 +550,14 @@ class OrderService:
             item_tax_amount = Decimal(str(item_data.get("tax_amount", 0)))
             item_total_amount = Decimal(str(item_data.get("total_amount", 0)))
             
-            print(f"  DEBUG: Quantity: {qty}, Rate: {rate}")
-            print(f"  DEBUG: Discount %: {discount_percent}, Amount: {discount_amount}")
-            print(f"  DEBUG: GST Rate: {gst_rate}, Tax: {item_tax_amount}")
-            print(f"  DEBUG: Total: {item_total_amount}")
+            # print(f"  DEBUG: Quantity: {qty}, Rate: {rate}")
+            # print(f"  DEBUG: Discount %: {discount_percent}, Amount: {discount_amount}")
+            # print(f"  DEBUG: GST Rate: {gst_rate}, Tax: {item_tax_amount}")
+            # print(f"  DEBUG: Total: {item_total_amount}")
             
             # FIX: Handle item_code - ensure non-empty
             item_code_value = str(item_data.get("item_code", "")).strip() 
-            print(f"  DEBUG: Final item_code: '{item_code_value}'")
+            # print(f"  DEBUG: Final item_code: '{item_code_value}'")
             
             # Create purchase order item
             item = PurchaseOrderItem(
@@ -578,10 +578,10 @@ class OrderService:
             
             self.db.add(item)
             created_items.append(item)
-            print(f"  DEBUG: Item object created with item_code='{item.item_code}'")
+            # print(f"  DEBUG: Item object created with item_code='{item.item_code}'")
         
         # Calculate totals from items
-        print("\nDEBUG: Calculating totals from items...")
+        # print("\nDEBUG: Calculating totals from items...")
         calculated_subtotal = Decimal("0")
         calculated_total_tax = Decimal("0")
         calculated_total_qty = Decimal("0")
@@ -592,7 +592,7 @@ class OrderService:
             calculated_subtotal += item_subtotal
             calculated_total_tax += item.tax_amount
             calculated_total_qty += item.quantity
-            print(f"  Item: {item.item_code} - Subtotal: {item_subtotal}, Tax: {item.tax_amount}")
+            # print(f"  Item: {item.item_code} - Subtotal: {item_subtotal}, Tax: {item.tax_amount}")
         
         # Apply charges and discounts to total
         final_total = (
@@ -606,38 +606,38 @@ class OrderService:
         
         # Use frontend-provided totals if available, otherwise use calculated
         if subtotal is not None and tax_amount is not None and total_amount is not None:
-            print(f"DEBUG: Using frontend provided totals")
-            print(f"  Frontend - Subtotal: {subtotal}, Tax: {tax_amount}, Total: {total_amount}")
+            # print(f"DEBUG: Using frontend provided totals")
+            # print(f"  Frontend - Subtotal: {subtotal}, Tax: {tax_amount}, Total: {total_amount}")
             order.subtotal = subtotal
             order.tax_amount = tax_amount
             order.total_amount = total_amount
         else:
-            print(f"DEBUG: Using backend calculated totals")
-            print(f"  Calculated - Subtotal: {calculated_subtotal}, Tax: {calculated_total_tax}")
-            print(f"  Final Total (with charges): {final_total}")
+            # print(f"DEBUG: Using backend calculated totals")
+            # print(f"  Calculated - Subtotal: {calculated_subtotal}, Tax: {calculated_total_tax}")
+            # print(f"  Final Total (with charges): {final_total}")
             order.subtotal = calculated_subtotal
             order.tax_amount = calculated_total_tax
             order.total_amount = final_total
         
         order.quantity_ordered = calculated_total_qty
         
-        print(f"\nDEBUG: {len(created_items)} items created:")
+        # print(f"\nDEBUG: {len(created_items)} items created:")
         for idx, item in enumerate(created_items):
             print(f"  Item {idx}: item_code='{item.item_code}', discount_percent={item.discount_percent}")
         
         try:
-            print("\nDEBUG: Attempting to commit...")
+            # print("\nDEBUG: Attempting to commit...")
             self.db.commit()
             self.db.refresh(order)
-            print(f"DEBUG: SUCCESS! Purchase order {order.order_number} created")
-            print("=" * 80)
+            # print(f"DEBUG: SUCCESS! Purchase order {order.order_number} created")
+            # print("=" * 80)
             return order
         except Exception as e:
-            print(f"\nDEBUG: ERROR during commit: {e}")
+            # print(f"\nDEBUG: ERROR during commit: {e}")
             import traceback
             traceback.print_exc()
             self.db.rollback()
-            print("=" * 80)
+            # print("=" * 80)
             raise
 
 
@@ -669,7 +669,7 @@ class OrderService:
     def get_purchase_order_with_items(self, order_id: str, company: Company) -> Optional[PurchaseOrder]:
         """Get a purchase order by ID with items eagerly loaded."""
         from sqlalchemy.orm import joinedload
-        print(f"DEBUG: Loading purchase order {order_id} for company {company.id}")
+        # print(f"DEBUG: Loading purchase order {order_id} for company {company.id}")
         return self.db.query(PurchaseOrder).options(
             joinedload(PurchaseOrder.items).joinedload(PurchaseOrderItem.product),
             joinedload(PurchaseOrder.vendor),
@@ -702,9 +702,9 @@ class OrderService:
         total_amount: Optional[Decimal] = None,
     ) -> PurchaseOrder:
         """Update an existing purchase order."""
-        print("=" * 80)
-        print("DEBUG: START update_purchase_order")
-        print(f"DEBUG: Updating order: {order.order_number}")
+        # print("=" * 80)
+        # print("DEBUG: START update_purchase_order")
+        # print(f"DEBUG: Updating order: {order.order_number}")
         
         # Update basic fields if provided
         if vendor_id is not None:
@@ -733,27 +733,27 @@ class OrderService:
             order.round_off = round_off
         
         # Update items if provided
-        if items is not None:
-            print(f"DEBUG: Updating {len(items)} items")
+        # if items is not None:
+        #     print(f"DEBUG: Updating {len(items)} items")
             
             # Debug each item
-            for idx, item in enumerate(items):
-                print(f"\nDEBUG: Item {idx} raw data:")
-                print(f"  product_id: {item.get('product_id')}")
-                print(f"  item_code: '{item.get('item_code')}'")
-                print(f"  quantity: {item.get('quantity')}")
-                print(f"  rate: {item.get('rate')}")
-                print(f"  discount_percent: {item.get('discount_percent')}")
-                print(f"  discount_amount: {item.get('discount_amount')}")
-                print(f"  gst_rate: {item.get('gst_rate')}")
-                print(f"  tax_amount: {item.get('tax_amount')}")
-                print(f"  total_amount: {item.get('total_amount')}")
+            # for idx, item in enumerate(items):
+            #     print(f"\nDEBUG: Item {idx} raw data:")
+            #     print(f"  product_id: {item.get('product_id')}")
+            #     print(f"  item_code: '{item.get('item_code')}'")
+            #     print(f"  quantity: {item.get('quantity')}")
+            #     print(f"  rate: {item.get('rate')}")
+            #     print(f"  discount_percent: {item.get('discount_percent')}")
+            #     print(f"  discount_amount: {item.get('discount_amount')}")
+            #     print(f"  gst_rate: {item.get('gst_rate')}")
+            #     print(f"  tax_amount: {item.get('tax_amount')}")
+            #     print(f"  total_amount: {item.get('total_amount')}")
             
             # Delete existing items
             self.db.query(PurchaseOrderItem).filter(
                 PurchaseOrderItem.order_id == order.id
             ).delete()
-            print("DEBUG: Deleted existing items")
+            # print("DEBUG: Deleted existing items")
             
             # Add new items
             calculated_subtotal = Decimal("0")
@@ -769,15 +769,15 @@ class OrderService:
                 item_tax_amount = Decimal(str(item_data.get("tax_amount", 0)))
                 item_total_amount = Decimal(str(item_data.get("total_amount", 0)))
                 
-                print(f"\nDEBUG: Processing item {idx}:")
-                print(f"  Quantity: {qty}, Rate: {rate}")
-                print(f"  Discount %: {discount_percent}, Amount: {discount_amount}")
-                print(f"  GST Rate: {gst_rate}, Tax: {item_tax_amount}")
-                print(f"  Total: {item_total_amount}")
+                # print(f"\nDEBUG: Processing item {idx}:")
+                # print(f"  Quantity: {qty}, Rate: {rate}")
+                # print(f"  Discount %: {discount_percent}, Amount: {discount_amount}")
+                # print(f"  GST Rate: {gst_rate}, Tax: {item_tax_amount}")
+                # print(f"  Total: {item_total_amount}")
                 
                 # Handle item_code - ensure non-empty
                 item_code_value = str(item_data.get("item_code", "")).strip()
-                print(f"  Final item_code: '{item_code_value}'")
+                # print(f"  Final item_code: '{item_code_value}'")
                 
                 # Calculate item subtotal for summary
                 item_subtotal = (qty * rate) - discount_amount
@@ -802,12 +802,12 @@ class OrderService:
                     total_amount=item_total_amount,
                 )
                 self.db.add(item)
-                print(f"  Item created with item_code='{item.item_code}'")
+                # print(f"  Item created with item_code='{item.item_code}'")
             
-            print(f"\nDEBUG: Calculated from items:")
-            print(f"  Subtotal: {calculated_subtotal}")
-            print(f"  Tax: {calculated_total_tax}")
-            print(f"  Quantity: {calculated_total_qty}")
+            # print(f"\nDEBUG: Calculated from items:")
+            # print(f"  Subtotal: {calculated_subtotal}")
+            # print(f"  Tax: {calculated_total_tax}")
+            # print(f"  Quantity: {calculated_total_qty}")
             
             # Apply charges and discounts to total
             final_total = (
@@ -821,30 +821,30 @@ class OrderService:
             
             # Use provided totals if available, otherwise use calculated
             if subtotal is not None and tax_amount is not None and total_amount is not None:
-                print(f"DEBUG: Using provided totals from parameters")
-                print(f"  Provided - Subtotal: {subtotal}, Tax: {tax_amount}, Total: {total_amount}")
+                # print(f"DEBUG: Using provided totals from parameters")
+                # print(f"  Provided - Subtotal: {subtotal}, Tax: {tax_amount}, Total: {total_amount}")
                 order.subtotal = subtotal
                 order.tax_amount = tax_amount
                 order.total_amount = total_amount
             else:
-                print(f"DEBUG: Using calculated totals")
-                print(f"  Calculated - Subtotal: {calculated_subtotal}, Tax: {calculated_total_tax}")
-                print(f"  Final Total (with charges): {final_total}")
+                # print(f"DEBUG: Using calculated totals")
+                # print(f"  Calculated - Subtotal: {calculated_subtotal}, Tax: {calculated_total_tax}")
+                # print(f"  Final Total (with charges): {final_total}")
                 order.subtotal = calculated_subtotal
                 order.tax_amount = calculated_total_tax
                 order.total_amount = final_total
             
             order.quantity_ordered = calculated_total_qty
             
-            print(f"DEBUG: Order totals updated:")
-            print(f"  Subtotal: {order.subtotal}")
-            print(f"  Tax Amount: {order.tax_amount}")
-            print(f"  Total Amount: {order.total_amount}")
+            # print(f"DEBUG: Order totals updated:")
+            # print(f"  Subtotal: {order.subtotal}")
+            # print(f"  Tax Amount: {order.tax_amount}")
+            # print(f"  Total Amount: {order.total_amount}")
         
         self.db.commit()
         self.db.refresh(order)
-        print(f"DEBUG: SUCCESS! Purchase order {order.order_number} updated")
-        print("=" * 80)
+        # print(f"DEBUG: SUCCESS! Purchase order {order.order_number} updated")
+        # print("=" * 80)
         return order
     
     def confirm_purchase_order(self, order: PurchaseOrder, create_voucher: bool = True) -> PurchaseOrder:
