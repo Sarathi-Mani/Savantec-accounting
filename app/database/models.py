@@ -790,6 +790,7 @@ class ContactPerson(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     customer_id = Column(String(36), ForeignKey("customers.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
+    department = Column(String(100))
     email = Column(String(255))
     phone = Column(String(20))
     created_at = Column(DateTime, default=datetime.utcnow)

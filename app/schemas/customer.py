@@ -83,6 +83,7 @@ class OpeningBalanceItemResponse(BaseModel):
 class ContactPersonBase(BaseModel):
     """Base schema for contact person."""
     name: str = Field(..., min_length=1, max_length=255)
+    department: Optional[str] = Field(None, max_length=100)
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     

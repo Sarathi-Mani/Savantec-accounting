@@ -192,6 +192,7 @@ class CustomerService:
                     contact_person = ContactPerson(
                         customer_id=customer.id,
                         name=contact_data.name,
+                        department=contact_data.department,
                         email=contact_data.email,
                         phone=contact_data.phone
                     )
@@ -314,7 +315,7 @@ class CustomerService:
         
         # Pagination
         offset = (page - 1) * page_size
-        customers = query.order_by(Customer.name).offset(offset).limit(page_size).all()
+        customers = query.order_by(Customer.created_at.desc()).offset(offset).limit(page_size).all()
         
         return customers, total
     
@@ -401,6 +402,7 @@ class CustomerService:
                     contact_person = ContactPerson(
                         customer_id=customer.id,
                         name=contact_data['name'],
+                        department=contact_data.get('department'),
                         email=contact_data.get('email'),
                         phone=contact_data.get('phone')
                     )

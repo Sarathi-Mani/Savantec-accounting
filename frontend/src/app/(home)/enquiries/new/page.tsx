@@ -30,6 +30,11 @@ interface Product {
   description?: string;
   sku?: string;
   image?: string;
+  image_url?: string;
+  main_image_url?: string;
+  main_image?: string;
+  additional_image_url?: string;
+  additional_image?: string;
 }
 
 interface Employee {
@@ -41,6 +46,7 @@ interface Employee {
 
 interface EnquiryItem {
   product_id: string;
+  product_search: string;
   description: string;
   quantity: number;
   image: File | null;
@@ -77,6 +83,7 @@ export default function NewEnquiryPage() {
   const [enquiryItems, setEnquiryItems] = useState<EnquiryItem[]>([
     {
       product_id: "",
+      product_search: "",
       description: "",
       quantity: 1,
       image: null,
@@ -88,6 +95,8 @@ export default function NewEnquiryPage() {
     enquiry_date: new Date().toISOString().split("T")[0],
     customer_id: "",
     customer_search: "",
+    customer_mail_id: "",
+    customer_phone_no: "",
     kind_attn: "",
     mail_id: "",
     phone_no: "",
@@ -96,6 +105,44 @@ export default function NewEnquiryPage() {
     salesman_search: "",
     status: "pending",
   });
+
+  const normalizeImageUrl = useCallback((imagePath?: string | null) => {
+    if (!imagePath) return null;
+    const raw = String(imagePath).trim();
+    if (!raw) return null;
+
+    const path = raw.replace(/\\/g, "/");
+    if (path.includes("/None/") || path.includes("products/None/") || path.includes("products/none/")) {
+      return null;
+    }
+    if (path.startsWith("http://") || path.startsWith("https://")) return path;
+
+    let normalizedPath = path;
+    if (normalizedPath.startsWith("/products/")) {
+      normalizedPath = `/uploads${normalizedPath}`;
+    } else if (normalizedPath.startsWith("products/")) {
+      normalizedPath = `/uploads/${normalizedPath}`;
+    } else if (normalizedPath.startsWith("uploads/") || normalizedPath.startsWith("storage/")) {
+      normalizedPath = `/${normalizedPath}`;
+    } else if (!normalizedPath.startsWith("/")) {
+      normalizedPath = `/${normalizedPath}`;
+    }
+
+    return `${STATIC_BASE_URL}${normalizedPath}`;
+  }, []);
+
+  const resolveProductImagePath = useCallback((product?: Product | null) => {
+    if (!product) return undefined;
+    return (
+      product.image_url ||
+      product.main_image_url ||
+      product.image ||
+      product.main_image ||
+      product.additional_image_url ||
+      product.additional_image ||
+      undefined
+    );
+  }, []);
 
   const redirectToSignIn = useCallback(() => {
     localStorage.removeItem("access_token");
@@ -116,6 +163,8 @@ export default function NewEnquiryPage() {
       setContactPersonSearch("");
       setFormData(prev => ({
         ...prev,
+        customer_mail_id: "",
+        customer_phone_no: "",
         kind_attn: "",
         mail_id: "",
         phone_no: "",
@@ -420,6 +469,8 @@ export default function NewEnquiryPage() {
     setFormData(prev => ({
       ...prev,
       kind_attn: contact.name,
+      mail_id: contact.email || prev.mail_id || "",
+      phone_no: contact.phone || prev.phone_no || "",
     }));
     
     setShowContactDropdown(false);
@@ -432,7 +483,9 @@ export default function NewEnquiryPage() {
     setFormData(prev => ({ 
       ...prev, 
       customer_search: value,
-      customer_id: "" // Clear ID when typing
+      customer_id: "", // Clear ID when typing
+      customer_mail_id: "",
+      customer_phone_no: "",
     }));
     
     if (value.trim()) {
@@ -480,6 +533,8 @@ export default function NewEnquiryPage() {
       ...prev,
       customer_id: "", // Empty ID for manual customers
       customer_search: customerName,
+      customer_mail_id: "",
+      customer_phone_no: "",
       kind_attn: "", // Reset kind attention
       mail_id: "", // Clear email
       phone_no: "", // Clear phone
@@ -504,9 +559,11 @@ export default function NewEnquiryPage() {
       ...prev,
       customer_id: customer.id,
       customer_search: customer.name,
+      customer_mail_id: customer.email || "",
+      customer_phone_no: customer.phone || "",
       kind_attn: "", // Reset kind attention
-      mail_id: customer.email || "",
-      phone_no: customer.phone || "",
+      mail_id: "",
+      phone_no: "",
     }));
     
     setIsManualCustomer(false);
@@ -519,11 +576,35 @@ export default function NewEnquiryPage() {
     updated[index] = {
       ...updated[index],
       product_id: product.id,
+      product_search: product.name,
       description: product.description || product.name,
-      existing_image_url: product.image || undefined,
+      existing_image_url: resolveProductImagePath(product),
     };
     setEnquiryItems(updated);
     
+    const newShowDropdowns = [...showProductDropdowns];
+    newShowDropdowns[index] = false;
+    setShowProductDropdowns(newShowDropdowns);
+  }, [enquiryItems, showProductDropdowns, resolveProductImagePath]);
+
+  const selectManualProduct = useCallback((index: number) => {
+    const manualName = (enquiryItems[index]?.product_search || "").trim();
+    if (!manualName) return;
+
+    const updated = [...enquiryItems];
+    const current = updated[index];
+    const shouldSyncDescription =
+      !current.description?.trim() ||
+      current.description === current.product_search;
+
+    updated[index] = {
+      ...current,
+      product_id: "",
+      existing_image_url: undefined,
+      description: shouldSyncDescription ? manualName : current.description,
+    };
+    setEnquiryItems(updated);
+
     const newShowDropdowns = [...showProductDropdowns];
     newShowDropdowns[index] = false;
     setShowProductDropdowns(newShowDropdowns);
@@ -543,6 +624,7 @@ export default function NewEnquiryPage() {
       ...enquiryItems,
       {
         product_id: "",
+        product_search: "",
         description: "",
         quantity: 1,
         image: null,
@@ -573,13 +655,13 @@ export default function NewEnquiryPage() {
         ...updated[index],
         product_id: value as string,
         description: product?.description || product?.name || updated[index].description,
-        existing_image_url: product?.image || undefined,
+        existing_image_url: resolveProductImagePath(product),
       };
     } else {
       updated[index] = { ...updated[index], [field]: value };
     }
     setEnquiryItems(updated);
-  }, [enquiryItems, products]);
+  }, [enquiryItems, products, resolveProductImagePath]);
 
   const handleImageUpload = useCallback((index: number, file: File) => {
     updateItem(index, "image", file);
@@ -617,6 +699,12 @@ export default function NewEnquiryPage() {
     
     // Always send customer_name, even if we have customer_id
     formDataToSend.append("customer_name", formData.customer_search);
+    if (formData.customer_mail_id) {
+      formDataToSend.append("customer_mail_id", formData.customer_mail_id);
+    }
+    if (formData.customer_phone_no) {
+      formDataToSend.append("customer_phone_no", formData.customer_phone_no);
+    }
     
     if (formData.customer_id) {
       formDataToSend.append("customer_id", formData.customer_id);
@@ -647,6 +735,8 @@ export default function NewEnquiryPage() {
     // Prepare items data in the correct format
     const itemsData = enquiryItems.map((item, index) => ({
       product_id: item.product_id || null,
+      product_name: item.product_search?.trim() || null,
+      custom_item: item.product_id ? null : (item.product_search?.trim() || null),
       description: item.description,
       quantity: item.quantity,
       notes: `Item ${index + 1}`,
@@ -657,11 +747,14 @@ export default function NewEnquiryPage() {
     formDataToSend.append("items", JSON.stringify(itemsData));
 
     // Append image files
+    const fileItemIndices: number[] = [];
     enquiryItems.forEach((item, index) => {
       if (item.image) {
         formDataToSend.append("files", item.image);
+        fileItemIndices.push(index);
       }
     });
+    formDataToSend.append("file_item_indices", JSON.stringify(fileItemIndices));
 
     console.log("Sending enquiry data:", {
       enquiry_no: formData.enquiry_no,
@@ -796,7 +889,7 @@ export default function NewEnquiryPage() {
         <div className="bg-white dark:bg-gray-dark rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Customer Information</h2>
           
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div ref={customerSearchRef} className="relative">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Customer Name <span className="text-red-500">*</span>
@@ -830,6 +923,8 @@ export default function NewEnquiryPage() {
                         ...formData, 
                         customer_search: "", 
                         customer_id: "",
+                        customer_mail_id: "",
+                        customer_phone_no: "",
                         kind_attn: "",
                         mail_id: "",
                         phone_no: ""
@@ -892,8 +987,46 @@ export default function NewEnquiryPage() {
                 </div>
               )}
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Customer Email
+              </label>
+              <input
+                type="email"
+                name="customer_mail_id"
+                value={formData.customer_mail_id}
+                onChange={handleChange}
+                readOnly={!isManualCustomer}
+                className={`w-full px-4 py-2 border rounded-lg dark:bg-dark-2 dark:border-dark-3 ${
+                  isManualCustomer
+                    ? "focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                    : "bg-gray-50 dark:text-gray-300 cursor-not-allowed"
+                }`}
+                placeholder="Email"
+              />
+            </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Customer Mobile
+              </label>
+              <input
+                type="tel"
+                name="customer_phone_no"
+                value={formData.customer_phone_no}
+                onChange={handleChange}
+                readOnly={!isManualCustomer}
+                className={`w-full px-4 py-2 border rounded-lg dark:bg-dark-2 dark:border-dark-3 ${
+                  isManualCustomer
+                    ? "focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                    : "bg-gray-50 dark:text-gray-300 cursor-not-allowed"
+                }`}
+                placeholder="Phone Number"
+              />
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 md:col-span-3 gap-4">
               {/* Kind Attention - Conditional based on customer type */}
               {isManualCustomer || !selectedCustomerContacts.length ? (
                 // Simple text input for new customers or customers without contacts
@@ -1009,10 +1142,10 @@ export default function NewEnquiryPage() {
                   )}
                 </div>
               )}
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Mail-ID
+                  Kind Attn. Email
                 </label>
                 <input
                   type="email"
@@ -1026,7 +1159,7 @@ export default function NewEnquiryPage() {
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Phone No
+                  Kind Attn. Mobile
                 </label>
                 <input
                   type="tel"
@@ -1039,7 +1172,7 @@ export default function NewEnquiryPage() {
               </div>
             </div>
             
-            <div>
+            <div className="md:col-span-3">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Remarks
               </label>
@@ -1054,7 +1187,7 @@ export default function NewEnquiryPage() {
             </div>
 
             {/* Sales Person Section */}
-            <div ref={salesmanSearchRef} className="relative">
+            <div ref={salesmanSearchRef} className="relative md:col-span-3">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Sales Person
               </label>
@@ -1165,9 +1298,26 @@ export default function NewEnquiryPage() {
                         <div className="relative">
                           <input
                             type="text"
-                            value={products.find(p => p.id === item.product_id)?.name || ""}
+                            value={item.product_search}
                             onChange={(e) => {
-                              filterProducts(e.target.value, index);
+                              const searchText = e.target.value;
+                              const updated = [...enquiryItems];
+                              const current = updated[index];
+                              const shouldSyncDescription =
+                                !!current.product_id ||
+                                !current.description?.trim() ||
+                                current.description === current.product_search;
+
+                              updated[index] = {
+                                ...current,
+                                product_id: "",
+                                product_search: searchText,
+                                existing_image_url: undefined,
+                                description: shouldSyncDescription ? searchText : current.description,
+                              };
+                              setEnquiryItems(updated);
+
+                              filterProducts(searchText, index);
                               const newShowDropdowns = [...showProductDropdowns];
                               newShowDropdowns[index] = true;
                               setShowProductDropdowns(newShowDropdowns);
@@ -1180,7 +1330,7 @@ export default function NewEnquiryPage() {
                             className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-3 dark:border-dark-3 dark:text-white"
                             placeholder="Search product..."
                           />
-                          {item.product_id && (
+                          {item.product_search && (
                             <button
                               type="button"
                               onClick={() => {
@@ -1188,6 +1338,7 @@ export default function NewEnquiryPage() {
                                 updated[index] = {
                                   ...updated[index],
                                   product_id: "",
+                                  product_search: "",
                                   description: "",
                                   existing_image_url: undefined,
                                 };
@@ -1200,11 +1351,22 @@ export default function NewEnquiryPage() {
                           )}
                         </div>
                         
-                        {showProductDropdowns[index] && 
-                         filteredProducts[index] && 
-                         filteredProducts[index].length > 0 && (
+                        {showProductDropdowns[index] && (
                           <div className="absolute z-10 w-full mt-1 bg-white dark:bg-dark-3 border border-gray-300 dark:border-dark-3 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                            {filteredProducts[index].map((product) => (
+                            {item.product_search.trim() && !products.some((p) => p.name.toLowerCase() === item.product_search.trim().toLowerCase()) && (
+                              <div
+                                className="px-4 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 cursor-pointer border-b dark:border-dark-3"
+                                onClick={() => selectManualProduct(index)}
+                              >
+                                <div className="font-medium text-blue-700 dark:text-blue-400">
+                                  Use as manual item: "{item.product_search}"
+                                </div>
+                                <div className="text-xs text-blue-600 dark:text-blue-300">
+                                  Not in product list
+                                </div>
+                              </div>
+                            )}
+                            {filteredProducts[index]?.map((product) => (
                               <div
                                 key={product.id}
                                 className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-dark-2 cursor-pointer border-b dark:border-dark-3 last:border-b-0"
@@ -1219,6 +1381,11 @@ export default function NewEnquiryPage() {
                                 )}
                               </div>
                             ))}
+                            {(!filteredProducts[index] || filteredProducts[index].length === 0) && (
+                              <div className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400">
+                                No matching products
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1298,7 +1465,8 @@ export default function NewEnquiryPage() {
                             <div>
                               <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Existing Product Image:</p>
                               <img
-                                src={`${STATIC_BASE_URL}${item.existing_image_url.startsWith('/') ? '' : '/'}${item.existing_image_url}`}  alt="Existing Product"
+                                src={normalizeImageUrl(item.existing_image_url) || ""}
+                                alt="Existing Product"
                                 className="max-w-full h-auto max-h-32 border border-gray-200 dark:border-gray-700 rounded"
                               />
                             </div>

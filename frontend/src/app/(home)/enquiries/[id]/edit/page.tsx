@@ -19,6 +19,8 @@ interface Enquiry {
   description?: string;
   expected_value: number;
   customer_name?: string;
+  customer_email?: string;
+  customer_mobile?: string;
   contact_name?: string;
   sales_person_name?: string;
   ticket_number?: string;
@@ -85,11 +87,40 @@ export default function EditEnquiryPage() {
 
   const companyId = typeof window !== "undefined" ? localStorage.getItem("company_id") : null;
 
+  const fetchNextQuotationNumber = async (): Promise<string> => {
+    if (!companyId) return "QT-0001";
+    try {
+      const response = await fetch(
+        `${API_BASE}/companies/${companyId}/quotations/next-number`,
+        {
+          headers: {
+            Authorization: `Bearer ${getToken()}`,
+          },
+        }
+      );
+      if (!response.ok) return "QT-0001";
+      const data = await response.json();
+      return data?.quotation_number || "QT-0001";
+    } catch {
+      return "QT-0001";
+    }
+  };
+
   useEffect(() => {
     if (companyId && enquiryId) {
       fetchEnquiry();
     }
   }, [companyId, enquiryId]);
+
+  useEffect(() => {
+    const autoSetQuotationNo = async () => {
+      if (formData.status !== "ready_for_quotation") return;
+      if (formData.quotation_no && formData.quotation_no.trim() !== "") return;
+      const nextNo = await fetchNextQuotationNumber();
+      setFormData((prev) => ({ ...prev, quotation_no: prev.quotation_no || nextNo }));
+    };
+    autoSetQuotationNo();
+  }, [formData.status, formData.quotation_no, companyId]);
 
  const fetchEnquiry = async () => {
   try {
@@ -120,25 +151,41 @@ export default function EditEnquiryPage() {
     // products_interested contains the price information
     if (data.products_interested && Array.isArray(data.products_interested)) {
       console.log("Products interested data:", data.products_interested);
+      const itemImageByProductId = new Map<string, string>();
+      if (Array.isArray(data.items)) {
+        data.items.forEach((it: any) => {
+          if (it?.product_id && it?.image_url) {
+            itemImageByProductId.set(it.product_id, it.image_url);
+          }
+        });
+      }
       
       setItems(data.products_interested.map((item: any, index: number) => {
         // Try to match with items data if available
         const matchedItem = data.items && data.items[index] 
           ? data.items[index] 
           : null;
+        const resolvedImage =
+          matchedItem?.image_url ||
+          (item.product_id ? itemImageByProductId.get(item.product_id) : null) ||
+          item.image_url ||
+          null;
         
         return {
           id: matchedItem?.id || `item-${index}`,
           item_id: item.product_id,
           product_id: item.product_id,
-          product_name: item.description || "Custom Item",
-          description: item.description || "",
+          product_name: item.product_id
+            ? (matchedItem?.product_name || item.product_name || item.description || "Item")
+            : (item.custom_item || item.product_name || item.description || "Custom Item"),
+          custom_item: item.custom_item || (!item.product_id ? item.product_name : ""),
+          description: item.description || matchedItem?.description || "",
           quantity: item.quantity || 1,
           suitable_item: item.suitable_item || "",
           purchase_price: item.purchase_price || 0,
           sales_price: item.sales_price || 0,
-          image: item.image_url,
-          existing_image: item.image_url,
+          image: resolvedImage,
+          existing_image: resolvedImage,
           notes: item.notes || `Item ${index + 1}`,
         };
       }));
@@ -149,7 +196,10 @@ export default function EditEnquiryPage() {
         id: item.id,
         item_id: item.product_id,
         product_id: item.product_id,
-        product_name: item.description || "Custom Item",
+        product_name: item.product_id
+          ? (item.product_name || item.description || "Item")
+          : (item.custom_item || item.product_name || item.description || "Custom Item"),
+        custom_item: item.custom_item || (!item.product_id ? item.product_name : ""),
         description: item.description || "",
         quantity: item.quantity || 1,
         suitable_item: "", // Default empty since not in items table
@@ -240,6 +290,8 @@ const handleSubmit = async (
       items: items.map((item, index) => ({
         id: item.id || null,
         product_id: item.product_id || null,
+        product_name: item.product_name || null,
+        custom_item: item.product_id ? null : (item.custom_item || item.product_name || null),
         description: item.description,
         quantity: item.quantity,
         suitable_item: item.suitable_item || "",
@@ -350,6 +402,7 @@ const handleSubmit = async (
       year: "numeric",
     });
   };
+  const isLinkedCustomer = Boolean(enquiry?.customer_name);
 
   if (!companyId) {
     return (
@@ -433,16 +486,22 @@ const handleSubmit = async (
               <tbody className="divide-y divide-gray-200 dark:divide-dark-3">
                 <tr>
                   <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2 w-1/4">
-                    Company Name
+                    Customer Name
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                    {enquiry.company?.name || enquiry.customer_name || enquiry.prospect_company || "N/A"}
+                    {enquiry.customer_name || enquiry.prospect_company || "N/A"}
                   </td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2 w-1/4">
-                    Enquiry Date
+                  <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
+                    Customer Email
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                    {formatDate(enquiry.enquiry_date)}
+                    {enquiry.customer_email || (!isLinkedCustomer ? enquiry.prospect_email : "N/A") || "N/A"}
+                  </td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
+                    Customer Mobile
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                    {enquiry.customer_mobile || (!isLinkedCustomer ? enquiry.prospect_phone : "N/A") || "N/A"}
                   </td>
                 </tr>
                 <tr>
@@ -458,26 +517,18 @@ const handleSubmit = async (
                   <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
                     {enquiry.contact_person || enquiry.prospect_name || "N/A"}
                   </td>
-                </tr>
-                <tr>
                   <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
-                    Email
+                    Enquiry Date
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                    {enquiry.prospect_email || "N/A"}
-                  </td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
-                    Phone
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                    {enquiry.prospect_phone || "N/A"}
+                    {formatDate(enquiry.enquiry_date)}
                   </td>
                 </tr>
                 <tr>
                   <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
                     Remarks
                   </td>
-                  <td colSpan={3} className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                  <td colSpan={5} className="px-4 py-3 text-sm text-gray-900 dark:text-white">
                     {enquiry.remarks || enquiry.description || "N/A"}
                   </td>
                 </tr>
@@ -533,7 +584,7 @@ const handleSubmit = async (
                     {/* Item Name - READ ONLY */}
                     <td className="px-4 py-3">
                       <div className="px-3 py-1 text-sm text-gray-900 dark:text-white min-h-[38px] flex items-center">
-                        {item.product_name || item.description || "No item name"}
+                        {item.product_name || item.custom_item || item.description || "No item name"}
                       </div>
                     </td>
                     {/* Quantity - READ ONLY */}
@@ -656,7 +707,15 @@ const handleSubmit = async (
               </label>
               <select
                 value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                onChange={async (e) => {
+                  const nextStatus = e.target.value;
+                  if (nextStatus === "ready_for_quotation" && !formData.quotation_no) {
+                    const nextNo = await fetchNextQuotationNumber();
+                    setFormData({ ...formData, status: nextStatus, quotation_no: nextNo });
+                    return;
+                  }
+                  setFormData({ ...formData, status: nextStatus });
+                }}
                 className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-3 dark:border-dark-3 dark:text-white"
                 required
               >
@@ -681,12 +740,13 @@ const handleSubmit = async (
                 <input
                   type="text"
                   value={formData.quotation_no}
-                  onChange={(e) => setFormData({ ...formData, quotation_no: e.target.value })}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-3 dark:border-dark-3 dark:text-white"
-                  placeholder="e.g., QUOT-2024-001"
+                  readOnly
+                  disabled
+                  className="w-full px-4 py-2 border rounded-lg bg-gray-50 dark:bg-dark-2 dark:border-dark-3 dark:text-gray-300 cursor-not-allowed"
+                  placeholder="Auto generated"
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Enter quotation number (e.g., QUOT-2024-001)
+                  Auto-generated from quotation sequence
                 </p>
               </div>
               

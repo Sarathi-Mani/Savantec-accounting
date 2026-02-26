@@ -20,6 +20,30 @@ from app.database.payroll_models import Employee
 
 router = APIRouter(prefix="/api/companies/{company_id}", tags=["enquiries"])
 
+def _normalize_image_path(path: Optional[str]) -> Optional[str]:
+    if not path:
+        return None
+    value = str(path).strip().replace("\\", "/")
+    if not value:
+        return None
+    if value.startswith("http://") or value.startswith("https://") or value.startswith("/"):
+        if value.startswith("/products/"):
+            return f"/uploads{value}"
+        return value
+    if value.startswith("products/"):
+        return f"/uploads/{value}"
+    if value.startswith("uploads/"):
+        return f"/{value}"
+    if value.startswith("storage/"):
+        return f"/{value}"
+    return f"/uploads/{value}"
+
+def _is_broken_image_path(path: Optional[str]) -> bool:
+    if not path:
+        return True
+    normalized = str(path).replace("\\", "/")
+    return "/None/" in normalized or normalized.endswith("/None") or "None/" in normalized
+
 
 
 
@@ -153,6 +177,11 @@ class EnquiryResponse(BaseModel):
     
     # Related data
     customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_mobile: Optional[str] = None
+    kind_attn: Optional[str] = None
+    mail_id: Optional[str] = None
+    phone_no: Optional[str] = None
     contact_name: Optional[str] = None
     sales_person_name: Optional[str] = None
     ticket_number: Optional[str] = None
@@ -195,6 +224,14 @@ def enrich_enquiry(enquiry: Enquiry, db: Session) -> EnquiryResponse:
     
     if enquiry.customer:
         response.customer_name = enquiry.customer.name
+        response.customer_email = getattr(enquiry.customer, "email", None)
+        response.customer_mobile = (
+            getattr(enquiry.customer, "mobile", None)
+            or getattr(enquiry.customer, "phone", None)
+        )
+    response.kind_attn = enquiry.prospect_name
+    response.mail_id = enquiry.prospect_email
+    response.phone_no = enquiry.prospect_phone
     if enquiry.contact:
         response.contact_name = enquiry.contact.name
     if enquiry.sales_person:
@@ -215,6 +252,15 @@ def enrich_enquiry(enquiry: Enquiry, db: Session) -> EnquiryResponse:
                     item_response.product_brand = product_brand.name
                 elif isinstance(product_brand, str):
                     item_response.product_brand = product_brand
+            product_image = _normalize_image_path(getattr(item.product, "image", None))
+        else:
+            product_image = None
+
+        item_image = _normalize_image_path(item.image_url)
+        if _is_broken_image_path(item_image) and product_image:
+            item_response.image_url = product_image
+        else:
+            item_response.image_url = item_image
         response.items.append(item_response)
     
     return response
@@ -425,6 +471,8 @@ async def create_enquiry_formdata(
     enquiry_date: date = Form(...),
     customer_id: Optional[str] = Form(None),  # customer_id can be empty for manual customers
     customer_name: Optional[str] = Form(None),
+    customer_mail_id: Optional[str] = Form(None),
+    customer_phone_no: Optional[str] = Form(None),
     customer_search: Optional[str] = Form(None),
     kind_attn: Optional[str] = Form(None),
     mail_id: Optional[str] = Form(None),
@@ -433,6 +481,7 @@ async def create_enquiry_formdata(
     salesman_id: Optional[str] = Form(None),
     status: str = Form("pending"),
     items: str = Form("[]"),  # JSON string of items
+    file_item_indices: Optional[str] = Form(None),
     files: List[UploadFile] = File([]),
     db: Session = Depends(get_db),
 ):
@@ -445,16 +494,32 @@ async def create_enquiry_formdata(
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid items JSON")
     
-    # Create enquiry data from form
+    # Resolve customer for consistent customer contact display
     resolved_customer_name = customer_name or customer_search
-    prospect_company = resolved_customer_name if not customer_id else None
+    resolved_customer_id = customer_id if customer_id and customer_id != company_id else None
+    if not resolved_customer_id and resolved_customer_name:
+        matched_customer = db.query(Customer).filter(
+            Customer.company_id == company_id,
+            Customer.name.ilike(resolved_customer_name.strip())
+        ).first()
+        if matched_customer:
+            resolved_customer_id = matched_customer.id
+
+    prospect_company = resolved_customer_name if not resolved_customer_id else None
+
+    # For linked customers, prospect email/phone should reflect customer contact.
+    # For manual customers, keep typed customer contact first, then kind-attn fallback.
+    resolved_prospect_email = mail_id or customer_mail_id
+    resolved_prospect_phone = phone_no or customer_phone_no
+
+    # Create enquiry data from form
     enquiry_data = {
         "subject": remarks or f"Enquiry {enquiry_no}",
-        "customer_id": customer_id if customer_id and customer_id != company_id else None,
+        "customer_id": resolved_customer_id,
         "sales_person_id": salesman_id,  # Use the salesman_id from form data, not hardcoded "1"
         "prospect_name": kind_attn,
-        "prospect_email": mail_id,
-        "prospect_phone": phone_no,
+        "prospect_email": resolved_prospect_email,
+        "prospect_phone": resolved_prospect_phone,
         "prospect_company": prospect_company,
         "description": remarks,
         "notes": remarks,
@@ -480,6 +545,20 @@ async def create_enquiry_formdata(
     
     uploaded_files = []
     enquiry_items_list = []
+    file_index_by_item: Dict[int, UploadFile] = {}
+    if file_item_indices:
+        try:
+            parsed_indices = json.loads(file_item_indices)
+            if isinstance(parsed_indices, list):
+                for file_pos, item_pos in enumerate(parsed_indices):
+                    if (
+                        isinstance(item_pos, int)
+                        and 0 <= item_pos < len(items_data)
+                        and file_pos < len(files)
+                    ):
+                        file_index_by_item[item_pos] = files[file_pos]
+        except Exception:
+            file_index_by_item = {}
     
     # Process items and save images
     for index, item_data in enumerate(items_data):
@@ -487,10 +566,17 @@ async def create_enquiry_formdata(
         if not product_id or product_id.strip() == "":
             product_id = None
         
-        # Get image for this item from files (assuming files are in order)
+        # Get image for this item from mapped indices (fallback to legacy order)
         image_url = None
-        if index < len(files) and files[index].filename:
+        mapped_file = file_index_by_item.get(index)
+        if mapped_file and mapped_file.filename:
+            file = mapped_file
+        elif index < len(files) and files[index].filename and not file_index_by_item:
             file = files[index]
+        else:
+            file = None
+
+        if file:
             
             # Generate safe filename
             safe_filename = f"{enquiry.id}_{index}_{file.filename.replace(' ', '_')}"
@@ -511,7 +597,16 @@ async def create_enquiry_formdata(
                 or item_data.get("image_url")
             )
             if existing_image and str(existing_image).strip():
-                image_url = str(existing_image).strip()
+                image_url = _normalize_image_path(str(existing_image).strip())
+
+        # If still no image and product is selected, auto-use product main image
+        if not image_url and product_id:
+            product = db.query(Product).filter(
+                Product.id == product_id,
+                Product.company_id == company_id
+            ).first()
+            if product and getattr(product, "image", None):
+                image_url = _normalize_image_path(product.image)
         
         # Create enquiry item
         item = EnquiryItem(
@@ -532,6 +627,8 @@ async def create_enquiry_formdata(
     for i, item_data in enumerate(items_data):
         enriched_item = {
             "product_id": item_data.get("product_id"),
+            "product_name": item_data.get("product_name"),
+            "custom_item": item_data.get("custom_item"),
             "description": item_data.get("description", ""),
             "quantity": item_data.get("quantity", 1),
             "notes": item_data.get("notes"),
@@ -820,13 +917,23 @@ def update_enquiry_edit(
         
         # Then create new items WITHOUT the fields that don't exist in EnquiryItem
         for index, item_data in enumerate(data.items):
+            product_id = item_data.get('product_id')
+            image_url = _normalize_image_path(item_data.get('existing_image'))
+            if not image_url and product_id:
+                product = db.query(Product).filter(
+                    Product.id == product_id,
+                    Product.company_id == company_id
+                ).first()
+                if product and getattr(product, "image", None):
+                    image_url = _normalize_image_path(product.image)
+
             item = EnquiryItem(
                 id=os.urandom(16).hex(),
                 enquiry_id=enquiry_id,
-                product_id=item_data.get('product_id'),
+                product_id=product_id,
                 description=item_data.get('description', ''),
                 quantity=item_data.get('quantity', 1),
-                image_url=item_data.get('existing_image'),
+                image_url=image_url,
                 notes=item_data.get('notes', f'Item {index + 1}'),
                 # DON'T include suitable_item, purchase_price, sales_price here
                 # These fields don't exist in EnquiryItem model
@@ -839,6 +946,8 @@ def update_enquiry_edit(
         for item_data in data.items:
             products_interested.append({
                 "product_id": item_data.get('product_id'),
+                "product_name": item_data.get('product_name'),
+                "custom_item": item_data.get('custom_item'),
                 "description": item_data.get('description', ''),
                 "quantity": item_data.get('quantity', 1),
                 "notes": item_data.get('notes', ''),

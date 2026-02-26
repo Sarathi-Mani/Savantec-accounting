@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api";
+const STATIC_BASE_URL = API_BASE.replace(/\/api$/, "") || "http://localhost:6768";
 
 interface EnquiryItem {
   description: string;
@@ -190,14 +191,20 @@ useEffect(() => {
       }
       // If it's a relative path starting with /uploads
       if (imagePath.startsWith('/uploads')) {
-        return `${API_BASE}${imagePath}`;
+        return `${STATIC_BASE_URL}${imagePath}`;
+      }
+      if (imagePath.startsWith('/storage')) {
+        return `${STATIC_BASE_URL}${imagePath}`;
       }
       // For other relative paths
-      return `${API_BASE}/storage${imagePath}`;
+      return `${STATIC_BASE_URL}${imagePath}`;
     }
     
     // For stored images without leading slash
-    return `${API_BASE}/storage/enquiry_items/${imagePath}`;
+    if (imagePath.startsWith('uploads/') || imagePath.startsWith('storage/')) {
+      return `${STATIC_BASE_URL}/${imagePath}`;
+    }
+    return `${STATIC_BASE_URL}/uploads/${imagePath}`;
   };
 
   const getCompanyName = () => {

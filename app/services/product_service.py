@@ -83,10 +83,12 @@ class ProductService:
         if hasattr(data, 'standard_cost') and data.standard_cost is not None:
             product_data["standard_cost"] = data.standard_cost
         
-        # Create product instance first (without images)
+        # Create product instance first and flush to guarantee product.id is available
         product = Product(**product_data)
-        
-        # Handle image uploads
+        self.db.add(product)
+        self.db.flush()
+
+        # Handle image uploads only after ID is generated
         if main_image or additional_image:
             image_paths = self._save_product_images(product.id, main_image, additional_image)
             if image_paths.get('main'):
@@ -94,7 +96,6 @@ class ProductService:
             if image_paths.get('additional'):
                 product.additional_image = image_paths['additional']
         
-        self.db.add(product)
         self.db.commit()
         self.db.refresh(product)
         
@@ -311,10 +312,19 @@ class ProductService:
             file_exists = os.path.exists(full_path)
             print(f"Image file exists at {full_path}: {file_exists}")
             
+            if not relative_path:
+                # Fallback: keep normalized path instead of dropping image fields.
+                # This preserves legacy values like products/None/... for frontend rendering.
+                relative_path = normalized_image_path
+                image_url = normalized_image_path if normalized_image_path.startswith("http") else f"{base_url}/{normalized_image_path}"
+                print("Fallback applied: using normalized main image path")
+
             response_data["image"] = relative_path  # Relative path
             response_data["image_url"] = image_url
             response_data["main_image"] = relative_path  # For backward compatibility
             response_data["main_image_url"] = image_url  # For backward compatibility
+            if not file_exists:
+                print(f"Warning: main image file not found on disk, returning URL anyway: {full_path}")
         
         if product.additional_image:
             # Normalize the path first
@@ -356,8 +366,16 @@ class ProductService:
             additional_file_exists = os.path.exists(additional_full_path)
             print(f"Additional image file exists at {additional_full_path}: {additional_file_exists}")
             
+            if not additional_relative_path:
+                # Fallback: keep normalized path instead of dropping additional image fields.
+                additional_relative_path = normalized_additional_path
+                additional_image_url = normalized_additional_path if normalized_additional_path.startswith("http") else f"{base_url}/{normalized_additional_path}"
+                print("Fallback applied: using normalized additional image path")
+
             response_data["additional_image"] = additional_relative_path  # Relative path
             response_data["additional_image_url"] = additional_image_url
+            if not additional_file_exists:
+                print(f"Warning: additional image file not found on disk, returning URL anyway: {additional_full_path}")
         
         print(f"=== DEBUG: Checking for standard_cost ===")
         # Add standard_cost if it exists

@@ -8,6 +8,7 @@ import CreatableSelect from "react-select/creatable";
 
 interface ContactPerson {
   name: string;
+  department: string;
   email: string;
   phone: string;
 }
@@ -196,7 +197,7 @@ export default function CreateCustomerPage() {
     credit_days: "",
     
     // Contact Persons
-    contact_persons: [{ name: "", email: "", phone: "" }],
+    contact_persons: [{ name: "", department: "", email: "", phone: "" }],
     
     // Billing Address
     billing_address: "",
@@ -296,7 +297,7 @@ export default function CreateCustomerPage() {
   const addContactPerson = () => {
     setFormData(prev => ({
       ...prev,
-      contact_persons: [...prev.contact_persons, { name: "", email: "", phone: "" }]
+      contact_persons: [...prev.contact_persons, { name: "", department: "", email: "", phone: "" }]
     }));
   };
 
@@ -629,9 +630,10 @@ const handleSubmit = async (e: React.FormEvent) => {
   
   // Contact persons
   contact_persons: formData.contact_persons
-    .filter(p => p.name.trim() || p.email.trim() || p.phone.trim())
+    .filter(p => p.name.trim() || p.department.trim() || p.email.trim() || p.phone.trim())
     .map(p => ({
       name: p.name || "",
+      department: p.department || "",
       email: p.email || "",
       phone: p.phone || ""
     })),
@@ -1161,7 +1163,7 @@ const handleSubmit = async (e: React.FormEvent) => {
               >
                 <div className="grid items-center gap-4 md:grid-cols-12">
                   <div className="md:col-span-11">
-                    <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="grid gap-4 sm:grid-cols-4">
                       <div>
                         <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                           {index === 0 ? "Name" : ""}
@@ -1171,6 +1173,19 @@ const handleSubmit = async (e: React.FormEvent) => {
                           value={person.name}
                           onChange={(e) => handleContactPersonChange(index, "name", e.target.value)}
                           placeholder="Enter contact person name"
+                          className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                          {index === 0 ? "Department" : ""}
+                        </label>
+                        <input
+                          type="text"
+                          value={person.department}
+                          onChange={(e) => handleContactPersonChange(index, "department", e.target.value)}
+                          placeholder="Enter department"
                           className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
                         />
                       </div>
