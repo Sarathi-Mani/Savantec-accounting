@@ -1234,8 +1234,8 @@ export default function EmployeesPage() {
 
       {/* Table */}
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-hidden">
-          <table className="w-full table-fixed">
+        <div className="overflow-x-auto md:overflow-x-hidden">
+          <table className="w-full min-w-[980px] md:min-w-full table-fixed">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
               <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
                 <th className="text-left px-3 py-3 ">
@@ -1277,12 +1277,12 @@ export default function EmployeesPage() {
                   </th>
                 )}
                 {visibleColumns.status && (
-                  <th className="text-left px-3 py-3 ">
+                  <th className="w-[96px] min-w-[96px] max-w-[96px] text-left px-2 py-3">
                     Status
                   </th>
                 )}
                 {visibleColumns.actions && (
-                  <th className="text-right px-3 py-3 ">
+                  <th className="w-[52px] min-w-[52px] max-w-[52px] text-center px-1 py-3">
                     Actions
                   </th>
                 )}
@@ -1321,8 +1321,6 @@ export default function EmployeesPage() {
                 </tr>
               ) : (
                 pagedEmployees.map((employee, index) => {
-                    const profileInitials = `${employee.first_name.charAt(0)}${employee.last_name?.charAt(0) || ''}`;
-
                     return (
                       <tr
                         key={employee.id}
@@ -1333,15 +1331,8 @@ export default function EmployeesPage() {
                         </td>
                         {visibleColumns.employeeCode && (
                           <td className="px-3 py-4 align-top break-words">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
-                                <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
-                                  {profileInitials}
-                                </span>
-                              </div>
-                              <div className="font-medium text-gray-900 dark:text-white">
-                                {employee.employee_code}
-                              </div>
+                            <div className="font-medium text-gray-900 dark:text-white">
+                              {employee.employee_code}
                             </div>
                           </td>
                         )}
@@ -1398,9 +1389,9 @@ export default function EmployeesPage() {
                           </td>
                         )}
                         {visibleColumns.status && (
-                          <td className="px-3 py-4 align-top break-words">
+                          <td className="w-[96px] min-w-[96px] max-w-[96px] px-2 py-4 align-top">
                             <span
-                              className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              className={`inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium ${
                                 getStatusBadgeClass(employee.status)
                               }`}
                             >
@@ -1413,15 +1404,15 @@ export default function EmployeesPage() {
                           </td>
                         )}
                         {visibleColumns.actions && (
-                          <td className="px-3 py-4 text-right align-top">
-                            <div className="relative action-dropdown-container inline-block">
+                          <td className="w-[52px] min-w-[52px] max-w-[52px] px-1 py-4 text-center align-top">
+                            <div className="relative action-dropdown-container inline-flex justify-center w-full">
                               <button
                                 onClick={() =>
                                   setActiveActionMenu(
                                     activeActionMenu === employee.id ? null : employee.id
                                   )
                                 }
-                                className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:text-gray-300 dark:hover:bg-gray-700/50 transition-all duration-200"
+                                className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:text-gray-300 dark:hover:bg-gray-700/50 transition-all duration-200"
                               >
                                 <MoreVertical className="w-4 h-4" />
                               </button>

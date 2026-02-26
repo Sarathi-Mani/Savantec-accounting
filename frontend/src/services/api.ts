@@ -2961,11 +2961,16 @@ export interface VendorUpdateRequest {
 
 export interface Department {
   id: string;
+  company_id?: string;
   name: string;
   code?: string;
+  head_name?: string;
+  employee_count?: number;
   description?: string;
   parent_id?: string;
   is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Designation {
@@ -3326,6 +3331,29 @@ export const payrollApi = {
   ): Promise<Department> => {
     const response = await api.post(`/companies/${companyId}/payroll/departments`, data);
     return response.data;
+  },
+
+  updateDepartment: async (
+    companyId: string,
+    departmentId: string,
+    data: Partial<{
+      name: string;
+      code: string;
+      head_name: string;
+      description: string;
+      parent_id: string;
+      is_active: boolean;
+    }>
+  ): Promise<Department> => {
+    const response = await api.put(
+      `/companies/${companyId}/payroll/departments/${departmentId}`,
+      data
+    );
+    return response.data;
+  },
+
+  deleteDepartment: async (companyId: string, departmentId: string): Promise<void> => {
+    await api.delete(`/companies/${companyId}/payroll/departments/${departmentId}`);
   },
 
   // Designations
