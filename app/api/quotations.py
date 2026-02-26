@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 
 from app.database.connection import get_db
-from app.database.models import User, Company, Customer, QuotationStatus, ContactPerson,Quotation
+from app.database.models import User, Company, Customer, QuotationStatus, ContactPerson, Quotation, Enquiry
 from app.auth.dependencies import get_current_active_user
 from app.services.quotation_service import QuotationService
 from app.services.company_service import CompanyService
@@ -55,6 +55,7 @@ class SubItemCreate(BaseModel):  # Add this new schema
 class QuotationItemCreate(BaseModel):
     product_id: Optional[str] = None
     description: str
+    image_url: Optional[str] = None
     hsn_code: Optional[str] = None
     quantity: float
     unit: Optional[str] = "unit"
@@ -111,6 +112,7 @@ class QuotationCreateRequest(BaseModel):
     payment_terms: Optional[str] = None
     excel_notes: Optional[str] = None
     items: List[QuotationItemCreate]
+    other_charges: Optional[List[dict]] = None
     # Multi-currency support
     currency_code: str = "INR"
     exchange_rate: float = 1.0
@@ -147,6 +149,7 @@ class QuotationUpdateRequest(BaseModel):
     payment_terms: Optional[str] = None
     excel_notes: Optional[str] = None
     items: Optional[List[QuotationItemCreate]] = None
+    other_charges: Optional[List[dict]] = None
     # Multi-currency support
     currency_code: Optional[str] = None
     exchange_rate: Optional[float] = None
@@ -182,6 +185,7 @@ class SubItemResponse(BaseModel):  # Add this schema
 class QuotationItemResponse(BaseModel):
     id: str
     product_id: Optional[str]
+    image_url: Optional[str] = None
     item_code: Optional[str] = None
     description: str
     hsn_code: Optional[str]
@@ -216,6 +220,9 @@ class QuotationResponse(BaseModel):
     subject: Optional[str]
     place_of_supply: Optional[str]
     place_of_supply_name: Optional[str]
+    tax_regime: Optional[str] = None
+    company_state_code: Optional[str] = None
+    customer_state_code: Optional[str] = None
     # Multi-currency support
     currency_code: str = "INR"
     exchange_rate: float = 1.0
@@ -228,6 +235,7 @@ class QuotationResponse(BaseModel):
     freight_type: str = "fixed"
     p_and_f_charges: float = 0.0
     pf_type: str = "fixed"
+    other_charges: Optional[List[dict]] = None
     round_off: float = 0.0
     quotation_type: str = "item"  # Add this
     is_project: bool = False  # Add this
@@ -521,6 +529,7 @@ async def create_quotation(
                 "product_id": item.get("product_id"),
                 "item_code": item.get('item_code'), 
                 "description": item.get("description", "Item"),
+                "image_url": item.get("image_url"),
                 "hsn_code": item.get("hsn_code", ""),
                 "quantity": float(item.get("quantity", 0)),
                 "unit": item.get("unit", "unit"),
@@ -598,6 +607,7 @@ async def create_quotation(
             p_and_f_charges=Decimal(str(quotation_data.get("p_and_f_charges", 0) or 0)),
             pf_type=quotation_data.get("pf_type", "fixed"),
             round_off=Decimal(str(quotation_data.get("round_off", 0) or 0)),
+            other_charges=quotation_data.get("other_charges"),
             sales_ticket_id=quotation_data.get("sales_ticket_id"),  # Add this
             contact_id=quotation_data.get("contact_id"),  # Add this
             cess_amount=Decimal(str(quotation_data.get("cess_amount", 0))),  # Add this
@@ -808,7 +818,9 @@ async def update_quotation(
             for item in update_data.get("items", []):
                 item_dict = {
                     "product_id": item.get("product_id"),
+                    "item_code": item.get("item_code"),
                     "description": item.get("description", "Item"),
+                    "image_url": item.get("image_url"),
                     "hsn_code": item.get("hsn_code", ""),
                     "quantity": float(item.get("quantity", 0)),
                     "unit": item.get("unit", "unit"),
@@ -871,6 +883,7 @@ async def update_quotation(
             p_and_f_charges=Decimal(str(update_data.get("p_and_f_charges"))) if update_data.get("p_and_f_charges") is not None else None,
             pf_type=update_data.get("pf_type"),
             round_off=Decimal(str(update_data.get("round_off"))) if update_data.get("round_off") is not None else None,
+            other_charges=update_data.get("other_charges"),
             sales_ticket_id=update_data.get("sales_ticket_id"),  # Add this
             contact_id=update_data.get("contact_id"),  # Add this
             cess_amount=Decimal(str(update_data.get("cess_amount"))) if update_data.get("cess_amount") is not None else None,  # Add this
@@ -1105,10 +1118,22 @@ async def compare_quotations(
 def _quotation_to_response(quotation, db: Session, include_items: bool = True) -> dict:
     """Convert quotation model to response dict."""
     customer_name = None
+    customer_state_code = None
     if quotation.customer_id:
         customer = db.query(Customer).filter(Customer.id == quotation.customer_id).first()
         if customer:
             customer_name = customer.name
+            customer_state_code = customer.billing_state_code
+
+    company_state_code = None
+    if quotation.company_id:
+        company = db.query(Company).filter(Company.id == quotation.company_id).first()
+        if company:
+            company_state_code = company.state_code
+
+    tax_regime = None
+    if company_state_code and quotation.place_of_supply:
+        tax_regime = "cgst_sgst" if str(company_state_code) == str(quotation.place_of_supply) else "igst"
     
     # Get sales person name
     sales_person_name = quotation.sales_person_name
@@ -1134,6 +1159,9 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
         "subject": quotation.subject,
         "place_of_supply": quotation.place_of_supply,
         "place_of_supply_name": quotation.place_of_supply_name,
+        "tax_regime": tax_regime,
+        "company_state_code": company_state_code,
+        "customer_state_code": customer_state_code,
         # Multi-currency support
         "currency_code": quotation.currency_code or "INR",
         "exchange_rate": float(quotation.exchange_rate or 1.0),
@@ -1146,6 +1174,7 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
         "freight_type": getattr(quotation, "freight_type", "fixed") or "fixed",
         "p_and_f_charges": float(getattr(quotation, "p_and_f_charges", 0) or 0),
         "pf_type": getattr(quotation, "pf_type", "fixed") or "fixed",
+        "other_charges": [],
         "round_off": float(getattr(quotation, "round_off", 0) or 0),
         "quotation_type": quotation.quotation_type or "item",
         "is_project": quotation.is_project or False,
@@ -1172,16 +1201,72 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
         "approved_at": quotation.approved_at,
         "converted_invoice_id": quotation.converted_invoice_id,
         "created_at": quotation.created_at,
+        "validity_days": (
+            (quotation.validity_date - quotation.quotation_date).days
+            if quotation.validity_date and quotation.quotation_date
+            else None
+        ),
         "quotation_type": quotation.quotation_type or "item",
     }
     
     if include_items:
+        enquiry_items_for_fallback = []
+        if (
+            getattr(quotation, "reference", None)
+            and str(getattr(quotation, "reference", "")).strip().lower() == "enquiry"
+            and getattr(quotation, "reference_no", None)
+        ):
+            enquiry = db.query(Enquiry).filter(
+                Enquiry.company_id == quotation.company_id,
+                Enquiry.enquiry_number == quotation.reference_no
+            ).first()
+            if enquiry and getattr(enquiry, "items", None):
+                enquiry_items_for_fallback = list(enquiry.items)
+
+        def _norm_text(value: Optional[str]) -> str:
+            return str(value or "").strip().lower()
+
         items_response = []
-        for item in quotation.items:
+        for idx, item in enumerate(quotation.items):
+            resolved_image = (
+                getattr(item, "image_url", None)
+                or getattr(getattr(item, "product", None), "image", None)
+            )
+
+            if not resolved_image and enquiry_items_for_fallback:
+                matched_enquiry_item = None
+
+                if getattr(item, "product_id", None):
+                    matched_enquiry_item = next(
+                        (
+                            ei for ei in enquiry_items_for_fallback
+                            if getattr(ei, "product_id", None) == item.product_id
+                        ),
+                        None,
+                    )
+
+                if not matched_enquiry_item:
+                    item_desc = _norm_text(getattr(item, "description", None))
+                    if item_desc:
+                        matched_enquiry_item = next(
+                            (
+                                ei for ei in enquiry_items_for_fallback
+                                if _norm_text(getattr(ei, "description", None)) == item_desc
+                            ),
+                            None,
+                        )
+
+                if not matched_enquiry_item and idx < len(enquiry_items_for_fallback):
+                    matched_enquiry_item = enquiry_items_for_fallback[idx]
+
+                if matched_enquiry_item is not None:
+                    resolved_image = getattr(matched_enquiry_item, "image_url", None)
+
             item_data = {
                 "id": item.id,
                 "product_id": item.product_id,
                 "item_code": getattr(item, "item_code", None),
+                "image_url": resolved_image,
                 "description": item.description,
                 "hsn_code": item.hsn_code,
                 "quantity": float(item.quantity),
@@ -1215,5 +1300,17 @@ def _quotation_to_response(quotation, db: Session, include_items: bool = True) -
             items_response.append(item_data)
         
         response["items"] = items_response
+
+    pf_amount = float(getattr(quotation, "p_and_f_charges", 0) or 0)
+    if pf_amount > 0:
+        response["other_charges"] = [
+            {
+                "id": "pf-charge",
+                "name": "Other Charges",
+                "amount": pf_amount,
+                "type": "fixed",
+                "tax": 0,
+            }
+        ]
     
     return response

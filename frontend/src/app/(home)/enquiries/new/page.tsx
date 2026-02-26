@@ -112,9 +112,6 @@ export default function NewEnquiryPage() {
     if (!raw) return null;
 
     const path = raw.replace(/\\/g, "/");
-    if (path.includes("/None/") || path.includes("products/None/") || path.includes("products/none/")) {
-      return null;
-    }
     if (path.startsWith("http://") || path.startsWith("https://")) return path;
 
     let normalizedPath = path;

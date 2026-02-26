@@ -45,6 +45,26 @@ def _is_broken_image_path(path: Optional[str]) -> bool:
     return "/None/" in normalized or normalized.endswith("/None") or "None/" in normalized
 
 
+def _resolve_quotation_item_image(
+    prod_info: Dict[str, Any],
+    product: Optional[Product] = None,
+) -> Optional[str]:
+    """Resolve image path for enquiry->quotation conversion."""
+    candidate = (
+        prod_info.get("image_url")
+        or prod_info.get("existing_image")
+        or prod_info.get("existing_image_url")
+        or prod_info.get("image")
+    )
+    normalized_candidate = _normalize_image_path(candidate)
+    if normalized_candidate:
+        return normalized_candidate
+
+    if product is not None:
+        return _normalize_image_path(getattr(product, "image", None))
+    return None
+
+
 
 
 class EnquiryCreate(BaseModel):
@@ -1138,18 +1158,21 @@ def convert_enquiry_to_quotation(
                 ).first()
                 
                 if product:
+                    resolved_image = _resolve_quotation_item_image(prod_info, product)
                     items.append({
                         "product_id": product_id,
                         "description": f"{product.name}" + (f" - {notes}" if notes else ""),
                         "hsn_code": product.hsn_code,
                         "quantity": quantity,
                         "unit": product.unit or "unit",
-                    "unit_price": float(product.sales_price or 0),
+                        "unit_price": float(product.sales_price or 0),
                         "discount_percent": 0,
-                    "gst_rate": float(getattr(product, "gst_rate", None) or 18),
+                        "gst_rate": float(getattr(product, "gst_rate", None) or 18),
+                        "image_url": resolved_image,
                     })
                 else:
                     # Product not found, add with description only
+                    resolved_image = _resolve_quotation_item_image(prod_info, None)
                     items.append({
                         "product_id": None,
                         "description": (
@@ -1163,9 +1186,11 @@ def convert_enquiry_to_quotation(
                         "unit_price": 0,
                         "discount_percent": 0,
                         "gst_rate": 18,
+                        "image_url": resolved_image,
                     })
             else:
                 # No product_id, use description
+                resolved_image = _resolve_quotation_item_image(prod_info, None)
                 items.append({
                     "product_id": None,
                     "description": (
@@ -1179,6 +1204,7 @@ def convert_enquiry_to_quotation(
                     "unit_price": 0,
                     "discount_percent": 0,
                     "gst_rate": 18,
+                    "image_url": resolved_image,
                 })
     
     # Simple quotation creation

@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import tempfile
 import json
+import re
 
 from app.database.models import (
     Quotation, QuotationItem, Company, Customer, Product, 
@@ -26,6 +27,40 @@ class QuotationService:
     def _round_amount(self, amount: Decimal) -> Decimal:
         """Round amount to 2 decimal places."""
         return Decimal(str(amount)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    def _normalize_state_code(self, state_value: Optional[str]) -> Optional[str]:
+        """Normalize state code/name into 2-digit GST state code."""
+        if not state_value:
+            return None
+
+        raw = str(state_value).strip()
+        if not raw:
+            return None
+
+        if raw.isdigit():
+            code = raw.zfill(2)
+            if code in INDIAN_STATE_CODES:
+                return code
+
+        normalized_input = re.sub(r"[^a-z0-9]", "", raw.lower())
+        if not normalized_input:
+            return None
+
+        for code, name in INDIAN_STATE_CODES.items():
+            normalized_name = re.sub(r"[^a-z0-9]", "", str(name).lower())
+            if normalized_name == normalized_input:
+                return code
+
+        aliases = {
+            "tamilnadu": "33",
+            "andhrapradesh": "37",
+            "maharastra": "27",
+            "chhattisgarh": "22",
+            "chattisgarh": "22",
+            "odisa": "21",
+            "orissa": "21",
+        }
+        return aliases.get(normalized_input)
     
     def _calculate_gst_split(
         self,
@@ -58,6 +93,68 @@ class QuotationService:
                 "sgst_amount": Decimal("0"),
                 "igst_amount": total_gst,
             }
+
+    def _calculate_other_charges_totals(
+        self,
+        base_taxable_amount: Decimal,
+        other_charges: Optional[List[Dict[str, Any]]],
+        company_state_code: str,
+        place_of_supply: str,
+    ) -> dict:
+        """Calculate aggregate other charges and their GST breakup."""
+        if not other_charges:
+            return {
+                "base_amount": Decimal("0"),
+                "cgst_amount": Decimal("0"),
+                "sgst_amount": Decimal("0"),
+                "igst_amount": Decimal("0"),
+            }
+
+        total_base = Decimal("0")
+        total_cgst = Decimal("0")
+        total_sgst = Decimal("0")
+        total_igst = Decimal("0")
+
+        for charge in other_charges:
+            try:
+                amount = Decimal(str(charge.get("amount", 0) or 0))
+            except Exception:
+                amount = Decimal("0")
+            charge_type = str(charge.get("type", "fixed") or "fixed").lower()
+            try:
+                tax_rate = Decimal(str(charge.get("tax", 0) or 0))
+            except Exception:
+                tax_rate = Decimal("0")
+
+            if amount <= 0:
+                continue
+
+            if charge_type == "percentage":
+                charge_base = self._round_amount(base_taxable_amount * amount / 100)
+            else:
+                charge_base = self._round_amount(amount)
+
+            if charge_base <= 0:
+                continue
+
+            gst_split = self._calculate_gst_split(
+                taxable_amount=charge_base,
+                gst_rate=tax_rate,
+                company_state_code=company_state_code,
+                place_of_supply=place_of_supply,
+            )
+
+            total_base += charge_base
+            total_cgst += gst_split["cgst_amount"]
+            total_sgst += gst_split["sgst_amount"]
+            total_igst += gst_split["igst_amount"]
+
+        return {
+            "base_amount": self._round_amount(total_base),
+            "cgst_amount": self._round_amount(total_cgst),
+            "sgst_amount": self._round_amount(total_sgst),
+            "igst_amount": self._round_amount(total_igst),
+        }
     
     def _get_next_quotation_number(self, company: Company) -> str:
         prefix = company.quotation_prefix if hasattr(company, 'quotation_prefix') and company.quotation_prefix else "QT"
@@ -197,6 +294,7 @@ class QuotationService:
         contact_id: Optional[str] = None,
         cess_amount: Optional[Decimal] = Decimal("0"),
         is_project: Optional[bool] = None,
+        other_charges: Optional[List[Dict[str, Any]]] = None,
         **kwargs  # Accept additional fields
     ) -> Quotation:
         """Create a new quotation with all fields and GST calculations."""
@@ -235,12 +333,25 @@ class QuotationService:
             excel_notes_file_url = self._save_excel_data(company.id, excel_notes)
         
         # Determine place of supply
-        if not place_of_supply and customer:
-            place_of_supply = customer.billing_state_code
-        if not place_of_supply:
-            place_of_supply = company.state_code or "27"
-        
-        place_of_supply_name = INDIAN_STATE_CODES.get(place_of_supply, "")
+        company_state_code = (
+            self._normalize_state_code(getattr(company, "state_code", None))
+            or self._normalize_state_code(getattr(company, "state", None))
+            or "27"
+        )
+
+        customer_state_code = None
+        if customer:
+            customer_state_code = (
+                self._normalize_state_code(getattr(customer, "billing_state_code", None))
+                or self._normalize_state_code(getattr(customer, "billing_state", None))
+            )
+
+        place_of_supply_code = (
+            self._normalize_state_code(place_of_supply)
+            or customer_state_code
+            or company_state_code
+        )
+        place_of_supply_name = INDIAN_STATE_CODES.get(place_of_supply_code, str(place_of_supply or ""))
         
         # Generate quotation number if not provided
         if quotation_number:
@@ -278,7 +389,7 @@ class QuotationService:
             quotation_type=quotation_type,  # Ensure this is set
             quotation_date=quote_date,
             validity_date=validity_date,
-            place_of_supply=place_of_supply,
+            place_of_supply=place_of_supply_code,
             place_of_supply_name=place_of_supply_name,
             
             # Multi-currency support
@@ -329,7 +440,7 @@ class QuotationService:
         total_discount = Decimal("0")
         total_cess = cess_amount or Decimal("0")
         
-        company_state = company.state_code or "27"
+        company_state = company_state_code
         
         # Add items
         for item_data in items:
@@ -352,7 +463,7 @@ class QuotationService:
                 taxable_amount,
                 gst_rate,
                 company_state,
-                place_of_supply
+                place_of_supply_code
             )
             
             # Add cess if applicable
@@ -423,6 +534,25 @@ class QuotationService:
             total_discount += discount_amount
         
         # Update quotation totals
+        other_charges_totals = self._calculate_other_charges_totals(
+            base_taxable_amount=subtotal,
+            other_charges=other_charges,
+            company_state_code=company_state,
+            place_of_supply=place_of_supply_code,
+        )
+
+        total_cgst += other_charges_totals["cgst_amount"]
+        total_sgst += other_charges_totals["sgst_amount"]
+        total_igst += other_charges_totals["igst_amount"]
+
+        effective_freight = self._round_amount(Decimal(str(freight_charges or 0)))
+        effective_pf = self._round_amount(Decimal(str(p_and_f_charges or 0)) + other_charges_totals["base_amount"])
+        effective_round_off = self._round_amount(Decimal(str(round_off or 0)))
+
+        quotation.freight_charges = effective_freight
+        quotation.p_and_f_charges = effective_pf
+        quotation.round_off = effective_round_off
+
         quotation.subtotal = subtotal
         quotation.discount_amount = total_discount
         quotation.cgst_amount = total_cgst
@@ -430,7 +560,7 @@ class QuotationService:
         quotation.igst_amount = total_igst
         quotation.cess_amount = total_cess
         quotation.total_tax = total_cgst + total_sgst + total_igst + total_cess
-        quotation.total_amount = subtotal + quotation.total_tax
+        quotation.total_amount = subtotal + quotation.total_tax + effective_freight + effective_pf + effective_round_off
         
         # Calculate base currency total (in INR) for reporting
         exchange_rate_decimal = Decimal(str(exchange_rate)) if exchange_rate else Decimal("1.0")
@@ -484,6 +614,8 @@ class QuotationService:
         contact_id: Optional[str] = None,
         cess_amount: Optional[Decimal] = None,
         is_project: Optional[bool] = None,
+        place_of_supply: Optional[str] = None,
+        other_charges: Optional[List[Dict[str, Any]]] = None,
     ) -> Quotation:
         """Update a quotation (only if in DRAFT status)."""
         if quotation.status != QuotationStatus.DRAFT:
@@ -537,6 +669,11 @@ class QuotationService:
             quotation.cess_amount = cess_amount
         if is_project is not None:
             quotation.is_project = is_project
+        if place_of_supply is not None:
+            normalized_place_of_supply = self._normalize_state_code(place_of_supply)
+            if normalized_place_of_supply:
+                quotation.place_of_supply = normalized_place_of_supply
+                quotation.place_of_supply_name = INDIAN_STATE_CODES.get(normalized_place_of_supply, "")
         
         # Update sales person
         if sales_person_id is not None:
@@ -579,8 +716,12 @@ class QuotationService:
             total_cess = quotation.cess_amount or Decimal("0")
             
             company = self.db.query(Company).filter(Company.id == quotation.company_id).first()
-            company_state = company.state_code or "27"
-            place_of_supply = quotation.place_of_supply or company_state
+            company_state = (
+                self._normalize_state_code(getattr(company, "state_code", None))
+                or self._normalize_state_code(getattr(company, "state", None))
+                or "27"
+            )
+            place_of_supply = self._normalize_state_code(quotation.place_of_supply) or company_state
             
             for item_data in items:
                 qty = Decimal(str(item_data.get("quantity", 0)))
@@ -662,6 +803,27 @@ class QuotationService:
                 total_igst += gst_split["igst_amount"]
                 total_discount += discount_amount
             
+            other_charges_totals = self._calculate_other_charges_totals(
+                base_taxable_amount=subtotal,
+                other_charges=other_charges,
+                company_state_code=company_state,
+                place_of_supply=place_of_supply,
+            )
+
+            total_cgst += other_charges_totals["cgst_amount"]
+            total_sgst += other_charges_totals["sgst_amount"]
+            total_igst += other_charges_totals["igst_amount"]
+
+            if other_charges is not None:
+                pf_base = Decimal(
+                    str(
+                        p_and_f_charges
+                        if p_and_f_charges is not None
+                        else (quotation.p_and_f_charges or 0)
+                    )
+                )
+                quotation.p_and_f_charges = self._round_amount(pf_base + other_charges_totals["base_amount"])
+
             quotation.subtotal = subtotal
             quotation.discount_amount = total_discount
             quotation.cgst_amount = total_cgst
@@ -669,7 +831,21 @@ class QuotationService:
             quotation.igst_amount = total_igst
             quotation.cess_amount = total_cess
             quotation.total_tax = total_cgst + total_sgst + total_igst + total_cess
-            quotation.total_amount = subtotal + quotation.total_tax
+            quotation.total_amount = (
+                subtotal
+                + quotation.total_tax
+                + Decimal(str(quotation.freight_charges or 0))
+                + Decimal(str(quotation.p_and_f_charges or 0))
+                + Decimal(str(quotation.round_off or 0))
+            )
+        else:
+            quotation.total_amount = (
+                Decimal(str(quotation.subtotal or 0))
+                + Decimal(str(quotation.total_tax or 0))
+                + Decimal(str(quotation.freight_charges or 0))
+                + Decimal(str(quotation.p_and_f_charges or 0))
+                + Decimal(str(quotation.round_off or 0))
+            )
         
         # Update multi-currency fields
         if currency_code is not None:

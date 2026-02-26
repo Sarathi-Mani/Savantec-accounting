@@ -9,6 +9,7 @@ import Select from "react-select";
 interface QuotationItem {
   product_id?: string;
   description: string;
+  image_url?: string;
   item_code?: string;
   hsn: string;
   quantity: number;
@@ -65,7 +66,7 @@ interface FormData {
   remarks?: string;
   contact_person?: string; 
   show_images?: boolean;
-   show_images_in_pdf?: boolean; 
+  show_images_in_pdf?: boolean; 
   quotation_type?: "item" | "project"; 
 }
 
@@ -120,6 +121,35 @@ const getColumnLetter = (index: number): string => {
   return letter;
 };
 
+const parseCsvLine = (line: string): string[] => {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    const next = line[i + 1];
+
+    if (ch === '"' && inQuotes && next === '"') {
+      current += '"';
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (ch === "," && !inQuotes) {
+      values.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  values.push(current);
+  return values;
+};
+
 export default function NewQuotationPage() {
   const { company } = useAuth();
   const router = useRouter();
@@ -127,12 +157,14 @@ export default function NewQuotationPage() {
   const editQuotationId = searchParams.get("edit_id");
   const enquiryIdForPrefill = searchParams.get("enquiry_id");
   const isEditMode = Boolean(editQuotationId);
+  
   const getAuthToken = () => {
     if (typeof window === "undefined") return null;
     return (
       localStorage.getItem("employee_token") || localStorage.getItem("access_token")
     );
   };
+  
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -150,68 +182,142 @@ export default function NewQuotationPage() {
   const [isFetchingQuotation, setIsFetchingQuotation] = useState(false);
   const [copyError, setCopyError] = useState("");
   
+  const STATIC_BASE_URL =
+    (process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api").replace(/\/api$/, "") ||
+    "http://localhost:6768";
+
+  const INDIAN_STATE_CODES: Record<string, string> = {
+    "01": "Jammu & Kashmir",
+    "02": "Himachal Pradesh",
+    "03": "Punjab",
+    "04": "Chandigarh",
+    "05": "Uttarakhand",
+    "06": "Haryana",
+    "07": "Delhi",
+    "08": "Rajasthan",
+    "09": "Uttar Pradesh",
+    "10": "Bihar",
+    "11": "Sikkim",
+    "12": "Arunachal Pradesh",
+    "13": "Nagaland",
+    "14": "Manipur",
+    "15": "Mizoram",
+    "16": "Tripura",
+    "17": "Meghalaya",
+    "18": "Assam",
+    "19": "West Bengal",
+    "20": "Jharkhand",
+    "21": "Odisha",
+    "22": "Chattisgarh",
+    "23": "Madhya Pradesh",
+    "24": "Gujarat",
+    "26": "Dadra & Nagar Haveli and Daman & Diu",
+    "27": "Maharashtra",
+    "28": "Andhra Pradesh (Old)",
+    "29": "Karnataka",
+    "30": "Goa",
+    "31": "Lakshadweep",
+    "32": "Kerala",
+    "33": "Tamil Nadu",
+    "34": "Puducherry",
+    "35": "Andaman & Nicobar Islands",
+    "36": "Telangana",
+    "37": "Andhra Pradesh",
+    "38": "Ladakh",
+    "97": "Other Territory",
+    "99": "Centre Jurisdiction",
+  };
+
+  const normalizeStateCode = (stateValue?: string | null): string | undefined => {
+    if (!stateValue) return undefined;
+    const raw = String(stateValue).trim();
+    if (!raw) return undefined;
+
+    if (/^\d+$/.test(raw)) {
+      const code = raw.padStart(2, "0");
+      if (INDIAN_STATE_CODES[code]) return code;
+    }
+
+    const normalizedInput = raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+    for (const [code, name] of Object.entries(INDIAN_STATE_CODES)) {
+      const normalizedName = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (normalizedName === normalizedInput) return code;
+    }
+
+    const aliases: Record<string, string> = {
+      tamilnadu: "33",
+      andhrapradesh: "37",
+      maharastra: "27",
+      chhattisgarh: "22",
+      chattisgarh: "22",
+      odisa: "21",
+      orissa: "21",
+    };
+
+    return aliases[normalizedInput];
+  };
+  
   // Generate quotation code function
   const generateQuotationCode = useCallback(() => {
     return `QT-0001`;
   }, []);
 
-const fetchNextQuotationNumber = async () => {
-  if (!company?.id) return "QT-0001";
-  
-  try {
-    const token = getAuthToken();
-    const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/next-number`;
-    console.log("Fetching next number from:", apiUrl);
+  const fetchNextQuotationNumber = async () => {
+    if (!company?.id) return "QT-0001";
     
-    const response = await fetch(apiUrl, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    
-    console.log("Response status:", response.status);
-    
-    if (response.ok) {
-      const text = await response.text();
-      console.log("Raw response text:", text);
+    try {
+      const token = getAuthToken();
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/next-number`;
+      console.log("Fetching next number from:", apiUrl);
       
-      if (!text || text.trim() === '') {
-        console.warn("Empty response from API");
-        return "QT-0001";
-      }
+      const response = await fetch(apiUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       
-      try {
-        const data = JSON.parse(text);
-        console.log("Parsed response data:", data);
+      console.log("Response status:", response.status);
+      
+      if (response.ok) {
+        const text = await response.text();
+        console.log("Raw response text:", text);
         
-        // Check if data is null or undefined
-        if (!data) {
-          console.warn("API returned null data");
+        if (!text || text.trim() === '') {
+          console.warn("Empty response from API");
           return "QT-0001";
         }
         
-        // Check if quotation_number exists
-        if (data.quotation_number !== undefined && data.quotation_number !== null) {
-          return data.quotation_number;
-        } else {
-          console.warn("quotation_number field missing in response:", data);
+        try {
+          const data = JSON.parse(text);
+          console.log("Parsed response data:", data);
+          
+          if (!data) {
+            console.warn("API returned null data");
+            return "QT-0001";
+          }
+          
+          if (data.quotation_number !== undefined && data.quotation_number !== null) {
+            return data.quotation_number;
+          } else {
+            console.warn("quotation_number field missing in response:", data);
+            return "QT-0001";
+          }
+        } catch (parseError) {
+          console.error("Failed to parse JSON:", parseError, "Raw text:", text);
           return "QT-0001";
         }
-      } catch (parseError) {
-        console.error("Failed to parse JSON:", parseError, "Raw text:", text);
+      } else {
+        console.error("API error status:", response.status);
+        const errorText = await response.text();
+        console.error("Error response:", errorText);
         return "QT-0001";
       }
-    } else {
-      console.error("API error status:", response.status);
-      const errorText = await response.text();
-      console.error("Error response:", errorText);
+    } catch (error) {
+      console.error("Network error:", error);
       return "QT-0001";
     }
-  } catch (error) {
-    console.error("Network error:", error);
-    return "QT-0001";
-  }
-};
+  };
+  
   const fetchQuotationByNumber = async (quotationNumber: string) => {
     if (!company?.id || !quotationNumber.trim()) return null;
     
@@ -232,13 +338,11 @@ const fetchNextQuotationNumber = async () => {
       if (response.ok) {
         const data = await response.json();
         if (data.items && data.items.length > 0) {
-          // Find exact match for quotation number
           const exactMatch = data.items.find(
             (q: any) => q.quotation_number === quotationNumber.trim()
           );
           
           if (exactMatch) {
-            // Fetch full quotation details including items
             const detailResponse = await fetch(
               `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${exactMatch.id}`,
               {
@@ -265,7 +369,81 @@ const fetchNextQuotationNumber = async () => {
     }
   };
 
-  // Add this function to fetch customer details by ID
+  const normalizeImageUrl = (imagePath?: string | null) => {
+    if (!imagePath) return null;
+    const raw = String(imagePath).trim();
+    if (!raw) return null;
+
+    const path = raw.replace(/\\/g, "/");
+
+    if (path.startsWith("http://") || path.startsWith("https://")) {
+      return path;
+    }
+
+    let normalizedPath = path;
+    if (normalizedPath.startsWith("/products/")) {
+      normalizedPath = `/uploads${normalizedPath}`;
+    } else if (normalizedPath.startsWith("products/")) {
+      normalizedPath = `/uploads/${normalizedPath}`;
+    } else if (normalizedPath.startsWith("uploads/") || normalizedPath.startsWith("storage/")) {
+      normalizedPath = `/${normalizedPath}`;
+    } else if (!normalizedPath.startsWith("/")) {
+      normalizedPath = `/${normalizedPath}`;
+    }
+
+    // Same formatting style as enquiry create page: STATIC_BASE_URL + normalized relative path
+    return `${STATIC_BASE_URL}${normalizedPath}`;
+  };
+
+  const getItemImageUrl = (item: QuotationItem) => {
+    const fromItem = normalizeImageUrl(item.image_url);
+    if (fromItem) return fromItem;
+    const selectedProductOption = productOptions.find((opt) => opt.value === item.product_id);
+    const fromProduct =
+      selectedProductOption?.image_url ||
+      selectedProductOption?.image_path ||
+      selectedProductOption?.additional_image_url ||
+      selectedProductOption?.additional_image_path;
+    return normalizeImageUrl(fromProduct) || null;
+  };
+
+  const itemSelectStyles: any = useMemo(
+    () => ({
+      control: (base: any) => ({
+        ...base,
+        minHeight: 38,
+        height: 38,
+      }),
+      valueContainer: (base: any) => ({
+        ...base,
+        height: 38,
+        padding: '0 8px',
+      }),
+      input: (base: any) => ({
+        ...base,
+        margin: 0,
+      }),
+      indicatorsContainer: (base: any) => ({
+        ...base,
+        height: 38,
+      }),
+      menu: (base: any) => ({
+        ...base,
+        zIndex: 9999,
+        minWidth: 300,
+      }),
+      menuPortal: (base: any) => ({
+        ...base,
+        zIndex: 9999,
+      }),
+      option: (base: any) => ({
+        ...base,
+        whiteSpace: "normal",
+      }),
+    }),
+    []
+  );
+
   const fetchCustomerById = async (customerId: string) => {
     if (!company?.id || !customerId) return null;
     
@@ -394,6 +572,14 @@ const fetchNextQuotationNumber = async () => {
               cachedItems.find((ci: any) => sameId(ci.product_id || ci.item_id, item.product_id || item.item_id)) ||
               cachedItems[idx] ||
               {};
+            const manualName =
+              item.custom_item ||
+              item.product_name ||
+              matchedCachedItem.custom_item ||
+              matchedCachedItem.product_name ||
+              matchedEnquiryItem.custom_item ||
+              matchedEnquiryItem.product_name ||
+              "";
             const matchedProduct = findMatchedProduct(item, matchedEnquiryItem);
 
             const quantity = toNumber(
@@ -426,6 +612,21 @@ const fetchNextQuotationNumber = async () => {
 
             return {
               product_id: normalizeId(item.product_id || matchedEnquiryItem.product_id || matchedProduct.id || ""),
+              image_url:
+                matchedEnquiryItem.image_url ||
+                matchedEnquiryItem.existing_image ||
+                matchedEnquiryItem.image ||
+                item.image_url ||
+                item.existing_image ||
+                item.image ||
+                matchedCachedItem.image_url ||
+                matchedCachedItem.existing_image ||
+                matchedCachedItem.image ||
+                matchedProduct.image_url ||
+                matchedProduct.main_image_url ||
+                matchedProduct.image ||
+                matchedProduct.main_image ||
+                "",
               hsn:
                 item.hsn_code ||
                 item.hsn ||
@@ -444,6 +645,7 @@ const fetchNextQuotationNumber = async () => {
                 matchedProduct.code ||
                 "",
               description:
+                manualName ||
                 item.description ||
                 matchedCachedItem.description ||
                 matchedEnquiryItem.description ||
@@ -495,13 +697,22 @@ const fetchNextQuotationNumber = async () => {
             gst_rate: 18,
           }];
 
-      // Last-resort hydration: if item still has zero price, fetch product by ID directly.
-      const missingPriceRows = mappedItems
-        .map((item: any, index: number) => ({ index, product_id: normalizeId(item.product_id), unit_price: Number(item.unit_price || 0) }))
-        .filter((row: any) => row.product_id && row.unit_price <= 0);
+      const rowsNeedingProductFetch = mappedItems
+        .map((item: any, index: number) => ({
+          index,
+          product_id: normalizeId(item.product_id),
+          unit_price: Number(item.unit_price || 0),
+          image_url: item.image_url || "",
+        }))
+        .filter((row: any) => {
+          if (!row.product_id) return false;
+          const hasPrice = row.unit_price > 0;
+          const hasImage = Boolean(normalizeImageUrl(row.image_url));
+          return !hasPrice || !hasImage;
+        });
 
-      if (missingPriceRows.length > 0) {
-        const uniqueProductIds = Array.from(new Set(missingPriceRows.map((r: any) => r.product_id)));
+      if (rowsNeedingProductFetch.length > 0) {
+        const uniqueProductIds = Array.from(new Set(rowsNeedingProductFetch.map((r: any) => r.product_id)));
         const fetchedById: Record<string, any> = {};
 
         await Promise.all(
@@ -520,23 +731,33 @@ const fetchNextQuotationNumber = async () => {
           })
         );
 
-        for (const row of missingPriceRows) {
+        for (const row of rowsNeedingProductFetch) {
           const product = fetchedById[row.product_id];
           if (!product) continue;
-          const resolved = firstPositive(product.sales_price, product.unit_price);
-          if (resolved > 0) {
-            const target = mappedItems[row.index];
-            mappedItems[row.index] = {
-              ...target,
-              product_id: normalizeId(target.product_id || product.id || row.product_id),
-              item_code: target.item_code || product.item_code || product.code || "",
-              hsn: target.hsn || product.hsn || product.hsn_code || "",
-              unit: target.unit || product.unit || "unit",
-              unit_price: resolved,
-              gst_rate: Number(target.gst_rate || product.gst_rate || product.tax_rate || 18),
-              discount_percent: Number(target.discount_percent || product.discount_percent || product.discount || 0),
-            };
-          }
+          const resolvedPrice = firstPositive(product.sales_price, product.unit_price);
+          const resolvedImage =
+            product.image_url ||
+            product.main_image_url ||
+            product.image ||
+            product.main_image ||
+            "";
+          const target = mappedItems[row.index];
+          mappedItems[row.index] = {
+            ...target,
+            product_id: normalizeId(target.product_id || product.id || row.product_id),
+            item_code: target.item_code || product.item_code || product.code || "",
+            hsn: target.hsn || product.hsn || product.hsn_code || "",
+            unit: target.unit || product.unit || "unit",
+            unit_price: target.unit_price > 0 ? target.unit_price : resolvedPrice,
+            image_url: target.image_url || resolvedImage,
+            gst_rate: Number(target.gst_rate || product.gst_rate || product.tax_rate || 18),
+            discount_percent: Number(
+              target.discount_percent ??
+              product.discount_percent ??
+              product.discount ??
+              0
+            ),
+          };
         }
       }
 
@@ -555,10 +776,11 @@ const fetchNextQuotationNumber = async () => {
 
       setFormData(prev => ({
         ...prev,
+        quotation_code: enquiry.quotation_no || prev.quotation_code,
         customer_id: customerId,
         contact_person: contactName,
         salesman_id: salesmanId,
-        subject: `Quotation for ${enquiryNumber}`,
+        subject: enquiry.quotation_no ? `Quotation ${enquiry.quotation_no}` : `Quotation for ${enquiryNumber}`,
         notes: enquiry.description || enquiry.remarks || "",
         remarks: enquiry.remarks || "",
         reference: "Enquiry",
@@ -617,12 +839,34 @@ const fetchNextQuotationNumber = async () => {
         ...prev,
         quotation_code: quotation.quotation_number || quotation.quotation_code || prev.quotation_code,
         quotation_date: quotation.quotation_date ? new Date(quotation.quotation_date).toISOString().split("T")[0] : prev.quotation_date,
-        validity_days: quotation.validity_days || 30,
+        validity_days:
+          Number(quotation.validity_days) > 0
+            ? Number(quotation.validity_days)
+            : (
+                quotation.validity_date && quotation.quotation_date
+                  ? Math.max(
+                      1,
+                      Math.ceil(
+                        (new Date(quotation.validity_date).getTime() - new Date(quotation.quotation_date).getTime()) /
+                          (1000 * 60 * 60 * 24)
+                      )
+                    )
+                  : 30
+              ),
         customer_id: quotation.customer_id || "",
         notes: quotation.notes || "",
         terms: quotation.terms || "",
         subject: quotation.subject || prev.subject,
-        tax_regime: quotation.tax_regime || prev.tax_regime,
+        tax_regime:
+          quotation.tax_regime ||
+          (() => {
+            const companyCode = normalizeStateCode(company?.state_code || company?.state);
+            const placeCode = normalizeStateCode(quotation.place_of_supply);
+            if (companyCode && placeCode) {
+              return companyCode === placeCode ? "cgst_sgst" : "igst";
+            }
+            return prev.tax_regime;
+          })(),
         status: quotation.status || "open",
         salesman_id: quotation.sales_person_id || "",
         reference: quotation.reference || "",
@@ -639,6 +883,7 @@ const fetchNextQuotationNumber = async () => {
       if (Array.isArray(quotation.items) && quotation.items.length > 0) {
         setItems(quotation.items.map((item: any, itemIndex: number) => ({
           product_id: item.product_id || "",
+          image_url: item.image_url || "",
           hsn: item.hsn_code || item.hsn || "",
           item_code: item.item_code || "",
           description: item.description || "Item",
@@ -659,12 +904,58 @@ const fetchNextQuotationNumber = async () => {
         })));
       }
 
+      if (Array.isArray(quotation.other_charges) && quotation.other_charges.length > 0) {
+        setOtherCharges(
+          quotation.other_charges.map((charge: any, idx: number) => ({
+            id: String(charge.id || `charge-${idx}`),
+            name: charge.name || "Other Charges",
+            amount: Number(charge.amount) || 0,
+            type: charge.type === "percentage" ? "percentage" : "fixed",
+            tax: Number(charge.tax) || 0,
+          }))
+        );
+      } else if (Number(quotation.p_and_f_charges || 0) > 0) {
+        setOtherCharges([
+          {
+            id: "pf-charge",
+            name: "Other Charges",
+            amount: Number(quotation.p_and_f_charges) || 0,
+            type: "fixed",
+            tax: 0,
+          },
+        ]);
+      } else {
+        setOtherCharges([{ id: Date.now().toString(), name: "", amount: 0, type: "fixed", tax: 18 }]);
+      }
+
       if (quotation.customer_id) {
         const customerPool = availableCustomers.length > 0 ? availableCustomers : customers;
         const customer = customerPool.find((c: any) => c.id === quotation.customer_id);
         if (customer) {
           setSelectedCustomer(customer);
           await fetchContactPersons(customer.id);
+        }
+      }
+
+      if (quotation.excel_notes_file_url) {
+        try {
+          const excelResponse = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${quotation.id}/excel-notes`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+
+          if (excelResponse.ok) {
+            const excelData = await excelResponse.json();
+            if (excelData?.content) {
+              applyExcelContentToGrid(excelData.content);
+            }
+          }
+        } catch (excelErr) {
+          console.error("Failed to load quotation excel notes:", excelErr);
         }
       }
 
@@ -676,7 +967,6 @@ const fetchNextQuotationNumber = async () => {
     }
   };
 
-  // Update the prefillFormWithQuotation function
   const prefillFormWithQuotation = async (quotationNumber: string) => {
     const quotation = await fetchQuotationByNumber(quotationNumber);
     
@@ -685,9 +975,6 @@ const fetchNextQuotationNumber = async () => {
       return;
     }
 
-   
-    
-    // FIRST: Update form data with quotation details
     setFormData(prev => ({
       ...prev,
       quotation_code: generateQuotationCode(),
@@ -707,26 +994,20 @@ const fetchNextQuotationNumber = async () => {
       remarks: quotation.remarks || "",
       contact_person: quotation.contact_person || "",
       show_images: quotation.show_images !== false
-      
     }));
     
-    // Update customer selection if customer exists
     if (quotation.customer_id) {
-      // First check if customer exists in local customers list
       let customer = customers.find(c => c.id === quotation.customer_id);
       
-      // If not found locally, fetch from API
       if (!customer) {
         const customerDetails = await fetchCustomerById(quotation.customer_id);
         if (customerDetails) {
-          // Add to local customers list
           setCustomers(prev => [...prev, customerDetails]);
           customer = customerDetails;
         }
       }
       
       if (customer) {
-        // Create the customer option object for React Select
         const name = customer.name || "Unnamed Customer";
         const phone = customer.phone || customer.mobile || "";
         const email = customer.email || "";
@@ -738,27 +1019,24 @@ const fetchNextQuotationNumber = async () => {
           data: customer
         };
         
-        // Set selected customer and trigger customer change handler
         setSelectedCustomer(customer);
         
-        // IMPORTANT: Update the form state with customer_id
         setFormData(prev => ({
           ...prev,
           customer_id: customer.id,
           contact_person: quotation.contact_person || ""
         }));
         
-        // Fetch contact persons for this customer
         await fetchContactPersons(customer.id);
         
-        // If the API response includes customer_name, use it
         if (quotation.customer_name) {
           console.log("Quotation includes customer name:", quotation.customer_name);
         }
         
-        // Determine tax regime if customer has billing_state
-        if (customer.billing_state && company?.state) {
-          const isSameState = customer.billing_state === company.state;
+        const customerStateCode = normalizeStateCode(customer.billing_state_code || customer.billing_state);
+        const companyStateCode = normalizeStateCode(company?.state_code || company?.state);
+        if (customerStateCode && companyStateCode) {
+          const isSameState = customerStateCode === companyStateCode;
           setFormData(prev => ({
             ...prev,
             tax_regime: isSameState ? "cgst_sgst" : "igst"
@@ -769,31 +1047,39 @@ const fetchNextQuotationNumber = async () => {
       }
     }
     
-    // Update items from quotation
     if (quotation.items && quotation.items.length > 0) {
       const newItems = quotation.items.map((item: any) => ({
         product_id: item.product_id || "",
+        item_code: item.item_code || "",
+        image_url: item.image_url || "",
         description: item.description || "",
         hsn: item.hsn || "",
         quantity: item.quantity || 1,
         unit: item.unit || "unit",
         unit_price: item.unit_price || 0,
-        discount_percent: item.discount_percent || 0,
+        discount_percent: Number(item.discount_percent ?? 0),
         gst_rate: item.gst_rate || 18
       }));
       setItems(newItems);
     }
     
-    // Update salesman selection if exists
     if (quotation.sales_person_id && salesmen.length > 0) {
-      // This will be handled by the form data update
-      // The salesman will be selected when the Select component renders with formData.salesman_id
     }
     
-    // Reset other charges
-    setOtherCharges([{ id: Date.now().toString(), name: "", amount: 0, type: "fixed", tax: 18 }]);
+    if (Array.isArray(quotation.other_charges) && quotation.other_charges.length > 0) {
+      setOtherCharges(
+        quotation.other_charges.map((charge: any, idx: number) => ({
+          id: String(charge.id || `charge-${idx}`),
+          name: charge.name || "Other Charges",
+          amount: Number(charge.amount) || 0,
+          type: charge.type === "percentage" ? "percentage" : "fixed",
+          tax: Number(charge.tax) || 0,
+        }))
+      );
+    } else {
+      setOtherCharges([{ id: Date.now().toString(), name: "", amount: 0, type: "fixed", tax: 18 }]);
+    }
     
-    // Clear Excel grid
     const newGrid = [...excelGrid.map(row => [...row])];
     for (let r = 0; r < newGrid.length; r++) {
       for (let c = 0; c < newGrid[r].length; c++) {
@@ -808,7 +1094,6 @@ const fetchNextQuotationNumber = async () => {
     }
     setExcelGrid(newGrid);
     
-    // Fetch Excel notes if available
     if (quotation.excel_notes_file_url && company?.id) {
       try {
         const token = getAuthToken();
@@ -824,6 +1109,7 @@ const fetchNextQuotationNumber = async () => {
         if (excelResponse.ok) {
           const excelData = await excelResponse.json();
           if (excelData.content) {
+            applyExcelContentToGrid(excelData.content);
             showToast("Loaded Excel notes from quotation", "info");
           }
         }
@@ -837,7 +1123,6 @@ const fetchNextQuotationNumber = async () => {
     setCopyQuotationNumber("");
   };
 
-  // Excel Grid State - Create dynamic grid system
   const [excelGrid, setExcelGrid] = useState<ExcelCell[][]>(() => {
     const initialRows = 10;
     const initialCols = 10;
@@ -860,19 +1145,56 @@ const fetchNextQuotationNumber = async () => {
     return grid;
   });
 
-  // Track visible rows/columns
   const [gridRows, setGridRows] = useState(10);
   const [gridCols, setGridCols] = useState(10);
-
-  // Store total rows/columns (can be much larger than visible)
   const [totalRows, setTotalRows] = useState(10);
   const [totalCols, setTotalCols] = useState(10);
 
-  // Standard Terms Template
-  const standardTermsTemplate = `1. Packing/Forwarding: Nil\n2. Freight: Actual\n3. Payment: 30 Days\n4. Delivery: 4 Weeks\n5. Validity: 30 days\n6. Taxes: All taxes as applicable\n7. Installation: At actual\n8. Warranty: As per product warranty`;
+  const applyExcelContentToGrid = (csvContent: string) => {
+    const lines = String(csvContent || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .split("\n")
+      .filter((line) => line.trim() !== "");
+
+    if (lines.length === 0) return;
+
+    const parsed = lines.map(parseCsvLine);
+    const rows = Math.max(10, parsed.length);
+    const cols = Math.max(10, ...parsed.map((row) => row.length));
+
+    const nextGrid: ExcelCell[][] = [];
+    for (let r = 0; r < rows; r++) {
+      const row: ExcelCell[] = [];
+      for (let c = 0; c < cols; c++) {
+        const raw = parsed[r]?.[c] ?? "";
+        const value = String(raw).trim();
+        const isFormula = value.startsWith("=");
+        const num = Number(value);
+        row.push({
+          id: `${r}_${c}`,
+          value,
+          isFormula,
+          formula: isFormula ? value : undefined,
+          computedValue: isFormula ? value : (Number.isFinite(num) && value !== "" ? num : value),
+          row: r,
+          col: c,
+        });
+      }
+      nextGrid.push(row);
+    }
+
+    setGridRows(rows);
+    setGridCols(cols);
+    setTotalRows(rows);
+    setTotalCols(cols);
+    setExcelGrid(nextGrid);
+  };
+
+  const standardTermsTemplate = `1. Packing/Forwarding: Nil\n2. Freight: Actual\n3. Payment: 30 Days\n4. Delivery: \n5. Validity: 30 days\n6. Taxes: All taxes as applicable\n7. Installation: At actual\n8. Warranty: As per product warranty`;
 
   const [formData, setFormData] = useState<FormData>({
-     quotation_code: "",
+    quotation_code: "",
     quotation_date: new Date().toISOString().split("T")[0],
     validity_days: 30,
     customer_id: "",
@@ -889,16 +1211,16 @@ const fetchNextQuotationNumber = async () => {
     payment_terms: standardTermsTemplate,
     remarks: "", 
     contact_person: "",
-    quotation_type: "item" ,
-     show_images: true,
-       show_images_in_pdf: true,
+    quotation_type: "item",
+    show_images: true,
+    show_images_in_pdf: true,
   });
 
   const [items, setItems] = useState<QuotationItem[]>([
     { 
       product_id: "", 
       hsn: "", 
-       item_code: "",
+      item_code: "",
       description: "", 
       quantity: 1, 
       unit: "unit", 
@@ -917,7 +1239,6 @@ const fetchNextQuotationNumber = async () => {
     type: "percentage" as "percentage" | "fixed"
   });
 
-  // Helper function to show toast
   const showToast = (message: string, type: "success" | "error" | "info" | "warning" = "success") => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, message, type }]);
@@ -927,9 +1248,7 @@ const fetchNextQuotationNumber = async () => {
     }, 3000);
   };
 
-  // Get or create cell - ensures grid can expand dynamically
   const getOrCreateCell = (grid: ExcelCell[][], row: number, col: number): ExcelCell => {
-    // Ensure row exists
     while (grid.length <= row) {
       const newRow: ExcelCell[] = [];
       for (let c = 0; c < Math.max(gridCols, col + 1); c++) {
@@ -945,7 +1264,6 @@ const fetchNextQuotationNumber = async () => {
       grid.push(newRow);
     }
     
-    // Ensure column exists in row
     const currentRow = grid[row];
     while (currentRow.length <= col) {
       currentRow.push({
@@ -961,130 +1279,119 @@ const fetchNextQuotationNumber = async () => {
     return grid[row][col];
   };
 
- const evaluateFormula = (expr: string, grid: ExcelCell[][]): number | string => {
-  try {
-    // Remove the = sign if present
-    expr = expr.trim();
-    if (expr.startsWith('=')) {
-      expr = expr.substring(1).trim();
-    }
-
-    // If expression is empty, return empty string
-    if (expr === '') {
-      return '';
-    }
-
-    // Handle single cell reference
-    const singleCellPattern = /^([A-Z]+)(\d+)$/;
-    const singleCellMatch = expr.match(singleCellPattern);
-    if (singleCellMatch) {
-      const col = singleCellMatch[1];
-      const rowStr = singleCellMatch[2];
-      const row = parseInt(rowStr, 10) - 1; // Already fixed with radix
-      
-      if (isNaN(row) || row < 0) {
-        return '#ERROR';
+  const evaluateFormula = (expr: string, grid: ExcelCell[][]): number | string => {
+    try {
+      expr = expr.trim();
+      if (expr.startsWith('=')) {
+        expr = expr.substring(1).trim();
       }
-      
-      const colIndex = getColumnIndex(col);
-      
-      if (row >= 0 && row < grid.length && colIndex >= 0 && colIndex < (grid[row]?.length || 0)) {
-        const cell = grid[row][colIndex];
-        if (cell) {
-          const val = cell.computedValue;
-          if (val === undefined || val === '' || val === null) {
-            return 0;
-          }
-          if (typeof val === 'string') {
-            const num = parseFloat(val);
-            return isNaN(num) ? 0 : num;
-          }
-          // val is already a number
-          return val;
+
+      if (expr === '') {
+        return '';
+      }
+
+      const singleCellPattern = /^([A-Z]+)(\d+)$/;
+      const singleCellMatch = expr.match(singleCellPattern);
+      if (singleCellMatch) {
+        const col = singleCellMatch[1];
+        const rowStr = singleCellMatch[2];
+        const row = parseInt(rowStr, 10) - 1;
+        
+        if (isNaN(row) || row < 0) {
+          return '#ERROR';
         }
-      }
-      return '#REF!';
-    }
-
-    // Handle cell references in expressions
-    const cellReferencePattern = /([A-Z]+)(\d+)/g;
-    let processedExpr = expr;
-    let hasCellReference = false;
-    let match: RegExpExecArray | null;
-
-    while ((match = cellReferencePattern.exec(expr)) !== null) {
-      hasCellReference = true;
-      const colLetter = match[1];
-      const rowStr = match[2];
-      const rowNum = parseInt(rowStr, 10) - 1; // Already fixed with radix
-      
-      if (isNaN(rowNum) || rowNum < 0) {
-        continue;
-      }
-      
-      const colIndex = getColumnIndex(colLetter);
-      
-      if (rowNum >= 0 && rowNum < grid.length && colIndex >= 0 && colIndex < (grid[rowNum]?.length || 0)) {
-        const cell = grid[rowNum][colIndex];
-        if (cell) {
-          let cellValue = cell.computedValue;
-          if (cellValue === undefined || cellValue === '' || cellValue === null) {
-            cellValue = 0;
-          } else if (typeof cellValue === 'string') {
-            const num = parseFloat(cellValue);
-            cellValue = isNaN(num) ? 0 : num;
+        
+        const colIndex = getColumnIndex(col);
+        
+        if (row >= 0 && row < grid.length && colIndex >= 0 && colIndex < (grid[row]?.length || 0)) {
+          const cell = grid[row][colIndex];
+          if (cell) {
+            const val = cell.computedValue;
+            if (val === undefined || val === '' || val === null) {
+              return 0;
+            }
+            if (typeof val === 'string') {
+              const num = parseFloat(val);
+              return isNaN(num) ? 0 : num;
+            }
+            return val;
           }
-          // cellValue is now a number
-          processedExpr = processedExpr.replace(match[0], cellValue.toString());
+        }
+        return '#REF!';
+      }
+
+      const cellReferencePattern = /([A-Z]+)(\d+)/g;
+      let processedExpr = expr;
+      let hasCellReference = false;
+      let match: RegExpExecArray | null;
+
+      while ((match = cellReferencePattern.exec(expr)) !== null) {
+        hasCellReference = true;
+        const colLetter = match[1];
+        const rowStr = match[2];
+        const rowNum = parseInt(rowStr, 10) - 1;
+        
+        if (isNaN(rowNum) || rowNum < 0) {
+          continue;
+        }
+        
+        const colIndex = getColumnIndex(colLetter);
+        
+        if (rowNum >= 0 && rowNum < grid.length && colIndex >= 0 && colIndex < (grid[rowNum]?.length || 0)) {
+          const cell = grid[rowNum][colIndex];
+          if (cell) {
+            let cellValue = cell.computedValue;
+            if (cellValue === undefined || cellValue === '' || cellValue === null) {
+              cellValue = 0;
+            } else if (typeof cellValue === 'string') {
+              const num = parseFloat(cellValue);
+              cellValue = isNaN(num) ? 0 : num;
+            }
+            processedExpr = processedExpr.replace(match[0], cellValue.toString());
+          } else {
+            processedExpr = processedExpr.replace(match[0], '0');
+          }
         } else {
           processedExpr = processedExpr.replace(match[0], '0');
         }
-      } else {
-        processedExpr = processedExpr.replace(match[0], '0');
       }
-    }
 
-    // Handle percentages
-    processedExpr = processedExpr.replace(/(\d+(\.\d+)?)%/g, (match, p1) => {
-      const percentageValue = parseFloat(p1);
-      return isNaN(percentageValue) ? match : (percentageValue / 100).toString();
-    });
+      processedExpr = processedExpr.replace(/(\d+(\.\d+)?)%/g, (match, p1) => {
+        const percentageValue = parseFloat(p1);
+        return isNaN(percentageValue) ? match : (percentageValue / 100).toString();
+      });
 
-    // If no cell references and it's just a number, return it
-    if (!hasCellReference) {
-      const num = parseFloat(processedExpr);
-      if (!isNaN(num)) {
-        return num;
+      if (!hasCellReference) {
+        const num = parseFloat(processedExpr);
+        if (!isNaN(num)) {
+          return num;
+        }
+        return processedExpr;
       }
-      return processedExpr;
-    }
 
-    // Try to evaluate the mathematical expression
-    try {
-      const safeExpr = processedExpr.replace(/[^0-9+\-*/().%\s]/g, '');
-      
-      if (safeExpr.trim() === '') {
+      try {
+        const safeExpr = processedExpr.replace(/[^0-9+\-*/().%\s]/g, '');
+        
+        if (safeExpr.trim() === '') {
+          return '#ERROR';
+        }
+
+        const result = Function(`'use strict'; try { return (${safeExpr}) } catch(e) { return '#ERROR' }`)();
+        
+        if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
+          return result;
+        }
+        return '#ERROR';
+      } catch (error) {
+        console.error('Formula evaluation error:', error);
         return '#ERROR';
       }
-
-      const result = Function(`'use strict'; try { return (${safeExpr}) } catch(e) { return '#ERROR' }`)();
-      
-      if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
-        return result;
-      }
-      return '#ERROR';
     } catch (error) {
       console.error('Formula evaluation error:', error);
       return '#ERROR';
     }
-  } catch (error) {
-    console.error('Formula evaluation error:', error);
-    return '#ERROR';
-  }
-};
+  };
 
-
-  // Update dependent cells recursively with dynamic grid
   const updateDependentCells = (grid: ExcelCell[][]) => {
     let updated = false;
     do {
@@ -1108,14 +1415,11 @@ const fetchNextQuotationNumber = async () => {
     } while (updated);
   };
 
-  // Update cell value with dynamic grid expansion
   const updateCell = (row: number, col: number, value: string) => {
     const newGrid = [...excelGrid.map(rowArr => [...rowArr])];
     
-    // Expand grid if needed
     const cell = getOrCreateCell(newGrid, row, col);
     
-    // Update total rows/columns if needed
     if (row >= totalRows) {
       setTotalRows(row + 1);
     }
@@ -1130,7 +1434,6 @@ const fetchNextQuotationNumber = async () => {
       
       try {
         const result = evaluateFormula(value, newGrid);
-        // Ensure result is properly typed
         if (typeof result === 'number') {
           cell.computedValue = result;
         } else if (typeof result === 'string') {
@@ -1148,7 +1451,6 @@ const fetchNextQuotationNumber = async () => {
       cell.value = value;
       
       const numValue = parseFloat(value);
-      // Ensure we only store numbers or strings, not mixed types
       if (!isNaN(numValue) && value.trim() !== '') {
         cell.computedValue = numValue;
       } else {
@@ -1156,13 +1458,11 @@ const fetchNextQuotationNumber = async () => {
       }
     }
     
-    // Update dependent cells
     updateDependentCells(newGrid);
     
     setExcelGrid(newGrid);
   };
 
-  // Add rows to the grid
   const addRows = (count: number = 5) => {
     const newRows = gridRows + count;
     const newGrid = [...excelGrid];
@@ -1187,7 +1487,6 @@ const fetchNextQuotationNumber = async () => {
     showToast(`Added ${count} rows`, 'info');
   };
 
-  // Add columns to the grid
   const addColumns = (count: number = 5) => {
     const newCols = gridCols + count;
     const newGrid = [...excelGrid.map(row => [...row])];
@@ -1210,47 +1509,36 @@ const fetchNextQuotationNumber = async () => {
     showToast(`Added ${count} columns`, 'info');
   };
 
-  // Remove rows from the grid - remove minimum limit
   const removeRows = (count: number = 5) => {
-    // No minimum limit
     const newRows = Math.max(1, gridRows - count);
-    
     setGridRows(newRows);
     showToast(`Removed ${count} rows`, 'info');
   };
 
-  // Remove columns from the grid - remove minimum limit
   const removeColumns = (count: number = 5) => {
-    // No minimum limit
     const newCols = Math.max(1, gridCols - count);
-    
     setGridCols(newCols);
     showToast(`Removed ${count} columns`, 'info');
   };
 
-  // Update the handlePasteEnhanced function to properly parse pasted data - FIXED VERSION
   const handlePasteEnhanced = (e: React.ClipboardEvent, startRow: number, startCol: number) => {
     e.preventDefault();
     
     const pastedData = e.clipboardData.getData('text');
     const rows = pastedData.trim().split('\n');
     
-    // Calculate required dimensions
     const neededRows = startRow + rows.length;
     const neededCols = startCol + Math.max(...rows.map(row => {
-      // Split by tab (Excel/Google Sheets) or by comma (CSV)
       if (row.includes('\t')) {
         return row.split('\t').length;
       } else if (row.includes(',')) {
         return row.split(',').length;
       }
-      return 1; // Single cell
+      return 1;
     }));
     
-    // Create a new grid copy
     const newGrid = [...excelGrid.map(row => [...row])];
     
-    // Expand grid to accommodate pasted data
     for (let r = 0; r < neededRows; r++) {
       if (!newGrid[r]) {
         newGrid[r] = [];
@@ -1269,11 +1557,9 @@ const fetchNextQuotationNumber = async () => {
       }
     }
     
-    // Update total dimensions
     setTotalRows(Math.max(totalRows, neededRows));
     setTotalCols(Math.max(totalCols, neededCols));
     
-    // Update visible dimensions if pasted data exceeds current view
     if (neededRows > gridRows) {
       setGridRows(neededRows);
     }
@@ -1281,7 +1567,6 @@ const fetchNextQuotationNumber = async () => {
       setGridCols(neededCols);
     }
     
-    // Fill pasted data
     rows.forEach((rowStr, rowOffset) => {
       const cells = rowStr.split('\t');
       cells.forEach((cellValue, colOffset) => {
@@ -1310,14 +1595,12 @@ const fetchNextQuotationNumber = async () => {
       });
     });
     
-    // Update dependent cells
     updateDependentCells(newGrid);
     setExcelGrid(newGrid);
     
     showToast(`Pasted ${rows.length} rows × ${Math.max(...rows.map(row => row.split('\t').length))} columns`, 'success');
   };
 
-  // Clear the grid
   const clearGrid = () => {
     const newGrid = [...excelGrid.map(row => [...row])];
     for (let r = 0; r < newGrid.length; r++) {
@@ -1335,21 +1618,17 @@ const fetchNextQuotationNumber = async () => {
     showToast('Grid cleared', 'info');
   };
 
-  // Export grid to CSV - export all data, not just visible
   const exportToCSV = () => {
     let csv = '';
     
-    // Use total columns for headers
     const headers = ['', ...Array.from({ length: Number(totalCols) }, (_, i) => getColumnLetter(Number(i)))];
     csv += headers.join(',') + '\n';
     
-    // Export all rows
     for (let rowIndex = 0; rowIndex < Number(totalRows); rowIndex++) {
       const rowNumber = rowIndex + 1;
       const row = excelGrid[rowIndex] || [];
       const rowData: (string | number)[] = [rowNumber];
       
-      // Add all columns
       for (let colIndex = 0; colIndex < Number(totalCols); colIndex++) {
         const cell = row[colIndex];
         if (cell && cell.isFormula && cell.formula) {
@@ -1375,17 +1654,13 @@ const fetchNextQuotationNumber = async () => {
     showToast(`CSV exported with ${totalRows} rows × ${totalCols} columns!`, 'success');
   };
 
-  // Get Excel data as text for submission - FIXED VERSION
   const getExcelDataAsText = () => {
-    // Create CSV content instead of custom text format
     let csv = '';
     
-    // Export all rows
     for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
       const row = excelGrid[rowIndex] || [];
       const rowData = [];
       
-      // Add all columns
       for (let colIndex = 0; colIndex < totalCols; colIndex++) {
         const cell = row[colIndex];
         let cellValue = '';
@@ -1398,7 +1673,6 @@ const fetchNextQuotationNumber = async () => {
           }
         }
         
-        // Escape CSV special characters
         if (cellValue.includes(',') || cellValue.includes('"') || cellValue.includes('\n') || cellValue.includes('\r')) {
           cellValue = '"' + cellValue.replace(/"/g, '""') + '"';
         }
@@ -1406,7 +1680,6 @@ const fetchNextQuotationNumber = async () => {
         rowData.push(cellValue);
       }
       
-      // Only add row if it has data
       if (rowData.some(cell => cell !== '' && cell !== '""')) {
         csv += rowData.join(',') + '\n';
       }
@@ -1415,75 +1688,77 @@ const fetchNextQuotationNumber = async () => {
     return csv.trim();
   };
 
-  // Prepare options
- // Update the productOptions useMemo section:
 const productOptions = useMemo(() => 
   products
     .filter(product => product.name && product.name.trim())
     .map((product) => {
-      // Debug: Check what image data is available
-      console.log(`Processing product: ${product.name}`, {
-        image_url: product.image_url,
-        main_image_url: product.main_image_url,
-        additional_image_url: product.additional_image_url,
-        image: product.image,
-        main_image: product.main_image,
-        additional_image: product.additional_image
-      });
-      
-      const name = product.name || "Unnamed Product";
-      const itemCode = product.item_code || product.code || "";
-      const description = product.description || "";
-      const hsn = product.hsn_code || product.hsn || "";
-      
-      // IMPORTANT: Use the image_url that's already properly formatted by the backend
-      const mainImageUrl = product.image_url || product.main_image_url || null;
-      const additionalImageUrl = product.additional_image_url || null;
-      
-      // Check if image_url exists and log it
-      if (mainImageUrl) {
-        console.log(`Product ${name} has image URL: ${mainImageUrl}`);
-      }
-      
-      const label = itemCode 
-        ? `${itemCode} - ${name}`
-        : name;
-      
-      const subLabel = description ? `${description}` : '';
-      
-      return {
-        value: product.id,
-        label: label,
-        subLabel: subLabel,
-        item_code: itemCode,
-        hsn: hsn,
-        description: description || name,
-        unit_price: product.unit_price || product.sales_price || 0,
-        discount_percent: product.discount_percent || product.discount || 0,
-        gst_rate: product.tax_rate || product.gst_rate || 18,
-        unit: product.unit || "unit",
-        sku: product.sku || "",
-        stock_quantity: product.current_stock || product.opening_stock || 0,
-        // Use the normalized URLs from backend - they're already correct!
-        image_url: mainImageUrl,
-        additional_image_url: additionalImageUrl,
-        image_path: product.image || product.main_image,
-        additional_image_path: product.additional_image,
-        product
-      };
-    }), [products]);
+        console.log(`Processing product: ${product.name}`, {
+          image_url: product.image_url,
+          main_image_url: product.main_image_url,
+          additional_image_url: product.additional_image_url,
+          image: product.image,
+          main_image: product.main_image,
+          additional_image: product.additional_image
+        });
+        
+        const name = product.name || "Unnamed Product";
+        const itemCode = product.item_code || product.code || "";
+        const description = product.description || "";
+        const hsn = product.hsn_code || product.hsn || "";
+        
+      const rawMainImage =
+        product.image_url ||
+        product.main_image_url ||
+        product.image ||
+        product.main_image ||
+        null;
+      const rawAdditionalImage =
+        product.additional_image_url ||
+        product.additional_image ||
+        null;
+      const mainImageUrl = rawMainImage || null;
+      const additionalImageUrl = rawAdditionalImage || null;
+        
+        if (mainImageUrl) {
+          console.log(`Product ${name} has image URL: ${mainImageUrl}`);
+        }
+        
+        const label = itemCode 
+          ? `${itemCode} - ${name}`
+          : name;
+        
+        const subLabel = description ? `${description}` : '';
+        
+        return {
+          value: product.id,
+          label: label,
+          subLabel: subLabel,
+          item_code: itemCode,
+          hsn: hsn,
+          description: description || name,
+          unit_price: product.unit_price || product.sales_price || 0,
+          discount_percent: Number(product.discount_percent ?? product.discount ?? 0),
+          gst_rate: product.tax_rate || product.gst_rate || 18,
+          unit: product.unit || "unit",
+          sku: product.sku || "",
+          stock_quantity: product.current_stock || product.opening_stock || 0,
+          image_url: mainImageUrl,
+          additional_image_url: additionalImageUrl,
+          image_path: product.image || product.main_image,
+          additional_image_path: product.additional_image,
+          product
+        };
+      }), [products]);
 
-
-    useEffect(() => {
-  console.log("=== DEBUG: Products data received ===");
-  if (products.length > 0) {
-    console.log("First product data:", products[0]);
-    console.log("First product image_url:", products[0].image_url);
-    console.log("First product main_image_url:", products[0].main_image_url);
-    console.log("First product additional_image_url:", products[0].additional_image_url);
-  }
-}, [products]);
-
+  useEffect(() => {
+    console.log("=== DEBUG: Products data received ===");
+    if (products.length > 0) {
+      console.log("First product data:", products[0]);
+      console.log("First product image_url:", products[0].image_url);
+      console.log("First product main_image_url:", products[0].main_image_url);
+      console.log("First product additional_image_url:", products[0].additional_image_url);
+    }
+  }, [products]);
 
   const customerOptions = useMemo(() => {
     if (!customers || customers.length === 0) {
@@ -1540,7 +1815,6 @@ const productOptions = useMemo(() =>
     console.log("Salesman options:", salesmanOptions);
   }, [salesmen, salesmanOptions]);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === 'Enter') {
@@ -1599,7 +1873,6 @@ const productOptions = useMemo(() =>
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeCell, gridRows, gridCols]);
 
-    // Fetch contact persons
   const fetchContactPersons = async (customerId: string) => {
     if (!company?.id) return;
     try {
@@ -1642,9 +1915,10 @@ const productOptions = useMemo(() =>
   };
 
   const quotationTypeOptions = useMemo(() => [
-  { value: "item", label: "Item Quotation" },
-  { value: "project", label: "Project Quotation" }], []);
-  // Fetch initial data
+    { value: "item", label: "Item Quotation" },
+    { value: "project", label: "Project Quotation" }
+  ], []);
+
   useEffect(() => {
     const fetchData = async () => {
       if (!company?.id) return;
@@ -1653,14 +1927,16 @@ const productOptions = useMemo(() =>
         setLoading(true);
         let customersArray: any[] = [];
         let validProducts: any[] = [];
-        const nextQuotationNumber = await fetchNextQuotationNumber();
-         setFormData(prev => ({
-        ...prev,
-        quotation_code: nextQuotationNumber,
-        subject: `Quotation ${nextQuotationNumber}`
-      }));
-      console.log("Next quotation number fetched:", nextQuotationNumber);
-        // Fetch customers
+        if (!isEditMode) {
+          const nextQuotationNumber = await fetchNextQuotationNumber();
+          setFormData(prev => ({
+            ...prev,
+            quotation_code: prev.quotation_code || nextQuotationNumber,
+            subject: prev.subject || `Quotation ${nextQuotationNumber}`
+          }));
+          console.log("Next quotation number fetched:", nextQuotationNumber);
+        }
+        
         try {
           const customersData = await customersApi.list(company.id, { page_size: 100 });
           if (customersData && typeof customersData === 'object') {
@@ -1678,7 +1954,6 @@ const productOptions = useMemo(() =>
           showToast("Failed to load customers", "error");
         }
         
-        // In the fetchData useEffect, update the product fetching section:
         try {
           const productsData: any = await productsApi.list(company.id, { page_size: 100 });
           let productsArray: any[] = [];
@@ -1697,14 +1972,10 @@ const productOptions = useMemo(() =>
             }
           }
           
-          // Filter and validate products
           validProducts = productsArray.filter(product => {
-            // Ensure required fields exist
             if (!product || !product.id) return false;
             
-            // Handle null/undefined values
             product.name = product.name || "Unnamed Product";
-          
             product.description = product.description || "";
             product.hsn = product.hsn || product.hsn_code || product.hsn_no || "";
             product.unit_price = parseFloat(product.unit_price) || 0;
@@ -1724,7 +1995,6 @@ const productOptions = useMemo(() =>
           showToast("Failed to load products. Some products may have invalid data.", "warning");
         }
         
-        // Fetch sales engineers (employees with sales designation)
         await fetchSalesEngineers();
 
         if (editQuotationId) {
@@ -1797,7 +2067,7 @@ const productOptions = useMemo(() =>
           unit_price: resolvedPrice,
           gst_rate: Number(item.gst_rate || matchedProduct.gst_rate || matchedProduct.tax_rate || 18),
           discount_percent: Number(
-            item.discount_percent || matchedProduct.discount_percent || matchedProduct.discount || 0
+            item.discount_percent ?? matchedProduct.discount_percent ?? matchedProduct.discount ?? 0
           ),
         };
       });
@@ -1835,9 +2105,7 @@ const productOptions = useMemo(() =>
       console.log("Sales engineers API response:", data);
       console.log("Next number API response:", data); 
 
-      // Process the data correctly
       if (data && Array.isArray(data) && data.length > 0) {
-        // Format the data to match your frontend structure
         const formattedSalesmen = data.map(engineer => ({
           id: engineer.id,
           name: engineer.full_name || 'Unnamed Engineer',
@@ -1861,13 +2129,16 @@ const productOptions = useMemo(() =>
     }
   };
 
-  // Calculate item total
+  const round2 = useCallback((value: number) => {
+    return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+  }, []);
+
   const calculateItemTotal = useCallback((item: QuotationItem) => {
-    const subtotal = item.quantity * item.unit_price;
-    const discountAmount = subtotal * (item.discount_percent / 100);
-    const taxableAmount = subtotal - discountAmount;
-    const taxAmount = taxableAmount * (item.gst_rate / 100);
-    const total = taxableAmount + taxAmount;
+    const subtotal = round2(item.quantity * item.unit_price);
+    const discountAmount = round2(subtotal * (item.discount_percent / 100));
+    const taxableAmount = round2(subtotal - discountAmount);
+    const taxAmount = round2(taxableAmount * (item.gst_rate / 100));
+    const total = round2(taxableAmount + taxAmount);
     
     return {
       subtotal,
@@ -1876,10 +2147,10 @@ const productOptions = useMemo(() =>
       taxAmount,
       total
     };
-  }, []);
+  }, [round2]);
 
-  // Calculate all totals
   const totals = useMemo(() => {
+    const effectiveTaxRegime: "cgst_sgst" | "igst" = formData.tax_regime || "cgst_sgst";
     let subtotal = 0;
     let totalDiscount = 0;
     let totalTaxable = 0;
@@ -1889,7 +2160,6 @@ const productOptions = useMemo(() =>
     let totalItems = 0;
     let totalQuantity = 0;
 
-    // Calculate items totals
     items.forEach(item => {
       if (item.quantity > 0 && item.unit_price > 0) {
         totalItems++;
@@ -1897,44 +2167,50 @@ const productOptions = useMemo(() =>
       totalQuantity += item.quantity;
 
       const itemCalc = calculateItemTotal(item);
-      subtotal += itemCalc.subtotal;
-      totalDiscount += itemCalc.discountAmount;
-      totalTaxable += itemCalc.taxableAmount;
+      subtotal = round2(subtotal + itemCalc.subtotal);
+      totalDiscount = round2(totalDiscount + itemCalc.discountAmount);
+      totalTaxable = round2(totalTaxable + itemCalc.taxableAmount);
 
-      if (formData.tax_regime === "cgst_sgst") {
-        totalCgst += itemCalc.taxAmount / 2;
-        totalSgst += itemCalc.taxAmount / 2;
-      } else if (formData.tax_regime === "igst") {
-        totalIgst += itemCalc.taxAmount;
+      if (effectiveTaxRegime === "cgst_sgst") {
+        const itemCgst = round2(itemCalc.taxAmount / 2);
+        const itemSgst = round2(itemCalc.taxAmount - itemCgst);
+        totalCgst = round2(totalCgst + itemCgst);
+        totalSgst = round2(totalSgst + itemSgst);
+      } else if (effectiveTaxRegime === "igst") {
+        totalIgst = round2(totalIgst + itemCalc.taxAmount);
       }
     });
 
-    // Calculate other charges
-    let otherChargesTotal = 0;
+    let otherChargesAmountTotal = 0;
+    let otherChargesTaxTotal = 0;
     otherCharges.forEach(charge => {
       if (!charge.name.trim() && charge.amount === 0) return;
       
       let chargeAmount = charge.amount;
       if (charge.type === "percentage") {
-        chargeAmount = totalTaxable * (charge.amount / 100);
+        chargeAmount = round2(totalTaxable * (charge.amount / 100));
+      } else {
+        chargeAmount = round2(chargeAmount);
       }
       
-      const chargeTax = chargeAmount * (charge.tax / 100);
-      const chargeTotal = chargeAmount + chargeTax;
-      otherChargesTotal += chargeTotal;
+      const chargeTax = round2(chargeAmount * (charge.tax / 100));
+      otherChargesAmountTotal = round2(otherChargesAmountTotal + chargeAmount);
+      otherChargesTaxTotal = round2(otherChargesTaxTotal + chargeTax);
 
-      if (formData.tax_regime === "cgst_sgst") {
-        totalCgst += chargeTax / 2;
-        totalSgst += chargeTax / 2;
-      } else if (formData.tax_regime === "igst") {
-        totalIgst += chargeTax;
+      if (effectiveTaxRegime === "cgst_sgst") {
+        const chargeCgst = round2(chargeTax / 2);
+        const chargeSgst = round2(chargeTax - chargeCgst);
+        totalCgst = round2(totalCgst + chargeCgst);
+        totalSgst = round2(totalSgst + chargeSgst);
+      } else if (effectiveTaxRegime === "igst") {
+        totalIgst = round2(totalIgst + chargeTax);
       }
     });
 
-    const totalTax = totalCgst + totalSgst + totalIgst;
-    const totalBeforeRoundOff = totalTaxable + otherChargesTotal + totalTax;
-    const roundOff = Math.round(totalBeforeRoundOff) - totalBeforeRoundOff;
-    const grandTotal = totalBeforeRoundOff + roundOff;
+    const totalTax = round2(totalCgst + totalSgst + totalIgst);
+    const totalBeforeRoundOff = round2(totalTaxable + otherChargesAmountTotal + totalTax);
+    const roundOff = round2(Math.round(totalBeforeRoundOff) - totalBeforeRoundOff);
+    const grandTotal = round2(totalBeforeRoundOff + roundOff);
 
     return {
       totalItems,
@@ -1948,9 +2224,10 @@ const productOptions = useMemo(() =>
       totalTax,
       roundOff,
       grandTotal,
-      otherChargesTotal
+      otherChargesTotal: otherChargesAmountTotal,
+      otherChargesTaxTotal
     };
-  }, [items, otherCharges, formData.tax_regime, calculateItemTotal]);
+  }, [items, otherCharges, formData.tax_regime, calculateItemTotal, round2]);
 
   const addSubItem = (itemIndex: number) => {
     const newItems = [...items];
@@ -2009,17 +2286,16 @@ const productOptions = useMemo(() =>
     setItems(newItems);
   };
 
-  // Item management functions
   const addItem = () => {
     setItems([...items, { 
       product_id: "", 
       hsn: "", 
-    description: "", 
+      description: "", 
       quantity: 1, 
       unit: "unit", 
       unit_price: 0, 
       discount_percent: 0, 
-      gst_rate: 18 
+      gst_rate: 18, 
     }]);
     showToast("New item row added", "info");
   };
@@ -2042,12 +2318,18 @@ const productOptions = useMemo(() =>
         newItems[index] = {
           ...newItems[index],
           product_id: value,
-         hsn: product.hsn || product.hsn_code || "",
-         item_code: product.item_code || product.code || "",
+          image_url:
+            product.image_url ||
+            product.main_image_url ||
+            product.image ||
+            product.main_image ||
+            "",
+          hsn: product.hsn || product.hsn_code || "",
+          item_code: product.item_code || product.code || "",
           description: product.description || product.name || "Product",
           unit_price: product.unit_price || product.sales_price || 0,
-          discount_percent: product.discount || 0,
-           quantity: 1,
+          discount_percent: Number(product.discount ?? product.discount_percent ?? 0),
+          quantity: 1,
           gst_rate: Number(product.tax_rate || product.gst_rate || 18)
         };
       }
@@ -2055,7 +2337,6 @@ const productOptions = useMemo(() =>
       newItems[index] = { ...newItems[index], [field]: value };
     }
     
-    // Ensure description is never empty
     if (field === "description" && !value.trim()) {
       newItems[index] = { ...newItems[index], description: "Item" };
     }
@@ -2063,7 +2344,6 @@ const productOptions = useMemo(() =>
     setItems(newItems);
   };
 
-  // Other charges management
   const addOtherCharge = () => {
     setOtherCharges([...otherCharges, { 
       id: Date.now().toString(), 
@@ -2088,7 +2368,6 @@ const productOptions = useMemo(() =>
     ));
   };
 
-  // Apply global discount
   const applyGlobalDiscount = () => {
     if (globalDiscount.value <= 0) {
       showToast("Please enter a discount value", "warning");
@@ -2111,7 +2390,6 @@ const productOptions = useMemo(() =>
     showToast("Discount applied to all items", "success");
   };
 
-  // Customer change handler
   const handleCustomerChange = async (option: any) => {
     if (option) {
       const customer = option.data;
@@ -2127,8 +2405,10 @@ const productOptions = useMemo(() =>
       
       await fetchContactPersons(customer.id);
       
-      if (customer.billing_state && company?.state) {
-        const isSameState = customer.billing_state === company.state;
+      const customerStateCode = normalizeStateCode(customer.billing_state_code || customer.billing_state);
+      const companyStateCode = normalizeStateCode(company?.state_code || company?.state);
+      if (customerStateCode && companyStateCode) {
+        const isSameState = customerStateCode === companyStateCode;
         setFormData(prev => ({
           ...prev,
           tax_regime: isSameState ? "cgst_sgst" : "igst"
@@ -2164,7 +2444,6 @@ const productOptions = useMemo(() =>
     }
   };
 
-  // Format currency
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
@@ -2173,7 +2452,6 @@ const productOptions = useMemo(() =>
     }).format(amount);
   };
 
-  // Form validation
   const validateForm = () => {
     const errors: string[] = [];
 
@@ -2189,7 +2467,6 @@ const productOptions = useMemo(() =>
       errors.push("Please select a sales engineer");
     }
 
-    // Check for valid items
     const validItems = items.filter(item => 
       item.quantity > 0 && item.unit_price > 0 && item.description.trim()
     );
@@ -2201,7 +2478,6 @@ const productOptions = useMemo(() =>
     return errors;
   };
 
-  // Handle form submission - UPDATED for FormData
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -2220,63 +2496,54 @@ const productOptions = useMemo(() =>
     setLoading(true);
 
     try {
-      // Get Excel data as text
-      const excelDataText = exportToCSVForSubmission();
+      const excelDataText = getExcelDataAsText();
       
-      // Prepare items for backend - filter out empty items
-     // Prepare items for backend - filter out empty items
-const itemsForBackend = items
-  .filter(item => item.quantity > 0 && item.unit_price >= 0)
-  .map(item => {
-    const baseItem = {
-      product_id: item.product_id || undefined,
-      description: item.description || "Item",
-      hsn_code: item.hsn || "",
-      item_code: item.item_code || undefined, 
-      quantity: item.quantity,
-      unit: item.unit || "unit",
-      unit_price: item.unit_price,
-      discount_percent: item.discount_percent,
-      gst_rate: item.gst_rate,
-      item_type: formData.quotation_type === "project" ? "project" : "item"
-     
-    };
+      const itemsForBackend = items
+        .filter(item => item.quantity > 0 && item.unit_price >= 0)
+        .map(item => {
+          const baseItem = {
+            product_id: item.product_id || undefined,
+            description: item.description || "Item",
+            image_url: item.image_url || undefined,
+            hsn_code: item.hsn || "",
+            item_code: item.item_code || undefined, 
+            quantity: item.quantity,
+            unit: item.unit || "unit",
+            unit_price: item.unit_price,
+            discount_percent: item.discount_percent,
+            gst_rate: item.gst_rate,
+            item_type: formData.quotation_type === "project" ? "project" : "item"
+          };
 
-    // Add sub-items if project type
-    if (formData.quotation_type === "project" && item.subItems && item.subItems.length > 0) {
-      // Prepare sub-items data
-      const subItemsData = item.subItems.map(subItem => {
-        const subItemData: any = {
-          description: subItem.description,
-          quantity: subItem.quantity
-        };
-        
-        // Handle image upload separately if needed
-        // For now, we'll just include the image URL if available
-        if (subItem.imageUrl) {
-          subItemData.image_url = subItem.imageUrl;
-        }
-        
-        return subItemData;
-      });
-      
-      return {
-        ...baseItem,
-        sub_items: subItemsData
-      };
-    }
+          if (formData.quotation_type === "project" && item.subItems && item.subItems.length > 0) {
+            const subItemsData = item.subItems.map(subItem => {
+              const subItemData: any = {
+                description: subItem.description,
+                quantity: subItem.quantity
+              };
+              
+              if (subItem.imageUrl) {
+                subItemData.image_url = subItem.imageUrl;
+              }
+              
+              return subItemData;
+            });
+            
+            return {
+              ...baseItem,
+              sub_items: subItemsData
+            };
+          }
 
-    return baseItem;
-  });
+          return baseItem;
+        });
         
-      // Validate we have at least one valid item
       if (itemsForBackend.length === 0) {
         showToast("Please add at least one valid item", "error");
         setLoading(false);
         return;
       }
 
-      // Prepare the JSON payload
       const payload = {
         quotation_number: formData.quotation_code, 
         customer_id: formData.customer_id || undefined,
@@ -2284,10 +2551,13 @@ const itemsForBackend = items
         validity_days: formData.validity_days,
         status: formData.status || "open",
         tax_regime: formData.tax_regime || undefined,
-        place_of_supply: selectedCustomer?.billing_state || undefined,
+        place_of_supply:
+          selectedCustomer?.billing_state_code ||
+          normalizeStateCode(selectedCustomer?.billing_state) ||
+          undefined,
         subject: formData.subject || `Quotation ${formData.quotation_code}`,
         notes: formData.notes || undefined,
-        terms: formData.terms || undefined, // Additional terms
+        terms: formData.terms || undefined,
         remarks: formData.remarks || undefined,
         contact_person: formData.contact_person || undefined,
         sales_person_id: formData.salesman_id || undefined,
@@ -2299,15 +2569,26 @@ const itemsForBackend = items
         excel_notes: excelDataText || undefined,
         show_images: formData.show_images !== false,
         show_images_in_pdf: formData.show_images_in_pdf !== false,
-       
+        freight_charges: 0,
+        freight_type: "fixed",
+        p_and_f_charges: 0,
+        pf_type: "fixed",
+        round_off: totals.roundOff,
+        other_charges: otherCharges
+          .filter((charge) => charge.name.trim() || Number(charge.amount) > 0)
+          .map((charge) => ({
+            id: charge.id,
+            name: charge.name || "Other Charges",
+            amount: Number(charge.amount) || 0,
+            type: charge.type,
+            tax: Number(charge.tax) || 0,
+          })),
         items: itemsForBackend
       };
 
-      // Create FormData
       const formDataToSend = new FormData();
       formDataToSend.append('data', JSON.stringify(payload));
       
-      // Optionally add CSV file
       if (excelDataText) {
         const csvBlob = new Blob([excelDataText], { type: 'text/csv' });
         formDataToSend.append('excel_file', csvBlob, 'excel_notes.csv');
@@ -2325,9 +2606,8 @@ const itemsForBackend = items
           method: isEditMode ? "PUT" : "POST",
           headers: {
             "Authorization": `Bearer ${token}`,
-            // Do NOT set Content-Type header for FormData - browser will set it automatically
           },
-          body: formDataToSend, // Use FormData instead of JSON
+          body: formDataToSend,
         }
       );
 
@@ -2366,7 +2646,6 @@ const itemsForBackend = items
     }
   };
 
-  // Handle cancel
   const handleCancel = () => {
     if (items.some(item => item.product_id) || formData.customer_id) {
       if (window.confirm("Are you sure? Any unsaved changes will be lost.")) {
@@ -2380,29 +2659,23 @@ const itemsForBackend = items
   const exportToCSVForSubmission = () => {
     let csv = '';
     
-    // Export all rows
     for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
       const row = excelGrid[rowIndex] || [];
       const rowData = [];
       
-      // Add all columns
       for (let colIndex = 0; colIndex < totalCols; colIndex++) {
         const cell = row[colIndex];
         let cellValue = '';
         
         if (cell) {
-          // For submission, use the computed value or actual value
           if (cell.computedValue !== '' && cell.computedValue !== undefined && cell.computedValue !== null) {
-            // Ensure it's a string
             cellValue = String(cell.computedValue);
           } else {
             cellValue = String(cell.value || '');
           }
         }
         
-        // Escape CSV special characters
         if (typeof cellValue === 'string') {
-          // If contains commas, quotes, or newlines, wrap in quotes
           if (cellValue.includes(',') || cellValue.includes('"') || cellValue.includes('\n') || cellValue.includes('\r')) {
             cellValue = '"' + cellValue.replace(/"/g, '""') + '"';
           }
@@ -2411,7 +2684,6 @@ const itemsForBackend = items
         rowData.push(cellValue);
       }
       
-      // Only add row if it has data
       if (rowData.some(cell => cell !== '' && cell !== '""')) {
         csv += rowData.join(',') + '\n';
       }
@@ -2420,7 +2692,6 @@ const itemsForBackend = items
     return csv.trim();
   };
 
-  // Remove toast
   const removeToast = (id: number) => {
     setToasts(prev => prev.filter(toast => toast.id !== id));
   };
@@ -2428,7 +2699,6 @@ const itemsForBackend = items
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Toast Container */}
         <div className="fixed top-4 right-4 z-50 space-y-2">
           {toasts.map((toast) => (
             <Toast
@@ -2441,37 +2711,37 @@ const itemsForBackend = items
         </div>
 
         {imagePreview && (
-  <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[100] p-4">
-    <div className="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Image Preview
-        </h3>
-        <button
-          type="button"
-          onClick={() => setImagePreview(null)}
-          className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
-        >
-          <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-      <div className="p-4 overflow-auto">
-        <div className="flex flex-col items-center">
-          <img
-            src={imagePreview.url}
-            alt={imagePreview.alt}
-            className="max-w-full max-h-[70vh] object-contain rounded-lg"
-          />
-          <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">
-            {imagePreview.alt}
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[100] p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+              <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Image Preview
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setImagePreview(null)}
+                  className="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+                >
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-4 overflow-auto">
+                <div className="flex flex-col items-center">
+                  <img
+                    src={imagePreview.url}
+                    alt={imagePreview.alt}
+                    className="max-w-full max-h-[70vh] object-contain rounded-lg"
+                  />
+                  <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+                    {imagePreview.alt}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showCopyModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -2561,7 +2831,6 @@ const itemsForBackend = items
           </div>
         )}
 
-        {/* Header */}
         <div className="mb-6 md:mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
@@ -2590,54 +2859,29 @@ const itemsForBackend = items
           </div>
         </div>
         
-        {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Main Form Sections */}
           <div className="grid gap-6 lg:grid-cols-2">
-            {/* Left Column */}
             <div className="space-y-6">
-              {/* Quotation Details */}
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                   Quotation Details
                 </h2>
                 <div className="grid gap-4 md:grid-cols-2">
-              <div>
-  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-    Quotation No *
-  </label>
-  <div className="flex items-center gap-2">
-    <input
-      type="text"
-      value={formData.quotation_code || "Loading..."}
-      readOnly
-      onChange={(e) => setFormData({ ...formData, quotation_code: e.target.value })}
-      className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
-      required 
-      disabled={!formData.quotation_code}
-    />
-    {/* <button
-      type="button"
-      onClick={async () => {
-        const nextNumber = await fetchNextQuotationNumber();
-        setFormData(prev => ({
-          ...prev,
-          quotation_code: nextNumber,
-          subject: `Quotation ${nextNumber}`
-        }));
-        showToast(`Refreshed: ${nextNumber}`, "info");
-      }}
-      className="rounded-lg border border-blue-600 px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
-    >
-      Refresh
-    </button> */}
-  </div>
-  {/* {!formData.quotation_code && (
-    <p className="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
-      Click "Refresh" to get next quotation number
-    </p>
-  )} */}
-</div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Quotation No *
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={formData.quotation_code || "Loading..."}
+                        readOnly
+                        className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                        required 
+                        disabled={!formData.quotation_code}
+                      />
+                    </div>
+                  </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -2652,87 +2896,82 @@ const itemsForBackend = items
                     />
                   </div>
 
-           <div>
-  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-    Quotation Type *
-  </label>
-  <Select
-    options={quotationTypeOptions}
-    value={quotationTypeOptions.find(opt => opt.value === formData.quotation_type)}
-    onChange={(option) => {
-      if (option) {
-        const newType = option.value as "item" | "project";
-        setFormData({ 
-          ...formData, 
-          quotation_type: newType,
-          quotation_search_type: newType 
-        });
-        
-        // Reset items based on type
-        if (newType === "project") {
-          // Initialize with one project item with all fields
-          setItems([{
-            product_id: "",
-         
-            hsn: "",
-            description: "",
-            quantity: 1,
-            unit: "project",
-            unit_price: 0,
-            discount_percent: 0,
-            gst_rate: 18,
-            isProject: true,
-            subItems: []
-          }]);
-        } else {
-          // Reset to regular item
-          setItems([
-            { 
-              product_id: "", 
-             
-              hsn: "", 
-              description: "", 
-              quantity: 1, 
-              unit: "unit", 
-              unit_price: 0, 
-              discount_percent: 0, 
-              gst_rate: 18 
-            }
-          ]);
-        }
-        
-        showToast(`Quotation type changed to: ${option.label}`, "info");
-      }
-    }}
-    placeholder="Search or select quotation type..."
-    className="react-select-container"
-    classNamePrefix="react-select"
-    isSearchable
-    isClearable={false}
-    formatOptionLabel={(option) => (
-      <div className="flex flex-col">
-        <div className="font-medium">{option.label}</div>
-       </div>
-    )}
-    noOptionsMessage={() => "No quotation types found"}
-    styles={{
-      control: (base) => ({
-        ...base,
-        borderColor: '#d1d5db',
-        '&:hover': {
-          borderColor: '#9ca3af',
-        },
-        minHeight: '42px',
-        borderRadius: '0.5rem',
-      }),
-      menu: (base) => ({
-        ...base,
-        zIndex: 9999,
-      })
-    }}
-  />
-  
-</div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Quotation Type *
+                    </label>
+                    <Select
+                      options={quotationTypeOptions}
+                      value={quotationTypeOptions.find(opt => opt.value === formData.quotation_type)}
+                      onChange={(option) => {
+                        if (option) {
+                          const newType = option.value as "item" | "project";
+                          setFormData({ 
+                            ...formData, 
+                            quotation_type: newType,
+                            quotation_search_type: newType 
+                          });
+                          
+                          if (newType === "project") {
+                            setItems([{
+                              product_id: "",
+                              hsn: "",
+                              description: "",
+                              quantity: 1,
+                              unit: "project",
+                              unit_price: 0,
+                              discount_percent: 0,
+                              gst_rate: 18,
+                              isProject: true,
+                              subItems: []
+                            }]);
+                          } else {
+                            setItems([
+                              { 
+                                product_id: "", 
+                                hsn: "", 
+                                description: "", 
+                                quantity: 1, 
+                                unit: "unit", 
+                                unit_price: 0, 
+                                discount_percent: 0, 
+                                gst_rate: 18 
+                              }
+                            ]);
+                          }
+                          
+                          showToast(`Quotation type changed to: ${option.label}`, "info");
+                        }
+                      }}
+                      placeholder="Search or select quotation type..."
+                      className="react-select-container"
+                      classNamePrefix="react-select"
+                      isSearchable
+                      isClearable={false}
+                      formatOptionLabel={(option) => (
+                        <div className="flex flex-col">
+                          <div className="font-medium">{option.label}</div>
+                        </div>
+                      )}
+                      noOptionsMessage={() => "No quotation types found"}
+                      styles={{
+                        control: (base) => ({
+                          ...base,
+                          borderColor: '#d1d5db',
+                          '&:hover': {
+                            borderColor: '#9ca3af',
+                          },
+                          minHeight: '42px',
+                          borderRadius: '0.5rem',
+                        }),
+                        menu: (base) => ({
+                          ...base,
+                          zIndex: 9999,
+                        })
+                      }}
+                    />
+                  </div>
+                  
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Validity Days
@@ -2763,36 +3002,33 @@ const itemsForBackend = items
                     </select>
                   </div>
 
-                  {/* Add this in the Quotation Details section after Status field */}
-<div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-  <label className="flex items-center gap-3 cursor-pointer">
-    <div className="relative">
-      <input
-        type="checkbox"
-        checked={formData.show_images}
-        onChange={(e) => setFormData(prev => ({ 
-          ...prev, 
-          show_images: e.target.checked 
-        }))}
-        className="sr-only peer"
-      />
-      <div className="w-10 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-    </div>
-    <div>
-      <span className="text-sm font-medium text-gray-900 dark:text-white">
-        Show Product Images
-      </span>
-      <p className="text-xs text-gray-500 dark:text-gray-400">
-        {formData.show_images ? "Images will be displayed in quotation" : "Images will be hidden"}
-      </p>
-    </div>
-  </label>
-</div>
-
+                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <div className="relative">
+                        <input
+                          type="checkbox"
+                          checked={formData.show_images}
+                          onChange={(e) => setFormData(prev => ({ 
+                            ...prev, 
+                            show_images: e.target.checked 
+                          }))}
+                          className="sr-only peer"
+                        />
+                        <div className="w-10 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">
+                          Show Product Images
+                        </span>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {formData.show_images ? "Images will be displayed in quotation" : "Images will be hidden"}
+                        </p>
+                      </div>
+                    </label>
+                  </div>
                 </div>
               </div>
 
-              {/* Customer Information */}
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -2859,37 +3095,38 @@ const itemsForBackend = items
                       Contact Person *
                     </label>
                     
-  <Select
-      options={contactPersonOptions}
-      value={contactPersonOptions.find(opt => opt.value === selectedContactPerson?.id)}
-      onChange={handleContactPersonChange}
-      placeholder={
-        selectedCustomer 
-          ? (contactPersonOptions.length > 0 
-              ? "Select Contact Person..." 
-              : "No contact persons found for this customer")
-          : "Please select a customer first"
-      }
-      className="react-select-container"
-      classNamePrefix="react-select"
-      isClearable
-      isSearchable
-      isDisabled={!selectedCustomer}
-      noOptionsMessage={() => 
-        selectedCustomer 
-          ? "No contact persons found for this customer" 
-          : "Please select a customer first"
-      }
-      formatOptionLabel={(option) => (
-        <div className="flex flex-col">
-          <div className="font-medium">{option.person?.name || "Unnamed Contact"}</div>
-          <div className="text-xs text-gray-500">
-            {option.person?.email ? `Email: ${option.person.email}` : ''}
-            {option.person?.phone ? `${option.person.email ? ' • ' : ''}Phone: ${option.person.phone}` : ''}
-          </div>
-        </div>
-      )}
-    />            {selectedCustomer && contactPersonOptions.length === 0 && (
+                    <Select
+                      options={contactPersonOptions}
+                      value={contactPersonOptions.find(opt => opt.value === selectedContactPerson?.id)}
+                      onChange={handleContactPersonChange}
+                      placeholder={
+                        selectedCustomer 
+                          ? (contactPersonOptions.length > 0 
+                              ? "Select Contact Person..." 
+                              : "No contact persons found for this customer")
+                          : "Please select a customer first"
+                      }
+                      className="react-select-container"
+                      classNamePrefix="react-select"
+                      isClearable
+                      isSearchable
+                      isDisabled={!selectedCustomer}
+                      noOptionsMessage={() => 
+                        selectedCustomer 
+                          ? "No contact persons found for this customer" 
+                          : "Please select a customer first"
+                      }
+                      formatOptionLabel={(option) => (
+                        <div className="flex flex-col">
+                          <div className="font-medium">{option.person?.name || "Unnamed Contact"}</div>
+                          <div className="text-xs text-gray-500">
+                            {option.person?.email ? `Email: ${option.person.email}` : ''}
+                            {option.person?.phone ? `${option.person.email ? ' • ' : ''}Phone: ${option.person.phone}` : ''}
+                          </div>
+                        </div>
+                      )}
+                    />
+                    {selectedCustomer && contactPersonOptions.length === 0 && (
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         No contact persons found for this customer. Please add contact persons in the customer management section.
                       </p>
@@ -2899,9 +3136,7 @@ const itemsForBackend = items
               </div>
             </div>
 
-            {/* Right Column */}
             <div className="space-y-6">
-              {/* Sales & Reference */}
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                   Sales & Reference
@@ -2911,23 +3146,23 @@ const itemsForBackend = items
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Sales Engineer *
                     </label>
-                     <Select
-        options={salesmanOptions}
-        value={salesmanOptions.find(opt => opt.value === formData.salesman_id)}
-        onChange={(option) => {
-          setFormData({ ...formData, salesman_id: option?.value || "" });
-          if (option?.salesman) {
-            console.log("Selected sales engineer:", option.salesman);
-          }
-        }}
-        placeholder={salesmen.length > 0 ? "Select Sales Engineer..." : "No sales engineers available"}
-        className="react-select-container"
-        classNamePrefix="react-select"
-        isLoading={loading && salesmen.length === 0}
-        isClearable
-        isSearchable
-        noOptionsMessage={() => salesmen.length === 0 ? "No sales engineers available" : "No options found"}
-      />
+                    <Select
+                      options={salesmanOptions}
+                      value={salesmanOptions.find(opt => opt.value === formData.salesman_id)}
+                      onChange={(option) => {
+                        setFormData({ ...formData, salesman_id: option?.value || "" });
+                        if (option?.salesman) {
+                          console.log("Selected sales engineer:", option.salesman);
+                        }
+                      }}
+                      placeholder={salesmen.length > 0 ? "Select Sales Engineer..." : "No sales engineers available"}
+                      className="react-select-container"
+                      classNamePrefix="react-select"
+                      isLoading={loading && salesmen.length === 0}
+                      isClearable
+                      isSearchable
+                      noOptionsMessage={() => salesmen.length === 0 ? "No sales engineers available" : "No options found"}
+                    />
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
@@ -2969,7 +3204,6 @@ const itemsForBackend = items
                 </div>
               </div>
 
-              {/* Terms & Conditions */}
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                   Terms & Conditions
@@ -3061,296 +3295,242 @@ const itemsForBackend = items
             {/* REGULAR ITEMS VIEW */}
             {formData.quotation_type === "item" ? (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1000px]">
-                  <thead>
-                    <tr className="border-b border-gray-200 dark:border-gray-700">
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                        Item
-                      </th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                <table className="w-full border-collapse min-w-[1580px]">
+                <thead>
+  <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-[450px] min-w-[450px]">
+      Item
+    </th>
+    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-[120px] min-w-[120px]">
       Item Code
     </th>
-                      
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                        HSN Code
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                        Description
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                        Qty *
-                      </th>
-                        {formData.show_images && (
-      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-[120px] min-w-[120px]">
+      HSN Code
+    </th>
+    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-[200px] min-w-[150px]">
+      Description
+    </th>
+    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-[80px] min-w-[80px]">
+      Qty
+    </th>
+    {formData.show_images && (
+      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-[80px] min-w-[80px]">
         Image
       </th>
     )}
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                        Unit Price *
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                        Discount %
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                        GST %
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                        Total
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
+    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-[120px] min-w-[120px]">
+      Unit Price
+    </th>
+    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-[100px] min-w-[100px]">
+      Discount %
+    </th>
+    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-[80px] min-w-[80px]">
+      GST %
+    </th>
+    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-[120px] min-w-[120px]">
+      Total
+    </th>
+    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-[60px] min-w-[60px]">
+      Action
+    </th>
+  </tr>
+</thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {items.map((item, index) => (
                       <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        {/* Item Selection */}
-                     {/* Item Selection */}
-<td className="px-4 py-3">
-  <div className="flex items-center gap-3">
-    {/* Product Image Thumbnail */}
-    {productOptions.find(opt => opt.value === item.product_id)?.image_url && (
-      <div className="relative flex-shrink-0">
-      
-      </div>
-    )}
-    <Select
-      options={productOptions}
-      value={productOptions.find(opt => opt.value === item.product_id)}
-      onChange={(option) => {
-        if (option) {
-          const selectedProduct = option.product || products.find(p => p.id === option.value);
-          if (selectedProduct) {
-            const updatedItem = {
-              product_id: selectedProduct.id,
-              hsn: selectedProduct.hsn || selectedProduct.hsn_code || "",
-              description: selectedProduct.description || selectedProduct.name || "Product",
-              unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
-              discount_percent: selectedProduct.discount || selectedProduct.discount_percent || 0,
-              gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
-              quantity: item.quantity,
-              unit: item.unit || "unit"
-            };
-            setItems(prev => prev.map((it, idx) => 
-              idx === index ? { ...it, ...updatedItem } : it
-            ));
-            
-            // Show image preview
-            if (option.image_url) {
-              showToast(`Selected: ${selectedProduct.name || selectedProduct.item_code}`, "info");
-            }
-          }
-        } else {
-          setItems(prev => prev.map((it, idx) => 
-            idx === index ? { 
-              ...it,
-              product_id: "",
-              hsn: "",
-              description: "",
-              unit_price: 0,
-              discount_percent: 0,
-              gst_rate: 18
-            } : it
-          ));
-        }
-      }}
-      placeholder="Search by item code or name..."
-      className="react-select-container flex-1"
-      classNamePrefix="react-select"
-      isClearable
-      isSearchable
-      formatOptionLabel={(option, { context }) => (
-        <div className="flex items-center gap-3">
-          {/* Image in dropdown option */}
-          {option.image_url && (
-            <div className="flex-shrink-0">
-              <img
-                src={option.image_url}
-                alt={option.label}
-                className="h-8 w-8 object-cover rounded border border-gray-200"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-            </div>
-          )}
-          <div className="flex-1">
-            <div className="font-medium">{option.label}</div>
-            {option.subLabel && (
-              <div className="text-xs text-gray-500 truncate">{option.subLabel}</div>
-            )}
-            <div className="flex gap-2 text-xs text-gray-600 mt-1">
-              <span>Price: ₹{option.unit_price?.toFixed(2) || '0.00'}</span>
-              <span>•</span>
-              <span>Stock: {option.stock_quantity || 0}</span>
-              <span>•</span>
-              <span>HSN: {option.hsn || 'N/A'}</span>
-            </div>
-          </div>
-        </div>
-      )}
-      noOptionsMessage={() => "No products found. Add products first."}
-    />
-  </div>
-</td>
-                        
-
-                         <td className="px-4 py-3">
-        <input
-          type="text"
-          value={item.item_code || ""}
-          onChange={(e) => {
-            const value = e.target.value;
-            // Update item code in state
-            const newItems = [...items];
-            newItems[index] = { ...newItems[index], item_code: value };
-            setItems(newItems);
-            
-            // Optional: Auto-search when typing item code
-            if (value.trim().length >= 2 && formData.quotation_search_type === "code") {
-              // You can add auto-search logic here
-              const matchingProduct = products.find(p => 
-                p.item_code && p.item_code.toLowerCase().includes(value.toLowerCase())
-              );
-              if (matchingProduct) {
-                showToast(`Found: ${matchingProduct.name}`, "info");
-              }
-            }
-          }}
-          className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-          placeholder="Enter item code"
-          title="Enter item code. You can type and it will search automatically."
-        />
-        {item.item_code && (
-          <button
-            type="button"
-            onClick={() => {
-              // Clear item code
-              const newItems = [...items];
-              newItems[index] = { ...newItems[index], item_code: "" };
-              setItems(newItems);
-            }}
-            className="mt-1 text-xs text-red-600 hover:text-red-800 dark:text-red-400"
-          >
-            Clear
-          </button>
-        )}
-      </td>
-
-                        {/* HSN Code */}
-                        <td className="px-4 py-3">
-                          <input
-                            type="text"
-                            value={item.hsn}
-                            onChange={(e) => updateItem(index, "hsn", e.target.value)}
-                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                            placeholder="HSN Code"
+                        <td className="px-3 py-3 w-[560px] min-w-[560px]">
+                          <Select
+                            options={productOptions}
+                            value={
+                              productOptions.find(opt => opt.value === item.product_id) ||
+                              (!item.product_id && item.description
+                                ? { value: `manual-${index}`, label: item.description }
+                                : null)
+                            }
+                            onChange={(option) => {
+                              if (option) {
+                                const selectedProduct = option.product || products.find(p => p.id === option.value);
+                                if (selectedProduct) {
+                                  const updatedItem = {
+                                    product_id: selectedProduct.id,
+                                    image_url:
+                                      selectedProduct.image_url ||
+                                      selectedProduct.main_image_url ||
+                                      selectedProduct.image ||
+                                      selectedProduct.main_image ||
+                                      "",
+                                    hsn: selectedProduct.hsn || selectedProduct.hsn_code || "",
+                                    description: selectedProduct.description || selectedProduct.name || "Product",
+                                    unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
+                                    discount_percent: Number(
+                                      selectedProduct.discount ?? selectedProduct.discount_percent ?? 0
+                                    ),
+                                    gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
+                                    quantity: item.quantity,
+                                    unit: item.unit || "unit"
+                                  };
+                                  setItems(prev => prev.map((it, idx) => 
+                                    idx === index ? { ...it, ...updatedItem } : it
+                                  ));
+                                  
+                                  if (option.image_url) {
+                                    showToast(`Selected: ${selectedProduct.name || selectedProduct.item_code}`, "info");
+                                  }
+                                }
+                              } else {
+                                setItems(prev => prev.map((it, idx) => 
+                                  idx === index ? { 
+                                    ...it,
+                                    product_id: "",
+                                    hsn: "",
+                                    description: "",
+                                    unit_price: 0,
+                                    discount_percent: 0,
+                                    gst_rate: 18
+                                  } : it
+                                ));
+                              }
+                            }}
+                            placeholder="Search item..."
+                            className="react-select-container"
+                            classNamePrefix="react-select"
+                            styles={{
+                              control: (base) => ({
+                                ...base,
+                                minHeight: '36px',
+                                height: '36px',
+                                borderRadius: '0.375rem',
+                                borderColor: '#d1d5db',
+                              }),
+                              valueContainer: (base) => ({
+                                ...base,
+                                height: '36px',
+                                padding: '0 8px',
+                              }),
+                              input: (base) => ({
+                                ...base,
+                                margin: '0px',
+                              }),
+                              indicatorsContainer: (base) => ({
+                                ...base,
+                                height: '36px',
+                              }),
+                              menuPortal: (base) => ({
+                                ...base,
+                                zIndex: 9999,
+                              }),
+                              menu: (base) => ({
+                                ...base,
+                                minWidth: '620px',
+                                zIndex: 9999,
+                              }),
+                            }}
+                            menuPortalTarget={typeof window !== "undefined" ? document.body : undefined}
+                            menuPosition="fixed"
+                            menuPlacement="auto"
+                            isClearable
+                            isSearchable
+                            formatOptionLabel={(option, { context }) => (
+                              <div className="flex items-center gap-2">
+                                {option.image_url && (
+                                  <img
+                                    src={option.image_url}
+                                    alt=""
+                                    className="h-6 w-6 object-cover rounded"
+                                  />
+                                )}
+                                <div className="whitespace-normal break-words">{option.label}</div>
+                              </div>
+                            )}
                           />
                         </td>
-                        
-                        {/* Description */}
-                        <td className="px-4 py-3">
-                          <textarea
+
+                        {/* Item Code */}
+<td className="px-3 py-3 w-[120px] min-w-[120px]">
+  <input
+    type="text"
+    value={item.item_code || ""}
+    onChange={(e) => {
+      const newItems = [...items];
+      newItems[index] = { ...newItems[index], item_code: e.target.value };
+      setItems(newItems);
+    }}
+    className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-sm"
+    placeholder="Code"
+  />
+</td>
+
+{/* HSN Code */}
+<td className="px-3 py-3 w-[120px] min-w-[120px]">
+  <input
+    type="text"
+    value={item.hsn}
+    onChange={(e) => updateItem(index, "hsn", e.target.value)}
+    className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-sm"
+    placeholder="HSN"
+  />
+</td>
+
+                        <td className="px-3 py-3 w-[170px] min-w-[170px]">
+                          <input
+                            type="text"
                             value={item.description}
                             onChange={(e) => updateItem(index, "description", e.target.value)}
-                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                            rows={1}
+                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-sm"
                             placeholder="Description"
                           />
                         </td>
-                        
-                        {/* Quantity */}
-                        <td className="px-4 py-3">
+
+                        <td className="px-3 py-3">
                           <input
                             type="number"
                             value={item.quantity}
                             onChange={(e) => updateItem(index, "quantity", parseFloat(e.target.value) || 0)}
                             min={0.01}
                             step={0.01}
-                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                            required
+                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-sm"
                           />
                         </td>
 
+                        {formData.show_images && (
+                          <td className="px-3 py-3">
+                            {getItemImageUrl(item) ? (
+                              <img
+                                src={getItemImageUrl(item) || ''}
+                                alt="Product"
+                                className="h-8 w-8 object-cover rounded border border-gray-300 dark:border-gray-600 cursor-pointer"
+                                onClick={() => {
+                                  const imgUrl = getItemImageUrl(item);
+                                  if (imgUrl) {
+                                    setImagePreview({
+                                      url: imgUrl,
+                                      alt: productOptions.find(opt => opt.value === item.product_id)?.label || 'Product Image'
+                                    });
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <div className="h-8 w-8 flex items-center justify-center border border-dashed border-gray-300 dark:border-gray-600 rounded">
+                                <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              </div>
+                            )}
+                          </td>
+                        )}
 
-
-<td className="px-4 py-3 w-16">
-  {formData.show_images ? (
-    <>
-      {item.product_id && productOptions.find(opt => opt.value === item.product_id)?.image_url ? (
-        <div className="relative group">
-          <img
-            src={productOptions.find(opt => opt.value === item.product_id)?.image_url || ''}
-            alt="Product"
-            className="h-12 w-12 object-cover rounded-lg border border-gray-300 dark:border-gray-600 cursor-pointer"
-            onClick={() => {
-              const imgUrl = productOptions.find(opt => opt.value === item.product_id)?.image_url;
-              if (imgUrl) {
-                setImagePreview({
-                  url: imgUrl,
-                  alt: productOptions.find(opt => opt.value === item.product_id)?.label || 'Product Image'
-                });
-              }
-            }}
-            onError={(e) => {
-              console.error(`Failed to load image for product ${item.product_id}:`, e);
-              const target = e.target as HTMLImageElement;
-              target.style.display = 'none';
-              
-              // Show placeholder icon
-              const parent = target.parentElement;
-              if (parent) {
-                const placeholder = document.createElement('div');
-                placeholder.className = 'h-12 w-12 flex items-center justify-center border border-dashed border-gray-300 dark:border-gray-600 rounded-lg';
-                placeholder.innerHTML = `
-                  <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                `;
-                parent.appendChild(placeholder);
-              }
-            }}
-            onLoad={() => {
-              console.log(`Successfully loaded image for product ${item.product_id}`);
-            }}
-          />
-          {/* Tooltip on hover */}
-          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
-            Click to view larger
-          </div>
-        </div>
-      ) : (
-        <div className="h-12 w-12 flex items-center justify-center border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-          <svg className="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-        </div>
-      )}
-    </>
-  ) : (
-    <div className="h-12 w-12 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800">
-      <span className="text-xs text-gray-500 dark:text-gray-400">OFF</span>
-    </div>
-  )}
-</td>                        
-
-
-
-                        {/* Unit Price */}
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           <input
                             type="number"
                             value={item.unit_price}
                             onChange={(e) => updateItem(index, "unit_price", parseFloat(e.target.value) || 0)}
                             min={0}
                             step={0.01}
-                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                            required
+                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-sm"
                           />
                         </td>
-                        {/* Discount */}
-                        <td className="px-4 py-3">
+
+                        <td className="px-3 py-3">
                           <input
                             type="number"
                             value={item.discount_percent}
@@ -3358,16 +3538,15 @@ const itemsForBackend = items
                             min={0}
                             max={100}
                             step={0.01}
-                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-sm"
                           />
                         </td>
-                        
-                        {/* GST Rate */}
-                        <td className="px-4 py-3">
+
+                        <td className="px-3 py-3">
                           <select
                             value={item.gst_rate}
                             onChange={(e) => updateItem(index, "gst_rate", Number(e.target.value) || 18)}
-                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-sm"
                           >
                             <option value={0}>0%</option>
                             <option value={5}>5%</option>
@@ -3376,26 +3555,24 @@ const itemsForBackend = items
                             <option value={28}>28%</option>
                           </select>
                         </td>
-                        
-                        {/* Total */}
-                        <td className="px-4 py-3">
+
+                        <td className="px-3 py-3">
                           <input
                             type="text"
                             value={formatCurrency(calculateItemTotal(item).total)}
                             readOnly
-                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-1.5 text-sm font-medium"
+                            className="w-full rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-2 py-1.5 text-sm font-medium"
                           />
                         </td>
-                        
-                        {/* Action */}
-                        <td className="px-4 py-3">
+
+                        <td className="px-3 py-3">
                           <button
                             type="button"
                             onClick={() => removeItem(index)}
-                            className="rounded-lg p-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                            className="rounded p-1 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                             disabled={items.length <= 1}
                           >
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                           </button>
@@ -3406,372 +3583,282 @@ const itemsForBackend = items
                 </table>
               </div>
             ) : (
-              /* PROJECT ITEMS VIEW WITH EXACT SAME LAYOUT AS REGULAR ITEMS */
+              /* PROJECT ITEMS VIEW */
               <div className="space-y-8">
                 {items.map((item, itemIndex) => (
-                  <div key={itemIndex} className="border border-gray-200 dark:border-gray-700 rounded-lg p-6">
-                    {/* Project Item Header */}
-                    <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                          Project Item #{itemIndex + 1}
-                        </h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                          Main project item with detailed components
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => removeItem(itemIndex)}
-                          className="rounded-lg p-2 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                          disabled={items.length <= 1}
-                        >
-                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
+                  <div key={itemIndex} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                    <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-200 dark:border-gray-700">
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                        Project Item #{itemIndex + 1}
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(itemIndex)}
+                        className="rounded p-1 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                        disabled={items.length <= 1}
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                     </div>
 
-                    {/* Main Project Item Details - EXACT SAME LAYOUT AS REGULAR ITEMS */}
-                    <div className="mb-8">
-                      <div className="overflow-x-auto">
-                        <table className="w-full min-w-[1000px]">
-                          <thead>
-                            <tr className="border-b border-gray-200 dark:border-gray-700">
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                                Item
+                    <div className="overflow-x-auto mb-6">
+                      <table className="w-full border-collapse min-w-[1500px]">
+                        <thead>
+                          <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-900 dark:text-white w-[560px] min-w-[560px]">
+                              Item
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-900 dark:text-white w-[90px] min-w-[90px]">
+                              Item Code
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-900 dark:text-white w-[90px] min-w-[90px]">
+                              HSN Code
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-900 dark:text-white w-[170px] min-w-[170px]">
+                              Description
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-900 dark:text-white w-[70px] min-w-[70px]">
+                              Qty
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-900 dark:text-white w-[100px] min-w-[100px]">
+                              Unit Price
+                            </th>
+                            {formData.show_images && (
+                              <th className="px-3 py-2 text-left text-xs font-semibold text-gray-900 dark:text-white w-[70px] min-w-[70px]">
+                                Image
                               </th>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-      Item Code
-    </th>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                                HSN Code
-                              </th>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                                Description
-                              </th>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                                Qty *
-                              </th>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                                Unit Price *
-                              </th>
-                             {formData.show_images && (
-      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-32">
-        Image
-      </th>
-    )}
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                                Discount %
-                              </th>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                                GST %
-                              </th>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-                                Total
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                              {/* Item Selection */}
-   {/* Find the Image cell in project items table and replace with this: */}
+                            )}
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-900 dark:text-white w-[80px] min-w-[80px]">
+                              Discount %
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-900 dark:text-white w-[70px] min-w-[70px]">
+                              GST %
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-900 dark:text-white w-[110px] min-w-[110px]">
+                              Total
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <td className="px-3 py-2 w-[560px] min-w-[560px]">
+                              <Select
+                                options={productOptions}
+                                value={
+                                  productOptions.find(opt => opt.value === item.product_id) ||
+                                  (!item.product_id && item.description
+                                    ? { value: `manual-${itemIndex}`, label: item.description }
+                                    : null)
+                                }
+                                onChange={(option) => {
+                                  if (option) {
+                                    const selectedProduct = option.product || products.find(p => p.id === option.value);
+                                    if (selectedProduct) {
+                                      const updatedItem = {
+                                        product_id: selectedProduct.id,
+                                        image_url:
+                                          selectedProduct.image_url ||
+                                          selectedProduct.main_image_url ||
+                                          selectedProduct.image ||
+                                          selectedProduct.main_image ||
+                                          "",
+                                        hsn: selectedProduct.hsn || selectedProduct.hsn_code || "",
+                                        description: selectedProduct.description || selectedProduct.name || "Product",
+                                        unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
+                                        discount_percent: Number(
+                                          selectedProduct.discount ?? selectedProduct.discount_percent ?? 0
+                                        ),
+                                        gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
+                                        quantity: item.quantity,
+                                        unit: item.unit || "unit"
+                                      };
+                                      setItems(prev => prev.map((it, idx) => 
+                                        idx === itemIndex ? { ...it, ...updatedItem } : it
+                                      ));
+                                    }
+                                  } else {
+                                    setItems(prev => prev.map((it, idx) => 
+                                      idx === itemIndex ? { 
+                                        ...it,
+                                        product_id: "",
+                                        hsn: "",
+                                        description: "",
+                                        unit_price: 0,
+                                        discount_percent: 0,
+                                        gst_rate: 18
+                                      } : it
+                                    ));
+                                  }
+                                }}
+                                placeholder="Search..."
+                                className="react-select-container"
+                                classNamePrefix="react-select"
+                                styles={{
+                                  control: (base) => ({
+                                    ...base,
+                                    minHeight: '34px',
+                                    height: '34px',
+                                  }),
+                                  valueContainer: (base) => ({
+                                    ...base,
+                                    height: '34px',
+                                    padding: '0 6px',
+                                  }),
+                                  indicatorsContainer: (base) => ({
+                                    ...base,
+                                    height: '34px',
+                                  }),
+                                  menuPortal: (base) => ({
+                                    ...base,
+                                    zIndex: 9999,
+                                  }),
+                                  menu: (base) => ({
+                                    ...base,
+                                    minWidth: '620px',
+                                    zIndex: 9999,
+                                  }),
+                                }}
+                                menuPortalTarget={typeof window !== "undefined" ? document.body : undefined}
+                                menuPosition="fixed"
+                                menuPlacement="auto"
+                                isClearable
+                                isSearchable
+                                formatOptionLabel={(option) => (
+                                  <div className="flex items-center gap-2">
+                                    {option.image_url && (
+                                      <img
+                                        src={option.image_url}
+                                        alt=""
+                                        className="h-6 w-6 object-cover rounded"
+                                      />
+                                    )}
+                                    <div className="whitespace-normal break-words">{option.label}</div>
+                                  </div>
+                                )}
+                              />
+                            </td>
 
-                        {/* Item Selection */}
-{/* In project items table, fix the item selection cell */}
-<td className="px-4 py-3">
-  <div className="flex items-center gap-3">
-    {/* Product Image Thumbnail in selection */}
-    {item.product_id && productOptions.find(opt => opt.value === item.product_id)?.image_url && (
-      <div className="relative flex-shrink-0">
-        <img
-          src={productOptions.find(opt => opt.value === item.product_id)?.image_url || ''}
-          alt="Product"
-          className="h-10 w-10 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = 'none';
-          }}
-        />
-      </div>
-    )}
-    <Select
-      options={productOptions}
-      value={productOptions.find(opt => opt.value === item.product_id)}
-      onChange={(option) => {
-        if (option) {
-          const selectedProduct = option.product || products.find(p => p.id === option.value);
-          if (selectedProduct) {
-            const updatedItem = {
-              product_id: selectedProduct.id,
-              hsn: selectedProduct.hsn || selectedProduct.hsn_code || "",
-              description: selectedProduct.description || selectedProduct.name || "Product",
-              unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
-              discount_percent: selectedProduct.discount || selectedProduct.discount_percent || 0,
-              gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
-              quantity: item.quantity,
-              unit: item.unit || "unit"
-            };
-            setItems(prev => prev.map((it, idx) => 
-              idx === itemIndex ? { ...it, ...updatedItem } : it
-            ));
-            
-            // Show image preview
-            if (option.image_url) {
-              showToast(`Selected: ${selectedProduct.name || selectedProduct.item_code}`, "info");
-            }
-          }
-        } else {
-          setItems(prev => prev.map((it, idx) => 
-            idx === itemIndex ? { 
-              ...it,
-              product_id: "",
-              hsn: "",
-              description: "",
-              unit_price: 0,
-              discount_percent: 0,
-              gst_rate: 18
-            } : it
-          ));
-        }
-      }}
-      placeholder="Search by item code or name..."
-      className="react-select-container flex-1"
-      classNamePrefix="react-select"
-      isClearable
-      isSearchable
-      formatOptionLabel={(option, { context }) => (
-        <div className="flex items-center gap-3">
-          {/* Image in dropdown option */}
-          {option.image_url && (
-            <div className="flex-shrink-0">
-              <img
-                src={option.image_url}
-                alt={option.label}
-                className="h-8 w-8 object-cover rounded border border-gray-200"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-            </div>
-          )}
-          <div className="flex-1">
-            <div className="font-medium">{option.label}</div>
-            {option.subLabel && (
-              <div className="text-xs text-gray-500 truncate">{option.subLabel}</div>
-            )}
-            <div className="flex gap-2 text-xs text-gray-600 mt-1">
-              <span>Price: ₹{option.unit_price?.toFixed(2) || '0.00'}</span>
-              <span>•</span>
-              <span>Stock: {option.stock_quantity || 0}</span>
-              <span>•</span>
-              <span>HSN: {option.hsn || 'N/A'}</span>
-            </div>
-          </div>
-        </div>
-      )}
-      noOptionsMessage={() => "No products found. Add products first."}
-    />
-  </div>
-</td>
-                               <td className="px-4 py-3">
-  <input
-    type="text"
-    value={item.item_code || ""}
-    onChange={(e) => {
-      const value = e.target.value;
-      // Update item code in state
-      const newItems = [...items];
-      newItems[itemIndex] = { ...newItems[itemIndex], item_code: value };
-      setItems(newItems);
-      
-      // Optional: Auto-search when typing item code
-      if (value.trim().length >= 2 && formData.quotation_search_type === "code") {
-        // You can add auto-search logic here
-        const matchingProduct = products.find(p => 
-          p.item_code && p.item_code.toLowerCase().includes(value.toLowerCase())
-        );
-        if (matchingProduct) {
-          showToast(`Found: ${matchingProduct.name}`, "info");
-        }
-      }
-    }}
-    className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-    placeholder="Enter item code"
-    title="Enter item code. You can type and it will search automatically."
-  />
-  {item.item_code && (
-    <button
-      type="button"
-      onClick={() => {
-        // Clear item code
-        const newItems = [...items];
-        newItems[itemIndex] = { ...newItems[itemIndex], item_code: "" };
-        setItems(newItems);
-      }}
-      className="mt-1 text-xs text-red-600 hover:text-red-800 dark:text-red-400"
-    >
-      Clear
-    </button>
-  )}
-</td>
-                              
-                              {/* HSN Code */}
-                              <td className="px-4 py-3">
-                                <input
-                                  type="text"
-                                  value={item.hsn}
-                                  onChange={(e) => updateItem(itemIndex, "hsn", e.target.value)}
-                                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                                  placeholder="HSN Code"
-                                />
-                              </td>
-                              
-                              {/* Description */}
-                              <td className="px-4 py-3">
-                                <textarea
-                                  value={item.description}
-                                  onChange={(e) => updateItem(itemIndex, "description", e.target.value)}
-                                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                                  rows={1}
-                                  placeholder="Project description"
-                                />
-                              </td>
-                              
-                              {/* Quantity */}
-                              <td className="px-4 py-3">
-                                <input
-                                  type="number"
-                                  value={item.quantity}
-                                  onChange={(e) => updateItem(itemIndex, "quantity", parseFloat(e.target.value) || 1)}
-                                  min={0.01}
-                                  step={0.01}
-                                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                                  required
-                                />
-                              </td>
-                              
-                              {/* Unit Price */}
-                              <td className="px-4 py-3">
-                                <input
-                                  type="number"
-                                  value={item.unit_price}
-                                  onChange={(e) => updateItem(itemIndex, "unit_price", parseFloat(e.target.value) || 0)}
-                                  min={0}
-                                  step={0.01}
-                                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                                  required
-                                />
-                              </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={item.item_code || ""}
+                                onChange={(e) => {
+                                  const newItems = [...items];
+                                  newItems[itemIndex] = { ...newItems[itemIndex], item_code: e.target.value };
+                                  setItems(newItems);
+                                }}
+                                className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm"
+                              />
+                            </td>
 
-                              
-{/* Replace the Image column cell in project items table */}
-<td className="px-4 py-3 w-16">
-  {formData.show_images ? (
-    <>
-      {item.product_id && productOptions.find(opt => opt.value === item.product_id)?.image_url ? (
-        <div className="relative group">
-          <img
-            src={productOptions.find(opt => opt.value === item.product_id)?.image_url || ''}
-            alt="Product"
-            className="h-12 w-12 object-cover rounded-lg border border-gray-300 dark:border-gray-600 cursor-pointer"
-            onClick={() => {
-              const imgUrl = productOptions.find(opt => opt.value === item.product_id)?.image_url;
-              if (imgUrl) {
-                setImagePreview({
-                  url: imgUrl,
-                  alt: productOptions.find(opt => opt.value === item.product_id)?.label || 'Product Image'
-                });
-              }
-            }}
-            onError={(e) => {
-              console.error(`Failed to load image for product ${item.product_id}:`, e);
-              const target = e.target as HTMLImageElement;
-              target.style.display = 'none';
-              
-              // Show placeholder icon
-              const parent = target.parentElement;
-              if (parent) {
-                const placeholder = document.createElement('div');
-                placeholder.className = 'h-12 w-12 flex items-center justify-center border border-dashed border-gray-300 dark:border-gray-600 rounded-lg';
-                placeholder.innerHTML = `
-                  <svg class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                `;
-                parent.appendChild(placeholder);
-              }
-            }}
-            onLoad={() => {
-              console.log(`Successfully loaded image for product ${item.product_id}`);
-            }}
-          />
-          {/* Tooltip on hover */}
-          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
-            Click to view larger
-          </div>
-        </div>
-      ) : (
-        <div className="h-12 w-12 flex items-center justify-center border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-          <svg className="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-        </div>
-      )}
-    </>
-  ) : (
-    <div className="h-12 w-12 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800">
-      <span className="text-xs text-gray-500 dark:text-gray-400">OFF</span>
-    </div>
-  )}
-</td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={item.hsn}
+                                onChange={(e) => updateItem(itemIndex, "hsn", e.target.value)}
+                                className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm"
+                              />
+                            </td>
 
-                              
-                              {/* Discount */}
-                              <td className="px-4 py-3">
-                                <input
-                                  type="number"
-                                  value={item.discount_percent}
-                                  onChange={(e) => updateItem(itemIndex, "discount_percent", parseFloat(e.target.value) || 0)}
-                                  min={0}
-                                  max={100}
-                                  step={0.01}
-                                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                                />
+                            <td className="px-3 py-2 w-[170px] min-w-[170px]">
+                              <input
+                                type="text"
+                                value={item.description}
+                                onChange={(e) => updateItem(itemIndex, "description", e.target.value)}
+                                className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm"
+                              />
+                            </td>
+
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                value={item.quantity}
+                                onChange={(e) => updateItem(itemIndex, "quantity", parseFloat(e.target.value) || 1)}
+                                min={0.01}
+                                step={0.01}
+                                className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm"
+                              />
+                            </td>
+
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                value={item.unit_price}
+                                onChange={(e) => updateItem(itemIndex, "unit_price", parseFloat(e.target.value) || 0)}
+                                min={0}
+                                step={0.01}
+                                className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm"
+                              />
+                            </td>
+
+                            {formData.show_images && (
+                              <td className="px-3 py-2">
+                                {getItemImageUrl(item) ? (
+                                  <img
+                                    src={getItemImageUrl(item) || ''}
+                                    alt="Product"
+                                    className="h-7 w-7 object-cover rounded border border-gray-300 dark:border-gray-600 cursor-pointer"
+                                    onClick={() => {
+                                      const imgUrl = getItemImageUrl(item);
+                                      if (imgUrl) {
+                                        setImagePreview({
+                                          url: imgUrl,
+                                          alt: productOptions.find(opt => opt.value === item.product_id)?.label || 'Product Image'
+                                        });
+                                      }
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="h-7 w-7 flex items-center justify-center border border-dashed border-gray-300 dark:border-gray-600 rounded">
+                                    <svg className="h-3 w-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                  </div>
+                                )}
                               </td>
-                              
-                              {/* GST Rate */}
-                              <td className="px-4 py-3">
-                                <select
-                                  value={item.gst_rate}
-                                  onChange={(e) => updateItem(itemIndex, "gst_rate", Number(e.target.value) || 18)}
-                                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                                >
-                                  <option value={0}>0%</option>
-                                  <option value={5}>5%</option>
-                                  <option value={12}>12%</option>
-                                  <option value={18}>18%</option>
-                                  <option value={28}>28%</option>
-                                </select>
-                              </td>
-                              
-                              {/* Total */}
-                              <td className="px-4 py-3">
-                                <input
-                                  type="text"
-                                  value={formatCurrency(calculateItemTotal(item).total)}
-                                  readOnly
-                                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-3 py-1.5 text-sm font-medium"
-                                />
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
+                            )}
+
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                value={item.discount_percent}
+                                onChange={(e) => updateItem(itemIndex, "discount_percent", parseFloat(e.target.value) || 0)}
+                                min={0}
+                                max={100}
+                                step={0.01}
+                                className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm"
+                              />
+                            </td>
+
+                            <td className="px-3 py-2">
+                              <select
+                                value={item.gst_rate}
+                                onChange={(e) => updateItem(itemIndex, "gst_rate", Number(e.target.value) || 18)}
+                                className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm"
+                              >
+                                <option value={0}>0%</option>
+                                <option value={5}>5%</option>
+                                <option value={12}>12%</option>
+                                <option value={18}>18%</option>
+                                <option value={28}>28%</option>
+                              </select>
+                            </td>
+
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={formatCurrency(calculateItemTotal(item).total)}
+                                readOnly
+                                className="w-full rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-2 py-1 text-sm font-medium"
+                              />
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
 
-                    {/* Project Components / Sub-items Section */}
                     <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
                         <div>
@@ -3794,164 +3881,158 @@ const itemsForBackend = items
                         </button>
                       </div>
 
-             {item.subItems && item.subItems.length > 0 ? (
-  <div className="overflow-x-auto">
-    <div className="inline-block min-w-full align-middle">
-      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-        <thead>
-          <tr className="border-b border-gray-200 dark:border-gray-700">
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-12">
-              #
-            </th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider min-w-[200px] max-w-[300px]">
-              Description *
-            </th>
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-24">
-              Qty *
-            </th>
-           {formData.show_images && (
-      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
-        Image
-      </th>
-    )}
-            <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-20">
-              Action
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-        {item.subItems.map((subItem, idx) => (
-            <tr key={subItem.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-              {/* Serial Number */}
-              <td className="px-3 py-3 whitespace-nowrap w-12">
-                <span className="text-sm font-medium text-gray-900 dark:text-white">
-                  {idx + 1}
-                </span>
-              </td>
-              
-              {/* Description - Responsive */}
-              <td className="px-3 py-3 min-w-[200px] max-w-[300px]">
-                <textarea
-                  value={subItem.description}
-                  onChange={(e) => updateSubItem(itemIndex, subItem.id, "description", e.target.value)}
-                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm resize-y"
-                  rows={1}
-                  placeholder="Component description..."
-                  required
-                  style={{ minHeight: '2.5rem', maxHeight: '6rem' }}
-                />
-              </td>
-              
-              {/* Quantity */}
-              <td className="px-3 py-3 whitespace-nowrap w-24">
-                <input
-                  type="number"
-                  value={subItem.quantity}
-                  onChange={(e) => updateSubItem(itemIndex, subItem.id, "quantity", parseFloat(e.target.value) || 1)}
-                  min={1}
-                  step={1}
-                  className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
-                  required
-                />
-              </td>
-              
-              {/* Image */}
-              <td className="px-3 py-3 whitespace-nowrap w-32">
-                <div className="flex items-center gap-2">
-                  {subItem.imageUrl ? (
-                    <div className="relative flex-shrink-0">
-                      <img
-                        src={subItem.imageUrl}
-                        alt="Component preview"
-                        className="h-10 w-10 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          updateSubItem(itemIndex, subItem.id, "image", null);
-                          updateSubItem(itemIndex, subItem.id, "imageUrl", "");
-                        }}
-                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600"
-                      >
-                        <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="h-10 w-10 flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex-shrink-0">
-                      <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                    </div>
-                  )}
-                  <label className="cursor-pointer flex-shrink-0">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          updateSubItem(itemIndex, subItem.id, "image", file);
-                        }
-                      }}
-                      className="hidden"
-                    />
-                    <span className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-500 whitespace-nowrap">
-                      {subItem.imageUrl ? 'Change' : 'Upload'}
-                    </span>
-                  </label>
-                </div>
-              </td>
-              
-              {/* Action */}
-              <td className="px-3 py-3 whitespace-nowrap w-20">
-                <button
-                  type="button"
-                  onClick={() => removeSubItem(itemIndex, subItem.id)}
-                  className="rounded-lg p-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-    
-    {/* Components Summary */}
-    <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <h5 className="font-medium text-gray-900 dark:text-white mb-4 sm:mb-0">
-          Components Summary
-        </h5>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div className="text-center">
-            <div className="text-sm text-gray-600 dark:text-gray-400">Total Components</div>
-            <div className="text-lg font-semibold text-gray-900 dark:text-white">
-              {item.subItems.length}
-            </div>
-          </div>
-          <div className="text-center">
-            <div className="text-sm text-gray-600 dark:text-gray-400">Total Qty</div>
-            <div className="text-lg font-semibold text-gray-900 dark:text-white">
-              {item.subItems.reduce((sum, sub) => sum + sub.quantity, 0)}
-            </div>
-          </div>
-          <div className="text-center">
-            <div className="text-sm text-gray-600 dark:text-gray-400">Project Total</div>
-            <div className="text-lg font-bold text-blue-600 dark:text-blue-500">
-              {formatCurrency(calculateItemTotal(item).total)}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-) : (
+                      {item.subItems && item.subItems.length > 0 ? (
+                        <div className="overflow-x-auto">
+                          <div className="inline-block min-w-full align-middle">
+                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                              <thead>
+                                <tr className="border-b border-gray-200 dark:border-gray-700">
+                                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-12">
+                                    #
+                                  </th>
+                                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider min-w-[200px] max-w-[300px]">
+                                    Description *
+                                  </th>
+                                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-24">
+                                    Qty *
+                                  </th>
+                                  {formData.show_images && (
+                                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">
+                                      Image
+                                    </th>
+                                  )}
+                                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider w-20">
+                                    Action
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                {item.subItems.map((subItem, idx) => (
+                                  <tr key={subItem.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                    <td className="px-3 py-3 whitespace-nowrap w-12">
+                                      <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                        {idx + 1}
+                                      </span>
+                                    </td>
+                                    
+                                    <td className="px-3 py-3 min-w-[200px] max-w-[300px]">
+                                      <textarea
+                                        value={subItem.description}
+                                        onChange={(e) => updateSubItem(itemIndex, subItem.id, "description", e.target.value)}
+                                        className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm resize-y"
+                                        rows={1}
+                                        placeholder="Component description..."
+                                        required
+                                        style={{ minHeight: '2.5rem', maxHeight: '6rem' }}
+                                      />
+                                    </td>
+                                    
+                                    <td className="px-3 py-3 whitespace-nowrap w-24">
+                                      <input
+                                        type="number"
+                                        value={subItem.quantity}
+                                        onChange={(e) => updateSubItem(itemIndex, subItem.id, "quantity", parseFloat(e.target.value) || 1)}
+                                        min={1}
+                                        step={1}
+                                        className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm"
+                                        required
+                                      />
+                                    </td>
+                                    
+                                    <td className="px-3 py-3 whitespace-nowrap w-32">
+                                      <div className="flex items-center gap-2">
+                                        {subItem.imageUrl ? (
+                                          <div className="relative flex-shrink-0">
+                                            <img
+                                              src={subItem.imageUrl}
+                                              alt="Component preview"
+                                              className="h-10 w-10 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                updateSubItem(itemIndex, subItem.id, "image", null);
+                                                updateSubItem(itemIndex, subItem.id, "imageUrl", "");
+                                              }}
+                                              className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600"
+                                            >
+                                              <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                              </svg>
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <div className="h-10 w-10 flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex-shrink-0">
+                                            <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                            </svg>
+                                          </div>
+                                        )}
+                                        <label className="cursor-pointer flex-shrink-0">
+                                          <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(e) => {
+                                              const file = e.target.files?.[0];
+                                              if (file) {
+                                                updateSubItem(itemIndex, subItem.id, "image", file);
+                                              }
+                                            }}
+                                            className="hidden"
+                                          />
+                                          <span className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-500 whitespace-nowrap">
+                                            {subItem.imageUrl ? 'Change' : 'Upload'}
+                                          </span>
+                                        </label>
+                                      </div>
+                                    </td>
+                                    
+                                    <td className="px-3 py-3 whitespace-nowrap w-20">
+                                      <button
+                                        type="button"
+                                        onClick={() => removeSubItem(itemIndex, subItem.id)}
+                                        className="rounded-lg p-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                                      >
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          
+                          <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                              <h5 className="font-medium text-gray-900 dark:text-white mb-4 sm:mb-0">
+                                Components Summary
+                              </h5>
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                <div className="text-center">
+                                  <div className="text-sm text-gray-600 dark:text-gray-400">Total Components</div>
+                                  <div className="text-lg font-semibold text-gray-900 dark:text-white">
+                                    {item.subItems.length}
+                                  </div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="text-sm text-gray-600 dark:text-gray-400">Total Qty</div>
+                                  <div className="text-lg font-semibold text-gray-900 dark:text-white">
+                                    {item.subItems.reduce((sum, sub) => sum + sub.quantity, 0)}
+                                  </div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="text-sm text-gray-600 dark:text-gray-400">Project Total</div>
+                                  <div className="text-lg font-bold text-blue-600 dark:text-blue-500">
+                                    {formatCurrency(calculateItemTotal(item).total)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
                         <div className="text-center py-12 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
                           <svg className="mx-auto h-16 w-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
@@ -3981,9 +4062,7 @@ const itemsForBackend = items
             )}
           </div>
 
-          {/* Summary and Terms Section */}
           <div className="grid gap-6 md:grid-cols-2">
-            {/* Excel Grid Section */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white whitespace-nowrap">
@@ -4050,7 +4129,6 @@ const itemsForBackend = items
 
               <div className="overflow-x-auto max-h-[500px] border border-gray-300 dark:border-gray-600 rounded-lg">
                 <div className="inline-block min-w-full">
-                  {/* Header Row */}
                   <div className="flex sticky top-0 z-10 bg-gray-100 dark:bg-gray-700 border-b border-gray-300 dark:border-gray-600">
                     <div className="w-16 flex-shrink-0 flex items-center justify-center border-r border-gray-300 dark:border-gray-600 p-2">
                       <span className="text-xs font-medium text-gray-500 dark:text-gray-400">#</span>
@@ -4064,20 +4142,17 @@ const itemsForBackend = items
                     ))}
                   </div>
 
-                  {/* Data Rows */}
                   <div className="overflow-y-auto max-h-[600px]">
                     {Array.from({ length: gridRows }).map((_, rowIndex) => {
                       const row = excelGrid[rowIndex] || [];
                       return (
                         <div key={`row-${rowIndex}`} className="flex border-b border-gray-300 dark:border-gray-600 last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                          {/* Row Number - Sticky */}
                           <div className="w-16 flex-shrink-0 flex items-center justify-center border-r border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 p-2 sticky left-0">
                             <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
                               {rowIndex + 1}
                             </span>
                           </div>
 
-                          {/* Cells */}
                           {Array.from({ length: gridCols }).map((_, colIndex) => {
                             const cell = row[colIndex] || {
                               id: `${rowIndex}_${colIndex}`,
@@ -4122,7 +4197,6 @@ const itemsForBackend = items
                 </div>
               </div>
 
-              {/* Grid Statistics */}
               <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="text-xs text-gray-500 dark:text-gray-400">
                   <p>• Active Cell: {activeCell ? `${getColumnLetter(activeCell.col)}${activeCell.row + 1}` : 'None'}</p>
@@ -4132,7 +4206,6 @@ const itemsForBackend = items
               </div>
             </div>
 
-            {/* Summary Section */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 whitespace-nowrap">
                 Summary
@@ -4151,7 +4224,6 @@ const itemsForBackend = items
                   <span className="text-sm font-medium text-gray-900 dark:text-white">{formatCurrency(totals.subtotal)}</span>
                 </div>
 
-                {/* Global Discount */}
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600 dark:text-gray-400">All Items Discount</span>
                   <div className="text-right">
@@ -4187,8 +4259,8 @@ const itemsForBackend = items
                   <span className="text-sm text-gray-600 dark:text-gray-400">Taxable Amount</span>
                   <span className="text-sm font-medium text-gray-900 dark:text-white">{formatCurrency(totals.totalTaxable)}</span>
                 </div>
+             
 
-                {/* Other Charges */}
                 <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="text-sm font-medium text-gray-900 dark:text-white">Other Charges</h3>
@@ -4253,6 +4325,10 @@ const itemsForBackend = items
                     ))}
                   </div>
                 </div>
+                   <div className="flex justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Other Charges Applied Amount</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">{formatCurrency(totals.otherChargesTotal)}</span>
+                </div>
 
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600 dark:text-gray-400">CGST</span>
@@ -4284,7 +4360,6 @@ const itemsForBackend = items
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row justify-center gap-4 pt-6">
             <button
               type="button"
@@ -4319,7 +4394,6 @@ const itemsForBackend = items
         </form>
       </div>
 
-      {/* Custom styles for react-select */}
       <style jsx global>{`
         .react-select-container {
           width: 100%;
@@ -4327,15 +4401,30 @@ const itemsForBackend = items
         .react-select__control {
           border: 1px solid #d1d5db;
           background-color: white;
-          min-height: 42px;
-          border-radius: 0.5rem;
+          min-height: 36px;
+          height: 36px;
+          border-radius: 0.375rem;
         }
         .dark .react-select__control {
           border-color: #4b5563;
           background-color: #374151;
         }
+        .react-select__value-container {
+          height: 36px;
+          padding: 0 8px;
+        }
+        .react-select__input-container {
+          margin: 0;
+          padding: 0;
+        }
+        .react-select__indicators {
+          height: 36px;
+        }
         .react-select__menu {
           z-index: 50;
+        }
+        .react-select__menu-portal {
+          z-index: 9999 !important;
         }
         .react-select__single-value {
           color: #111827;
