@@ -1582,7 +1582,7 @@ const customerOptions = useMemo(() => {
                                 <button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className="min-w-[180px] rounded-lg bg-green-600 px-6 py-3 font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
+                                    className="min-w-[180px] rounded-lg bg-primary px-6 py-3 font-medium text-white transition hover:bg-opacity-90 disabled:opacity-50"
                                 >
                                     {isSubmitting ? "Saving..." : isEditMode ? "Update Proforma Invoice" : "Save Proforma Invoice"}
                                 </button>
