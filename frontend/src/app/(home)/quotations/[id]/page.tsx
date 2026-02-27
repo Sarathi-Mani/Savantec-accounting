@@ -4,8 +4,9 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 import { addPdfPageNumbers } from "@/utils/pdfTheme";
+import { companiesApi, customersApi, employeesApi, productsApi } from "@/services/api";
 
 interface QuotationItem {
   id?: string;
@@ -80,6 +81,22 @@ export default function ViewQuotationPage() {
   const [quotation, setQuotation] = useState<QuotationData | null>(null);
   const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: "success" | "error" | "info" | "warning" }>>([]);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
+  const [customerAddress, setCustomerAddress] = useState<string>("-");
+  const [shippingAddress, setShippingAddress] = useState<string>("-");
+  const [customerDisplayName, setCustomerDisplayName] = useState<string>("-");
+  const [customerGstin, setCustomerGstin] = useState<string>("-");
+  const [kindAttnName, setKindAttnName] = useState<string>("-");
+  const [kindAttnMobile, setKindAttnMobile] = useState<string>("-");
+  const [engineerName, setEngineerName] = useState<string>("-");
+  const [engineerMobile, setEngineerMobile] = useState<string>("-");
+  const [productModelById, setProductModelById] = useState<Record<string, string>>({});
+  const [enquiryModelByProductId, setEnquiryModelByProductId] = useState<Record<string, string>>({});
+  const [enquiryModelByDescription, setEnquiryModelByDescription] = useState<Record<string, string>>({});
+  const [companyGstin, setCompanyGstin] = useState<string>("-");
+  const [companyNameHeader, setCompanyNameHeader] = useState<string>("Savantec Automation Private Limited");
+  const [companyAddressHeader, setCompanyAddressHeader] = useState<string>("-");
+  const [companyPhoneHeader, setCompanyPhoneHeader] = useState<string>("-");
+  const [companyEmailHeader, setCompanyEmailHeader] = useState<string>("-");
 
   const showToast = (message: string, type: "success" | "error" | "info" | "warning" = "success") => {
     const id = Date.now();
@@ -153,6 +170,202 @@ export default function ViewQuotationPage() {
       if (response.ok) {
         const data = await response.json();
         setQuotation(data);
+
+        // Resolve latest company GSTIN from company master (avoid stale auth context)
+        try {
+          const companyData = await companiesApi.get(company.id);
+          setCompanyGstin(companyData?.gstin || "-");
+          setCompanyNameHeader(companyData?.name || "Savantec Automation Private Limited");
+          setCompanyAddressHeader(
+            [
+              companyData?.address_line1,
+              companyData?.address_line2,
+              companyData?.city,
+              companyData?.state,
+              companyData?.country,
+              companyData?.pincode,
+            ]
+              .filter(Boolean)
+              .join(", ") || "-"
+          );
+          setCompanyPhoneHeader(companyData?.phone || "-");
+          setCompanyEmailHeader(companyData?.email || "-");
+        } catch (err) {
+          console.error("Failed to resolve company GSTIN:", err);
+          setCompanyGstin((company as any)?.gstin || "-");
+          setCompanyNameHeader((company as any)?.name || "Savantec Automation Private Limited");
+          setCompanyAddressHeader(
+            [
+              (company as any)?.address_line1,
+              (company as any)?.address_line2,
+              (company as any)?.city,
+              (company as any)?.state,
+              (company as any)?.country,
+              (company as any)?.pincode,
+            ]
+              .filter(Boolean)
+              .join(", ") || "-"
+          );
+          setCompanyPhoneHeader((company as any)?.phone || "-");
+          setCompanyEmailHeader((company as any)?.email || "-");
+        }
+
+        // Resolve customer address from customer master
+        try {
+          if (data?.customer_id) {
+            const customer = await customersApi.get(company.id, data.customer_id);
+            const billing = [
+              customer?.billing_address,
+              customer?.billing_city,
+              customer?.billing_state,
+              customer?.billing_zip,
+              customer?.billing_country,
+            ].filter(Boolean).join(", ");
+            const shipping = [
+              customer?.shipping_address,
+              customer?.shipping_city,
+              customer?.shipping_state,
+              customer?.shipping_zip,
+              customer?.shipping_country,
+            ].filter(Boolean).join(", ");
+            setCustomerAddress(billing || shipping || "-");
+            setShippingAddress(shipping || billing || "-");
+            setCustomerDisplayName(customer?.name || data?.customer_name || "-");
+            setCustomerGstin(customer?.tax_number || customer?.gstin || "-");
+
+            // Resolve Kind Attention name + mobile from contact persons
+            try {
+              let attnName = data?.contact_person || "-";
+              let attnMobile = "-";
+              const cpResponse = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/customers/${data.customer_id}/contact-persons`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                  },
+                }
+              );
+              if (cpResponse.ok) {
+                const cps = await cpResponse.json();
+                if (Array.isArray(cps) && cps.length > 0) {
+                  const contactRaw = String(data?.contact_person || "").trim();
+                  const matched =
+                    cps.find((c: any) => String(c?.id || "") === contactRaw) ||
+                    cps.find((c: any) => String(c?.name || "").trim().toLowerCase() === contactRaw.toLowerCase());
+                  const cp = matched || cps[0];
+                  if (cp) {
+                    attnName = cp?.name || attnName;
+                    attnMobile = cp?.phone || cp?.mobile || "-";
+                  }
+                }
+              }
+              setKindAttnName(attnName || "-");
+              setKindAttnMobile(attnMobile || "-");
+            } catch (err) {
+              console.error("Failed to resolve contact person:", err);
+              setKindAttnName(data?.contact_person || "-");
+              setKindAttnMobile("-");
+            }
+          } else {
+            setCustomerAddress("-");
+            setShippingAddress("-");
+            setCustomerDisplayName(data?.customer_name || "-");
+            setCustomerGstin("-");
+            setKindAttnName(data?.contact_person || "-");
+            setKindAttnMobile("-");
+          }
+        } catch (err) {
+          console.error("Failed to resolve customer address:", err);
+          setCustomerAddress("-");
+          setShippingAddress("-");
+          setCustomerDisplayName(data?.customer_name || "-");
+          setCustomerGstin("-");
+          setKindAttnName(data?.contact_person || "-");
+          setKindAttnMobile("-");
+        }
+
+        // Resolve engineer name + mobile from employees
+        try {
+          let resolvedName = data?.sales_person_name || "-";
+          let resolvedMobile = "-";
+          if (data?.sales_person_id) {
+            const employees = await employeesApi.list(company.id);
+            const emp = employees.find((e: any) => e.id === data.sales_person_id);
+            if (emp) {
+              const fullName = emp.full_name || [emp.first_name, emp.last_name].filter(Boolean).join(" ").trim();
+              resolvedName = fullName || resolvedName;
+              resolvedMobile =
+                emp.phone ||
+                emp.mobile ||
+                emp.personal_phone ||
+                emp.official_phone ||
+                emp.alternate_phone ||
+                "-";
+            }
+          }
+          setEngineerName(resolvedName || "-");
+          setEngineerMobile(resolvedMobile || "-");
+        } catch (err) {
+          console.error("Failed to resolve engineer:", err);
+          setEngineerName(data?.sales_person_name || "-");
+          setEngineerMobile("-");
+        }
+
+        // Resolve model names from products by product_id
+        try {
+          const productIds = Array.from(new Set((data?.items || []).map((it: any) => it?.product_id).filter(Boolean)));
+          const modelMap: Record<string, string> = {};
+          await Promise.all(
+            productIds.map(async (pid: string) => {
+              try {
+                const product = await productsApi.get(company.id, pid);
+                modelMap[pid] = product?.sku || product?.name || "";
+              } catch {
+                // ignore per-product failure
+              }
+            })
+          );
+          setProductModelById(modelMap);
+        } catch (err) {
+          console.error("Failed to resolve product model names:", err);
+          setProductModelById({});
+        }
+
+        // Fallback model names from enquiry items (if quotation references enquiry)
+        try {
+          const byPid: Record<string, string> = {};
+          const byDesc: Record<string, string> = {};
+          if (String(data?.reference || "").trim().toLowerCase() === "enquiry" && data?.reference_no) {
+            const enqResp = await fetch(
+              `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/enquiries?search=${encodeURIComponent(data.reference_no)}&limit=25`,
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+            );
+            if (enqResp.ok) {
+              const enqList = await enqResp.json();
+              const match =
+                (Array.isArray(enqList) ? enqList : []).find((e: any) => e?.enquiry_number === data.reference_no) ||
+                (Array.isArray(enqList) ? enqList[0] : null);
+              const enqItems = Array.isArray(match?.items) ? match.items : [];
+              enqItems.forEach((ei: any) => {
+                const modelName = ei?.product_sku || ei?.product_name || ei?.description || "";
+                if (!modelName) return;
+                if (ei?.product_id) byPid[ei.product_id] = modelName;
+                const dKey = String(ei?.description || "").trim().toLowerCase();
+                if (dKey) byDesc[dKey] = modelName;
+              });
+            }
+          }
+          setEnquiryModelByProductId(byPid);
+          setEnquiryModelByDescription(byDesc);
+        } catch (err) {
+          console.error("Failed to resolve enquiry fallback model names:", err);
+          setEnquiryModelByProductId({});
+          setEnquiryModelByDescription({});
+        }
       } else {
         showToast("Failed to load quotation", "error");
         router.push("/quotations");
@@ -261,135 +474,272 @@ export default function ViewQuotationPage() {
     );
   };
 
+  const loadImageAsDataUrl = (src: string): Promise<string> =>
+    new Promise((resolve, reject) => {
+      fetch(src)
+        .then((res) => {
+          if (!res.ok) throw new Error("Failed to fetch image");
+          return res.blob();
+        })
+        .then((blob) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(new Error("Failed to read image"));
+          reader.readAsDataURL(blob);
+        })
+        .catch(reject);
+    });
+
   const generatePDF = async () => {
     if (!quotation) return;
     
     setDownloadingPDF(true);
     try {
-      const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.getWidth();
+      const doc = new jsPDF("p", "mm", "a4");
+      const left = 14;
+      const width = 182;
+      const right = left + width;
+      const splitX = left + 92;
+      const money = (v: number | undefined | null) =>
+        new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v || 0));
 
-      // Professional header band (same family as sales-order PDF)
-      doc.setFillColor(22, 78, 99);
-      doc.rect(0, 0, pageWidth, 24, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(12);
-      doc.text(company?.name || "Company", 14, 10);
-      doc.setFontSize(11);
-      doc.text("QUOTATION", 14, 18);
-      doc.setFontSize(9);
-      doc.text(`No: ${quotation.quotation_number}`, pageWidth - 14, 10, { align: "right" });
-      doc.text(`Date: ${formatDate(quotation.quotation_date)}`, pageWidth - 14, 18, { align: "right" });
-      doc.setTextColor(0, 0, 0);
-      
-      // Company Info
-      doc.setFontSize(10);
-      doc.text("From:", 20, 34);
-      doc.setFont("helvetica", 'bold');
-      doc.text(company?.name || "Your Company" || "", 20, 39);
-      doc.setFont("helvetica", 'normal');
-      const companyAddr = (company as { address?: string })?.address ?? [company?.address_line1, company?.address_line2, company?.city, company?.state, company?.pincode].filter(Boolean).join(", ");
-      if (companyAddr) {
-        doc.text(companyAddr || "", 20, 44);
-      }
-      
-      // Customer Info
-      doc.text("To:", 20, 58);
-      doc.setFont("helvetica", 'bold');
-      doc.text(quotation.customer_name || "", 20, 63);
-      doc.setFont("helvetica", 'normal');
-      if (quotation.contact_person) {
-        doc.text(`Attn: ${quotation.contact_person || ""}`, 20, 68);
-      }
-      
-      // Table
-      const tableColumn = ["Item", "Description", "HSN", "Qty", "Unit", "Rate", "Discount %", "GST %", "Amount"];
-      const tableRows: any[] = [];
-      
-      quotation.items.forEach((item, index) => {
-        const itemTotal = calculateItemTotal(item);
-        const row = [
-          index + 1,
-          item.description,
-          item.hsn_code,
-          item.quantity,
-          item.unit,
-          formatCurrency(item.unit_price),
-          `${item.discount_percent}%`,
-          `${item.gst_rate}%`,
-          formatCurrency(itemTotal.total)
-        ];
-        tableRows.push(row);
-      });
-      
-      (doc as any).autoTable({
-        startY: 75,
-        head: [tableColumn],
-        body: tableRows,
-        theme: 'grid',
-        headStyles: { fillColor: [22, 78, 99], textColor: 255 },
-        alternateRowStyles: { fillColor: [248, 250, 252] },
-        styles: { fontSize: 8, lineColor: [220, 220, 220], lineWidth: 0.1 },
-        columnStyles: {
-          0: { cellWidth: 10 },
-          1: { cellWidth: 40 },
-          2: { cellWidth: 20 },
-          3: { cellWidth: 15 },
-          4: { cellWidth: 15 },
-          5: { cellWidth: 20 },
-          6: { cellWidth: 20 },
-          7: { cellWidth: 15 },
-          8: { cellWidth: 25 }
-        }
-      });
-      
-      // Totals
+      const customerNameText = customerDisplayName || quotation.customer_name || "-";
+      const customerDetailText = [customerAddress, `GSTIN: ${customerGstin || "-"}`]
+        .filter(Boolean)
+        .join("\n");
+      const customerDetailLines = doc.splitTextToSize(customerDetailText, 88);
       const totals = calculateTotals();
-      if (totals) {
-        const finalY = (doc as any).lastAutoTable.finalY + 10;
-        
-        doc.text("Subtotal:", pageWidth - 100, finalY);
-        doc.text(formatCurrency(totals.subtotal), pageWidth - 30, finalY, { align: 'right' });
-        
-        doc.text("Discount:", pageWidth - 100, finalY + 5);
-        doc.text(formatCurrency(totals.totalDiscount), pageWidth - 30, finalY + 5, { align: 'right' });
-        
-        doc.text("Taxable Amount:", pageWidth - 100, finalY + 10);
-        doc.text(formatCurrency(totals.totalTaxable), pageWidth - 30, finalY + 10, { align: 'right' });
-        
-        if (quotation.tax_regime === "cgst_sgst") {
-          doc.text("CGST:", pageWidth - 100, finalY + 15);
-          doc.text(formatCurrency(totals.totalCgst), pageWidth - 30, finalY + 15, { align: 'right' });
-          
-          doc.text("SGST:", pageWidth - 100, finalY + 20);
-          doc.text(formatCurrency(totals.totalSgst), pageWidth - 30, finalY + 20, { align: 'right' });
-        } else {
-          doc.text("IGST:", pageWidth - 100, finalY + 15);
-          doc.text(formatCurrency(totals.totalIgst), pageWidth - 30, finalY + 15, { align: 'right' });
+
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.25);
+
+      // Outer frame
+      doc.rect(left, 14, width, 262);
+
+      // Top header row
+      doc.rect(left, 14, width, 20);
+      let companyTextX = left + 2;
+      try {
+        const logoDataUrl = await loadImageAsDataUrl("/images/logo/savantec_logo.png");
+        doc.addImage(logoDataUrl, "PNG", left + 1.2, 16.2, 30, 8.4);
+        companyTextX = left + 33;
+      } catch {
+        companyTextX = left + 2;
+      }
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text(companyNameHeader || "Savantec Automation Private Limited", companyTextX, 21);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.6);
+      const cAddr = doc.splitTextToSize(companyAddressHeader || "-", right - companyTextX - 2);
+      doc.text(cAddr.slice(0, 1), companyTextX, 25);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.3);
+      doc.text(
+        `Mob : ${companyPhoneHeader || "-"}    Email: ${companyEmailHeader || "-"}    GST Number: ${companyGstin || "-"}`,
+        companyTextX,
+        29
+      );
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text("QUOTATION", left + width / 2, 38.2, { align: "center" });
+      doc.line(left + 74, 38.8, right - 74, 38.8);
+
+      // Customer + right details
+      const topY = 40;
+      const topH = 60;
+      doc.rect(left, topY, splitX - left, topH);
+      doc.rect(splitX, topY, right - splitX, topH);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.text("Customer Name & Address", left + 1.2, topY + 4.2);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.3);
+      doc.text(customerNameText, left + 1.2, topY + 9);
+      doc.setFont("helvetica", "normal");
+      doc.text(customerDetailLines.slice(0, 3), left + 1.2, topY + 13);
+
+      // Right grid like reference
+      const rgMid = splitX + (right - splitX) / 2;
+      const leftCellW = rgMid - splitX - 2;
+      const rightCellW = right - rgMid - 2;
+      const fitCellText = (value: unknown, maxWidth: number, fontSize = 7.4): string => {
+        const raw = String(value ?? "-").replace(/\s+/g, " ").trim() || "-";
+        doc.setFontSize(fontSize);
+        if (doc.getTextWidth(raw) <= maxWidth) return raw;
+        let s = raw;
+        while (s.length > 0 && doc.getTextWidth(`${s}...`) > maxWidth) {
+          s = s.slice(0, -1);
         }
-        
-        doc.text("Round Off:", pageWidth - 100, finalY + 25);
-        doc.text(formatCurrency(totals.roundOff ?? 0), pageWidth - 30, finalY + 25, { align: 'right' });
-        
-        doc.setFont("helvetica", 'bold');
-        doc.text("Grand Total:", pageWidth - 100, finalY + 30);
-        doc.text(formatCurrency(totals.grandTotal ?? 0), pageWidth - 30, finalY + 30, { align: 'right' });
-        doc.setFont("helvetica", 'normal');
-      }
-      
-      // Terms
-      if (quotation.notes) {
-        doc.text("Notes:", 20, (doc as any).lastAutoTable.finalY + 40);
-        doc.text(quotation.notes, 20, (doc as any).lastAutoTable.finalY + 45, { maxWidth: pageWidth - 40 });
-      }
-      
-      if (quotation.payment_terms) {
-        const termsY = (doc as any).lastAutoTable.finalY + (quotation.notes ? 55 : 45);
-        doc.text("Terms & Conditions:", 20, termsY);
-        const splitTerms = doc.splitTextToSize(quotation.payment_terms, pageWidth - 40);
-        doc.text(splitTerms, 20, termsY + 5);
-      }
-      
+        return `${s || "-"}...`;
+      };
+      const r1 = topY + 8;
+      const r2 = topY + 16;
+      const r3 = topY + 24;
+      const r4 = topY + 42;
+      const r5 = topY + 51;
+      doc.line(splitX, r1, right, r1);
+      doc.line(splitX, r2, right, r2);
+      doc.line(splitX, r3, right, r3);
+      doc.line(splitX, r4, right, r4);
+      doc.line(splitX, r5, right, r5);
+      doc.line(rgMid, topY, rgMid, r3);
+
+      const drawKeyValue = (x: number, y: number, label: string, value: string, width: number, labelW: number) => {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8.2);
+        doc.text(label, x, y);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.2);
+        doc.text(fitCellText(value, width - labelW, 7.2), x + labelW, y);
+      };
+
+      drawKeyValue(splitX + 1, topY + 5, "Quotation No:", `SAPL/${quotation.quotation_number || "-"}`, leftCellW, 18);
+      drawKeyValue(rgMid + 1, topY + 5, "Date:", formatDate(quotation.quotation_date), rightCellW, 10);
+      drawKeyValue(splitX + 1, r1 + 5, "Reference No.", quotation.reference_no || "-", leftCellW, 20);
+      drawKeyValue(rgMid + 1, r1 + 5, "Reference Date", quotation.reference_date ? formatDate(quotation.reference_date) : "-", rightCellW, 20);
+      drawKeyValue(splitX + 1, r2 + 4.8, "Reference", quotation.reference || "-", leftCellW, 17);
+
+      const paymentTermsText = String(quotation.terms || quotation.payment_terms || "-");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.2);
+      doc.text("Payment Terms", rgMid + 1, r2 + 4.8);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.2);
+      const paymentLines = doc.splitTextToSize(paymentTermsText, rightCellW - 1);
+      doc.text(paymentLines.slice(0, 4), rgMid + 1, r3 + 3.8);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.2);
+      doc.text(`Kind Attn: ${kindAttnName || "-"}${kindAttnMobile && kindAttnMobile !== "-" ? ` / ${kindAttnMobile}` : ""}`, splitX + 1, r4 + 5.6);
+      doc.text(`Engineer: ${engineerName || "-"}${engineerMobile && engineerMobile !== "-" ? ` / ${engineerMobile}` : ""}`, splitX + 1, r5 + 5.6);
+
+      // Shipping row
+      const shipY = topY + topH;
+      const shipH = 13;
+      doc.rect(left, shipY, splitX - left, shipH);
+      doc.rect(splitX, shipY, right - splitX, shipH);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.4);
+      doc.text("Shipping Address", left + 1.2, shipY + 4.2);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.2);
+      const shippingName = customerDisplayName || quotation.customer_name || "-";
+      doc.text(shippingName, left + 1.2, shipY + 8.6);
+      doc.setFont("helvetica", "normal");
+      doc.text(doc.splitTextToSize(shippingAddress || "-", 88).slice(0, 2), left + 1.2, shipY + 12.2);
+
+      // Items table
+      const tableStartY = shipY + shipH;
+      const rows = quotation.items.map((item, index) => {
+        const itemTotal = calculateItemTotal(item);
+        const descKey = String(item.description || "").trim().toLowerCase();
+        const modelName =
+          (item.product_id && productModelById[item.product_id]) ||
+          (item.product_id && enquiryModelByProductId[item.product_id]) ||
+          enquiryModelByDescription[descKey] ||
+          item.description ||
+          "-";
+        return [
+          String(index + 1),
+          item.description || "-",
+          modelName,
+          item.hsn_code || "-",
+          Number(item.quantity || 0).toFixed(2),
+          Number(item.unit_price || 0).toFixed(2),
+          item.unit || "-",
+          `${Number(item.gst_rate || 0).toFixed(2)}%`,
+          `${Number(item.discount_percent || 0).toFixed(0)}%`,
+          Number(itemTotal.total || 0).toFixed(2),
+        ];
+      });
+
+      autoTable(doc, {
+        startY: tableStartY,
+        head: [["S No", "Description", "Model No", "HSN", "Qty", "Rate", "UOM", "Tax Rate", "Disc.", "Amount"]],
+        body: rows.length ? rows : [["1", "-", "-", "-", "-", "-", "-", "-", "-", "-"]],
+        theme: "grid",
+        margin: { left, right: 14 },
+        styles: { fontSize: 7.1, cellPadding: 1.2, lineWidth: 0.2, lineColor: [0, 0, 0], valign: "top" },
+        headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: "bold" },
+        bodyStyles: { minCellHeight: 11 },
+        columnStyles: {
+          0: { cellWidth: 9, halign: "center" },
+          1: { cellWidth: 50 },
+          2: { cellWidth: 18 },
+          3: { cellWidth: 12 },
+          4: { cellWidth: 9, halign: "right" },
+          5: { cellWidth: 17, halign: "right" },
+          6: { cellWidth: 15, halign: "center" },
+          7: { cellWidth: 16, halign: "right" },
+          8: { cellWidth: 9, halign: "right" },
+          9: { cellWidth: 17, halign: "right" },
+        },
+      });
+
+      // Place bottom section immediately after items to avoid large blank gap
+      const itemEndY = (doc as any).lastAutoTable?.finalY || tableStartY + 20;
+
+      // Bottom section aligned to reference
+      const bottomY = itemEndY;
+      const rightW = 46;
+      const leftW = width - rightW;
+      const remarksH = 14;
+      const termsH = 57;
+
+      // Row 1: Remarks + totals summary
+      doc.rect(left, bottomY, leftW, remarksH);
+      doc.rect(left + leftW, bottomY, rightW, remarksH);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.8);
+      doc.text("Remarks:", left + 1.2, bottomY + 4.2);
+      const remarksText = doc.splitTextToSize(quotation.remarks || "-", leftW - 3);
+      doc.text(remarksText.slice(0, 2), left + 1.2, bottomY + 8.2);
+
+      const sumX = left + leftW;
+      const sumRowH = remarksH / 3;
+      doc.line(sumX, bottomY + sumRowH, right, bottomY + sumRowH);
+      doc.line(sumX, bottomY + sumRowH * 2, right, bottomY + sumRowH * 2);
+      doc.line(sumX + 22, bottomY, sumX + 22, bottomY + remarksH);
+      const putSum = (label: string, value: string, y: number, bold = false) => {
+        doc.setFont("helvetica", bold ? "bold" : "normal");
+        doc.setFontSize(8.2);
+        doc.text(label, sumX + 20.8, y, { align: "right" });
+        doc.text(value, right - 1.5, y, { align: "right" });
+      };
+      putSum("Subtotal", money(totals?.subtotal || 0), bottomY + 3.8, true);
+      putSum("Tax Amount", money(totals?.totalTax || 0), bottomY + 3.8 + sumRowH, true);
+      putSum("Grand Total", money(totals?.grandTotal || 0), bottomY + 3.8 + sumRowH * 2, true);
+
+      // Row 2: Terms + signature
+      const termsY = bottomY + remarksH;
+      doc.rect(left, termsY, leftW, termsH);
+      doc.rect(left + leftW, termsY, rightW, termsH);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.text("Terms & Conditions", left + 1.2, termsY + 4.6);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.2);
+      const termsText = doc.splitTextToSize(quotation.payment_terms || quotation.terms || "-", leftW - 3);
+      doc.text(termsText.slice(0, 7), left + 1.2, termsY + 8.5);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.text("E & OE", left + 1.2, termsY + termsH - 4);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.2);
+      doc.text("for Savantec Automation Private", right - 1.5, termsY + 6, { align: "right" });
+      doc.text("Limited", right - 1.5, termsY + 10, { align: "right" });
+      doc.setFont("helvetica", "normal");
+      doc.line(left + leftW + 6, termsY + termsH - 9, right - 6, termsY + termsH - 9);
+      doc.setFont("helvetica", "bold");
+      doc.text("Authorised Signatory", right - 1.5, termsY + termsH - 1.6, { align: "right" });
+
       addPdfPageNumbers(doc, "p");
       doc.save(`Quotation_${quotation.quotation_number}.pdf`);
       showToast("PDF downloaded successfully", "success");
@@ -775,7 +1125,9 @@ export default function ViewQuotationPage() {
               <div className="space-y-3">
                 <div>
                   <p className="text-sm text-gray-600 dark:text-gray-400">Sales Engineer</p>
-                  <p className="font-medium text-gray-900 dark:text-white">{quotation.sales_person_name || "Not assigned"}</p>
+                  <p className="font-medium text-gray-900 dark:text-white">
+                    {engineerName || "Not assigned"}{engineerMobile && engineerMobile !== "-" ? ` (${engineerMobile})` : ""}
+                  </p>
                 </div>
                 {quotation.reference && (
                   <div>

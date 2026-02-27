@@ -44,14 +44,14 @@ export const getProfessionalTableTheme = (
 
 export const addPdfPageNumbers = (doc: jsPDF, orientation: "p" | "l" = "l") => {
   const pageCount = doc.getNumberOfPages();
-  const pageWidth = orientation === "l" ? 297 : 210;
-  const pageHeight = orientation === "l" ? 210 : 297;
 
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     doc.setFontSize(8);
     doc.setTextColor(120, 120, 120);
-    doc.text(`Page ${i} of ${pageCount}`, pageWidth - 10, pageHeight - 6, { align: "right" });
+    doc.text(`Page ${i} of ${pageCount}`, pageWidth - 14, pageHeight - 8, { align: "right" });
   }
   doc.setTextColor(0, 0, 0);
 };

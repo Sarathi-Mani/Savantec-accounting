@@ -3311,7 +3311,7 @@ export interface PayrollSettings {
 // =============== employees api ================
 export const employeesApi = {
   list: async (companyId: string): Promise<Employee[]> => {
-    const response = await api.get(`/companies/${companyId}/employees`);
+    const response = await api.get(`/companies/${companyId}/payroll/employees`);
     return response.data;
   },
 };
