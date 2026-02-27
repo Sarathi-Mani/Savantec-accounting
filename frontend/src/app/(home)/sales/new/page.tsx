@@ -150,6 +150,7 @@ function ProductSelectField({
     const options = products.map(product => ({
         value: product.id,
         label: `${product.name} ${product.sku ? `(${product.sku})` : ""}`,
+        subLabel: product.description || "",
         product,
     }));
 
@@ -199,18 +200,47 @@ function ProductSelectField({
             styles={{
                 control: (base: any, state: any) => ({
                     ...base,
-                    minHeight: "38px",
+                    minHeight: "36px",
+                    height: "36px",
                     borderRadius: "0.375rem",
                     borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
-                    boxShadow: state.isFocused
-                        ? "0 0 0 1px rgba(99,102,241,0.5)"
-                        : "none",
+                    boxShadow: state.isFocused ? "0 0 0 1px rgba(99,102,241,0.5)" : "none",
+                }),
+                valueContainer: (base: any) => ({
+                    ...base,
+                    height: "36px",
+                    padding: "0 8px",
+                }),
+                input: (base: any) => ({
+                    ...base,
+                    margin: "0px",
+                }),
+                indicatorsContainer: (base: any) => ({
+                    ...base,
+                    height: "36px",
                 }),
                 menuPortal: (base: any) => ({
                     ...base,
                     zIndex: 9999,
                 }),
+                menu: (base: any) => ({
+                    ...base,
+                    minWidth: "620px",
+                    zIndex: 9999,
+                }),
             }}
+            classNamePrefix="react-select"
+            menuPlacement="auto"
+            formatOptionLabel={(option: any) => (
+                <div>
+                    <div className="whitespace-normal break-words text-sm">{option.label}</div>
+                    {option.subLabel ? (
+                        <div className="whitespace-normal break-words text-xs text-gray-500 dark:text-gray-400">
+                            {option.subLabel}
+                        </div>
+                    ) : null}
+                </div>
+            )}
         />
     );
 }
@@ -266,6 +296,15 @@ export default function AddSalesPage() {
         products: false,
         salesmen: false,
     });
+
+    const normalizeStateCode = (value: any) => {
+        const text = String(value ?? "").trim();
+        const match = text.match(/\d{2}/);
+        return match ? match[0] : text;
+    };
+
+    const isIntraStateSupply = (placeOfSupply: any) =>
+        normalizeStateCode(placeOfSupply) === normalizeStateCode(company?.state_code);
 
 
 
@@ -794,17 +833,35 @@ export default function AddSalesPage() {
             // Taxable amount (after discount)
             const taxable = itemTotal - discount;
 
-            // Calculate tax based on GST rate
-            const tax = taxable * (item.gst_rate / 100);
+            const itemCgstRate = Number(item.cgst_rate || 0);
+            const itemSgstRate = Number(item.sgst_rate || 0);
+            const itemIgstRate = Number(item.igst_rate || 0);
+            const hasExplicitSplitRates = (itemCgstRate + itemSgstRate + itemIgstRate) > 0;
 
-            // For intra-state (CGST+SGST)
-            if (formData.place_of_supply === company?.state_code) {
-                cgstTotal += tax / 2;
-                sgstTotal += tax / 2;
+            let itemCgst = 0;
+            let itemSgst = 0;
+            let itemIgst = 0;
+
+            if (hasExplicitSplitRates) {
+                // Converted from quotation (or manually set split): respect item-level split.
+                itemCgst = taxable * (itemCgstRate / 100);
+                itemSgst = taxable * (itemSgstRate / 100);
+                itemIgst = taxable * (itemIgstRate / 100);
             } else {
-                // For inter-state (IGST)
-                igstTotal += tax;
+                // Fresh sales flow: derive split from place of supply.
+                const fallbackTax = taxable * (Number(item.gst_rate || 0) / 100);
+                if (isIntraStateSupply(formData.place_of_supply)) {
+                    itemCgst = fallbackTax / 2;
+                    itemSgst = fallbackTax / 2;
+                } else {
+                    itemIgst = fallbackTax;
+                }
             }
+
+            const tax = itemCgst + itemSgst + itemIgst;
+            cgstTotal += itemCgst;
+            sgstTotal += itemSgst;
+            igstTotal += itemIgst;
 
             subtotal += taxable;
             totalTax += tax;
@@ -817,16 +874,25 @@ export default function AddSalesPage() {
         const couponValue = formData.couponValue || 0;
         const discountOnAll = formData.discountOnAll || 0;
 
-        const getTaxRate = (taxType: string): number => {
+        // Function to apply tax based on selected type
+        const calculateWithTax = (baseAmount: number, taxType: string) => {
+            if (taxType === 'fixed' || taxType === 'percentage') {
+                return baseAmount;
+            }
+
+            // Extract tax percentage from string like "tax@18%"
             const match = taxType.match(/tax@(\d+)%/);
-            return match ? Number(match[1]) : 0;
+            if (match) {
+                const taxRate = parseInt(match[1]);
+                return baseAmount * (1 + taxRate / 100);
+            }
+
+            return baseAmount;
         };
 
-        const freightTax = freightBase * (getTaxRate(formData.freightType) / 100);
-        const pfTax = pfBase * (getTaxRate(formData.pfType) / 100);
-        const chargesTax = freightTax + pfTax;
-        const freightWithTax = freightBase + freightTax;
-        const pfWithTax = pfBase + pfTax;
+        // Calculate charges with tax
+        const freightCharges = calculateWithTax(freightBase, formData.freightType);
+        const pfCharges = calculateWithTax(pfBase, formData.pfType);
 
         // Calculate discount on all based on type
         const discountAllAmount = formData.discountType === 'percentage'
@@ -836,7 +902,7 @@ export default function AddSalesPage() {
         // Calculate totals step by step
         const totalBeforeTax = subtotal;
         const totalAfterTax = totalBeforeTax + totalTax;
-        const totalAfterCharges = totalAfterTax + freightBase + pfBase + chargesTax;
+        const totalAfterCharges = totalAfterTax + freightCharges + pfCharges;
         const totalAfterCoupon = totalAfterCharges - couponValue;
         const totalAfterDiscountAll = totalAfterCoupon - discountAllAmount;
         const grandTotal = totalAfterDiscountAll + (formData.roundOff || 0);
@@ -849,11 +915,8 @@ export default function AddSalesPage() {
             igstTotal: Number(igstTotal.toFixed(2)),
             itemDiscount: Number(totalItemDiscount.toFixed(2)),
             totalBeforeCharges: Number(totalAfterTax.toFixed(2)),
-            freight: Number(freightBase.toFixed(2)),
-            pf: Number(pfBase.toFixed(2)),
-            chargesTax: Number(chargesTax.toFixed(2)),
-            freightWithTax: Number(freightWithTax.toFixed(2)),
-            pfWithTax: Number(pfWithTax.toFixed(2)),
+            freight: Number(freightCharges.toFixed(2)),
+            pf: Number(pfCharges.toFixed(2)),
             couponDiscount: Number(couponValue.toFixed(2)),
             discountAll: Number(discountAllAmount.toFixed(2)),
             roundOff: Number(formData.roundOff || 0),
@@ -938,7 +1001,7 @@ export default function AddSalesPage() {
                 subtotal: Number(totals.subtotal || 0),
                 discount_amount: Number(totals.discountAll || 0),
                 cgst_amount: Number(totals.cgstTotal || 0),
-                sgst_rate: Number(totals.sgstTotal || 0),
+                sgst_amount: Number(totals.sgstTotal || 0),
                 igst_amount: Number(totals.igstTotal || 0),
                 total_tax: Number(totals.totalTax || 0),
                 total_amount: Number(totals.grandTotal || 0),
@@ -1058,7 +1121,7 @@ export default function AddSalesPage() {
                     updated.total_amount = taxable + tax;
 
                     // Set CGST/SGST/IGST rates
-                    if (formData.place_of_supply === company?.state_code) {
+                    if (isIntraStateSupply(formData.place_of_supply)) {
                         // Intra-state
                         updated.cgst_rate = updated.gst_rate / 2;
                         updated.sgst_rate = updated.gst_rate / 2;
@@ -1079,6 +1142,7 @@ export default function AddSalesPage() {
 
     // Update form data handler
     const handleFormChange = (field: string, value: any) => {
+        console.log("[Sales New] handleFormChange", { field, value });
         setFormData(prev => ({
             ...prev,
             [field]: value,
@@ -1125,7 +1189,7 @@ export default function AddSalesPage() {
         if (field === 'place_of_supply') {
             setItems(items.map(item => {
                 const updated = { ...item };
-                if (value === company?.state_code) {
+                if (isIntraStateSupply(value)) {
                     // Intra-state
                     updated.cgst_rate = updated.gst_rate / 2;
                     updated.sgst_rate = updated.gst_rate / 2;
@@ -1142,14 +1206,33 @@ export default function AddSalesPage() {
 
         // When customer is selected, auto-fill place of supply
         if (field === 'customer_id' && value) {
-            const selectedCustomer = customers.find(c => c.id === value);
+            console.log("[Sales New] customer_id changed", {
+                value,
+                valueType: typeof value,
+                customersCount: customers.length,
+                sampleCustomerIds: customers.slice(0, 5).map((c: any) => c?.id),
+            });
+            const selectedCustomer = customers.find(c => String(c.id) === String(value));
+            console.log("[Sales New] selectedCustomer for autofill", selectedCustomer);
             if (selectedCustomer) {
                 const customerState = selectedCustomer.billing_state_code ||
                     selectedCustomer.state_code;
                 setFormData(prev => ({
                     ...prev,
                     place_of_supply: customerState || company?.state_code || "",
+                    country: selectedCustomer.shipping_country || selectedCustomer.billing_country || prev.country || "India",
+                    city: selectedCustomer.shipping_city || selectedCustomer.billing_city || "",
+                    postcode: selectedCustomer.shipping_zip || selectedCustomer.shipping_pincode || selectedCustomer.billing_zip || selectedCustomer.billing_pincode || "",
+                    address: selectedCustomer.shipping_address || selectedCustomer.billing_address || "",
                 }));
+                console.log("[Sales New] shipping autofill applied", {
+                    country: selectedCustomer.shipping_country || selectedCustomer.billing_country || "India",
+                    city: selectedCustomer.shipping_city || selectedCustomer.billing_city || "",
+                    postcode: selectedCustomer.shipping_zip || selectedCustomer.shipping_pincode || selectedCustomer.billing_zip || selectedCustomer.billing_pincode || "",
+                    address: selectedCustomer.shipping_address || selectedCustomer.billing_address || "",
+                });
+            } else {
+                console.log("[Sales New] selectedCustomer not found for value", value);
             }
         }
     };
@@ -1578,49 +1661,57 @@ export default function AddSalesPage() {
 
                         {/* SECTION 3: Sales Items Table */}
                         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                            <div className="mb-4 flex items-center justify-between">
-                                <h2 className="text-lg font-semibold text-dark dark:text-white">Sales Items</h2>
-                                <div className="flex gap-2">
-                                    <div className="text-dark-6">
-                                        Total Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
-                                    </div>
-                                    <div className="text-dark-6">
-                                        Items: {items.length}
-                                    </div>
+                            <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Items</h2>
+                                    <p className="mt-1 text-sm text-dark-6">
+                                        Add items to your sales invoice
+                                    </p>
+                                </div>
+                                <div className="mt-2 flex gap-2 sm:mt-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => router.push("/products/new")}
+                                        className="inline-flex items-center gap-2 rounded-lg border border-blue-600 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
+                                    >
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        Add New Product
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => addItem()}
+                                        className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                                    >
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        Add Item
+                                    </button>
                                 </div>
                             </div>
-                            <div className="mb-4 flex justify-end">
-                                <button
-                                    type="button"
-                                    onClick={() => addItem()}
-                                    className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
-                                >
-                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                    </svg>
-                                </button>
-                            </div>{/* Items Table */}
                             <div className="overflow-x-auto">
-                                <table className="w-full">
+                                <table className="w-full min-w-[1580px] border-collapse">
                                     <thead>
-                                        <tr className="border-b border-stroke dark:border-dark-3">
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Name</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Code</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">HSN</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit Price</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Discount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax Amount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Total Amount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
+                                        <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+                                            <th className="w-[450px] min-w-[450px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item</th>
+                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item Code</th>
+                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">HSN Code</th>
+                                            <th className="w-[200px] min-w-[200px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Description</th>
+                                            <th className="w-[80px] min-w-[80px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Qty</th>
+                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Unit Price</th>
+                                            <th className="w-[100px] min-w-[100px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount %</th>
+                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount Amt</th>
+                                            <th className="w-[80px] min-w-[80px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">GST %</th>
+                                            <th className="w-[130px] min-w-[130px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Total</th>
+                                            <th className="w-[60px] min-w-[60px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {items.map((item) => (
                                             <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                                                <td className="px-4 py-3 min-w-[200px]">
+                                                <td className="w-[450px] min-w-[450px] px-3 py-3">
                                                     <ProductSelectField
                                                         value={item.product_id}
                                                         products={products}
@@ -1654,7 +1745,7 @@ export default function AddSalesPage() {
                                                                         discount_amount: 0,
                                                                         taxable_amount: taxable,
                                                                         total_amount: taxable + tax,
-                                                                        ...(formData.place_of_supply === company?.state_code ? {
+                                                                        ...(isIntraStateSupply(formData.place_of_supply) ? {
                                                                             cgst_rate: gstRate / 2,
                                                                             sgst_rate: gstRate / 2,
                                                                             igst_rate: 0,
@@ -1781,19 +1872,19 @@ export default function AddSalesPage() {
                                         {/* In the Charges & Discounts section */}
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
-                                            <div className="flex flex-col gap-2 sm:flex-row">
+                                            <div className="flex gap-2">
                                                 <input
                                                     type="number"
                                                     value={formData.freightCharges}
                                                     onChange={(e) => setFormData({ ...formData, freightCharges: parseFloat(e.target.value) || 0 })}
-                                                    className="min-w-0 flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                     step="0.01"
                                                 />
                                                 <select
                                                     value={formData.freightType}
                                                     onChange={(e) => setFormData({ ...formData, freightType: e.target.value })}
-                                                    className="w-full rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3 sm:w-28 sm:flex-none"
+                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
                                                     <option value="tax@0%">Tax@0%</option>
@@ -1805,26 +1896,26 @@ export default function AddSalesPage() {
                                             </div>
                                             {formData.freightType.startsWith('tax@') && formData.freightCharges > 0 && (
                                                 <div className="mt-1 text-xs text-dark-6">
-                                                    Base: ₹{formData.freightCharges.toFixed(2)} + {formData.freightType.replace('tax@', '')} tax = ₹{totals.freightWithTax.toFixed(2)}
+                                                    Base: ₹{formData.freightCharges.toFixed(2)} + {formData.freightType.replace('tax@', '')} tax = ₹{totals.freight.toFixed(2)}
                                                 </div>
                                             )}
                                         </div>
 
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                            <div className="flex flex-col gap-2 sm:flex-row">
+                                            <div className="flex gap-2">
                                                 <input
                                                     type="number"
                                                     value={formData.pfCharges}
                                                     onChange={(e) => setFormData({ ...formData, pfCharges: parseFloat(e.target.value) || 0 })}
-                                                    className="min-w-0 flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                     step="0.01"
                                                 />
                                                 <select
                                                     value={formData.pfType}
                                                     onChange={(e) => setFormData({ ...formData, pfType: e.target.value })}
-                                                    className="w-full rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3 sm:w-28 sm:flex-none"
+                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
                                                     <option value="tax@0%">Tax@0%</option>
@@ -1836,9 +1927,33 @@ export default function AddSalesPage() {
                                             </div>
                                             {formData.pfType.startsWith('tax@') && formData.pfCharges > 0 && (
                                                 <div className="mt-1 text-xs text-dark-6">
-                                                    Base: ₹{formData.pfCharges.toFixed(2)} + {formData.pfType.replace('tax@', '')} tax = ₹{totals.pfWithTax.toFixed(2)}
+                                                    Base: ₹{formData.pfCharges.toFixed(2)} + {formData.pfType.replace('tax@', '')} tax = ₹{totals.pf.toFixed(2)}
                                                 </div>
                                             )}
+                                        </div>
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="number"
+                                                    value={formData.pfCharges}
+                                                    onChange={(e) => setFormData({ ...formData, pfCharges: parseFloat(e.target.value) })}
+                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    min="0"
+                                                />
+                                                <select
+                                                    value={formData.pfType}
+                                                    onChange={(e) => setFormData({ ...formData, pfType: e.target.value })}
+                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                >
+                                                    <option value="fixed">Fixed</option>
+                                                    <option value="tax@18%">Tax@18%</option>
+                                                    <option value="tax@0%">Tax@0%</option>
+                                                    <option value="tax@5%">Tax@5%</option>
+                                                    <option value="tax@28%">Tax@28%</option>
+                                                    <option value="tax@12%">Tax@12%</option>
+                                                </select>
+                                            </div>
                                         </div>
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount Coupon Code</label>
@@ -1920,10 +2035,6 @@ export default function AddSalesPage() {
                                             <span className="font-medium text-dark dark:text-white">₹{totals.pf.toLocaleString('en-IN')}</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span className="text-dark-6">Tax</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.chargesTax.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between">
                                             <span className="text-dark-6">Coupon Discount</span>
                                             <span className="font-medium text-red-600">-₹{totals.couponDiscount.toLocaleString('en-IN')}</span>
                                         </div>
@@ -1931,10 +2042,10 @@ export default function AddSalesPage() {
                                             <span className="text-dark-6">Discount on All</span>
                                             <span className="font-medium text-red-600">-₹{totals.discountAll.toLocaleString('en-IN')}</span>
                                         </div>
-                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                        <div className="flex justify-between items-center">
                                             <span className="text-dark-6">Round Off</span>
 
-                                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                            <div className="flex items-center gap-2">
                                                 {/* - Button: Makes amount negative */}
                                                 <button
                                                     type="button"
@@ -1968,7 +2079,7 @@ export default function AddSalesPage() {
                                                                 roundOff: currentSign * inputValue
                                                             }));
                                                         }}
-                                                        className="w-24 px-8 py-2 text-center border border-stroke dark:border-dark-3 rounded-lg bg-transparent outline-none focus:border-primary sm:w-32 sm:px-10"
+                                                        className="w-32 px-10 py-2 text-center border border-stroke dark:border-dark-3 rounded-lg bg-transparent outline-none focus:border-primary"
                                                         step="0.01"
                                                         min="0"
                                                     />

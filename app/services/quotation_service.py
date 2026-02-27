@@ -948,8 +948,35 @@ class QuotationService:
         invoice_type = InvoiceType.B2C
         if customer and customer.gstin:
             invoice_type = InvoiceType.B2B
-        
-        # Create invoice with all quotation fields
+
+        shipping_address = None
+        shipping_city = None
+        shipping_state = None
+        shipping_country = "India"
+        shipping_zip = None
+        if customer:
+            shipping_address = customer.shipping_address or customer.billing_address
+            shipping_city = customer.shipping_city or customer.billing_city
+            shipping_state = customer.shipping_state or customer.billing_state
+            shipping_country = customer.shipping_country or customer.billing_country or "India"
+            shipping_zip = customer.shipping_zip or customer.billing_zip
+
+        normalized_place = (
+            self._normalize_state_code(quotation.place_of_supply)
+            or self._normalize_state_code(getattr(customer, "billing_state_code", None))
+            or self._normalize_state_code(company.state_code)
+            or self._normalize_state_code(getattr(company, "state", None))
+            or "27"
+        )
+        normalized_place_name = INDIAN_STATE_CODES.get(normalized_place, quotation.place_of_supply_name or "")
+
+        # Invoice model does not have quotation-only fields like remarks/reference/reference_date/contact_person.
+        # Merge remarks into notes and map reference -> reference_no fallback.
+        merged_notes = "\n".join(
+            [v for v in [quotation.notes, quotation.remarks] if v]
+        ) or None
+
+        # Create invoice with compatible fields
         invoice = Invoice(
             id=generate_uuid(),
             company_id=quotation.company_id,
@@ -957,9 +984,14 @@ class QuotationService:
             invoice_number=invoice_number,
             invoice_date=invoice_date or datetime.utcnow(),
             due_date=due_date,
+            shipping_address=shipping_address,
+            shipping_city=shipping_city,
+            shipping_state=shipping_state,
+            shipping_country=shipping_country,
+            shipping_zip=shipping_zip,
             invoice_type=invoice_type,
-            place_of_supply=quotation.place_of_supply,
-            place_of_supply_name=quotation.place_of_supply_name,
+            place_of_supply=normalized_place,
+            place_of_supply_name=normalized_place_name,
             subtotal=quotation.subtotal,
             discount_amount=quotation.discount_amount,
             cgst_amount=quotation.cgst_amount,
@@ -970,15 +1002,11 @@ class QuotationService:
             total_amount=quotation.total_amount,
             balance_due=quotation.total_amount,
             outstanding_amount=quotation.total_amount,
-            notes=quotation.notes,
+            notes=merged_notes,
             terms=quotation.terms,
-            remarks=quotation.remarks,
-            contact_person=quotation.contact_person,
             status=InvoiceStatus.DRAFT,
             sales_person_id=quotation.sales_person_id,
-            reference=quotation.reference,
-            reference_no=quotation.reference_no,
-            reference_date=quotation.reference_date,
+            reference_no=quotation.reference_no or quotation.reference,
             payment_terms=quotation.payment_terms,
         )
         

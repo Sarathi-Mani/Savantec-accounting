@@ -868,7 +868,13 @@ export default function QuotationsPage() {
       );
 
       if (response.ok) {
-        alert("Quotation converted to invoice successfully!");
+        const data = await response.json();
+        const invoiceId = data?.invoice_id || data?.converted_invoice_id || data?.id;
+        alert("Quotation converted successfully!");
+        if (invoiceId) {
+          router.push(`/sales/${invoiceId}/edit`);
+          return;
+        }
         fetchQuotations();
       } else {
         const error = await response.json();

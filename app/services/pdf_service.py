@@ -2,6 +2,8 @@
 from io import BytesIO
 from decimal import Decimal
 from datetime import datetime
+from pathlib import Path
+from xml.sax.saxutils import escape
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -135,334 +137,388 @@ class PDFService:
         company: Company,
         customer: Customer = None
     ) -> BytesIO:
-        """Generate a GST-compliant invoice PDF."""
+        """Generate invoice PDF in SAPL-like boxed format."""
         buffer = BytesIO()
         doc = SimpleDocTemplate(
             buffer,
             pagesize=A4,
-            rightMargin=15*mm,
-            leftMargin=15*mm,
-            topMargin=15*mm,
-            bottomMargin=20*mm
+            rightMargin=8 * mm,
+            leftMargin=8 * mm,
+            topMargin=8 * mm,
+            bottomMargin=10 * mm
         )
-        
+
         elements = []
-        
-        # Header - Tax Invoice
-        elements.append(Paragraph("TAX INVOICE", self.styles['InvoiceTitle']))
-        elements.append(Spacer(1, 5))
-        
-        # Company Details
-        elements.append(Paragraph(company.name, self.styles['CompanyName']))
-        if company.trade_name and company.trade_name != company.name:
-            elements.append(Paragraph(f"({company.trade_name})", self.styles['SmallText']))
-        
-        # Company Address
-        address_parts = []
-        if company.address_line1:
-            address_parts.append(company.address_line1)
-        if company.address_line2:
-            address_parts.append(company.address_line2)
-        if company.city:
-            city_state = company.city
-            if company.state:
-                city_state += f", {company.state}"
-            if company.pincode:
-                city_state += f" - {company.pincode}"
-            address_parts.append(city_state)
-        
-        if address_parts:
-            elements.append(Paragraph(
-                '<br/>'.join(address_parts),
-                ParagraphStyle('Address', parent=self.styles['Normal'], fontSize=9, alignment=TA_CENTER)
-            ))
-        
-        # Company Contact & GSTIN
-        contact_parts = []
-        if company.phone:
-            contact_parts.append(f"Phone: {company.phone}")
-        if company.email:
-            contact_parts.append(f"Email: {company.email}")
-        if contact_parts:
-            elements.append(Paragraph(
-                ' | '.join(contact_parts),
-                ParagraphStyle('Contact', parent=self.styles['SmallText'], alignment=TA_CENTER)
-            ))
-        
-        if company.gstin:
-            elements.append(Paragraph(
-                f"<b>GSTIN:</b> {company.gstin}",
-                ParagraphStyle('GSTIN', parent=self.styles['Normal'], fontSize=10, alignment=TA_CENTER)
-            ))
-        
-        elements.append(Spacer(1, 10))
-        elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#e2e8f0')))
-        elements.append(Spacer(1, 10))
-        
-        # Invoice Details & Customer Details in two columns
-        invoice_date = invoice.invoice_date.strftime('%d-%b-%Y') if invoice.invoice_date else ''
-        due_date = invoice.due_date.strftime('%d-%b-%Y') if invoice.due_date else 'On Receipt'
-        
-        invoice_details = [
-            ['Invoice No:', invoice.invoice_number],
-            ['Invoice Date:', invoice_date],
-            ['Due Date:', due_date],
-            ['Place of Supply:', f"{invoice.place_of_supply} - {invoice.place_of_supply_name}"],
-        ]
-        
-        customer_name = customer.name if customer else "Walk-in Customer"
-        customer_gstin = customer.gstin if customer else ""
-        customer_address = ""
-        if customer:
-            addr_parts = []
-            if customer.billing_address_line1:
-                addr_parts.append(customer.billing_address_line1)
-            if customer.billing_city:
-                addr_parts.append(customer.billing_city)
-            if customer.billing_state:
-                addr_parts.append(customer.billing_state)
-            customer_address = ", ".join(addr_parts)
-        
-        customer_details = [
-            ['Bill To:', customer_name],
-            ['Address:', customer_address or '-'],
-            ['GSTIN:', customer_gstin or 'Unregistered'],
-            ['State:', customer.billing_state if customer else '-'],
-        ]
-        
-        # Create two-column layout
-        col_width = 85*mm
-        left_table = Table(invoice_details, colWidths=[30*mm, 55*mm])
-        left_table.setStyle(TableStyle([
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        normal = ParagraphStyle('InvNormal', parent=self.styles['Normal'], fontSize=8, leading=9)
+        normal_b = ParagraphStyle('InvBold', parent=normal, fontName='Helvetica-Bold')
+        center_b = ParagraphStyle('InvCenterBold', parent=normal_b, alignment=TA_CENTER)
+        right_b = ParagraphStyle('InvRightBold', parent=normal_b, alignment=TA_RIGHT)
+        right_n = ParagraphStyle('InvRight', parent=normal, alignment=TA_RIGHT)
+        model_wrap = ParagraphStyle('InvModelWrap', parent=normal, fontSize=7.5, leading=8, wordWrap='CJK')
+        desc_wrap = ParagraphStyle('InvDescWrap', parent=normal, fontSize=7.5, leading=8, wordWrap='CJK')
+
+        def p(value, style=normal):
+            return Paragraph(value or "", style)
+
+        def fmt_dt(value):
+            return value.strftime('%d-%m-%Y') if value else ""
+
+        def fmt_num(value):
+            return f"{Decimal(value or 0):,.2f}"
+
+        def label_val(label, value):
+            return f"<b>{label}</b><br/>{value or '-'}"
+
+        company_name = company.name or ""
+        company_address = ", ".join([x for x in [
+            company.address_line1,
+            company.address_line2,
+            company.city,
+            company.state,
+            company.pincode
+        ] if x])
+
+        customer_name = (
+            (customer.name if customer else None)
+            or invoice.customer_name
+            or "Walk-in Customer"
+        )
+        customer_address = ", ".join([x for x in [
+            (customer.billing_address_line1 if customer else None),
+            (customer.billing_city if customer else None),
+            (customer.billing_state if customer else None),
+            (customer.billing_zip if customer else None),
+        ] if x])
+        customer_gstin = (
+            (customer.gstin if customer else None)
+            or invoice.customer_gstin
+            or "-"
+        )
+
+        title_table = Table(
+            [[p("<b>TAX INVOICE</b>", center_b), p("<i>(ORIGINAL FOR RECIPIENT)</i>", right_n)]],
+            colWidths=[150 * mm, 44 * mm]
+        )
+        title_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('TOPPADDING', (0, 0), (-1, -1), 0),
         ]))
-        
-        right_table = Table(customer_details, colWidths=[25*mm, 60*mm])
-        right_table.setStyle(TableStyle([
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ]))
-        
-        details_table = Table([[left_table, right_table]], colWidths=[col_width, col_width])
-        elements.append(details_table)
-        elements.append(Spacer(1, 15))
-        
-        # Items Table
-        is_inter_state = company.state_code != invoice.place_of_supply
-        
-        if is_inter_state:
-            headers = ['#', 'Description', 'HSN', 'Qty', 'Rate', 'Taxable', 'IGST%', 'IGST', 'Total']
-            col_widths = [8*mm, 45*mm, 15*mm, 12*mm, 20*mm, 22*mm, 12*mm, 18*mm, 22*mm]
+        elements.append(title_table)
+
+        seller_details = p(
+            f"<b>{company_name}</b><br/>"
+            f"Address : {company_address or '-'}<br/>"
+            f"Mobile : {company.phone or '-'}<br/>"
+            f"Email : {company.email or '-'}<br/>"
+            f"GST Number : {company.gstin or '-'}",
+            normal
+        )
+
+        logo_path = Path("frontend/public/images/logo/savantec_logo.png")
+        if logo_path.exists():
+            logo_image = Image(str(logo_path), width=30 * mm, height=9 * mm)
+            seller_block = Table([[logo_image, seller_details]], colWidths=[32 * mm, 76 * mm])
+            seller_block.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+            ]))
         else:
-            headers = ['#', 'Description', 'HSN', 'Qty', 'Rate', 'Taxable', 'CGST%', 'SGST%', 'Tax', 'Total']
-            col_widths = [8*mm, 40*mm, 13*mm, 10*mm, 18*mm, 20*mm, 11*mm, 11*mm, 16*mm, 20*mm]
-        
-        data = [headers]
-        
+            seller_block = seller_details
+
+        top_right = Table([
+            [p(label_val("Invoice No.", invoice.invoice_number)), p(label_val("Dated", fmt_dt(invoice.invoice_date)))],
+            [p(label_val("Delivery Note", invoice.delivery_note)), p(label_val("Mode/Terms of Payment", invoice.payment_terms or "15 DAYS"))],
+            [p(label_val("Supplier's Ref.", invoice.supplier_ref)), p(label_val("Other Reference(s)", invoice.other_references))],
+        ], colWidths=[43 * mm, 43 * mm])
+        top_right.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 2),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ]))
+
+        top_info = Table([[seller_block, top_right]], colWidths=[108 * mm, 86 * mm])
+        top_info.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(top_info)
+
+        consignee = p(
+            f"<b>Consignee</b><br/>"
+            f"<b>{customer_name}</b><br/>"
+            f"{customer_address or '-'}<br/>"
+            f"GSTIN : {customer_gstin}",
+            normal
+        )
+        buyer = p(
+            f"<b>Buyer (if other than consignee)</b><br/>"
+            f"<b>{customer_name}</b><br/>"
+            f"{customer_address or '-'}<br/>"
+            f"GSTIN : {customer_gstin}",
+            normal
+        )
+
+        dispatch_right = Table([
+            [p(label_val("Buyer's Order No.", invoice.buyer_order_no)), p(label_val("Dated", fmt_dt(invoice.buyer_order_date)))],
+            [p(label_val("Despatch Document No.", invoice.despatch_doc_no)), p(label_val("Delivery Note Date", fmt_dt(invoice.delivery_note_date)))],
+            [p(label_val("Despatched through", invoice.despatched_through)), p(label_val("Destination", invoice.destination))],
+        ], colWidths=[43 * mm, 43 * mm])
+        dispatch_right.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 2),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ]))
+
+        terms_block = p(f"<b>Terms Of Delivery</b><br/>{invoice.terms_of_delivery or '-'}", normal)
+        party_block = Table([[consignee, dispatch_right], [buyer, terms_block]], colWidths=[108 * mm, 86 * mm])
+        party_block.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ]))
+        elements.append(party_block)
+
+        item_headers = ['SL#', 'Model', 'Description', 'HSN/SAC', 'Qty', 'Rate', 'Discount %', 'Amount']
+        # Match full section width (194mm) like other boxed sections.
+        item_widths = [12 * mm, 23 * mm, 53 * mm, 23 * mm, 16 * mm, 21 * mm, 23 * mm, 23 * mm]
+        item_rows = [item_headers]
+
+        qty_total = Decimal('0')
         for idx, item in enumerate(invoice.items, 1):
-            if is_inter_state:
-                row = [
-                    str(idx),
-                    item.description[:40],
-                    getattr(item, "hsn_code", None) or '-',
-                    f"{item.quantity:.2f}",
-                    f"₹{item.unit_price:,.2f}",
-                    f"₹{item.taxable_amount:,.2f}",
-                    f"{item.igst_rate:.0f}%",
-                    f"₹{item.igst_amount:,.2f}",
-                    f"₹{item.total_amount:,.2f}"
-                ]
-            else:
-                row = [
-                    str(idx),
-                    item.description[:35],
-                    getattr(item, "hsn_code", None) or '-',
-                    f"{item.quantity:.2f}",
-                    f"₹{item.unit_price:,.2f}",
-                    f"₹{item.taxable_amount:,.2f}",
-                    f"{item.cgst_rate:.0f}%",
-                    f"{item.sgst_rate:.0f}%",
-                    f"₹{item.cgst_amount + item.sgst_amount:,.2f}",
-                    f"₹{item.total_amount:,.2f}"
-                ]
-            data.append(row)
-        
-        items_table = Table(data, colWidths=col_widths, repeatRows=1)
-        items_table.setStyle(TableStyle([
-            # Header style
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2d3748')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            qty = Decimal(item.quantity or 0)
+            qty_total += qty
+            model_name = (
+                getattr(item, "item_name", None)
+                or getattr(item, "name", None)
+                or (getattr(item, "product", None) and getattr(item.product, "name", None))
+                or item.description
+                or "-"
+            )
+
+            item_rows.append([
+                str(idx),
+                Paragraph(escape(str(model_name)), model_wrap),
+                Paragraph(escape(str(item.description or '-')), desc_wrap),
+                getattr(item, "hsn_code", None) or '-',
+                f"{qty:,.2f} {(getattr(item, 'unit', '') or '').upper()}".strip(),
+                fmt_num(item.unit_price),
+                f"{Decimal(item.discount_percent or 0):.0f}%",
+                fmt_num(item.total_amount),
+            ])
+
+        min_lines = 8
+        while len(item_rows) - 1 < min_lines:
+            item_rows.append(['', '', '', '', '', '', '', ''])
+
+        item_rows.append([
+            '',
+            '',
+            'Total',
+            '',
+            f"{qty_total:,.2f} NOS",
+            fmt_num(invoice.subtotal),
+            '',
+            fmt_num(invoice.subtotal),
+        ])
+
+        items_table = Table(item_rows, colWidths=item_widths, repeatRows=1)
+        item_style = [
+            ('BOX', (0, 0), (-1, -1), 0.8, colors.black),
+            ('LINEBELOW', (0, 0), (-1, 0), 0.8, colors.black),
+            ('LINEABOVE', (0, -1), (-1, -1), 0.8, colors.black),
+            ('LINEBELOW', (0, -1), (-1, -1), 0.8, colors.black),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 8),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            
-            # Data style
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
-            ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # #
-            ('ALIGN', (1, 1), (1, -1), 'LEFT'),    # Description
-            ('ALIGN', (2, 1), (-1, -1), 'CENTER'), # Rest centered/right
-            ('ALIGN', (-1, 1), (-1, -1), 'RIGHT'), # Total
-            ('ALIGN', (-2, 1), (-2, -1), 'RIGHT'), # Tax
-            ('ALIGN', (-3, 1) if is_inter_state else (-4, 1), (-3, -1) if is_inter_state else (-4, -1), 'RIGHT'), # Taxable
-            
-            # Grid
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f7fafc')]),
-            
-            # Padding
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('LEFTPADDING', (0, 0), (-1, -1), 4),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
-        ]))
-        
-        elements.append(items_table)
-        elements.append(Spacer(1, 15))
-        
-        # Totals Section
-        totals_data = [
-            ['Subtotal:', f"₹{invoice.subtotal:,.2f}"],
-        ]
-        
-        if invoice.discount_amount > 0:
-            totals_data.append(['Discount:', f"- ₹{invoice.discount_amount:,.2f}"])
-        
-        if is_inter_state:
-            totals_data.append([f'IGST:', f"₹{invoice.igst_amount:,.2f}"])
-        else:
-            totals_data.append([f'CGST:', f"₹{invoice.cgst_amount:,.2f}"])
-            totals_data.append([f'SGST:', f"₹{invoice.sgst_amount:,.2f}"])
-        
-        if invoice.cess_amount > 0:
-            totals_data.append(['Cess:', f"₹{invoice.cess_amount:,.2f}"])
-        
-        totals_data.append(['Total Tax:', f"₹{invoice.total_tax:,.2f}"])
-        totals_data.append(['Grand Total:', f"₹{invoice.total_amount:,.2f}"])
-        
-        totals_table = Table(totals_data, colWidths=[130*mm, 40*mm])
-        totals_table.setStyle(TableStyle([
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('ALIGN', (0, 1), (0, -1), 'CENTER'),
+            ('ALIGN', (1, 1), (3, -1), 'LEFT'),
+            ('ALIGN', (4, 1), (-1, -1), 'RIGHT'),
+            ('FONTSIZE', (0, 0), (-1, -1), 7.5),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ('LINEABOVE', (0, -1), (-1, -1), 1, colors.HexColor('#2d3748')),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 2),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ]
+        for col in range(len(item_headers) - 1):
+            item_style.append(('LINEAFTER', (col, 0), (col, -1), 0.8, colors.black))
+        items_table.setStyle(TableStyle(item_style))
+        elements.append(items_table)
+
+        totals_rows = [
+            [p("<b>Sub Total :</b>", right_b), p(fmt_num(invoice.subtotal), right_b)],
+        ]
+        cgst_val = Decimal(invoice.cgst_amount or 0)
+        sgst_val = Decimal(invoice.sgst_amount or 0)
+        igst_val = Decimal(invoice.igst_amount or 0)
+        if igst_val > 0 and cgst_val == 0 and sgst_val == 0:
+            totals_rows.append([p("<b>IGST :</b>", right_b), p(fmt_num(invoice.igst_amount), right_b)])
+        else:
+            totals_rows.append([p("<b>CGST :</b>", right_b), p(fmt_num(invoice.cgst_amount), right_b)])
+            totals_rows.append([p("<b>SGST :</b>", right_b), p(fmt_num(invoice.sgst_amount), right_b)])
+            if igst_val > 0:
+                totals_rows.append([p("<b>IGST :</b>", right_b), p(fmt_num(invoice.igst_amount), right_b)])
+        totals_rows.extend([
+            [p("<b>Round Off :</b>", right_b), p(fmt_num(invoice.round_off), right_b)],
+            [p("<b>Grand Total :</b>", right_b), p(fmt_num(invoice.total_amount), right_b)],
+        ])
+
+        totals_box = Table(totals_rows, colWidths=[32 * mm, 22 * mm])
+        totals_box.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 2),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ]))
+
+        words = self._number_to_words(Decimal(invoice.total_amount or 0))
+        amount_words = Table([
+            [p(f"<b>Amount Chargeable (in words)</b><br/>{words}", normal), totals_box]
+        ], colWidths=[140 * mm, 54 * mm])
+        amount_words.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(amount_words)
+
+        # GST breakup section for verification (matches reference style intent).
+        taxable_base = Decimal(invoice.subtotal or 0)
+        gst_rows = [[
+            p("<b>Tax Type</b>", center_b),
+            p("<b>Rate</b>", center_b),
+            p("<b>Taxable Amount</b>", center_b),
+            p("<b>Tax Amount</b>", center_b),
+        ]]
+        if Decimal(invoice.cgst_amount or 0) > 0:
+            cgst_rate = (Decimal(invoice.cgst_amount or 0) * Decimal("100") / taxable_base) if taxable_base > 0 else Decimal("0")
+            gst_rows.append([
+                p("CGST", normal),
+                p(f"{cgst_rate:.2f}%", right_n),
+                p(fmt_num(invoice.subtotal), right_n),
+                p(fmt_num(invoice.cgst_amount), right_n),
+            ])
+        if Decimal(invoice.sgst_amount or 0) > 0:
+            sgst_rate = (Decimal(invoice.sgst_amount or 0) * Decimal("100") / taxable_base) if taxable_base > 0 else Decimal("0")
+            gst_rows.append([
+                p("SGST", normal),
+                p(f"{sgst_rate:.2f}%", right_n),
+                p(fmt_num(invoice.subtotal), right_n),
+                p(fmt_num(invoice.sgst_amount), right_n),
+            ])
+        if Decimal(invoice.igst_amount or 0) > 0:
+            igst_rate = (Decimal(invoice.igst_amount or 0) * Decimal("100") / taxable_base) if taxable_base > 0 else Decimal("0")
+            gst_rows.append([
+                p("IGST", normal),
+                p(f"{igst_rate:.2f}%", right_n),
+                p(fmt_num(invoice.subtotal), right_n),
+                p(fmt_num(invoice.igst_amount), right_n),
+            ])
+        if len(gst_rows) == 1:
+            gst_rows.append([
+                p("GST", normal),
+                p("-", right_n),
+                p(fmt_num(invoice.subtotal), right_n),
+                p(fmt_num(invoice.total_tax), right_n),
+            ])
+
+        gst_summary = Table(gst_rows, colWidths=[38 * mm, 28 * mm, 64 * mm, 64 * mm])
+        gst_summary.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(gst_summary)
+
+        bank_text = "-"
+        bank_accounts = getattr(company, "bank_accounts", None) or []
+        if bank_accounts:
+            default_bank = next((b for b in bank_accounts if getattr(b, "is_default", False)), bank_accounts[0])
+            bank_lines = [
+                f"Bank Name : {getattr(default_bank, 'bank_name', '-') or '-'}",
+                f"Account Name : {getattr(default_bank, 'account_name', '-') or '-'}",
+                f"A/C No : {getattr(default_bank, 'account_number', '-') or '-'}",
+                f"IFSC : {getattr(default_bank, 'ifsc_code', '-') or '-'}",
+            ]
+            if getattr(default_bank, "upi_id", None):
+                bank_lines.append(f"UPI : {default_bank.upi_id}")
+            bank_text = "<br/>".join(bank_lines)
+
+        terms_text = invoice.terms or getattr(company, "invoice_terms", None) or "-"
+        if invoice.notes:
+            terms_text = f"{terms_text}<br/><br/><b>Notes:</b><br/>{invoice.notes}"
+
+        extra_info = Table([
+            [
+                p(f"<b>Company Bank Details</b><br/>{bank_text}", normal),
+                p(f"<b>Terms & Conditions</b><br/>{terms_text}", normal),
+            ]
+        ], colWidths=[97 * mm, 97 * mm])
+        extra_info.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(extra_info)
+
+        declaration = Table([
+            [p("<b>Declaration</b><br/>We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.", normal)]
+        ], colWidths=[194 * mm])
+        declaration.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ]))
+        elements.append(declaration)
+
+        footer = Table([
+            [p("Customer Signature", normal), p(f"For <b>{company_name}</b><br/><br/><br/>Authorized Signatory", right_n)]
+        ], colWidths=[120 * mm, 74 * mm])
+        footer.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.8, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('TOPPADDING', (0, 0), (-1, -1), 4),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
         ]))
-        
-        elements.append(totals_table)
-        elements.append(Spacer(1, 10))
-        
-        # Amount in words
-        amount_words = self._number_to_words(invoice.total_amount)
-        elements.append(Paragraph(
-            f"<b>Amount in Words:</b> {amount_words}",
-            ParagraphStyle('AmountWords', parent=self.styles['Normal'], fontSize=9)
-        ))
-        
-        elements.append(Spacer(1, 15))
-        
-        # Bank Details and QR Code section
-        bank_details = []
-        if company.bank_accounts:
-            default_bank = next(
-                (b for b in company.bank_accounts if b.is_default),
-                company.bank_accounts[0]
-            )
-            bank_details = [
-                ['Bank Details', ''],
-                ['Bank Name:', default_bank.bank_name],
-                ['Account Name:', default_bank.account_name],
-                ['Account No:', default_bank.account_number],
-                ['IFSC Code:', default_bank.ifsc_code],
-            ]
-            if default_bank.upi_id:
-                bank_details.append(['UPI ID:', default_bank.upi_id])
-        
-        if bank_details:
-            bank_table = Table(bank_details, colWidths=[25*mm, 55*mm])
-            bank_table.setStyle(TableStyle([
-                ('FONTSIZE', (0, 0), (-1, -1), 8),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('SPAN', (0, 0), (-1, 0)),
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#edf2f7')),
-                ('TOPPADDING', (0, 0), (-1, -1), 3),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-            ]))
-            
-            # Add QR code if available
-            qr_element = []
-            if invoice.upi_qr_data:
-                qr_buffer = self._generate_qr_image(invoice.upi_qr_data)
-                qr_image = Image(qr_buffer, width=30*mm, height=30*mm)
-                qr_element = [[qr_image], [Paragraph("Scan to Pay", self.styles['SmallText'])]]
-            
-            if qr_element:
-                qr_table = Table(qr_element)
-                qr_table.setStyle(TableStyle([
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ]))
-                
-                payment_table = Table([[bank_table, qr_table]], colWidths=[90*mm, 40*mm])
-            else:
-                payment_table = bank_table
-            
-            elements.append(payment_table)
-        
-        elements.append(Spacer(1, 20))
-        
-        # Terms and Notes
-        if invoice.terms:
-            elements.append(Paragraph("<b>Terms & Conditions:</b>", self.styles['SectionHeader']))
-            elements.append(Paragraph(invoice.terms, self.styles['SmallText']))
-            elements.append(Spacer(1, 10))
-        
-        if invoice.notes:
-            elements.append(Paragraph("<b>Notes:</b>", self.styles['SectionHeader']))
-            elements.append(Paragraph(invoice.notes, self.styles['SmallText']))
-        
-        elements.append(Spacer(1, 30))
-        
-        # Signature section
-        sig_data = [
-            ['', f"For {company.name}"],
-            ['', ''],
-            ['', ''],
-            ['Customer Signature', 'Authorized Signatory'],
-        ]
-        
-        sig_table = Table(sig_data, colWidths=[85*mm, 85*mm])
-        sig_table.setStyle(TableStyle([
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-            ('FONTNAME', (1, 0), (1, 0), 'Helvetica-Bold'),
-            ('TOPPADDING', (0, 0), (-1, -1), 15),
-        ]))
-        
-        elements.append(sig_table)
-        
-        # Footer
-        elements.append(Spacer(1, 20))
-        elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#e2e8f0')))
-        elements.append(Paragraph(
-            "This is a computer-generated invoice and does not require a physical signature.",
-            ParagraphStyle('Footer', parent=self.styles['SmallText'], alignment=TA_CENTER)
-        ))
-        
-        # Build PDF
+        elements.append(footer)
+
         doc.build(elements)
         buffer.seek(0)
-        
         return buffer
 
     def generate_proforma_pdf(

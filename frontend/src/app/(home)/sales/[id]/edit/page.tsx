@@ -107,6 +107,7 @@ function ProductSelectField({
     const options = products.map(product => ({
         value: product.id,
         label: `${product.name} ${product.sku ? `(${product.sku})` : ""}`,
+        subLabel: product.description || "",
         product,
     }));
 
@@ -156,18 +157,47 @@ function ProductSelectField({
             styles={{
                 control: (base: any, state: any) => ({
                     ...base,
-                    minHeight: "38px",
+                    minHeight: "36px",
+                    height: "36px",
                     borderRadius: "0.375rem",
                     borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
-                    boxShadow: state.isFocused
-                        ? "0 0 0 1px rgba(99,102,241,0.5)"
-                        : "none",
+                    boxShadow: state.isFocused ? "0 0 0 1px rgba(99,102,241,0.5)" : "none",
+                }),
+                valueContainer: (base: any) => ({
+                    ...base,
+                    height: "36px",
+                    padding: "0 8px",
+                }),
+                input: (base: any) => ({
+                    ...base,
+                    margin: "0px",
+                }),
+                indicatorsContainer: (base: any) => ({
+                    ...base,
+                    height: "36px",
                 }),
                 menuPortal: (base: any) => ({
                     ...base,
                     zIndex: 9999,
                 }),
+                menu: (base: any) => ({
+                    ...base,
+                    minWidth: "620px",
+                    zIndex: 9999,
+                }),
             }}
+            classNamePrefix="react-select"
+            menuPlacement="auto"
+            formatOptionLabel={(option: any) => (
+                <div>
+                    <div className="whitespace-normal break-words text-sm">{option.label}</div>
+                    {option.subLabel ? (
+                        <div className="whitespace-normal break-words text-xs text-gray-500 dark:text-gray-400">
+                            {option.subLabel}
+                        </div>
+                    ) : null}
+                </div>
+            )}
         />
     );
 }
@@ -212,6 +242,15 @@ export default function EditSalesPage() {
         products: false,
         salesmen: false,
     });
+
+    const normalizeStateCode = (value: any) => {
+        const text = String(value ?? "").trim();
+        const match = text.match(/\d{2}/);
+        return match ? match[0] : text;
+    };
+
+    const isIntraStateSupply = (placeOfSupply: any) =>
+        normalizeStateCode(placeOfSupply) === normalizeStateCode(company?.state_code);
 
 
 
@@ -441,6 +480,51 @@ export default function EditSalesPage() {
         }
     }, [company?.id, invoiceId]);
 
+    // Backfill shipping fields from selected customer on initial load
+    // when converted invoice does not yet carry shipping fields.
+    useEffect(() => {
+        if (!formData.customer_id || customers.length === 0) return;
+
+        const hasShippingData =
+            Boolean((formData.address || "").trim()) ||
+            Boolean((formData.city || "").trim()) ||
+            Boolean((formData.postcode || "").trim());
+        if (hasShippingData) return;
+
+        const selectedCustomer = customers.find(
+            (c: any) => String(c.id) === String(formData.customer_id)
+        );
+        if (!selectedCustomer) return;
+
+        const nextCountry =
+            selectedCustomer.shipping_country ||
+            selectedCustomer.billing_country ||
+            formData.country ||
+            "India";
+        const nextCity =
+            selectedCustomer.shipping_city ||
+            selectedCustomer.billing_city ||
+            "";
+        const nextPostcode =
+            selectedCustomer.shipping_zip ||
+            selectedCustomer.shipping_pincode ||
+            selectedCustomer.billing_zip ||
+            selectedCustomer.billing_pincode ||
+            "";
+        const nextAddress =
+            selectedCustomer.shipping_address ||
+            selectedCustomer.billing_address ||
+            "";
+
+        setFormData((prev) => ({
+            ...prev,
+            country: nextCountry,
+            city: nextCity,
+            postcode: nextPostcode,
+            address: nextAddress,
+        }));
+    }, [customers, formData.customer_id, formData.address, formData.city, formData.postcode, formData.country]);
+
     useEffect(() => {
         const loadNextInvoiceNumber = async (voucherType = "sales") => {
             if (!company?.id) return;
@@ -640,17 +724,35 @@ export default function EditSalesPage() {
             // Taxable amount (after discount)
             const taxable = itemTotal - discount;
 
-            // Calculate tax based on GST rate
-            const tax = taxable * (item.gst_rate / 100);
+            const itemCgstRate = Number(item.cgst_rate || 0);
+            const itemSgstRate = Number(item.sgst_rate || 0);
+            const itemIgstRate = Number(item.igst_rate || 0);
+            const hasExplicitSplitRates = (itemCgstRate + itemSgstRate + itemIgstRate) > 0;
 
-            // For intra-state (CGST+SGST)
-            if (formData.place_of_supply === company?.state_code) {
-                cgstTotal += tax / 2;
-                sgstTotal += tax / 2;
+            let itemCgst = 0;
+            let itemSgst = 0;
+            let itemIgst = 0;
+
+            if (hasExplicitSplitRates) {
+                // Converted from quotation (or manually set split): respect item-level split.
+                itemCgst = taxable * (itemCgstRate / 100);
+                itemSgst = taxable * (itemSgstRate / 100);
+                itemIgst = taxable * (itemIgstRate / 100);
             } else {
-                // For inter-state (IGST)
-                igstTotal += tax;
+                // Fresh sales flow: derive split from place of supply.
+                const fallbackTax = taxable * (Number(item.gst_rate || 0) / 100);
+                if (isIntraStateSupply(formData.place_of_supply)) {
+                    itemCgst = fallbackTax / 2;
+                    itemSgst = fallbackTax / 2;
+                } else {
+                    itemIgst = fallbackTax;
+                }
             }
+
+            const tax = itemCgst + itemSgst + itemIgst;
+            cgstTotal += itemCgst;
+            sgstTotal += itemSgst;
+            igstTotal += itemIgst;
 
             subtotal += taxable;
             totalTax += tax;
@@ -771,6 +873,9 @@ export default function EditSalesPage() {
                 unit_price: toNumber(item.unit_price, 0),
                 discount_percent: toNumber(item.discount_percent, 0),
                 gst_rate: toNumber(item.gst_rate, 0),
+                cgst_rate: toNumber(item.cgst_rate, 0),
+                sgst_rate: toNumber(item.sgst_rate, 0),
+                igst_rate: toNumber(item.igst_rate, 0),
             }));
 
             // Prepare invoice data with ALL required fields
@@ -918,7 +1023,7 @@ export default function EditSalesPage() {
                     updated.total_amount = taxable + tax;
 
                     // Set CGST/SGST/IGST rates
-                    if (formData.place_of_supply === company?.state_code) {
+                    if (isIntraStateSupply(formData.place_of_supply)) {
                         // Intra-state
                         updated.cgst_rate = updated.gst_rate / 2;
                         updated.sgst_rate = updated.gst_rate / 2;
@@ -939,6 +1044,7 @@ export default function EditSalesPage() {
 
     // Update form data handler
     const handleFormChange = (field: string, value: any) => {
+        console.log("[Sales Edit] handleFormChange", { field, value });
         setFormData(prev => ({
             ...prev,
             [field]: value,
@@ -952,7 +1058,7 @@ export default function EditSalesPage() {
         if (field === 'place_of_supply') {
             setItems(items.map(item => {
                 const updated = { ...item };
-                if (value === company?.state_code) {
+                if (isIntraStateSupply(value)) {
                     // Intra-state
                     updated.cgst_rate = updated.gst_rate / 2;
                     updated.sgst_rate = updated.gst_rate / 2;
@@ -969,14 +1075,33 @@ export default function EditSalesPage() {
 
         // When customer is selected, auto-fill place of supply
         if (field === 'customer_id' && value) {
-            const selectedCustomer = customers.find(c => c.id === value);
+            console.log("[Sales Edit] customer_id changed", {
+                value,
+                valueType: typeof value,
+                customersCount: customers.length,
+                sampleCustomerIds: customers.slice(0, 5).map((c: any) => c?.id),
+            });
+            const selectedCustomer = customers.find(c => String(c.id) === String(value));
+            console.log("[Sales Edit] selectedCustomer for autofill", selectedCustomer);
             if (selectedCustomer) {
                 const customerState = selectedCustomer.billing_state_code ||
                     selectedCustomer.state_code;
                 setFormData(prev => ({
                     ...prev,
                     place_of_supply: customerState || company?.state_code || "",
+                    country: selectedCustomer.shipping_country || selectedCustomer.billing_country || prev.country || "India",
+                    city: selectedCustomer.shipping_city || selectedCustomer.billing_city || "",
+                    postcode: selectedCustomer.shipping_zip || selectedCustomer.shipping_pincode || selectedCustomer.billing_zip || selectedCustomer.billing_pincode || "",
+                    address: selectedCustomer.shipping_address || selectedCustomer.billing_address || "",
                 }));
+                console.log("[Sales Edit] shipping autofill applied", {
+                    country: selectedCustomer.shipping_country || selectedCustomer.billing_country || "India",
+                    city: selectedCustomer.shipping_city || selectedCustomer.billing_city || "",
+                    postcode: selectedCustomer.shipping_zip || selectedCustomer.shipping_pincode || selectedCustomer.billing_zip || selectedCustomer.billing_pincode || "",
+                    address: selectedCustomer.shipping_address || selectedCustomer.billing_address || "",
+                });
+            } else {
+                console.log("[Sales Edit] selectedCustomer not found for value", value);
             }
         }
     };
@@ -1415,49 +1540,57 @@ export default function EditSalesPage() {
 
                         {/* SECTION 3: Sales Items Table */}
                         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                            <div className="mb-4 flex items-center justify-between">
-                                <h2 className="text-lg font-semibold text-dark dark:text-white">Sales Items</h2>
-                                <div className="flex gap-2">
-                                    <div className="text-dark-6">
-                                        Total Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
-                                    </div>
-                                    <div className="text-dark-6">
-                                        Items: {items.length}
-                                    </div>
+                            <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Items</h2>
+                                    <p className="mt-1 text-sm text-dark-6">
+                                        Update items for your sales invoice
+                                    </p>
+                                </div>
+                                <div className="mt-2 flex gap-2 sm:mt-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => router.push("/products/new")}
+                                        className="inline-flex items-center gap-2 rounded-lg border border-blue-600 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
+                                    >
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        Add New Product
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => addItem()}
+                                        className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                                    >
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        Add Item
+                                    </button>
                                 </div>
                             </div>
-                            <div className="mb-4 flex justify-end">
-                                <button
-                                    type="button"
-                                    onClick={() => addItem()}
-                                    className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
-                                >
-                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                    </svg>
-                                </button>
-                            </div>{/* Items Table */}
                             <div className="overflow-x-auto">
-                                <table className="w-full">
+                                <table className="w-full min-w-[1580px] border-collapse">
                                     <thead>
-                                        <tr className="border-b border-stroke dark:border-dark-3">
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Name</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Code</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">HSN</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit Price</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Discount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax Amount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Total Amount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
+                                        <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+                                            <th className="w-[450px] min-w-[450px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item</th>
+                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item Code</th>
+                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">HSN Code</th>
+                                            <th className="w-[200px] min-w-[200px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Description</th>
+                                            <th className="w-[80px] min-w-[80px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Qty</th>
+                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Unit Price</th>
+                                            <th className="w-[100px] min-w-[100px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount %</th>
+                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount Amt</th>
+                                            <th className="w-[80px] min-w-[80px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">GST %</th>
+                                            <th className="w-[130px] min-w-[130px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Total</th>
+                                            <th className="w-[60px] min-w-[60px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {items.map((item) => (
                                             <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                                                <td className="px-4 py-3 min-w-[200px]">
+                                                <td className="w-[450px] min-w-[450px] px-3 py-3">
                                                     <ProductSelectField
                                                         value={item.product_id}
                                                         products={products}
@@ -1491,7 +1624,7 @@ export default function EditSalesPage() {
                                                                         discount_amount: 0,
                                                                         taxable_amount: taxable,
                                                                         total_amount: taxable + tax,
-                                                                        ...(formData.place_of_supply === company?.state_code ? {
+                                                                        ...(isIntraStateSupply(formData.place_of_supply) ? {
                                                                             cgst_rate: gstRate / 2,
                                                                             sgst_rate: gstRate / 2,
                                                                             igst_rate: 0,

@@ -248,7 +248,9 @@ export default function SalesInvoiceViewPage() {
             <p className="text-dark-6">Phone: {invoice.customer_phone || "-"}</p>
             <p className="text-dark-6">Place of Supply: {invoice.place_of_supply_name || "-"}</p>
             <p className="text-dark-6">Customer State: {customerDetails?.billing_state || customerDetails?.state || "-"}</p>
-            <p className="text-dark-6">Customer State Code: {customerDetails?.billing_state_code || customerDetails?.state_code || "-"}</p>
+            <p className="text-dark-6">
+              Customer State Code: {customerDetails?.billing_state_code || customerDetails?.state_code || invoice.customer_state_code || invoice.place_of_supply || "-"}
+            </p>
           </div>
         </div>
 

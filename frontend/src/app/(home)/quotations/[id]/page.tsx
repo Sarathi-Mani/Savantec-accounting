@@ -46,36 +46,6 @@ interface QuotationData {
   excel_notes_file_url?: string;
 }
 
-const parseCsvLine = (line: string): string[] => {
-  const values: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    const next = line[i + 1];
-
-    if (ch === '"' && inQuotes && next === '"') {
-      current += '"';
-      i++;
-      continue;
-    }
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (ch === "," && !inQuotes) {
-      values.push(current);
-      current = "";
-      continue;
-    }
-    current += ch;
-  }
-
-  values.push(current);
-  return values;
-};
-
 const Toast = ({ message, type = "success", onClose }: { 
   message: string; 
   type?: "success" | "error" | "info" | "warning";
@@ -110,8 +80,6 @@ export default function ViewQuotationPage() {
   const [quotation, setQuotation] = useState<QuotationData | null>(null);
   const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: "success" | "error" | "info" | "warning" }>>([]);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
-  const [excelNotesRows, setExcelNotesRows] = useState<string[][]>([]);
-  const [excelNotesLoading, setExcelNotesLoading] = useState(false);
 
   const showToast = (message: string, type: "success" | "error" | "info" | "warning" = "success") => {
     const id = Date.now();
@@ -185,45 +153,6 @@ export default function ViewQuotationPage() {
       if (response.ok) {
         const data = await response.json();
         setQuotation(data);
-
-        if (data?.excel_notes_file_url) {
-          try {
-            setExcelNotesLoading(true);
-            const excelResponse = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${quotationId}/excel-notes`,
-              {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-              }
-            );
-
-            if (excelResponse.ok) {
-              const excelData = await excelResponse.json();
-              const csvContent = String(excelData?.content || "").trim();
-              if (csvContent) {
-                const rows = csvContent
-                  .replace(/\r\n/g, "\n")
-                  .replace(/\r/g, "\n")
-                  .split("\n")
-                  .filter((line: string) => line.trim() !== "")
-                  .map(parseCsvLine);
-                setExcelNotesRows(rows);
-              } else {
-                setExcelNotesRows([]);
-              }
-            } else {
-              setExcelNotesRows([]);
-            }
-          } catch (excelError) {
-            console.error("Failed to load excel notes content:", excelError);
-            setExcelNotesRows([]);
-          } finally {
-            setExcelNotesLoading(false);
-          }
-        } else {
-          setExcelNotesRows([]);
-        }
       } else {
         showToast("Failed to load quotation", "error");
         router.push("/quotations");
@@ -760,8 +689,7 @@ export default function ViewQuotationPage() {
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Excel Notes</h2>
                   <a
                     href={excelDownloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    download
                     className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -770,33 +698,11 @@ export default function ViewQuotationPage() {
                     Download Excel
                   </a>
                 </div>
-                {excelNotesLoading ? (
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-sm text-gray-600 dark:text-gray-300">
-                    Loading Excel notes...
-                  </div>
-                ) : excelNotesRows.length > 0 ? (
-                  <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
-                    <table className="min-w-full text-xs">
-                      <tbody>
-                        {excelNotesRows.map((row, rowIdx) => (
-                          <tr key={rowIdx} className="border-b border-gray-200 dark:border-gray-700 last:border-b-0">
-                            {row.map((cell, cellIdx) => (
-                              <td key={cellIdx} className="px-3 py-2 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                                {cell}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Excel notes file is attached. Click download to view full sheet.
-                    </p>
-                  </div>
-                )}
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Excel preview is disabled here. Click download, then open the file in Excel.
+                  </p>
+                </div>
               </div>
             )}
           </div>

@@ -4,6 +4,7 @@ from sqlalchemy import func, and_
 from typing import List, Optional, Tuple
 from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP
+import re
 from app.database.models import (
     Invoice, InvoiceItem, Company, Customer, Product,
     InvoiceStatus, InvoiceType, INDIAN_STATE_CODES,InvoiceVoucher
@@ -24,6 +25,40 @@ class InvoiceService:
     def _round_amount(self, amount: Decimal) -> Decimal:
         """Round amount to 2 decimal places."""
         return Decimal(amount).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    def _normalize_state_code(self, state_value: Optional[str]) -> Optional[str]:
+        """Normalize state code/name into 2-digit GST state code."""
+        if not state_value:
+            return None
+
+        raw = str(state_value).strip()
+        if not raw:
+            return None
+
+        if raw.isdigit():
+            code = raw.zfill(2)
+            if code in INDIAN_STATE_CODES:
+                return code
+
+        normalized_input = re.sub(r"[^a-z0-9]", "", raw.lower())
+        if not normalized_input:
+            return None
+
+        for code, name in INDIAN_STATE_CODES.items():
+            normalized_name = re.sub(r"[^a-z0-9]", "", str(name).lower())
+            if normalized_name == normalized_input:
+                return code
+
+        aliases = {
+            "tamilnadu": "33",
+            "andhrapradesh": "37",
+            "maharastra": "27",
+            "chhattisgarh": "22",
+            "chattisgarh": "22",
+            "odisa": "21",
+            "orissa": "21",
+        }
+        return aliases.get(normalized_input)
     
     def _calculate_gst_split(
         self,
@@ -34,9 +69,11 @@ class InvoiceService:
     ) -> dict:
         """Calculate GST split (CGST+SGST or IGST) based on place of supply."""
         total_gst = self._round_amount(taxable_amount * gst_rate / 100)
+        normalized_company_state = self._normalize_state_code(company_state_code) or str(company_state_code or "").strip()
+        normalized_place_of_supply = self._normalize_state_code(place_of_supply) or str(place_of_supply or "").strip()
         
         # If same state, split into CGST and SGST
-        if company_state_code == place_of_supply:
+        if normalized_company_state == normalized_place_of_supply:
             half_rate = gst_rate / 2
             cgst = self._round_amount(taxable_amount * half_rate / 100)
             sgst = total_gst - cgst  # Ensure total matches
@@ -75,13 +112,32 @@ class InvoiceService:
         # Taxable amount (after discount)
         taxable_amount = base_amount - discount_amount
         
-        # Calculate GST
-        gst_split = self._calculate_gst_split(
-            taxable_amount,
-            item_data.gst_rate,
-            company_state_code,
-            place_of_supply
-        )
+        explicit_cgst_rate = Decimal(str(item_data.cgst_rate or 0))
+        explicit_sgst_rate = Decimal(str(item_data.sgst_rate or 0))
+        explicit_igst_rate = Decimal(str(item_data.igst_rate or 0))
+        explicit_rate_total = explicit_cgst_rate + explicit_sgst_rate + explicit_igst_rate
+
+        # Respect explicit split rates when provided (e.g. quotation-converted/edit flows).
+        if explicit_rate_total > 0:
+            cgst_amount = self._round_amount(taxable_amount * explicit_cgst_rate / 100)
+            sgst_amount = self._round_amount(taxable_amount * explicit_sgst_rate / 100)
+            igst_amount = self._round_amount(taxable_amount * explicit_igst_rate / 100)
+            gst_split = {
+                "cgst_rate": explicit_cgst_rate,
+                "sgst_rate": explicit_sgst_rate,
+                "igst_rate": explicit_igst_rate,
+                "cgst_amount": cgst_amount,
+                "sgst_amount": sgst_amount,
+                "igst_amount": igst_amount,
+            }
+        else:
+            # Fallback to place-of-supply based split.
+            gst_split = self._calculate_gst_split(
+                taxable_amount,
+                item_data.gst_rate,
+                company_state_code,
+                place_of_supply
+            )
         
         # Total tax
         total_tax = gst_split["cgst_amount"] + gst_split["sgst_amount"] + gst_split["igst_amount"]
@@ -122,8 +178,12 @@ class InvoiceService:
             place_of_supply = customer.billing_state_code
         if not place_of_supply and hasattr(data, 'customer_state_code'):
             place_of_supply = data.customer_state_code
-        if not place_of_supply:
-            place_of_supply = company.state_code or "27"  # Default to Maharashtra
+        place_of_supply = (
+            self._normalize_state_code(place_of_supply)
+            or self._normalize_state_code(company.state_code)
+            or self._normalize_state_code(getattr(company, "state", None))
+            or "27"
+        )
         
         place_of_supply_name = INDIAN_STATE_CODES.get(place_of_supply, "")
         # print(f"Place of supply: {place_of_supply} ({place_of_supply_name})")
@@ -247,6 +307,11 @@ class InvoiceService:
                 company.state_code or "27",
                 place_of_supply
             )
+            effective_gst_rate = (
+                item_data.gst_rate
+                if Decimal(str(item_data.gst_rate or 0)) > 0
+                else (amounts["cgst_rate"] + amounts["sgst_rate"] + amounts["igst_rate"])
+            )
             
             item = InvoiceItem(
                 invoice_id=invoice.id,
@@ -258,7 +323,7 @@ class InvoiceService:
                 unit_price=item_data.unit_price,
                 discount_percent=item_data.discount_percent,
                 discount_amount=amounts["discount_amount"],
-                gst_rate=item_data.gst_rate,
+                gst_rate=effective_gst_rate,
                 cgst_rate=amounts["cgst_rate"],
                 sgst_rate=amounts["sgst_rate"],
                 igst_rate=amounts["igst_rate"],
@@ -711,6 +776,11 @@ class InvoiceService:
                     company.state_code or "27",
                     invoice.place_of_supply or company.state_code or "27"
                 )
+                effective_gst_rate = (
+                    item_obj.gst_rate
+                    if Decimal(str(item_obj.gst_rate or 0)) > 0
+                    else (amounts["cgst_rate"] + amounts["sgst_rate"] + amounts["igst_rate"])
+                )
 
                 new_item = InvoiceItem(
                     invoice_id=invoice.id,
@@ -721,7 +791,7 @@ class InvoiceService:
                     unit=item_obj.unit,
                     unit_price=item_obj.unit_price,
                     discount_percent=item_obj.discount_percent,
-                    gst_rate=item_obj.gst_rate,
+                    gst_rate=effective_gst_rate,
                     **amounts
                 )
                 self.db.add(new_item)

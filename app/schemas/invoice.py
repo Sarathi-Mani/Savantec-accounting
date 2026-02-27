@@ -51,6 +51,9 @@ class InvoiceItemCreate(BaseModel):
     
     discount_percent: Decimal = Field(default=0, ge=0, le=100)
     gst_rate: Decimal = Field(..., ge=0)
+    cgst_rate: Optional[Decimal] = Field(default=None, ge=0)
+    sgst_rate: Optional[Decimal] = Field(default=None, ge=0)
+    igst_rate: Optional[Decimal] = Field(default=None, ge=0)
     
     # Warehouse allocation (optional manual override)
     warehouse_allocation: Optional[List[dict]] = None
