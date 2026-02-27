@@ -826,17 +826,17 @@ export default function SalesListPage() {
 
         if (visibleColumns.subtotal) {
           if (!headers.includes("Subtotal")) headers.push("Subtotal");
-          row.push(formatCurrency(calculateSubtotal(invoice)).replace('â‚¹', 'Rs. '));
+          row.push(`Rs. ${new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(calculateSubtotal(invoice))}`);
         }
 
         if (visibleColumns.total) {
           if (!headers.includes("Total")) headers.push("Total");
-          row.push(formatCurrency(invoice.total_amount || 0).replace('â‚¹', 'Rs. '));
+          row.push(`Rs. ${new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(invoice.total_amount || 0)}`);
         }
 
         if (visibleColumns.paidAmount) {
           if (!headers.includes("Paid")) headers.push("Paid");
-          row.push(formatCurrency(invoice.amount_paid || 0).replace('â‚¹', 'Rs. '));
+          row.push(`Rs. ${new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(invoice.amount_paid || 0)}`);
         }
 
         if (visibleColumns.status) {
@@ -942,193 +942,65 @@ export default function SalesListPage() {
         alert("No invoices found to export.");
         return;
       }
+      const doc = new jsPDF("landscape");
 
-      const detailedInvoices = await Promise.all(
-        allInvoices.map(async (invoice) => {
-          try {
-            return (await invoicesApi.get(company?.id ?? "", invoice.id ?? "")) as Invoice;
-          } catch (error) {
-            console.error(`Failed to load invoice details for ${invoice.invoice_number}:`, error);
-            return invoice;
-          }
-        })
-      );
+      const headers: string[] = ["S.No"];
+      if (visibleColumns.invoiceDate) headers.push("Sales Date");
+      if (visibleColumns.dueDate) headers.push("Due Date");
+      if (visibleColumns.invoiceNumber) headers.push("Invoice Number");
+      if (visibleColumns.referenceNo) headers.push("Reference No");
+      if (visibleColumns.customerName) headers.push("Customer Name");
+      if (visibleColumns.subtotal) headers.push("Subtotal");
+      if (visibleColumns.total) headers.push("Total");
+      if (visibleColumns.paidAmount) headers.push("Paid");
+      if (visibleColumns.status) headers.push("Status");
 
-      const doc = new jsPDF("p", "mm", "a4");
-      const money = (v: number | undefined | null) =>
-        new Intl.NumberFormat("en-IN", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }).format(Number(v || 0));
-      const val = (v: any) => (v === undefined || v === null || v === "" ? "-" : String(v));
-
-      detailedInvoices.forEach((invoice, index) => {
-        if (index > 0) doc.addPage();
-
-        const pageWidth = doc.internal.pageSize.getWidth();
-        doc.setFillColor(22, 78, 99);
-        doc.rect(0, 0, pageWidth, 24, "F");
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(12);
-        doc.text(company?.name || "Company", 14, 10);
-        doc.setFontSize(11);
-        doc.text("SALES INVOICE", 14, 18);
-        doc.setFontSize(9);
-        doc.text(`No: ${val(invoice.invoice_number)}`, pageWidth - 14, 10, { align: "right" });
-        doc.text(`Date: ${formatDate(invoice.invoice_date)}`, pageWidth - 14, 18, { align: "right" });
-        doc.setTextColor(0, 0, 0);
-
-        let y = 32;
-        const addSection = (title: string) => {
-          doc.setFillColor(241, 245, 249);
-          doc.rect(14, y - 3, 182, 7, "F");
-          doc.setFontSize(10);
-          doc.setFont("helvetica", "bold");
-          doc.text(title, 16, y + 1);
-          doc.setFont("helvetica", "normal");
-          y += 9;
-        };
-        const addLine = (label: string, value: any) => {
-          doc.setFontSize(9);
-          doc.setFont("helvetica", "bold");
-          doc.text(`${label}:`, 14, y);
-          doc.setFont("helvetica", "normal");
-          const lines = doc.splitTextToSize(val(value), 145);
-          doc.text(lines, 50, y);
-          y += Math.max(1, lines.length) * 4.6;
-        };
-
-        addSection("Customer & Invoice Details");
-        addLine("Customer", getCustomerDisplayName(invoice) || "");
-        addLine("Customer GSTIN", getCustomerGSTIN(invoice) || "");
-        addLine("Customer Phone", getCustomerPhone(invoice) || "");
-        addLine("Status", getStatusText(invoice.status) || "");
-        addLine("Due Date", invoice.due_date ? formatDate(invoice.due_date) : "-");
-        addLine("Voucher Type", invoice.voucher_type === "sales_return" ? "Sales Return" : "Sales");
-        addLine("Sales Person", invoice.sales_person_id || "");
-
-        addSection("Reference / Dispatch");
-        addLine("Reference No", invoice.reference_no || "");
-        addLine("Buyer Order No", invoice.buyer_order_no || "");
-        addLine("Buyer Order Date", invoice.buyer_order_date ? formatDate(invoice.buyer_order_date) : "-");
-        addLine("Delivery Note", invoice.delivery_note || "");
-        addLine("Delivery Note Date", invoice.delivery_note_date ? formatDate(invoice.delivery_note_date) : "-");
-        addLine("Despatch Doc No", invoice.despatch_doc_no || "");
-        addLine("Despatched Through", invoice.despatched_through || "");
-        addLine("Destination", invoice.destination || "");
-        addLine("Terms Of Delivery", invoice.terms_of_delivery || "");
-        addLine("Payment Terms", invoice.payment_terms || "");
-        addLine("Supplier Ref", invoice.supplier_ref || "");
-        addLine("Other References", invoice.other_references || "");
-
-        const shippingAddress = [
-          invoice.shipping_address,
-          invoice.shipping_city,
-          invoice.shipping_state,
-          invoice.shipping_country,
-          invoice.shipping_zip,
-        ]
-          .filter(Boolean)
-          .join(", ");
-        addLine("Shipping Address", shippingAddress);
-
-        if (invoice.notes) addLine("Notes", invoice.notes);
-        if (invoice.terms) addLine("Terms", invoice.terms);
-
-        const itemStartY = y + 2;
-        const items = Array.isArray(invoice.items) ? invoice.items : [];
-        const rows = items.map((item, rowIndex) => {
-          const taxAmount =
-            Number(item.cgst_amount || 0) +
-            Number(item.sgst_amount || 0) +
-            Number(item.igst_amount || 0) +
-            Number(item.cess_amount || 0);
-
-          return [
-            String(rowIndex + 1),
-            val(item.product_id),
-            val(item.description),
-            Number(item.quantity || 0).toFixed(2),
-            val(item.unit),
-            Number(item.unit_price || 0).toFixed(2),
-            Number(item.discount_percent || 0).toFixed(2),
-            Number(item.discount_amount || 0).toFixed(2),
-            Number(item.taxable_amount || 0).toFixed(2),
-            Number(item.gst_rate || 0).toFixed(2),
-            taxAmount.toFixed(2),
-            Number(item.total_amount || 0).toFixed(2),
-          ];
-        });
-
-        autoTable(doc, {
-          startY: itemStartY,
-          head: [[
-            "#",
-            "Product ID",
-            "Description",
-            "Qty",
-            "Unit",
-            "Unit Price",
-            "Disc %",
-            "Disc Amt",
-            "Taxable",
-            "GST %",
-            "Tax",
-            "Amount",
-          ]],
-          body: rows.length ? rows : [["-", "-", "No items", "-", "-", "-", "-", "-", "-", "-", "-", "-"]],
-          theme: "grid",
-          styles: { fontSize: 7.3, cellPadding: 1.5, lineColor: [220, 220, 220], lineWidth: 0.1 },
-          headStyles: { fillColor: [22, 78, 99], textColor: [255, 255, 255], fontSize: 7.5 },
-          alternateRowStyles: { fillColor: [248, 250, 252] },
-          columnStyles: {
-            3: { halign: "right" },
-            5: { halign: "right" },
-            6: { halign: "right" },
-            7: { halign: "right" },
-            8: { halign: "right" },
-            9: { halign: "right" },
-            10: { halign: "right" },
-            11: { halign: "right" },
-          },
-        });
-
-        const finalY = (doc as any).lastAutoTable?.finalY ?? itemStartY;
-        let totalsY = finalY + 7;
-        if (totalsY + 46 > 286) {
-          doc.addPage();
-          totalsY = 20;
-        }
-
-        doc.setDrawColor(200, 200, 200);
-        doc.roundedRect(118, totalsY, 78, 44, 2, 2, "S");
-        doc.setFontSize(8.5);
-        doc.text("Subtotal", 121, totalsY + 5);
-        doc.text(money(invoice.subtotal), 193, totalsY + 5, { align: "right" });
-        doc.text("CGST", 121, totalsY + 10);
-        doc.text(money(invoice.cgst_amount), 193, totalsY + 10, { align: "right" });
-        doc.text("SGST", 121, totalsY + 15);
-        doc.text(money(invoice.sgst_amount), 193, totalsY + 15, { align: "right" });
-        doc.text("IGST", 121, totalsY + 20);
-        doc.text(money(invoice.igst_amount), 193, totalsY + 20, { align: "right" });
-        doc.text("Freight", 121, totalsY + 25);
-        doc.text(money(invoice.freight_charges), 193, totalsY + 25, { align: "right" });
-        doc.text("Packing/Forwarding", 121, totalsY + 30);
-        doc.text(money(invoice.packing_forwarding_charges), 193, totalsY + 30, { align: "right" });
-        doc.text("Round Off", 121, totalsY + 35);
-        doc.text(money(invoice.round_off), 193, totalsY + 35, { align: "right" });
-        doc.setFont("helvetica", "bold");
-        doc.text("Grand Total", 121, totalsY + 41);
-        doc.text(money(invoice.total_amount), 193, totalsY + 41, { align: "right" });
-        doc.setFont("helvetica", "normal");
-
-        doc.setFontSize(8.5);
-        doc.text(`Paid: ${money(invoice.amount_paid)}`, 14, totalsY + 39);
-        doc.text(`Balance: ${money(invoice.balance_due ?? invoice.outstanding_amount ?? 0)}`, 14, totalsY + 44);
+      const body = allInvoices.map((invoice, index) => {
+        const row: string[] = [String(index + 1)];
+        if (visibleColumns.invoiceDate) row.push(formatDate(invoice.invoice_date));
+        if (visibleColumns.dueDate) row.push(formatDate(invoice.due_date));
+        if (visibleColumns.invoiceNumber) row.push(invoice.invoice_number || "-");
+        if (visibleColumns.referenceNo) row.push(invoice.reference_no || "-");
+        if (visibleColumns.customerName) row.push(getCustomerDisplayName(invoice));
+        if (visibleColumns.subtotal) row.push(`Rs. ${new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(calculateSubtotal(invoice))}`);
+        if (visibleColumns.total) row.push(`Rs. ${new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(invoice.total_amount || 0)}`);
+        if (visibleColumns.paidAmount) row.push(`Rs. ${new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(invoice.amount_paid || 0)}`);
+        if (visibleColumns.status) row.push(getStatusText(invoice.status));
+        return row;
       });
 
-      addPdfPageNumbers(doc, "p");
-      doc.save("sales-invoices-detailed.pdf");
+      const pageWidth = doc.internal.pageSize.getWidth();
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text("Sales Invoices List", 14, 14);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(company?.name || "", 14, 20);
+      doc.text(`Generated: ${new Date().toLocaleDateString("en-IN")}`, pageWidth - 14, 20, { align: "right" });
+
+      autoTable(doc, {
+        startY: 26,
+        head: [headers],
+        body,
+        theme: "grid",
+        styles: {
+          fontSize: 8.5,
+          cellPadding: 2.4,
+          overflow: "linebreak",
+          font: "helvetica",
+        },
+        headStyles: {
+          fillColor: [79, 70, 229],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252],
+        },
+      });
+
+      addPdfPageNumbers(doc, "l");
+      doc.save("sales-invoices.pdf");
     } catch (error) {
       console.error("PDF export failed:", error);
       alert("Failed to export PDF. Please try again.");
@@ -1281,12 +1153,12 @@ export default function SalesListPage() {
               Sales Invoices
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Manage your sales invoices â€¢ Track payments and outstanding amounts
+              Manage and track all sales invoices
             </p>
           </div>
           <button
             onClick={() => router.push('/sales/new')}
-            className="px-4 py-2 transition bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2"
+            className="px-4 py-2 transition bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2"
           >
             <Plus className="w-5 h-5" />
             New Sale
@@ -1380,7 +1252,7 @@ export default function SalesListPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSearch(e)}
-                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               />
             </div>
           </div>
@@ -1426,7 +1298,7 @@ export default function SalesListPage() {
                         type="checkbox"
                         checked={value}
                         onChange={() => toggleColumn(key as keyof typeof visibleColumns)}
-                        className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                        className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
                       />
                       <span className="capitalize">
                         {key === 'invoiceDate' ? 'Sales Date' : 
@@ -1523,7 +1395,7 @@ export default function SalesListPage() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
                 <option value="">All Status</option>
                 <option value="draft">Draft</option>
@@ -1542,7 +1414,7 @@ export default function SalesListPage() {
                 <select
                   value={customerFilter}
                   onChange={(e) => setCustomerFilter(e.target.value)}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 >
                   <option value="">All Customers</option>
                   {customers.map((customer) => (
@@ -1564,7 +1436,7 @@ export default function SalesListPage() {
                   type="date"
                   value={fromDate}
                   onChange={(e) => setFromDate(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -1580,7 +1452,7 @@ export default function SalesListPage() {
                   type="date"
                   value={toDate}
                   onChange={(e) => setToDate(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -1661,7 +1533,7 @@ export default function SalesListPage() {
                 <tr>
                   <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
                     <div className="flex items-center justify-center">
-                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
+                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
                     </div>
                   </td>
                 </tr>
@@ -1680,7 +1552,7 @@ export default function SalesListPage() {
                       </p>
                       <button
                         onClick={() => router.push('/sales/new')}
-                        className="text-blue-600 hover:underline dark:text-blue-400"
+                        className="text-indigo-600 hover:underline dark:text-indigo-400"
                       >
                         Create your first sale
                       </button>
@@ -1900,6 +1772,8 @@ export default function SalesListPage() {
     </div>
   );
 }
+
+
 
 
 
