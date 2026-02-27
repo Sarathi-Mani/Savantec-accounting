@@ -55,6 +55,40 @@ interface DeliveryChallan {
   total_value?: number;
 }
 
+interface DeliveryChallanDetail extends DeliveryChallan {
+  reference_no?: string;
+  contact_person?: string;
+  engineer_name?: string;
+  engineer_phone?: string;
+  billing_address?: string;
+  billing_city?: string;
+  billing_state?: string;
+  billing_pincode?: string;
+  billing_gstin?: string;
+  shipping_name?: string;
+  shipping_gstin?: string;
+  delivery_to_address?: string;
+  delivery_to_city?: string;
+  delivery_to_state?: string;
+  delivery_to_pincode?: string;
+  dispatch_from_address?: string;
+  dispatch_from_city?: string;
+  dispatch_from_state?: string;
+  dispatch_from_pincode?: string;
+  notes?: string;
+  items?: Array<{
+    description?: string;
+    hsn_code?: string;
+    model_no?: string;
+    model_number?: string;
+    quantity?: number;
+    unit?: string;
+    unit_price?: number;
+    total_amount?: number;
+    taxable_amount?: number;
+  }>;
+}
+
 interface DCListResponse {
   items: DeliveryChallan[];
   total: number;
@@ -62,6 +96,42 @@ interface DCListResponse {
   page_size: number;
   total_pages: number;
 }
+
+const DELIVERY_CHALLAN_PDF_LOGO_PATH = "/images/logo/savantec_logo.png";
+let deliveryChallanLogoDataUrlCache: string | null = null;
+
+const getDeliveryChallanLogoDataUrl = async (): Promise<string | null> => {
+  if (deliveryChallanLogoDataUrlCache) return deliveryChallanLogoDataUrlCache;
+  if (typeof window === "undefined") return null;
+
+  try {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      image.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error("Canvas context unavailable"));
+          return;
+        }
+        context.drawImage(image, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      image.onerror = () => reject(new Error("Failed to load delivery challan logo"));
+      image.src = DELIVERY_CHALLAN_PDF_LOGO_PATH;
+    });
+
+    deliveryChallanLogoDataUrlCache = dataUrl;
+    return dataUrl;
+  } catch (error) {
+    console.warn("Failed to load delivery challan PDF logo:", error);
+    return null;
+  }
+};
 
 // Print component for delivery challans
 const PrintView = ({
@@ -103,7 +173,7 @@ const PrintView = ({
 
       printWindow.focus();
       printWindow.print();
-     printWindow.close();
+      printWindow.close();
       onComplete();
     }
   }, []);
@@ -132,83 +202,28 @@ const PrintView = ({
               borderBottom: '2px solid #ddd'
             }}>
               {visibleColumns.dcNumber && (
-                <th style={{
-                  padding: '12px',
-                  textAlign: 'left',
-                  borderRight: '1px solid #ddd',
-                  fontWeight: 'bold'
-                }}>
-                  DC Number
-                </th>
+                <th style={{ padding: '12px', textAlign: 'left', borderRight: '1px solid #ddd', fontWeight: 'bold' }}>DC Number</th>
               )}
               {visibleColumns.type && (
-                <th style={{
-                  padding: '12px',
-                  textAlign: 'left',
-                  borderRight: '1px solid #ddd',
-                  fontWeight: 'bold'
-                }}>
-                  Type
-                </th>
+                <th style={{ padding: '12px', textAlign: 'left', borderRight: '1px solid #ddd', fontWeight: 'bold' }}>Type</th>
               )}
               {visibleColumns.customer && (
-                <th style={{
-                  padding: '12px',
-                  textAlign: 'left',
-                  borderRight: '1px solid #ddd',
-                  fontWeight: 'bold'
-                }}>
-                  Customer
-                </th>
+                <th style={{ padding: '12px', textAlign: 'left', borderRight: '1px solid #ddd', fontWeight: 'bold' }}>Customer</th>
               )}
               {visibleColumns.date && (
-                <th style={{
-                  padding: '12px',
-                  textAlign: 'left',
-                  borderRight: '1px solid #ddd',
-                  fontWeight: 'bold'
-                }}>
-                  Date
-                </th>
+                <th style={{ padding: '12px', textAlign: 'left', borderRight: '1px solid #ddd', fontWeight: 'bold' }}>Date</th>
               )}
               {visibleColumns.invoice && (
-                <th style={{
-                  padding: '12px',
-                  textAlign: 'left',
-                  borderRight: '1px solid #ddd',
-                  fontWeight: 'bold'
-                }}>
-                  Invoice
-                </th>
+                <th style={{ padding: '12px', textAlign: 'left', borderRight: '1px solid #ddd', fontWeight: 'bold' }}>Invoice</th>
               )}
               {visibleColumns.vehicle && (
-                <th style={{
-                  padding: '12px',
-                  textAlign: 'left',
-                  borderRight: '1px solid #ddd',
-                  fontWeight: 'bold'
-                }}>
-                  Vehicle
-                </th>
+                <th style={{ padding: '12px', textAlign: 'left', borderRight: '1px solid #ddd', fontWeight: 'bold' }}>Vehicle</th>
               )}
               {visibleColumns.transporter && (
-                <th style={{
-                  padding: '12px',
-                  textAlign: 'left',
-                  borderRight: '1px solid #ddd',
-                  fontWeight: 'bold'
-                }}>
-                  Transporter
-                </th>
+                <th style={{ padding: '12px', textAlign: 'left', borderRight: '1px solid #ddd', fontWeight: 'bold' }}>Transporter</th>
               )}
               {visibleColumns.status && (
-                <th style={{
-                  padding: '12px',
-                  textAlign: 'left',
-                  fontWeight: 'bold'
-                }}>
-                  Status
-                </th>
+                <th style={{ padding: '12px', textAlign: 'left', fontWeight: 'bold' }}>Status</th>
               )}
             </tr>
           </thead>
@@ -219,24 +234,12 @@ const PrintView = ({
                 backgroundColor: index % 2 === 0 ? '#fff' : '#f9f9f9'
               }}>
                 {visibleColumns.dcNumber && (
-                  <td style={{
-                    padding: '12px',
-                    borderRight: '1px solid #ddd'
-                  }}>
-                    {dc.dc_number}
-                  </td>
+                  <td style={{ padding: '12px', borderRight: '1px solid #ddd' }}>{dc.dc_number}</td>
                 )}
                 {visibleColumns.type && (
-                  <td style={{
-                    padding: '12px',
-                    borderRight: '1px solid #ddd'
-                  }}>
+                  <td style={{ padding: '12px', borderRight: '1px solid #ddd' }}>
                     <span style={{
-                      display: 'inline-block',
-                      padding: '4px 8px',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      fontWeight: 'bold',
+                      display: 'inline-block', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold',
                       backgroundColor: dc.dc_type === 'dc_out' ? '#e0e7ff' : '#fef3c7',
                       color: dc.dc_type === 'dc_out' ? '#4338ca' : '#92400e'
                     }}>
@@ -245,67 +248,36 @@ const PrintView = ({
                   </td>
                 )}
                 {visibleColumns.customer && (
-                  <td style={{
-                    padding: '12px',
-                    borderRight: '1px solid #ddd'
-                  }}>
-                    {dc.customer_name || '-'}
-                  </td>
+                  <td style={{ padding: '12px', borderRight: '1px solid #ddd' }}>{dc.customer_name || '-'}</td>
                 )}
                 {visibleColumns.date && (
-                  <td style={{
-                    padding: '12px',
-                    borderRight: '1px solid #ddd'
-                  }}>
-                    {formatDate(dc.dc_date)}
-                  </td>
+                  <td style={{ padding: '12px', borderRight: '1px solid #ddd' }}>{formatDate(dc.dc_date)}</td>
                 )}
                 {visibleColumns.invoice && (
-                  <td style={{
-                    padding: '12px',
-                    borderRight: '1px solid #ddd'
-                  }}>
-                    {dc.invoice_number || '-'}
-                  </td>
+                  <td style={{ padding: '12px', borderRight: '1px solid #ddd' }}>{dc.invoice_number || '-'}</td>
                 )}
                 {visibleColumns.vehicle && (
-                  <td style={{
-                    padding: '12px',
-                    borderRight: '1px solid #ddd'
-                  }}>
-                    {dc.vehicle_number || '-'}
-                  </td>
+                  <td style={{ padding: '12px', borderRight: '1px solid #ddd' }}>{dc.vehicle_number || '-'}</td>
                 )}
                 {visibleColumns.transporter && (
-                  <td style={{
-                    padding: '12px',
-                    borderRight: '1px solid #ddd'
-                  }}>
-                    {dc.transporter_name || '-'}
-                  </td>
+                  <td style={{ padding: '12px', borderRight: '1px solid #ddd' }}>{dc.transporter_name || '-'}</td>
                 )}
                 {visibleColumns.status && (
                   <td style={{ padding: '12px' }}>
                     <span style={{
-                      display: 'inline-block',
-                      padding: '4px 8px',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      fontWeight: 'bold',
-                      backgroundColor: 
+                      display: 'inline-block', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold',
+                      backgroundColor:
                         dc.status === 'delivered' || dc.status === 'received' ? '#d1fae5' :
                         dc.status === 'dispatched' ? '#dbeafe' :
                         dc.status === 'in_transit' ? '#fef3c7' :
                         dc.status === 'cancelled' ? '#fee2e2' :
-                        dc.status === 'returned' ? '#ffedd5' :
-                        '#f3f4f6',
+                        dc.status === 'returned' ? '#ffedd5' : '#f3f4f6',
                       color:
                         dc.status === 'delivered' || dc.status === 'received' ? '#065f46' :
                         dc.status === 'dispatched' ? '#1e40af' :
                         dc.status === 'in_transit' ? '#92400e' :
                         dc.status === 'cancelled' ? '#991b1b' :
-                        dc.status === 'returned' ? '#9a3412' :
-                        '#374151'
+                        dc.status === 'returned' ? '#9a3412' : '#374151'
                     }}>
                       {getStatusText(dc.status)}
                     </span>
@@ -317,19 +289,11 @@ const PrintView = ({
         </table>
 
         <div style={{
-          marginTop: '30px',
-          paddingTop: '20px',
-          borderTop: '1px solid #ddd',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
+          marginTop: '30px', paddingTop: '20px', borderTop: '1px solid #ddd',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
         }}>
-          <div style={{ fontSize: '12px', color: '#666' }}>
-            Total Delivery Challans: {deliveryChallans.length}
-          </div>
-          <div style={{ fontSize: '12px', color: '#666' }}>
-            Page 1 of 1
-          </div>
+          <div style={{ fontSize: '12px', color: '#666' }}>Total Delivery Challans: {deliveryChallans.length}</div>
+          <div style={{ fontSize: '12px', color: '#666' }}>Page 1 of 1</div>
         </div>
       </div>
     </div>
@@ -365,14 +329,14 @@ export default function DeliveryChallansPage() {
   const [data, setData] = useState<DCListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  
+
   // Filters state
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
-  
+
   // UI state
   const [showFilters, setShowFilters] = useState(false);
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
@@ -381,16 +345,16 @@ export default function DeliveryChallansPage() {
   const [deliveryChallansToPrint, setDeliveryChallansToPrint] = useState<DeliveryChallan[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
-  
+
   // Export loading states
   const [copyLoading, setCopyLoading] = useState(false);
   const [excelLoading, setExcelLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [csvLoading, setCsvLoading] = useState(false);
   const [printLoading, setPrintLoading] = useState(false);
-  
+
   const [cachedExportData, setCachedExportData] = useState<DeliveryChallan[] | null>(null);
-  
+
   // Column visibility
   const [visibleColumns, setVisibleColumns] = useState({
     dcNumber: true,
@@ -428,11 +392,8 @@ export default function DeliveryChallansPage() {
         setActiveActionMenu(null);
       }
     };
-
     document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    return () => { document.removeEventListener("mousedown", handleClickOutside); };
   }, []);
 
   useEffect(() => {
@@ -443,7 +404,6 @@ export default function DeliveryChallansPage() {
         setShowColumnDropdown(false);
       }
     };
-
     document.addEventListener("mousedown", handleColumnDropdownOutside);
     document.addEventListener("touchstart", handleColumnDropdownOutside);
     return () => {
@@ -461,7 +421,7 @@ export default function DeliveryChallansPage() {
 
     setLoading(true);
     setError("");
-    
+
     try {
       const params = new URLSearchParams();
       params.append("page", currentPage.toString());
@@ -471,13 +431,9 @@ export default function DeliveryChallansPage() {
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/delivery-challans?${params}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-      
+
       if (response.ok) {
         const responseData = await response.json();
         setData(responseData);
@@ -500,19 +456,15 @@ export default function DeliveryChallansPage() {
 
     try {
       const params = new URLSearchParams();
-      params.append("page_size", "1000"); // Get maximum records
+      params.append("page_size", "1000");
       if (typeFilter) params.append("dc_type", typeFilter);
       if (statusFilter) params.append("status", statusFilter);
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/delivery-challans?${params}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-      
+
       if (response.ok) {
         const responseData = await response.json();
         return responseData.items || [];
@@ -526,9 +478,9 @@ export default function DeliveryChallansPage() {
 
   const getExportData = async (): Promise<DeliveryChallan[]> => {
     if (cachedExportData) return cachedExportData;
-    const data = await fetchAllDeliveryChallansForExport();
-    setCachedExportData(data);
-    return data;
+    const exportData = await fetchAllDeliveryChallansForExport();
+    setCachedExportData(exportData);
+    return exportData;
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -577,128 +529,70 @@ export default function DeliveryChallansPage() {
   };
 
   const getTypeBadgeClass = (type: string): string => {
-    return type === 'dc_out' 
+    return type === 'dc_out'
       ? "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400"
       : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
   };
 
-  // Apply search filter locally for export data
-  const applySearchFilter = (data: DeliveryChallan[]): DeliveryChallan[] => {
-    if (!search) return data;
-    
+  const applySearchFilter = (dcData: DeliveryChallan[]): DeliveryChallan[] => {
+    if (!search) return dcData;
     const searchLower = search.toLowerCase();
-    return data.filter(dc => {
-      return (
-        dc.dc_number?.toLowerCase().includes(searchLower) ||
-        dc.customer_name?.toLowerCase().includes(searchLower) ||
-        dc.invoice_number?.toLowerCase().includes(searchLower) ||
-        dc.vehicle_number?.toLowerCase().includes(searchLower) ||
-        dc.transporter_name?.toLowerCase().includes(searchLower) ||
-        false
-      );
-    });
+    return dcData.filter(dc =>
+      dc.dc_number?.toLowerCase().includes(searchLower) ||
+      dc.customer_name?.toLowerCase().includes(searchLower) ||
+      dc.invoice_number?.toLowerCase().includes(searchLower) ||
+      dc.vehicle_number?.toLowerCase().includes(searchLower) ||
+      dc.transporter_name?.toLowerCase().includes(searchLower)
+    );
   };
 
-  // Apply filters locally
-  const applyFilters = (data: DeliveryChallan[]): DeliveryChallan[] => {
-    let filtered = data;
-    
-    if (typeFilter) {
-      filtered = filtered.filter(dc => dc.dc_type === typeFilter);
-    }
-    
-    if (statusFilter) {
-      filtered = filtered.filter(dc => dc.status === statusFilter);
-    }
-    
-    // Date filters
+  const applyFilters = (dcData: DeliveryChallan[]): DeliveryChallan[] => {
+    let filtered = dcData;
+    if (typeFilter) filtered = filtered.filter(dc => dc.dc_type === typeFilter);
+    if (statusFilter) filtered = filtered.filter(dc => dc.status === statusFilter);
     if (fromDate) {
       filtered = filtered.filter(dc => {
         if (!dc.dc_date) return false;
-        const dcDate = new Date(dc.dc_date);
-        const from = new Date(fromDate);
-        return dcDate >= from;
+        return new Date(dc.dc_date) >= new Date(fromDate);
       });
     }
-    
     if (toDate) {
       filtered = filtered.filter(dc => {
         if (!dc.dc_date) return false;
-        const dcDate = new Date(dc.dc_date);
-        const to = new Date(toDate);
-        return dcDate <= to;
+        return new Date(dc.dc_date) <= new Date(toDate);
       });
     }
-    
     return filtered;
   };
 
   const filteredItems = data?.items || [];
-  
-  // For export, we need to apply search filter to all data
+
   const getAllFilteredItems = async (): Promise<DeliveryChallan[]> => {
     const allData = await getExportData();
-    let filtered = applySearchFilter(allData);
-    filtered = applyFilters(filtered);
-    return filtered;
+    return applyFilters(applySearchFilter(allData));
   };
 
   const totalPages = data ? data.total_pages : 0;
 
-  // Export functions
+  // ─── Export functions (list PDF unchanged) ───
   const copyToClipboard = async () => {
     if (copyLoading) return;
     setCopyLoading(true);
     try {
       const filtered = await getAllFilteredItems();
-      
       const headers: string[] = [];
       const rows = filtered.map(dc => {
         const row: string[] = [];
-
-        if (visibleColumns.dcNumber) {
-          if (!headers.includes("DC Number")) headers.push("DC Number");
-          row.push(dc.dc_number || "-");
-        }
-
-        if (visibleColumns.type) {
-          if (!headers.includes("Type")) headers.push("Type");
-          row.push(getTypeText(dc.dc_type));
-        }
-
-        if (visibleColumns.customer) {
-          if (!headers.includes("Customer")) headers.push("Customer");
-          row.push(dc.customer_name || "-");
-        }
-
-        if (visibleColumns.date) {
-          if (!headers.includes("Date")) headers.push("Date");
-          row.push(formatDate(dc.dc_date));
-        }
-
-        if (visibleColumns.invoice) {
-          if (!headers.includes("Invoice")) headers.push("Invoice");
-          row.push(dc.invoice_number || "-");
-        }
-
-        if (visibleColumns.vehicle) {
-          if (!headers.includes("Vehicle")) headers.push("Vehicle");
-          row.push(dc.vehicle_number || "-");
-        }
-
-        if (visibleColumns.transporter) {
-          if (!headers.includes("Transporter")) headers.push("Transporter");
-          row.push(dc.transporter_name || "-");
-        }
-
-        if (visibleColumns.status) {
-          if (!headers.includes("Status")) headers.push("Status");
-          row.push(getStatusText(dc.status));
-        }
-
+        if (visibleColumns.dcNumber) { if (!headers.includes("DC Number")) headers.push("DC Number"); row.push(dc.dc_number || "-"); }
+        if (visibleColumns.type) { if (!headers.includes("Type")) headers.push("Type"); row.push(getTypeText(dc.dc_type)); }
+        if (visibleColumns.customer) { if (!headers.includes("Customer")) headers.push("Customer"); row.push(dc.customer_name || "-"); }
+        if (visibleColumns.date) { if (!headers.includes("Date")) headers.push("Date"); row.push(formatDate(dc.dc_date)); }
+        if (visibleColumns.invoice) { if (!headers.includes("Invoice")) headers.push("Invoice"); row.push(dc.invoice_number || "-"); }
+        if (visibleColumns.vehicle) { if (!headers.includes("Vehicle")) headers.push("Vehicle"); row.push(dc.vehicle_number || "-"); }
+        if (visibleColumns.transporter) { if (!headers.includes("Transporter")) headers.push("Transporter"); row.push(dc.transporter_name || "-"); }
+        if (visibleColumns.status) { if (!headers.includes("Status")) headers.push("Status"); row.push(getStatusText(dc.status)); }
         return row;
       });
-
       const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
       await navigator.clipboard.writeText(text);
       alert("Delivery challan data copied to clipboard");
@@ -715,49 +609,21 @@ export default function DeliveryChallansPage() {
     setExcelLoading(true);
     try {
       const filtered = await getAllFilteredItems();
-      
       const exportData = filtered.map(dc => {
         const row: Record<string, any> = {};
-
-        if (visibleColumns.dcNumber) {
-          row["DC Number"] = dc.dc_number || "-";
-        }
-
-        if (visibleColumns.type) {
-          row["Type"] = getTypeText(dc.dc_type);
-        }
-
-        if (visibleColumns.customer) {
-          row["Customer"] = dc.customer_name || "-";
-        }
-
-        if (visibleColumns.date) {
-          row["Date"] = formatDate(dc.dc_date);
-        }
-
-        if (visibleColumns.invoice) {
-          row["Invoice"] = dc.invoice_number || "-";
-        }
-
-        if (visibleColumns.vehicle) {
-          row["Vehicle Number"] = dc.vehicle_number || "-";
-        }
-
-        if (visibleColumns.transporter) {
-          row["Transporter"] = dc.transporter_name || "-";
-        }
-
-        if (visibleColumns.status) {
-          row["Status"] = getStatusText(dc.status);
-        }
-
+        if (visibleColumns.dcNumber) row["DC Number"] = dc.dc_number || "-";
+        if (visibleColumns.type) row["Type"] = getTypeText(dc.dc_type);
+        if (visibleColumns.customer) row["Customer"] = dc.customer_name || "-";
+        if (visibleColumns.date) row["Date"] = formatDate(dc.dc_date);
+        if (visibleColumns.invoice) row["Invoice"] = dc.invoice_number || "-";
+        if (visibleColumns.vehicle) row["Vehicle Number"] = dc.vehicle_number || "-";
+        if (visibleColumns.transporter) row["Transporter"] = dc.transporter_name || "-";
+        if (visibleColumns.status) row["Status"] = getStatusText(dc.status);
         row["Stock Updated"] = dc.stock_updated ? "Yes" : "No";
         row["Items Count"] = dc.items_count || 0;
         row["Total Value"] = dc.total_value || 0;
-        
         return row;
       });
-
       const ws = XLSX.utils.json_to_sheet(exportData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Delivery Challans");
@@ -770,73 +636,32 @@ export default function DeliveryChallansPage() {
     }
   };
 
+  // List PDF export (unchanged — uses landscape table format)
   const exportPDF = async () => {
     if (pdfLoading) return;
     setPdfLoading(true);
     try {
       const filtered = await getAllFilteredItems();
-      
       const doc = new jsPDF("landscape");
-      
       const headers: string[] = [];
       const body = filtered.map(dc => {
         const row: string[] = [];
-
-        if (visibleColumns.dcNumber) {
-          if (!headers.includes("DC Number")) headers.push("DC Number");
-          row.push(dc.dc_number || "N/A");
-        }
-
-        if (visibleColumns.type) {
-          if (!headers.includes("Type")) headers.push("Type");
-          row.push(getTypeText(dc.dc_type));
-        }
-
-        if (visibleColumns.customer) {
-          if (!headers.includes("Customer")) headers.push("Customer");
-          row.push(dc.customer_name || "N/A");
-        }
-
-        if (visibleColumns.date) {
-          if (!headers.includes("Date")) headers.push("Date");
-          row.push(formatDate(dc.dc_date));
-        }
-
-        if (visibleColumns.invoice) {
-          if (!headers.includes("Invoice")) headers.push("Invoice");
-          row.push(dc.invoice_number || "N/A");
-        }
-
-        if (visibleColumns.vehicle) {
-          if (!headers.includes("Vehicle")) headers.push("Vehicle");
-          row.push(dc.vehicle_number || "N/A");
-        }
-
-        if (visibleColumns.transporter) {
-          if (!headers.includes("Transporter")) headers.push("Transporter");
-          row.push(dc.transporter_name || "N/A");
-        }
-
-        if (visibleColumns.status) {
-          if (!headers.includes("Status")) headers.push("Status");
-          row.push(getStatusText(dc.status));
-        }
-
+        if (visibleColumns.dcNumber) { if (!headers.includes("DC Number")) headers.push("DC Number"); row.push(dc.dc_number || "N/A"); }
+        if (visibleColumns.type) { if (!headers.includes("Type")) headers.push("Type"); row.push(getTypeText(dc.dc_type)); }
+        if (visibleColumns.customer) { if (!headers.includes("Customer")) headers.push("Customer"); row.push(dc.customer_name || "N/A"); }
+        if (visibleColumns.date) { if (!headers.includes("Date")) headers.push("Date"); row.push(formatDate(dc.dc_date)); }
+        if (visibleColumns.invoice) { if (!headers.includes("Invoice")) headers.push("Invoice"); row.push(dc.invoice_number || "N/A"); }
+        if (visibleColumns.vehicle) { if (!headers.includes("Vehicle")) headers.push("Vehicle"); row.push(dc.vehicle_number || "N/A"); }
+        if (visibleColumns.transporter) { if (!headers.includes("Transporter")) headers.push("Transporter"); row.push(dc.transporter_name || "N/A"); }
+        if (visibleColumns.status) { if (!headers.includes("Status")) headers.push("Status"); row.push(getStatusText(dc.status)); }
         return row;
       });
-
       autoTable(doc, {
         ...getProfessionalTableTheme(doc, "Delivery Challans List", company?.name || "", "l"),
         head: [headers],
         body: body,
-        styles: {
-          fontSize: 9,
-          cellPadding: 3,
-          overflow: "linebreak",
-          font: "helvetica",
-        },
+        styles: { fontSize: 9, cellPadding: 3, overflow: "linebreak", font: "helvetica" },
       });
-
       addPdfPageNumbers(doc, "l");
       doc.save("delivery_challans.pdf");
     } catch (error) {
@@ -852,45 +677,18 @@ export default function DeliveryChallansPage() {
     setCsvLoading(true);
     try {
       const filtered = await getAllFilteredItems();
-      
       const exportData = filtered.map(dc => {
         const row: Record<string, any> = {};
-
-        if (visibleColumns.dcNumber) {
-          row["DC Number"] = dc.dc_number || "-";
-        }
-
-        if (visibleColumns.type) {
-          row["Type"] = getTypeText(dc.dc_type);
-        }
-
-        if (visibleColumns.customer) {
-          row["Customer"] = dc.customer_name || "-";
-        }
-
-        if (visibleColumns.date) {
-          row["Date"] = formatDate(dc.dc_date);
-        }
-
-        if (visibleColumns.invoice) {
-          row["Invoice"] = dc.invoice_number || "-";
-        }
-
-        if (visibleColumns.vehicle) {
-          row["Vehicle Number"] = dc.vehicle_number || "-";
-        }
-
-        if (visibleColumns.transporter) {
-          row["Transporter"] = dc.transporter_name || "-";
-        }
-
-        if (visibleColumns.status) {
-          row["Status"] = getStatusText(dc.status);
-        }
-
+        if (visibleColumns.dcNumber) row["DC Number"] = dc.dc_number || "-";
+        if (visibleColumns.type) row["Type"] = getTypeText(dc.dc_type);
+        if (visibleColumns.customer) row["Customer"] = dc.customer_name || "-";
+        if (visibleColumns.date) row["Date"] = formatDate(dc.dc_date);
+        if (visibleColumns.invoice) row["Invoice"] = dc.invoice_number || "-";
+        if (visibleColumns.vehicle) row["Vehicle Number"] = dc.vehicle_number || "-";
+        if (visibleColumns.transporter) row["Transporter"] = dc.transporter_name || "-";
+        if (visibleColumns.status) row["Status"] = getStatusText(dc.status);
         return row;
       });
-
       const ws = XLSX.utils.json_to_sheet(exportData);
       const csv = XLSX.utils.sheet_to_csv(ws);
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -925,19 +723,13 @@ export default function DeliveryChallansPage() {
   const handleDelete = async (dcId: string, dcNumber: string) => {
     const token = getToken();
     if (!company?.id || !token) return;
-    
+
     if (window.confirm(`Are you sure you want to delete delivery challan ${dcNumber}? This action cannot be undone.`)) {
       try {
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/delivery-challans/${dcId}`,
-          {
-            method: "DELETE",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
+          { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
         );
-        
         if (response.ok) {
           fetchDeliveryChallans();
         } else {
@@ -948,6 +740,311 @@ export default function DeliveryChallansPage() {
         alert("Failed to delete delivery challan");
       }
     }
+  };
+
+  const fetchDeliveryChallanDetail = async (dcId: string): Promise<DeliveryChallanDetail | null> => {
+    const token = getToken();
+    if (!company?.id || !token) return null;
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/delivery-challans/${dcId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!response.ok) return null;
+      return (await response.json()) as DeliveryChallanDetail;
+    } catch (error) {
+      console.error("Failed to fetch delivery challan detail:", error);
+      return null;
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // buildDeliveryChallanPdf — matches SAPL_DC.pdf design exactly
+  // Layout: Portrait A4, bordered boxes, NO price columns in items table
+  // ─────────────────────────────────────────────────────────────────────────────
+  const buildDeliveryChallanPdf = (dc: DeliveryChallanDetail, logoDataUrl: string | null = null): jsPDF => {
+    const doc = new jsPDF("p", "mm", "a4");
+    const pageW = 210;
+    const marginL = 10;
+    const marginR = 10;
+    const contentW = pageW - marginL - marginR;
+    const companyData = (company || {}) as any;
+
+    const v = (value: unknown) => (value === undefined || value === null || value === "" ? "-" : String(value));
+    const joinText = (...parts: Array<unknown>) => parts.filter(Boolean).map(String).join(", ");
+
+    const billingAddress = joinText(dc.billing_address, dc.billing_city, dc.billing_state, dc.billing_pincode);
+    const shippingAddress = joinText(dc.delivery_to_address, dc.delivery_to_city, dc.delivery_to_state, dc.delivery_to_pincode);
+    const dispatchAddress = joinText(
+      dc.dispatch_from_address || companyData.address_line1,
+      companyData.address_line2,
+      dc.dispatch_from_city || companyData.city,
+      dc.dispatch_from_state || companyData.state,
+      dc.dispatch_from_pincode || companyData.pincode
+    );
+    const contactInfo = [dc.contact_person, (dc as any).contact_phone].filter(Boolean).join(" / ");
+    const engineerInfo = [dc.engineer_name, dc.engineer_phone].filter(Boolean).join(" / ");
+
+    doc.setLineWidth(0.3);
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(7.5);
+    doc.text("(ORIGINAL FOR RECIPIENT)", pageW - marginR, 8, { align: "right" });
+
+    let y = 11;
+
+    const headerH = 26;
+    doc.rect(marginL, y, contentW, headerH);
+    const logoDivX = marginL + 42;
+    // doc.line(logoDivX, y, logoDivX, y + headerH);
+
+    if (logoDataUrl) {
+      doc.addImage(logoDataUrl, "PNG", marginL + 2, y + 3, 36, headerH - 6);
+    } else {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text("SAVANTEC", marginL + 3, y + 14);
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text(v(companyData.name || "Savantec Automation Private Limited"), logoDivX + 3, y + 7);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    const addrStr = joinText(companyData.address_line1, companyData.address_line2, companyData.city, companyData.state, companyData.pincode);
+    const wrappedAddr = doc.splitTextToSize(addrStr || "-", contentW - 47);
+    doc.text(wrappedAddr.slice(0, 2), logoDivX + 3, y + 12.5);
+    doc.text(`Mob.: ${v(companyData.phone)}`, logoDivX + 3, y + 20.5);
+    doc.text(`Email: ${v(companyData.email)}`, logoDivX + 3, y + 24.5);
+    y += headerH;
+
+    const titleH = 8;
+    doc.rect(marginL, y, contentW, titleH);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("DELIVERY CHALLAN", pageW / 2, y + 5.5, { align: "center" });
+    y += titleH;
+
+    const infoH = 8;
+    const col1W = contentW / 3;
+    const col2W = contentW / 3;
+    const col3W = contentW - col1W - col2W;
+    const drawInfoCell = (x: number, w: number, label: string, value: string, offset = 2) => {
+      doc.rect(x, y, w, infoH);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.2);
+      doc.text(label, x + 2, y + 5.2);
+      doc.setFont("helvetica", "normal");
+      doc.text(value || "-", x + offset, y + 5.2, { maxWidth: w - offset - 2 });
+    };
+
+    drawInfoCell(marginL, col1W, "Delivery Challan No.", v(dc.dc_number), 38);
+    drawInfoCell(marginL + col1W, col2W, "DC Date:", formatDate(dc.dc_date), 20);
+    drawInfoCell(marginL + col1W + col2W, col3W, "Contact Person:", contactInfo || "-", 29);
+    y += infoH;
+
+    drawInfoCell(marginL, col1W, "Reference No.:", v(dc.reference_no), 24);
+    drawInfoCell(marginL + col1W, col2W, "Invoice No.:", v(dc.invoice_number), 22);
+    drawInfoCell(marginL + col1W + col2W, col3W, "Engineer:", engineerInfo || "-", 20);
+    y += infoH;
+
+    const addrHdrH = 6;
+    const thirdW = contentW / 3;
+    doc.rect(marginL, y, thirdW, addrHdrH);
+    doc.rect(marginL + thirdW, y, thirdW, addrHdrH);
+    doc.rect(marginL + thirdW * 2, y, contentW - thirdW * 2, addrHdrH);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("Customer Name & Billing Address", marginL + 2, y + 4);
+    doc.text("Shipping Address", marginL + thirdW + 2, y + 4);
+    doc.text("Dispatch From Address", marginL + thirdW * 2 + 2, y + 4);
+    y += addrHdrH;
+
+    const addrBodyH = 30;
+    doc.rect(marginL, y, thirdW, addrBodyH);
+    doc.rect(marginL + thirdW, y, thirdW, addrBodyH);
+    doc.rect(marginL + thirdW * 2, y, contentW - thirdW * 2, addrBodyH);
+
+    const drawAddressBlock = (x: number, name: string, address: string, gstin: string) => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.text(name || "-", x + 2, y + 5);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.2);
+      const lines = doc.splitTextToSize(address || "-", thirdW - 4);
+      lines.slice(0, 4).forEach((line: string, idx: number) => {
+        doc.text(line, x + 2, y + 10 + idx * 3.8);
+      });
+      doc.text(`GST Number: ${gstin || "-"}`, x + 2, y + 26);
+    };
+
+    drawAddressBlock(marginL, dc.customer_name || "", billingAddress, dc.billing_gstin || (dc as any).customer_gstin || "");
+    drawAddressBlock(marginL + thirdW, dc.shipping_name || dc.customer_name || "", shippingAddress, dc.shipping_gstin || "");
+    drawAddressBlock(marginL + thirdW * 2, companyData.name || "Dispatch Location", dispatchAddress, companyData.gstin || "");
+    y += addrBodyH;
+
+    doc.rect(marginL, y, col1W, infoH);
+    doc.rect(marginL + col1W, y, col2W, infoH);
+    doc.rect(marginL + col1W + col2W, y, col3W, infoH);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.2);
+    doc.text("Mode Of Transport:", marginL + 2, y + 5.2);
+    doc.text("Vehicle No.:", marginL + col1W + 2, y + 5.2);
+    doc.text("E-Way Bill / LR No.:", marginL + col1W + col2W + 2, y + 5.2);
+    doc.setFont("helvetica", "normal");
+    doc.text(v(dc.transporter_name), marginL + 31, y + 5.2, { maxWidth: col1W - 33 });
+    doc.text(v(dc.vehicle_number), marginL + col1W + 21, y + 5.2, { maxWidth: col2W - 23 });
+    const ewayOrLr = [(dc as any).eway_bill_number, (dc as any).lr_number].filter(Boolean).join(" / ");
+    doc.text(ewayOrLr || "-", marginL + col1W + col2W + 36, y + 5.2, {
+      maxWidth: col3W - 38,
+    });
+    y += infoH;
+
+    const items = Array.isArray(dc.items) ? dc.items : [];
+    const tableRows = items.map((item, idx) => [
+      String(idx + 1),
+      v(item.description),
+      v(item.model_no || item.model_number || ""),
+      v(item.hsn_code),
+      item.quantity !== undefined && item.quantity !== null ? Number(item.quantity).toFixed(2) : "",
+      v(item.unit),
+    ]);
+    while (tableRows.length < 10) tableRows.push(["", "", "", "", "", ""]);
+
+    autoTable(doc, {
+      startY: y,
+      head: [["SL#", "Description of Goods", "Model No", "HSN", "Qty", "UOM"]],
+      body: tableRows,
+      theme: "grid",
+      styles: {
+        fontSize: 8,
+        cellPadding: { top: 2.5, bottom: 2.5, left: 2, right: 2 },
+        lineColor: [0, 0, 0],
+        lineWidth: 0.3,
+        textColor: [0, 0, 0],
+        valign: "middle",
+        minCellHeight: 7,
+      },
+      headStyles: {
+        fillColor: [255, 255, 255],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+        lineColor: [0, 0, 0],
+        lineWidth: 0.3,
+        halign: "center",
+      },
+      columnStyles: {
+        0: { cellWidth: 12, halign: "center" },
+        1: { cellWidth: 82, halign: "left" },
+        2: { cellWidth: 26, halign: "center" },
+        3: { cellWidth: 26, halign: "center" },
+        4: { cellWidth: 22, halign: "right" },
+        5: { cellWidth: 22, halign: "center" },
+      },
+      didParseCell: (data) => {
+        if (data.section === "head") {
+          data.cell.styles.lineWidth = { top: 0.3, right: 0.3, bottom: 0.3, left: 0.3 };
+        }
+        if (data.section === "body") {
+          const isFirstBodyRow = data.row.index === 0;
+          data.cell.styles.lineWidth = { top: isFirstBodyRow ? 0.3 : 0, right: 0.3, bottom: 0, left: 0.3 };
+        }
+      },
+      margin: { left: marginL, right: marginR },
+    });
+
+    y = (doc as any).lastAutoTable?.finalY ?? y;
+
+    const totalH = 8;
+    const totalQty = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    const totalLabelW = contentW - 22 - 22;
+    const totalQtyW = 22;
+    const totalUomW = 22;
+    const dominantUom = items.find((item) => item.unit)?.unit || "";
+
+    doc.rect(marginL, y, totalLabelW, totalH);
+    doc.rect(marginL + totalLabelW, y, totalQtyW, totalH);
+    doc.rect(marginL + totalLabelW + totalQtyW, y, totalUomW, totalH);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text("Total", marginL + totalLabelW / 2, y + 5.2, { align: "center" });
+    doc.text(totalQty.toFixed(2), marginL + totalLabelW + totalQtyW - 2, y + 5.2, { align: "right" });
+    doc.text(v(dominantUom), marginL + totalLabelW + totalQtyW + totalUomW / 2, y + 5.2, { align: "center" });
+    y += totalH;
+
+    const remarksH = 12;
+    doc.rect(marginL, y, contentW, remarksH);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("Remarks:", marginL + 2, y + 4.8);
+    doc.setFont("helvetica", "normal");
+    const remarksText = v(dc.notes)
+      .replace(/\s*\n+\s*/g, " | ")
+      .replace(/[¹²³]/g, "")
+      .replace(/(\d)\s+(?=\d)/g, "$1")
+      .replace(/\s*,\s*/g, ", ")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    const remarkLines = doc.splitTextToSize(remarksText, contentW - 25).slice(0, 2);
+    remarkLines.forEach((line: string, idx: number) => {
+      doc.text(line, marginL + 22, y + 4.8 + idx * 4);
+    });
+    y += remarksH;
+
+    const bottomH = 28;
+    const bCol1 = contentW * 0.46;
+    const bCol2 = contentW * 0.27;
+    const bCol3 = contentW - bCol1 - bCol2;
+    doc.rect(marginL, y, bCol1, bottomH);
+    doc.rect(marginL + bCol1, y, bCol2, bottomH);
+    doc.rect(marginL + bCol1 + bCol2, y, bCol3, bottomH);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("Terms & Conditions:", marginL + 2, y + 5);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.2);
+    doc.text("1. Materials to be checked at delivery and acknowledged.", marginL + 2, y + 10);
+    doc.text("2. Company is not responsible for delay due to transporter.", marginL + 2, y + 14);
+    doc.text("3. Subject to Chennai jurisdiction.", marginL + 2, y + 18);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("Receiver's Signature", marginL + bCol1 + bCol2 / 2, y + bottomH - 3, { align: "center" });
+    doc.text(`for ${v(companyData.name)}`, marginL + bCol1 + bCol2 + bCol3 - 2, y + 5, { align: "right" });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.text("Authorised Signatory", marginL + bCol1 + bCol2 + bCol3 - 2, y + bottomH - 3, { align: "right" });
+
+    return doc;
+  };
+  const handleDownloadChallanPdf = async (dcId: string, dcNumber: string) => {
+    const dcDetail = await fetchDeliveryChallanDetail(dcId);
+    if (!dcDetail) {
+      alert("Failed to load delivery challan details");
+      return;
+    }
+    const logoDataUrl = await getDeliveryChallanLogoDataUrl();
+    const doc = buildDeliveryChallanPdf(dcDetail, logoDataUrl);
+    const safeNumber = (dcNumber || "delivery_challan").replace(/[\\/:*?"<>|]/g, "_");
+    doc.save(`DC_${safeNumber}.pdf`);
+  };
+
+  const handlePrintChallan = async (dcId: string) => {
+    const dcDetail = await fetchDeliveryChallanDetail(dcId);
+    if (!dcDetail) {
+      alert("Failed to load delivery challan details");
+      return;
+    }
+    const logoDataUrl = await getDeliveryChallanLogoDataUrl();
+    const doc = buildDeliveryChallanPdf(dcDetail, logoDataUrl);
+    const blob = doc.output("blob");
+    const url = URL.createObjectURL(blob);
+    const printWindow = window.open(url, "_blank");
+    if (printWindow) {
+      setTimeout(() => { printWindow.print(); }, 500);
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
   };
 
   if (!company?.id) {
@@ -978,9 +1075,7 @@ export default function DeliveryChallansPage() {
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-              Delivery Challans
-            </h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Delivery Challans</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Manage dispatch (DC Out) and returns (DC In)
             </p>
@@ -1007,67 +1102,50 @@ export default function DeliveryChallansPage() {
       {/* Summary Cards */}
       <div className="px-6 py-6 bg-gray-50 dark:bg-gray-900">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Total DCs */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {data?.total || 0}
-                </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Total Challans
-                </p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{data?.total || 0}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Total Challans</p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
                 <Truck className="w-6 h-6 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
           </div>
-
-          {/* Dispatched */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-blue-600">
                   {data?.items?.filter(dc => dc.status === 'dispatched' || dc.status === 'in_transit').length || 0}
                 </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  In Transit/Dispatched
-                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">In Transit/Dispatched</p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
                 <Clock className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
           </div>
-
-          {/* Delivered */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-green-600">
                   {data?.items?.filter(dc => dc.status === 'delivered' || dc.status === 'received').length || 0}
                 </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Delivered/Received
-                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Delivered/Received</p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
                 <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
               </div>
             </div>
           </div>
-
-          {/* DC Out */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-indigo-600">
                   {data?.items?.filter(dc => dc.dc_type === 'dc_out').length || 0}
                 </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  DC Out (Dispatch)
-                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">DC Out (Dispatch)</p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-indigo-100 dark:bg-indigo-900/20 flex items-center justify-center">
                 <Package className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
@@ -1108,11 +1186,7 @@ export default function DeliveryChallansPage() {
               disabled={copyLoading}
               className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {copyLoading ? (
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
-              ) : (
-                <Copy className="w-5 h-5" />
-              )}
+              {copyLoading ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div> : <Copy className="w-5 h-5" />}
               Copy
             </button>
 
@@ -1124,7 +1198,6 @@ export default function DeliveryChallansPage() {
                 Columns
                 {showColumnDropdown ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </button>
-
               {showColumnDropdown && (
                 <div className="absolute right-0 mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-3 z-10 min-w-[150px]">
                   {Object.entries(visibleColumns).map(([key, value]) => (
@@ -1136,7 +1209,7 @@ export default function DeliveryChallansPage() {
                         className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
                       />
                       <span className="capitalize">
-                        {key === 'dcNumber' ? 'DC Number' : 
+                        {key === 'dcNumber' ? 'DC Number' :
                          key === 'type' ? 'Type' :
                          key === 'customer' ? 'Customer' :
                          key === 'date' ? 'Date' :
@@ -1157,14 +1230,7 @@ export default function DeliveryChallansPage() {
               disabled={excelLoading}
               className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {excelLoading ? (
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
-              ) : (
-                <>
-                  <FileText className="w-5 h-5" />
-                  Excel
-                </>
-              )}
+              {excelLoading ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div> : <><FileText className="w-5 h-5" />Excel</>}
             </button>
 
             <button
@@ -1172,14 +1238,7 @@ export default function DeliveryChallansPage() {
               disabled={pdfLoading}
               className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {pdfLoading ? (
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
-              ) : (
-                <>
-                  <Download className="w-5 h-5" />
-                  PDF
-                </>
-              )}
+              {pdfLoading ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div> : <><Download className="w-5 h-5" />PDF</>}
             </button>
 
             <button
@@ -1187,14 +1246,7 @@ export default function DeliveryChallansPage() {
               disabled={csvLoading}
               className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {csvLoading ? (
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
-              ) : (
-                <>
-                  <FileText className="w-5 h-5" />
-                  CSV
-                </>
-              )}
+              {csvLoading ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div> : <><FileText className="w-5 h-5" />CSV</>}
             </button>
 
             <button
@@ -1202,14 +1254,7 @@ export default function DeliveryChallansPage() {
               disabled={printLoading}
               className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {printLoading ? (
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
-              ) : (
-                <>
-                  <Printer className="w-5 h-5" />
-                  Print
-                </>
-              )}
+              {printLoading ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div> : <><Printer className="w-5 h-5" />Print</>}
             </button>
 
             <button
@@ -1224,11 +1269,8 @@ export default function DeliveryChallansPage() {
 
         {showFilters && (
           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Type Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Type
-              </label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
@@ -1239,12 +1281,8 @@ export default function DeliveryChallansPage() {
                 <option value="dc_in">DC In (Return)</option>
               </select>
             </div>
-
-            {/* Status Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Status
-              </label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
@@ -1260,12 +1298,8 @@ export default function DeliveryChallansPage() {
                 <option value="returned">Returned</option>
               </select>
             </div>
-
-            {/* From Date */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                From Date
-              </label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From Date</label>
               <input
                 type="date"
                 value={fromDate}
@@ -1273,12 +1307,8 @@ export default function DeliveryChallansPage() {
                 className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               />
             </div>
-
-            {/* To Date */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                To Date
-              </label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To Date</label>
               <input
                 type="date"
                 value={toDate}
@@ -1303,54 +1333,16 @@ export default function DeliveryChallansPage() {
           <table className="w-full table-auto">
             <thead className="bg-gray-200 dark:bg-gray-700/50">
               <tr className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                <th className="text-left px-3 py-3 w-[60px]">
-                  S.No
-                </th>
-                {visibleColumns.dcNumber && (
-                  <th className="text-left px-3 py-3">
-                    DC Number
-                  </th>
-                )}
-                {visibleColumns.type && (
-                  <th className="text-left px-3 py-3">
-                    Type
-                  </th>
-                )}
-                {visibleColumns.customer && (
-                  <th className="text-left px-3 py-3">
-                    Customer
-                  </th>
-                )}
-                {visibleColumns.date && (
-                  <th className="text-left px-3 py-3">
-                    Date
-                  </th>
-                )}
-                {visibleColumns.invoice && (
-                  <th className="text-left px-3 py-3">
-                    Invoice
-                  </th>
-                )}
-                {visibleColumns.vehicle && (
-                  <th className="text-left px-3 py-3">
-                    Vehicle
-                  </th>
-                )}
-                {visibleColumns.transporter && (
-                  <th className="text-left px-3 py-3">
-                    Transporter
-                  </th>
-                )}
-                {visibleColumns.status && (
-                  <th className="w-[90px] min-w-[90px] text-left px-2 py-3">
-                    Status
-                  </th>
-                )}
-                {visibleColumns.actions && (
-                  <th className="w-[68px] min-w-[68px] text-center px-2 py-3">
-                    Actions
-                  </th>
-                )}
+                <th className="text-left px-3 py-3 w-[60px]">S.No</th>
+                {visibleColumns.dcNumber && <th className="text-left px-3 py-3">DC Number</th>}
+                {visibleColumns.type && <th className="text-left px-3 py-3">Type</th>}
+                {visibleColumns.customer && <th className="text-left px-3 py-3">Customer</th>}
+                {visibleColumns.date && <th className="text-left px-3 py-3">Date</th>}
+                {visibleColumns.invoice && <th className="text-left px-3 py-3">Invoice</th>}
+                {visibleColumns.vehicle && <th className="text-left px-3 py-3">Vehicle</th>}
+                {visibleColumns.transporter && <th className="text-left px-3 py-3">Transporter</th>}
+                {visibleColumns.status && <th className="w-[90px] min-w-[90px] text-left px-2 py-3">Status</th>}
+                {visibleColumns.actions && <th className="w-[68px] min-w-[68px] text-center px-2 py-3">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-sm text-gray-700 dark:text-gray-300">
@@ -1367,177 +1359,152 @@ export default function DeliveryChallansPage() {
                   <td colSpan={Object.values(visibleColumns).filter(Boolean).length + 1} className="px-6 py-8 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <Truck className="w-12 h-12 text-gray-400 mb-2" />
-                      <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
-                        No delivery challans found
-                      </p>
+                      <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">No delivery challans found</p>
                       <p className="text-gray-500 dark:text-gray-400 mb-4">
-                        {statusFilter || typeFilter || search || fromDate || toDate ?
-                          "No delivery challans found matching your filters. Try adjusting your search criteria." :
-                          "Create your first delivery challan to start managing dispatches."}
+                        {statusFilter || typeFilter || search || fromDate || toDate
+                          ? "No delivery challans found matching your filters. Try adjusting your search criteria."
+                          : "Create your first delivery challan to start managing dispatches."}
                       </p>
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => router.push('/delivery-challans/new?type=dc_out')}
-                          className="text-indigo-600 hover:underline dark:text-indigo-400"
-                        >
-                          Create DC Out
-                        </button>
+                        <button onClick={() => router.push('/delivery-challans/new?type=dc_out')} className="text-indigo-600 hover:underline dark:text-indigo-400">Create DC Out</button>
                         <span className="text-gray-400">|</span>
-                        <button
-                          onClick={() => router.push('/delivery-challans/new?type=dc_in')}
-                          className="text-indigo-600 hover:underline dark:text-indigo-400"
-                        >
-                          Create DC In
-                        </button>
+                        <button onClick={() => router.push('/delivery-challans/new?type=dc_in')} className="text-indigo-600 hover:underline dark:text-indigo-400">Create DC In</button>
                       </div>
                     </div>
                   </td>
                 </tr>
               ) : (
-                filteredItems.map((dc, index) => {
-                  return (
-                    <tr
-                      key={dc.id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                    >
-                      <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300 w-[60px]">
-                        {(currentPage - 1) * pageSize + index + 1}
+                filteredItems.map((dc, index) => (
+                  <tr key={dc.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                    <td className="px-3 py-4 align-top text-gray-700 dark:text-gray-300 w-[60px]">
+                      {(currentPage - 1) * pageSize + index + 1}
+                    </td>
+                    {visibleColumns.dcNumber && (
+                      <td className="px-3 py-4 align-top">
+                        <div className="font-medium text-indigo-600 dark:text-indigo-400">{dc.dc_number}</div>
                       </td>
-                      {visibleColumns.dcNumber && (
-                        <td className="px-3 py-4 align-top break-words">
-                          <div className="font-medium text-indigo-600 dark:text-indigo-400">
-                            {dc.dc_number}
-                          </div>
-                        </td>
-                      )}
-                      {visibleColumns.type && (
-                        <td className="px-3 py-4 align-top break-words">
-                          <span
-                            className={`inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium ${
-                              getTypeBadgeClass(dc.dc_type)
-                            }`}
+                    )}
+                    {visibleColumns.type && (
+                      <td className="px-3 py-4 align-top">
+                        <span className={`inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium ${getTypeBadgeClass(dc.dc_type)}`}>
+                          {dc.dc_type === 'dc_out' ? 'DC Out' : 'DC In'}
+                        </span>
+                      </td>
+                    )}
+                    {visibleColumns.customer && (
+                      <td className="px-3 py-4 align-top">
+                        <div className="flex items-center gap-2">
+                          <Building className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <span className="truncate">{dc.customer_name || '-'}</span>
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.date && (
+                      <td className="px-3 py-4 align-top">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          {formatDate(dc.dc_date)}
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.invoice && (
+                      <td className="px-3 py-4 align-top">
+                        {dc.invoice_number ? (
+                          <Link href={`/invoices/${dc.invoice_id}`} className="text-indigo-600 hover:underline dark:text-indigo-400">
+                            {dc.invoice_number}
+                          </Link>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                    )}
+                    {visibleColumns.vehicle && (
+                      <td className="px-3 py-4 align-top">
+                        <div className="flex items-center gap-2">
+                          <Truck className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <span>{dc.vehicle_number || '-'}</span>
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.transporter && (
+                      <td className="px-3 py-4 align-top">
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <span className="truncate">{dc.transporter_name || '-'}</span>
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.status && (
+                      <td className="w-[90px] min-w-[90px] px-2 py-4 align-top">
+                        <span className={`inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(dc.status)}`}>
+                          {dc.status === 'delivered' && <CheckCircle className="w-3 h-3 mr-1" />}
+                          {dc.status === 'received' && <CheckCircle className="w-3 h-3 mr-1" />}
+                          {dc.status === 'dispatched' && <Package className="w-3 h-3 mr-1" />}
+                          {dc.status === 'in_transit' && <Clock className="w-3 h-3 mr-1" />}
+                          {dc.status === 'draft' && <AlertCircle className="w-3 h-3 mr-1" />}
+                          {dc.status === 'cancelled' && <XCircle className="w-3 h-3 mr-1" />}
+                          {dc.status === 'returned' && <RefreshCw className="w-3 h-3 mr-1" />}
+                          {getStatusText(dc.status)}
+                        </span>
+                      </td>
+                    )}
+                    {visibleColumns.actions && (
+                      <td className="w-[68px] min-w-[68px] px-2 py-4 text-center align-top">
+                        <div className="relative action-dropdown-container inline-flex justify-center w-full">
+                          <button
+                            onClick={() => setActiveActionMenu(activeActionMenu === dc.id ? null : dc.id)}
+                            className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:text-gray-300 dark:hover:bg-gray-700/50 transition-all duration-200"
                           >
-                            {dc.dc_type === 'dc_out' ? 'DC Out' : 'DC In'}
-                          </span>
-                        </td>
-                      )}
-                      {visibleColumns.customer && (
-                        <td className="px-3 py-4 align-top break-words">
-                          <div className="flex items-center gap-2">
-                            <Building className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                            <span className="truncate">{dc.customer_name || '-'}</span>
-                          </div>
-                        </td>
-                      )}
-                      {visibleColumns.date && (
-                        <td className="px-3 py-4 align-top break-words">
-                          <div className="flex items-center gap-2">
-                            <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                            {formatDate(dc.dc_date)}
-                          </div>
-                        </td>
-                      )}
-                      {visibleColumns.invoice && (
-                        <td className="px-3 py-4 align-top break-words">
-                          {dc.invoice_number ? (
-                            <Link
-                              href={`/invoices/${dc.invoice_id}`}
-                              className="text-indigo-600 hover:underline dark:text-indigo-400"
-                            >
-                              {dc.invoice_number}
-                            </Link>
-                          ) : (
-                            <span className="text-gray-400">-</span>
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+
+                          {activeActionMenu === dc.id && (
+                            <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                              <Link
+                                href={`/delivery-challans/${dc.id}`}
+                                onClick={() => setActiveActionMenu(null)}
+                                className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                              >
+                                <Eye className="w-4 h-4 text-gray-400" />
+                                <span>View Details</span>
+                              </Link>
+                              <Link
+                                href={`/delivery-challans/${dc.id}`}
+                                onClick={() => setActiveActionMenu(null)}
+                                className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                              >
+                                <Edit className="w-4 h-4 text-gray-400" />
+                                <span>Edit</span>
+                              </Link>
+                              <button
+                                onClick={() => { setActiveActionMenu(null); handlePrintChallan(dc.id); }}
+                                className="flex w-full items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                              >
+                                <Printer className="w-4 h-4 text-gray-400" />
+                                <span>Print</span>
+                              </button>
+                              <button
+                                onClick={() => { setActiveActionMenu(null); handleDownloadChallanPdf(dc.id, dc.dc_number); }}
+                                className="flex w-full items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                              >
+                                <Download className="w-4 h-4 text-gray-400" />
+                                <span>Download PDF</span>
+                              </button>
+                              <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                              <button
+                                onClick={() => { handleDelete(dc.id, dc.dc_number); setActiveActionMenu(null); }}
+                                className="flex w-full items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
                           )}
-                        </td>
-                      )}
-                      {visibleColumns.vehicle && (
-                        <td className="px-3 py-4 align-top break-words">
-                          <div className="flex items-center gap-2">
-                            <Truck className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                            <span>{dc.vehicle_number || '-'}</span>
-                          </div>
-                        </td>
-                      )}
-                      {visibleColumns.transporter && (
-                        <td className="px-3 py-4 align-top break-words">
-                          <div className="flex items-center gap-2">
-                            <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                            <span className="truncate">{dc.transporter_name || '-'}</span>
-                          </div>
-                        </td>
-                      )}
-                      {visibleColumns.status && (
-                        <td className="w-[90px] min-w-[90px] px-2 py-4 align-top">
-                          <span
-                            className={`inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium ${
-                              getStatusBadgeClass(dc.status)
-                            }`}
-                          >
-                            {dc.status === 'delivered' && <CheckCircle className="w-3 h-3 mr-1" />}
-                            {dc.status === 'received' && <CheckCircle className="w-3 h-3 mr-1" />}
-                            {dc.status === 'dispatched' && <Package className="w-3 h-3 mr-1" />}
-                            {dc.status === 'in_transit' && <Clock className="w-3 h-3 mr-1" />}
-                            {dc.status === 'draft' && <AlertCircle className="w-3 h-3 mr-1" />}
-                            {dc.status === 'cancelled' && <XCircle className="w-3 h-3 mr-1" />}
-                            {dc.status === 'returned' && <RefreshCw className="w-3 h-3 mr-1" />}
-                            {getStatusText(dc.status)}
-                          </span>
-                        </td>
-                      )}
-                      {visibleColumns.actions && (
-                        <td className="w-[68px] min-w-[68px] px-2 py-4 text-center align-top">
-                          <div className="relative action-dropdown-container inline-flex justify-center w-full">
-                            <button
-                              onClick={() =>
-                                setActiveActionMenu(
-                                  activeActionMenu === dc.id ? null : dc.id
-                                )
-                              }
-                              className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:text-gray-300 dark:hover:bg-gray-700/50 transition-all duration-200"
-                            >
-                              <MoreVertical className="w-4 h-4" />
-                            </button>
-
-                            {activeActionMenu === dc.id && (
-                              <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                                <Link
-                                  href={`/delivery-challans/${dc.id}`}
-                                  onClick={() => setActiveActionMenu(null)}
-                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                                >
-                                  <Eye className="w-4 h-4 text-gray-400" />
-                                  <span>View Details</span>
-                                </Link>
-
-                                <Link
-                                  href={`/delivery-challans/edit/${dc.id}`}
-                                  onClick={() => setActiveActionMenu(null)}
-                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                                >
-                                  <Edit className="w-4 h-4 text-gray-400" />
-                                  <span>Edit</span>
-                                </Link>
-
-                                <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
-                                <button
-                                  onClick={() => {
-                                    handleDelete(dc.id, dc.dc_number);
-                                    setActiveActionMenu(null);
-                                  }}
-                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                  <span>Delete</span>
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -1558,9 +1525,7 @@ export default function DeliveryChallansPage() {
             >
               Previous
             </button>
-            <div className="text-sm text-gray-700 dark:text-gray-300">
-              Page {currentPage} of {totalPages}
-            </div>
+            <div className="text-sm text-gray-700 dark:text-gray-300">Page {currentPage} of {totalPages}</div>
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
