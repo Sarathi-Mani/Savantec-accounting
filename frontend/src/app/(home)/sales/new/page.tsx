@@ -1304,7 +1304,7 @@ export default function AddSalesPage() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 p-4 dark:bg-gray-dark md:p-6">
+        <div className="min-h-screen bg-gray-50 p-4 dark:bg-gray-dark">
             {/* Breadcrumb */}
             <nav className="mb-6 flex" aria-label="Breadcrumb">
                 <ol className="inline-flex items-center space-x-1 text-sm md:space-x-2">
@@ -2571,7 +2571,7 @@ export default function AddSalesPage() {
                                 <button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className="min-w-[180px] rounded-lg bg-green-600 px-6 py-3 font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
+                                    className="min-w-[180px] rounded-lg bg-primary px-6 py-3 font-medium text-white transition  hover:bg-opacity-90 disabled:opacity-50"
                                 >
                                     {isSubmitting ? "Saving..." : "Save Sales"}
                                 </button>

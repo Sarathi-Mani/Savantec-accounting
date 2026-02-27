@@ -373,38 +373,56 @@ export default function SalesDashboardPage() {
         }
       });
 
-      const normalizedDashboard = (() => {
-        if (!isSalesEngineer) return dashboardResponse as any;
-
-        const customerMap = new Map<string, { customer_name: string; invoice_count: number; total_amount: number }>();
-        for (const inv of invoices) {
-          const customerName = inv.customer_name || "Walk-in Customer";
-          const amount = getDisplayAmount(inv);
-          if (!customerMap.has(customerName)) {
-            customerMap.set(customerName, { customer_name: customerName, invoice_count: 0, total_amount: 0 });
-          }
-          const row = customerMap.get(customerName)!;
-          row.invoice_count += 1;
-          row.total_amount += amount;
-        }
-
-        const topCustomers = Array.from(customerMap.values())
-          .sort((a, b) => b.total_amount - a.total_amount)
-          .slice(0, 10);
-
-        const recentInvoices = (dashboardResponse?.recent_invoices || []).map((inv: any) => ({
-          ...inv,
+      const recentInvoicesFromList = [...invoices]
+        .sort((a: any, b: any) => {
+          const aTime = new Date(a?.created_at || a?.invoice_date || 0).getTime();
+          const bTime = new Date(b?.created_at || b?.invoice_date || 0).getTime();
+          return bTime - aTime;
+        })
+        .slice(0, 8)
+        .map((inv: any) => ({
+          id: String(inv?.id || ""),
+          invoice_number: inv?.invoice_number || "-",
+          invoice_date: inv?.invoice_date || inv?.created_at || "",
+          customer_name: inv?.customer_name || "Walk-in Customer",
           total_amount: getDisplayAmount(inv),
+          amount_paid: Number(inv?.amount_paid) || 0,
+          balance_due: Number(inv?.balance_due) || 0,
+          status: inv?.status || "draft",
+          voucher_type: inv?.voucher_type || "invoice",
+          reference_no: inv?.reference_no || "",
+          created_at: inv?.created_at || inv?.invoice_date || "",
         }));
 
+      const customerMap = new Map<string, { customer_name: string; invoice_count: number; total_amount: number }>();
+      for (const inv of invoices) {
+        const customerName = inv.customer_name || "Walk-in Customer";
+        const amount = getDisplayAmount(inv);
+        if (!customerMap.has(customerName)) {
+          customerMap.set(customerName, { customer_name: customerName, invoice_count: 0, total_amount: 0 });
+        }
+        const row = customerMap.get(customerName)!;
+        row.invoice_count += 1;
+        row.total_amount += amount;
+      }
+
+      const topCustomersFromList = Array.from(customerMap.values())
+        .sort((a, b) => b.total_amount - a.total_amount)
+        .slice(0, 10);
+
+      const normalizedDashboard = (() => {
         return {
           ...(dashboardResponse as any),
-          top_customers: topCustomers,
-          recent_invoices: recentInvoices,
+          top_customers: topCustomersFromList,
+          recent_invoices: recentInvoicesFromList,
         };
       })();
 
-      setDashboardData(normalizedDashboard as any);
+      setDashboardData({
+        ...(normalizedDashboard as any),
+        top_customers: topCustomersFromList,
+        recent_invoices: recentInvoicesFromList,
+      } as any);
 
       setSalesSummary({
         total_invoices: (invoiceResponse as any).total_invoices || invoiceResponse.total || invoices.length,
@@ -701,7 +719,7 @@ export default function SalesDashboardPage() {
 
       {/* Key Metrics - NOW TIME RANGE BASED */}
       <div className="px-6 py-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols2 gap-6">
           {/* Total Revenue for Time Range */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
@@ -1268,14 +1286,14 @@ export default function SalesDashboardPage() {
                     </div>
                     <div className="text-right">
                       <p className="font-medium text-gray-900 dark:text-white">
-                        {formatCurrency(isSalesEngineer ? getBaseAmount(customer) : customer.total_amount)}
+                        {formatCurrency(customer.total_amount)}
                       </p>
                       <div className="w-24 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mt-1">
                         <div 
                           className="h-full bg-green-500 rounded-full"
                           style={{
                             width: dashboardData.top_customers[0]?.total_amount
-                              ? `${((isSalesEngineer ? getBaseAmount(customer) : customer.total_amount) / dashboardData.top_customers[0].total_amount) * 100}%`
+                              ? `${(customer.total_amount / dashboardData.top_customers[0].total_amount) * 100}%`
                               : '0%'
                           }}
                         ></div>
