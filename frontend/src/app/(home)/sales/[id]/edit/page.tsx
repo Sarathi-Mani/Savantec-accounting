@@ -93,11 +93,13 @@ function SelectField({
 
 function ProductSelectField({
     value,
+    manualLabel,
     onChange,
     products,
     placeholder = "Search product",
 }: {
     value: number | string;
+    manualLabel?: string;
     onChange: (product: any | null) => void;
     products: any[];
     placeholder?: string;
@@ -111,12 +113,23 @@ function ProductSelectField({
         product,
     }));
 
+    const selectedOption =
+        options.find(o => String(o.value) === String(value)) ||
+        (manualLabel && manualLabel.trim()
+            ? {
+                value: `manual:${manualLabel.trim()}`,
+                label: manualLabel.trim(),
+                subLabel: "Manual item",
+                product: null,
+            }
+            : null);
+
     return (
         <Select
             ref={selectRef}
             options={options}
 
-            value={options.find(o => String(o.value) === String(value)) || null}
+            value={selectedOption}
             getOptionValue={(option) => String(option.value)}
             getOptionLabel={(option) => option.label}
 
@@ -1593,6 +1606,7 @@ export default function EditSalesPage() {
                                                 <td className="w-[450px] min-w-[450px] px-3 py-3">
                                                     <ProductSelectField
                                                         value={item.product_id}
+                                                        manualLabel={item.description || item.item_code}
                                                         products={products}
                                                         onChange={(product) => {
                                                             if (!product) return;

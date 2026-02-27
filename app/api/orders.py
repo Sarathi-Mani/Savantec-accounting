@@ -847,6 +847,32 @@ async def cancel_sales_order(
     return {"message": "Sales order cancelled"}
 
 
+@router.delete("/sales/{order_id}")
+async def delete_sales_order(
+    company_id: str,
+    order_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a sales order (only draft orders can be deleted)."""
+    company = get_company_or_404(company_id, current_user, db)
+    service = OrderService(db)
+
+    order = service.get_sales_order(order_id, company)
+    if not order:
+        raise HTTPException(status_code=404, detail="Sales order not found")
+
+    if order.status != OrderStatus.DRAFT:
+        raise HTTPException(status_code=400, detail="Only draft orders can be deleted")
+
+    try:
+        service.delete_sales_order(order)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {"message": "Sales order deleted successfully"}
+
+
 # ============== Purchase Order Endpoints ==============
 
 @router.get("/purchase/next-number")

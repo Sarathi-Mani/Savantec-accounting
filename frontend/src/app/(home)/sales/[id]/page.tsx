@@ -373,7 +373,7 @@ export default function SalesInvoiceViewPage() {
               ))}
               {(invoice.items || []).length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-6 text-center text-dark-6">
+                  <td colSpan={8} className="py-6 text-center text-dark-6">
                     No items found.
                   </td>
                 </tr>
@@ -416,6 +416,30 @@ export default function SalesInvoiceViewPage() {
             </span>
           </div>
           <div className="flex items-center justify-between">
+            <span className="text-dark-6">CGST</span>
+            <span className="font-medium text-dark dark:text-white">
+              {formatCurrency(invoice.cgst_amount || 0)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-dark-6">SGST</span>
+            <span className="font-medium text-dark dark:text-white">
+              {formatCurrency(invoice.sgst_amount || 0)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-dark-6">IGST</span>
+            <span className="font-medium text-dark dark:text-white">
+              {formatCurrency(invoice.igst_amount || 0)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-dark-6">Cess</span>
+            <span className="font-medium text-dark dark:text-white">
+              {formatCurrency(invoice.cess_amount || 0)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
             <span className="text-dark-6">Round Off</span>
             <span className="font-medium text-dark dark:text-white">
               {formatCurrency(invoice.round_off || 0)}
@@ -439,6 +463,17 @@ export default function SalesInvoiceViewPage() {
               {formatCurrency(invoice.balance_due)}
             </span>
           </div>
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+          <h2 className="mb-3 text-lg font-semibold text-dark dark:text-white">Notes</h2>
+          <p className="whitespace-pre-wrap text-sm text-dark-6">{invoice.notes || "-"}</p>
+        </div>
+        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+          <h2 className="mb-3 text-lg font-semibold text-dark dark:text-white">Terms & Conditions</h2>
+          <p className="whitespace-pre-wrap text-sm text-dark-6">{invoice.terms || "-"}</p>
         </div>
       </div>
     </div>

@@ -1689,34 +1689,62 @@ export default function SalesListPage() {
                             </button>
 
                             {activeActionMenu === invoice.id && (
-                              <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                              <div className="absolute right-0 mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                                 <Link
                                   href={`/sales/${invoice.id}`}
                                   onClick={() => setActiveActionMenu(null)}
                                   className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                                 >
                                   <Eye className="w-4 h-4 text-gray-400" />
-                                  <span>View Details</span>
+                                  <span>View</span>
                                 </Link>
 
-                                {invoice.status === 'draft' && (
-                                  <Link
-                                    href={`/sales/${invoice.id}/edit`}
-                                    onClick={() => setActiveActionMenu(null)}
-                                    className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                                  >
-                                    <Edit className="w-4 h-4 text-gray-400" />
-                                    <span>Edit</span>
-                                  </Link>
-                                )}
+                                <Link
+                                  href={`/sales/${invoice.id}/edit`}
+                                  onClick={() => setActiveActionMenu(null)}
+                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                >
+                                  <Edit className="w-4 h-4 text-gray-400" />
+                                  <span>Edit</span>
+                                </Link>
+
+                                <Link
+                                  href={`/sales/sales-payments?invoice_id=${invoice.id}`}
+                                  onClick={() => setActiveActionMenu(null)}
+                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                >
+                                  <CreditCard className="w-4 h-4 text-gray-400" />
+                                  <span>View Payments</span>
+                                </Link>
+
+                                <Link
+                                  href={`/sales/sales-payments/new?invoice_id=${invoice.id}`}
+                                  onClick={() => setActiveActionMenu(null)}
+                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                >
+                                  <DollarSign className="w-4 h-4 text-gray-400" />
+                                  <span>Receive Payment</span>
+                                </Link>
 
                                 <button
-                                  onClick={() => handlePrintInvoice(invoice.id)}
+                                  onClick={() => {
+                                    handlePrintInvoice(invoice.id);
+                                    setActiveActionMenu(null);
+                                  }}
                                   className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                                 >
                                   <Printer className="w-4 h-4 text-gray-400" />
-                                  <span>Print PDF</span>
+                                  <span>PDF</span>
                                 </button>
+
+                                <Link
+                                  href={`/sales/sales-returns/new?fromSalesInvoice=${invoice.id}`}
+                                  onClick={() => setActiveActionMenu(null)}
+                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                >
+                                  <RefreshCw className="w-4 h-4 text-gray-400" />
+                                  <span>Sales Return</span>
+                                </Link>
 
                                 <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
                                 <button
@@ -1727,7 +1755,7 @@ export default function SalesListPage() {
                                   className="flex w-full items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                                 >
                                   <Trash2 className="w-4 h-4" />
-                                  <span>Cancel Invoice</span>
+                                  <span>Delete</span>
                                 </button>
                               </div>
                             )}

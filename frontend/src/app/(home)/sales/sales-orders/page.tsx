@@ -978,14 +978,8 @@ export default function SalesOrdersPage() {
     if (window.confirm(`Are you sure you want to delete sales order "${orderNumber}"? This action cannot be undone.`)) {
       try {
         if (company?.id) {
-          // Check if the API method exists
-          if ('deleteSalesOrder' in ordersApi) {
-            await (ordersApi as any).deleteSalesOrder(company.id, orderId);
-          } else {
-            console.log("Delete method not available in API");
-            // Simulate deletion for now
-            alert("Delete functionality will be implemented");
-          }
+          await ordersApi.deleteSalesOrder(company.id, orderId);
+          setActiveActionMenu(null);
           fetchOrders();
         }
       } catch (error) {

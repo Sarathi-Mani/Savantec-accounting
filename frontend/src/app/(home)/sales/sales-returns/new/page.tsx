@@ -111,11 +111,13 @@ function SelectField({
 
 function ProductSelectField({
     value,
+    manualLabel,
     onChange,
     products,
     placeholder = "Search product",
 }: {
     value: number | string;
+    manualLabel?: string;
     onChange: (product: any | null) => void;
     products: any[];
     placeholder?: string;
@@ -125,14 +127,26 @@ function ProductSelectField({
     const options = products.map(product => ({
         value: product.id,
         label: `${product.name} ${product.sku ? `(${product.sku})` : ""}`,
+        subLabel: product.description || "",
         product,
     }));
+
+    const selectedOption =
+        options.find(o => String(o.value) === String(value)) ||
+        (manualLabel && manualLabel.trim()
+            ? {
+                value: `manual:${manualLabel.trim()}`,
+                label: manualLabel.trim(),
+                subLabel: "Manual item",
+                product: null,
+            }
+            : null);
 
     return (
         <Select
             ref={selectRef}
             options={options}
-            value={options.find(o => String(o.value) === String(value)) || null}
+            value={selectedOption}
             getOptionValue={(option) => String(option.value)}
             getOptionLabel={(option) => option.label}
             onChange={(selected: any) =>
@@ -162,18 +176,47 @@ function ProductSelectField({
             styles={{
                 control: (base: any, state: any) => ({
                     ...base,
-                    minHeight: "38px",
+                    minHeight: "36px",
+                    height: "36px",
                     borderRadius: "0.375rem",
                     borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
                     boxShadow: state.isFocused
                         ? "0 0 0 1px rgba(99,102,241,0.5)"
                         : "none",
                 }),
+                valueContainer: (base: any) => ({
+                    ...base,
+                    height: "36px",
+                    padding: "0 8px",
+                }),
+                input: (base: any) => ({
+                    ...base,
+                    margin: "0px",
+                }),
+                indicatorsContainer: (base: any) => ({
+                    ...base,
+                    height: "36px",
+                }),
                 menuPortal: (base: any) => ({
                     ...base,
                     zIndex: 9999,
                 }),
+                menu: (base: any) => ({
+                    ...base,
+                    minWidth: "620px",
+                    zIndex: 9999,
+                }),
             }}
+            formatOptionLabel={(option: any) => (
+                <div>
+                    <div className="whitespace-normal break-words text-sm">{option.label}</div>
+                    {option.subLabel ? (
+                        <div className="whitespace-normal break-words text-xs text-gray-500 dark:text-gray-400">
+                            {option.subLabel}
+                        </div>
+                    ) : null}
+                </div>
+            )}
         />
     );
 }
@@ -181,7 +224,8 @@ function ProductSelectField({
 export default function AddSalesReturnPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const fromSalesInvoiceId = searchParams.get("fromSalesInvoice");
+    const fromSalesInvoiceId =
+        searchParams.get("fromSalesInvoice") || searchParams.get("invoiceId");
     const editReturnId = searchParams.get("editId");
     const isEditMode = Boolean(editReturnId);
     const { company, user } = useAuth();
@@ -1074,26 +1118,28 @@ export default function AddSalesReturnPage() {
                                 </button>
                             </div>{/* Items Table */}
                             <div className="overflow-x-auto">
-                                <table className="w-full">
+                                <table className="w-full min-w-[1580px] border-collapse">
                                     <thead>
-                                        <tr className="border-b border-stroke dark:border-dark-3">
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Product</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">HSN</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit Price</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Discount %</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax %</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Total Amount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
+                                        <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+                                            <th className="w-[450px] min-w-[450px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item</th>
+                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item Code</th>
+                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">HSN Code</th>
+                                            <th className="w-[200px] min-w-[200px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Description</th>
+                                            <th className="w-[80px] min-w-[80px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Qty</th>
+                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Unit Price</th>
+                                            <th className="w-[100px] min-w-[100px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount %</th>
+                                            <th className="w-[80px] min-w-[80px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">GST %</th>
+                                            <th className="w-[130px] min-w-[130px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Total</th>
+                                            <th className="w-[60px] min-w-[60px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {items.map((item) => (
                                             <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                                                <td className="px-4 py-3 min-w-[200px]">
+                                                <td className="w-[450px] min-w-[450px] px-3 py-3">
                                                     <ProductSelectField
                                                         value={item.product_id}
+                                                        manualLabel={item.description || item.item_code}
                                                         products={products}
                                                         onChange={(product) => {
                                                             if (!product) return;
@@ -1108,6 +1154,7 @@ export default function AddSalesReturnPage() {
                                                                     return {
                                                                         ...i,
                                                                         product_id: product.id,
+                                                                        item_code: i.item_code || "",
                                                                         description: product.name,
                                                                         hsn_code: product.hsn_code || product.hsn || "",
                                                                         unit_price: unitPrice,
@@ -1122,6 +1169,15 @@ export default function AddSalesReturnPage() {
                                                                 })
                                                             );
                                                         }}
+                                                    />
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <input
+                                                        type="text"
+                                                        value={item.item_code}
+                                                        onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}
+                                                        className="w-full min-w-[120px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        placeholder="Enter item code"
                                                     />
                                                 </td>
                                                 <td className="px-4 py-3">

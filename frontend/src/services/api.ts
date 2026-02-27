@@ -1852,6 +1852,11 @@ export const ordersApi = {
     return response.data;
   },
 
+  deleteSalesOrder: async (companyId: string, orderId: string): Promise<{ message: string }> => {
+    const response = await api.delete(`/companies/${companyId}/orders/sales/${orderId}`);
+    return response.data;
+  },
+
   // Purchase Orders
   listPurchaseOrders: async (
     companyId: string,

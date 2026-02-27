@@ -138,6 +138,21 @@ export default function SalesOrderViewPage() {
     }
   }, [shouldPrint, order, loading]);
 
+  const handleDelete = async () => {
+    if (!company?.id || !order) return;
+    const ok = window.confirm(
+      `Are you sure you want to delete sales order "${order.order_number}"? This action cannot be undone.`
+    );
+    if (!ok) return;
+
+    try {
+      await ordersApi.deleteSalesOrder(company.id, order.id);
+      router.push("/sales/sales-orders");
+    } catch (err) {
+      alert(getErrorMessage(err, "Failed to delete sales order"));
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-dark">
@@ -169,7 +184,25 @@ export default function SalesOrderViewPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 dark:bg-gray-dark md:p-6">
-      <nav className="mb-6 flex" aria-label="Breadcrumb">
+      {shouldPrint && (
+        <style jsx global>{`
+          @media print {
+            aside,
+            header {
+              display: none !important;
+            }
+            main {
+              margin: 0 !important;
+              padding: 0 !important;
+              max-width: 100% !important;
+            }
+            body {
+              background: #fff !important;
+            }
+          }
+        `}</style>
+      )}
+      <nav className={`mb-6 flex ${shouldPrint ? "print:hidden" : ""}`} aria-label="Breadcrumb">
         <ol className="inline-flex items-center space-x-1 text-sm md:space-x-2">
           <li className="inline-flex items-center">
             <Link href="/" className="inline-flex items-center text-dark-6 hover:text-primary dark:text-gray-400 dark:hover:text-white">
@@ -210,7 +243,7 @@ export default function SalesOrderViewPage() {
               Created on {formatDate(order.order_date)}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className={`flex items-center gap-3 ${shouldPrint ? "print:hidden" : ""}`}>
             <span className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${getStatusColor(order.status)}`}>
               {order.status?.replace("_", " ")}
             </span>
@@ -220,6 +253,15 @@ export default function SalesOrderViewPage() {
             >
               Edit
             </Link>
+            {order.status?.toLowerCase() === "draft" && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              >
+                Delete
+              </button>
+            )}
           </div>
         </div>
 
@@ -376,7 +418,7 @@ export default function SalesOrderViewPage() {
 
         
 
-        <div className="mt-6 flex gap-3">
+        <div className={`mt-6 flex gap-3 ${shouldPrint ? "print:hidden" : ""}`}>
           <button
             onClick={() => router.back()}
             className="rounded-lg border border-stroke px-4 py-2 text-dark dark:border-dark-3 dark:text-white"

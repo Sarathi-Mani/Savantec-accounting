@@ -253,7 +253,7 @@ class OrderService:
         if to_date:
             query = query.filter(SalesOrder.order_date <= to_date)
         
-        return query.order_by(SalesOrder.order_date.desc()).all()
+        return query.order_by(SalesOrder.created_at.desc(), SalesOrder.order_date.desc()).all()
     
     def get_sales_order(self, order_id: str, company: Company) -> Optional[SalesOrder]:
         """Get a sales order by ID."""
@@ -456,6 +456,17 @@ class OrderService:
         self.db.commit()
         self.db.refresh(order)
         return order
+
+    def delete_sales_order(self, order: SalesOrder) -> None:
+        """Delete a sales order.
+
+        Business rule: only draft orders can be deleted.
+        """
+        if order.status != OrderStatus.DRAFT:
+            raise ValueError("Only draft orders can be deleted")
+
+        self.db.delete(order)
+        self.db.commit()
     
     # ============== Purchase Orders ==============
     

@@ -476,6 +476,65 @@ export default function AddSalesPage() {
         }
     }, [company?.id, fromSalesOrderId, fromProformaId]);
 
+    // Backfill shipping fields from selected customer on initial load
+    // when converted documents do not carry shipping fields.
+    useEffect(() => {
+        if (!formData.customer_id || customers.length === 0) return;
+
+        const hasShippingData =
+            Boolean((formData.address || "").trim()) ||
+            Boolean((formData.city || "").trim()) ||
+            Boolean((formData.postcode || "").trim());
+        if (hasShippingData) return;
+
+        const selectedCustomer = customers.find(
+            (c: any) => String(c.id) === String(formData.customer_id)
+        );
+        if (!selectedCustomer) return;
+
+        const nextCountry =
+            selectedCustomer.shipping_country ||
+            selectedCustomer.billing_country ||
+            formData.country ||
+            "India";
+        const nextCity =
+            selectedCustomer.shipping_city ||
+            selectedCustomer.billing_city ||
+            "";
+        const nextPostcode =
+            selectedCustomer.shipping_zip ||
+            selectedCustomer.shipping_pincode ||
+            selectedCustomer.billing_zip ||
+            selectedCustomer.billing_pincode ||
+            "";
+        const nextAddress =
+            selectedCustomer.shipping_address ||
+            selectedCustomer.billing_address ||
+            "";
+
+        setFormData((prev) => ({
+            ...prev,
+            country: nextCountry,
+            city: nextCity,
+            postcode: nextPostcode,
+            address: nextAddress,
+            place_of_supply:
+                prev.place_of_supply ||
+                selectedCustomer.billing_state_code ||
+                selectedCustomer.state_code ||
+                company?.state_code ||
+                "",
+        }));
+    }, [
+        formData.customer_id,
+        formData.address,
+        formData.city,
+        formData.postcode,
+        formData.country,
+        customers,
+        company?.state_code,
+    ]);
+
     useEffect(() => {
         if (!products.length || !items.length) return;
         let didUpdate = false;
