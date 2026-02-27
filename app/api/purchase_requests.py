@@ -130,7 +130,7 @@ async def list_purchase_requests(
     search: Optional[str] = None,
     created_by_user: Optional[str] = None,
     created_by_employee: Optional[str] = None,
-    sort_by: str = Query("request_date", description="Field to sort by"),
+    sort_by: str = Query("created_at", description="Field to sort by"),
     sort_order: str = Query("desc", description="Sort order: asc or desc"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)

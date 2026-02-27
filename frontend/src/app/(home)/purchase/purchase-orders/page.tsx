@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -313,6 +314,7 @@ interface PurchaseOrderResponse {
 
 export default function PurchaseOrderListPage() {
   const { company } = useAuth();
+  const router = useRouter();
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -571,38 +573,9 @@ export default function PurchaseOrderListPage() {
       return;
     }
 
-    try {
-      const token = getToken();
-      if (!company?.id || !token) {
-        throw new Error("Authentication required");
-      }
-
-      setConverting(orderId);
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/orders/purchase/${orderId}/convert-to-invoice`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (response.ok) {
-        alert("Purchase order converted to invoice successfully!");
-        fetchPurchaseOrders();
-      } else {
-        const error = await response.json();
-        alert(error.detail || "Failed to convert to invoice");
-      }
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to convert to invoice");
-      console.error("Error converting to invoice:", err);
-    } finally {
-      setConverting(null);
-      setActiveActionMenu(null);
-    }
+    setConverting(orderId);
+    setActiveActionMenu(null);
+    router.push(`/purchase/new?from=purchase-order&purchase_order_id=${orderId}`);
   };
 
   const handlePrint = async () => {
@@ -718,7 +691,7 @@ export default function PurchaseOrderListPage() {
   };
 
   const handlePrintOrder = (orderId: string) => {
-    window.open(`/purchase/purchase-orders/${orderId}/print`, "_blank");
+    window.location.href = `/purchase/purchase-orders/${orderId}?print=1`;
   };
 
   useEffect(() => {

@@ -278,7 +278,7 @@ class PurchaseRequestService:
         search: Optional[str] = None,
         created_by_user: Optional[str] = None,
         created_by_employee: Optional[str] = None,
-        sort_by: str = "request_date",
+        sort_by: str = "created_at",
         sort_order: str = "desc"
     ) -> Tuple[List[PurchaseRequest], int]:
         """Get purchase requests with filtering and new columns."""
@@ -351,8 +351,8 @@ class PurchaseRequestService:
                 query = query.order_by(desc(sort_column))
                 print(f"   Sorting by {sort_by} DESC")
         else:
-            query = query.order_by(desc(PurchaseRequest.request_date))
-            print(f"   Default sorting by request_date DESC")
+            query = query.order_by(desc(PurchaseRequest.created_at))
+            print(f"   Default sorting by created_at DESC")
 
         # Brand filtering needs resolving product_id -> products.brand_id from JSON items.
         if brand_id:

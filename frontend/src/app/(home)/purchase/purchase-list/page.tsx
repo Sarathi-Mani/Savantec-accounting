@@ -908,7 +908,13 @@ export default function PurchaseListPage() {
     return Math.max(0, diffDays);
   };
 
-  const filteredPurchases = purchases.filter((purchase) => {
+  const sortedPurchases = [...purchases].sort((a, b) => {
+    const aTime = new Date(a.purchaseDate).getTime();
+    const bTime = new Date(b.purchaseDate).getTime();
+    return bTime - aTime;
+  });
+
+  const filteredPurchases = sortedPurchases.filter((purchase) => {
     const search = searchTerm.trim().toLowerCase();
     const matchesSearch =
       purchase.purchaseCode.toLowerCase().includes(search) ||

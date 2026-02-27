@@ -438,9 +438,23 @@ export default function AddPurchasePage() {
             setIsPageLoading(true);
             const purchase: any = await purchasesApi.get(resolvedCompanyId, purchaseId);
 
-            const paymentType = purchase.payment_type || "INR";
+            const paymentType = String(purchase.payment_type || "INR").trim().toUpperCase();
             const exchangeRate = Number(purchase.exchange_rate || 1);
             setPaymentExchangeRateInput(String(exchangeRate));
+
+            setCurrencies((prev) => {
+                const exists = prev.some((currency) => currency.code.toUpperCase() === paymentType);
+                if (exists || !paymentType) return prev;
+                return [
+                    ...prev,
+                    {
+                        code: paymentType,
+                        name: paymentType,
+                        symbol: `${paymentType} `,
+                        exchangeRate: exchangeRate > 0 ? exchangeRate : 1,
+                    },
+                ];
+            });
 
             setNextPurchaseNumber(purchase.purchase_number || "");
             setPurchaseType(purchase.purchase_type || "purchase");
@@ -672,11 +686,12 @@ export default function AddPurchasePage() {
             return;
         }
 
-        const selectedCurrency = currencies.find((c) => c.code === value);
+        const normalizedValue = String(value || "").trim().toUpperCase();
+        const selectedCurrency = currencies.find((c) => c.code.toUpperCase() === normalizedValue);
         const selectedRate = selectedCurrency?.exchangeRate || 1;
         setFormData((prev) => ({
             ...prev,
-            payment_type: value,
+            payment_type: normalizedValue,
             exchange_rate: selectedRate,
         }));
         setPaymentExchangeRateInput(String(selectedRate));
@@ -779,7 +794,7 @@ const calculateTotals = () => {
 
     const totals = calculateTotals();
     const selectedPaymentCurrency =
-        currencies.find((c) => c.code === formData.payment_type) ||
+        currencies.find((c) => c.code.toUpperCase() === String(formData.payment_type || "").toUpperCase()) ||
         currencies.find((c) => c.code === "INR");
     const paymentCurrencyCode = selectedPaymentCurrency?.code || "INR";
     const paymentCurrencySymbol = selectedPaymentCurrency?.symbol || "Rs. ";
@@ -2109,30 +2124,30 @@ useEffect(() => {
                                     <div className="space-y-3">
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Subtotal</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
+                                            <span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{(totals?.subtotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Freight Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.freight.toLocaleString('en-IN')}</span>
+                                            <span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{totals.freight.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">P & F Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.pf.toLocaleString('en-IN')}</span>
+                                            <span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{totals.pf.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Discount on All</span>
-                                            <span className="font-medium text-red-600">-₹{totals.discountAll.toLocaleString('en-IN')}</span>
+                                            <span className="font-medium text-red-600">-{paymentCurrencySymbol}{totals.discountAll.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Round Off</span>
                                             <span className={`font-medium ${totals.roundOff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                {totals.roundOff >= 0 ? '+₹' : '-₹'}{Math.abs(totals.roundOff).toLocaleString('en-IN')}
+                                                {totals.roundOff >= 0 ? "+" : "-"}{paymentCurrencySymbol}{Math.abs(totals.roundOff).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                             </span>
                                         </div>
                                         <div className="border-t border-stroke pt-3 dark:border-dark-3">
                                             <div className="flex justify-between">
                                                 <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
-                                                <span className="text-lg font-bold text-primary">₹{totals.grandTotal.toLocaleString('en-IN')}</span>
+                                                <span className="text-lg font-bold text-primary">{paymentCurrencySymbol}{totals.grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                             </div>
                                             <div className="mt-2 flex justify-between text-sm">
                                                 <span className="text-dark-6">Total in {paymentCurrencyCode}</span>
@@ -2392,6 +2407,7 @@ useEffect(() => {
         </div>
     );
 }
+
 
 
 

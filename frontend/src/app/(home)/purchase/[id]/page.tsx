@@ -26,6 +26,14 @@ const formatDate = (value?: string | null) => {
   return d.isValid() ? d.format("DD MMM YYYY") : "-";
 };
 
+const formatType = (value?: string | null) => {
+  if (!value) return "-";
+  return value
+    .replace(/_/g, " ")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+};
+
 export default function PurchaseInvoiceViewPage() {
   const { company } = useAuth();
   const params = useParams();
@@ -132,6 +140,10 @@ export default function PurchaseInvoiceViewPage() {
               <p className="font-medium text-gray-900 dark:text-white">{purchase.vendor_invoice_number || "-"}</p>
             </div>
             <div>
+              <p className="text-gray-500">Reference No</p>
+              <p className="font-medium text-gray-900 dark:text-white">{purchase.reference_no || "-"}</p>
+            </div>
+            <div>
               <p className="text-gray-500">Invoice Date</p>
               <p className="font-medium text-gray-900 dark:text-white">{formatDate(purchase.invoice_date)}</p>
             </div>
@@ -145,7 +157,7 @@ export default function PurchaseInvoiceViewPage() {
             </div>
             <div>
               <p className="text-gray-500">Purchase Type</p>
-              <p className="font-medium text-gray-900 dark:text-white">{purchase.purchase_type || "-"}</p>
+              <p className="font-medium text-gray-900 dark:text-white">{formatType(purchase.purchase_type)}</p>
             </div>
             <div>
               <p className="text-gray-500">Currency</p>
@@ -154,6 +166,10 @@ export default function PurchaseInvoiceViewPage() {
             <div>
               <p className="text-gray-500">Exchange Rate</p>
               <p className="font-medium text-gray-900 dark:text-white">{exchangeRate || 1}</p>
+            </div>
+            <div>
+              <p className="text-gray-500">Created On</p>
+              <p className="font-medium text-gray-900 dark:text-white">{formatDate(purchase.created_at)}</p>
             </div>
           </div>
         </div>
@@ -242,17 +258,84 @@ export default function PurchaseInvoiceViewPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+          <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-white">Import Items</h2>
+          {(purchase.import_items || []).length === 0 ? (
+            <p className="text-sm text-gray-500">No import items</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[700px] text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left dark:border-gray-700">
+                    <th className="px-2 py-2">#</th>
+                    <th className="px-2 py-2">Name</th>
+                    <th className="px-2 py-2 text-right">Qty</th>
+                    <th className="px-2 py-2">Per</th>
+                    <th className="px-2 py-2 text-right">Rate</th>
+                    <th className="px-2 py-2 text-right">Disc %</th>
+                    <th className="px-2 py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(purchase.import_items || []).map((item: any, idx: number) => (
+                    <tr key={item.id || idx} className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="px-2 py-2">{idx + 1}</td>
+                      <td className="px-2 py-2">{item.name || "-"}</td>
+                      <td className="px-2 py-2 text-right">{Number(item.quantity || 0)}</td>
+                      <td className="px-2 py-2">{item.per || "-"}</td>
+                      <td className="px-2 py-2 text-right">{formatMoney(item.rate || 0)}</td>
+                      <td className="px-2 py-2 text-right">{Number(item.discount_percent || 0)}</td>
+                      <td className="px-2 py-2 text-right font-semibold">{formatMoney(item.amount || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+          <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-white">Expense Items</h2>
+          {(purchase.expense_items || []).length === 0 ? (
+            <p className="text-sm text-gray-500">No expense items</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[600px] text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left dark:border-gray-700">
+                    <th className="px-2 py-2">#</th>
+                    <th className="px-2 py-2">Particulars</th>
+                    <th className="px-2 py-2 text-right">Rate</th>
+                    <th className="px-2 py-2">Per</th>
+                    <th className="px-2 py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(purchase.expense_items || []).map((item: any, idx: number) => (
+                    <tr key={item.id || idx} className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="px-2 py-2">{idx + 1}</td>
+                      <td className="px-2 py-2">{item.particulars || "-"}</td>
+                      <td className="px-2 py-2 text-right">{formatMoney(item.rate || 0)}</td>
+                      <td className="px-2 py-2">{item.per || "-"}</td>
+                      <td className="px-2 py-2 text-right font-semibold">{formatMoney(item.amount || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
           <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-white">Charges & Totals</h2>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>{formatMoney(purchase.subtotal ?? computedSubtotal)}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Discount Amount</span><span>{formatMoney(purchase.discount_amount)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Freight Charges</span><span>{formatMoney(purchase.freight_charges)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Packing & Forwarding</span><span>{formatMoney(purchase.packing_forwarding_charges)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Discount on All</span><span>{formatMoney(purchase.discount_on_all)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Freight Charges ({formatType(purchase.freight_type)})</span><span>{formatMoney(purchase.freight_charges)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Packing & Forwarding ({formatType(purchase.pf_type)})</span><span>{formatMoney(purchase.packing_forwarding_charges)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Discount on All ({formatType(purchase.discount_type)})</span><span>{formatMoney(purchase.discount_on_all)}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Round Off</span><span>{formatMoney(purchase.round_off)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">CGST</span><span>{formatMoney(purchase.cgst_amount)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">SGST</span><span>{formatMoney(purchase.sgst_amount)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">IGST</span><span>{formatMoney(purchase.igst_amount)}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Total Tax</span><span>{formatMoney(purchase.total_tax)}</span></div>
             <div className="flex justify-between border-t border-gray-200 pt-2 dark:border-gray-700"><span className="font-semibold">Total Amount</span><span className="font-semibold">{formatMoney(purchase.total_amount)}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Amount Paid</span><span>{formatMoney(purchase.amount_paid)}</span></div>
@@ -279,7 +362,42 @@ export default function PurchaseInvoiceViewPage() {
           </div>
         </div>
       </div>
+
+      <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+        <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-white">Payments</h2>
+        {(purchase.payments || []).length === 0 ? (
+          <p className="text-sm text-gray-500">No payments added</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[800px] text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-left dark:border-gray-700">
+                  <th className="px-2 py-2">#</th>
+                  <th className="px-2 py-2">Date</th>
+                  <th className="px-2 py-2">Type</th>
+                  <th className="px-2 py-2">Account</th>
+                  <th className="px-2 py-2">Reference</th>
+                  <th className="px-2 py-2">Note</th>
+                  <th className="px-2 py-2 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(purchase.payments || []).map((payment: any, idx: number) => (
+                  <tr key={payment.id || idx} className="border-b border-gray-100 dark:border-gray-700">
+                    <td className="px-2 py-2">{idx + 1}</td>
+                    <td className="px-2 py-2">{formatDate(payment.created_at)}</td>
+                    <td className="px-2 py-2">{formatType(payment.payment_type)}</td>
+                    <td className="px-2 py-2">{payment.account || "-"}</td>
+                    <td className="px-2 py-2">{payment.reference_number || "-"}</td>
+                    <td className="px-2 py-2">{payment.payment_note || "-"}</td>
+                    <td className="px-2 py-2 text-right font-semibold">{formatMoney(payment.amount || 0)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-

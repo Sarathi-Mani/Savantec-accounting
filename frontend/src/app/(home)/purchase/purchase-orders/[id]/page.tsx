@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 import { ordersApi } from "@/services/api";
@@ -32,10 +32,12 @@ export const dynamic = 'force-dynamic';
 export default function ViewPurchaseOrderPage() {
     const router = useRouter();
     const params = useParams();
+    const searchParams = useSearchParams();
     const { company } = useAuth();
     const [isLoading, setIsLoading] = useState(true);
     const [purchaseOrder, setPurchaseOrder] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
+    const hasAutoPrinted = useRef(false);
 
     const getItemRate = (item: any): number => {
         const raw = item?.rate ?? item?.purchase_price ?? item?.unit_price ?? 0;
@@ -51,628 +53,24 @@ export default function ViewPurchaseOrderPage() {
     }, [company?.id, params.id]);
 
 
-// Handle print - Generate HTML and print (EXACT COPY OF VIEW PAGE)
+// Handle print - print the same view page with all visible data/format
 const handlePrint = () => {
-    console.log("DEBUG: handlePrint called");
-    console.log("Purchase Order Data:", purchaseOrder);
-    
     if (!purchaseOrder) {
-        alert('Purchase order data not loaded yet. Please wait.');
+        alert("Purchase order data not loaded yet. Please wait.");
         return;
     }
-    
-    // Create print window
-    const printWindow = window.open('', '_blank', 'width=1100,height=700');
-    
-    if (!printWindow) {
-        alert('Please allow popups for printing');
-        return;
-    }
-    
-    // FIXED: Better currency formatting function
-    const formatCurrencyForPrint = (amount: any): string => {
-        if (amount === null || amount === undefined || amount === '') {
-            amount = 0;
-        }
-        
-        // Convert to number
-        let numAmount: number;
-        if (typeof amount === 'string') {
-            // Remove any commas or currency symbols
-            const cleanString = amount.replace(/[^\d.-]/g, '');
-            numAmount = parseFloat(cleanString);
-        } else {
-            numAmount = Number(amount);
-        }
-        
-        // Check if conversion was successful
-        if (isNaN(numAmount)) {
-            numAmount = 0;
-        }
-        
-        const currency = purchaseOrder.currency || 'INR';
-        
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency',
-            currency: currency,
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-        }).format(numAmount);
-    };
-    
-    // Helper function to format date in print window
-    const formatDateForPrint = (dateString: string): string => {
-        if (!dateString) return "N/A";
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            });
-        } catch (error) {
-            return "Invalid Date";
-        }
-    };
-    
-    // Calculate conversion if not INR
-    const showConvertedAmount = purchaseOrder.currency !== "INR";
-    const convertedAmount = showConvertedAmount 
-        ? Number(purchaseOrder.total_amount || 0) * Number(purchaseOrder.exchange_rate || 1)
-        : Number(purchaseOrder.total_amount || 0);
-    
-    // Build items table HTML
-    let itemsTableHTML = '<tr><td colspan="8" style="text-align: center;">No items found</td></tr>';
-    if (purchaseOrder.items && purchaseOrder.items.length > 0) {
-        itemsTableHTML = purchaseOrder.items.map((item: any, index: number) => {
-            const itemData = item || {};
-            return `
-                <tr style="border-bottom: 1px solid #e5e7eb;">
-                    <td style="padding: 12px 16px;">
-                        <div>${index + 1}</div>
-                    </td>
-                    <td style="padding: 12px 16px;">
-                        <div style="font-weight: 500;">${itemData.product_name || "N/A"}</div>
-                    </td>
-                    <td style="padding: 12px 16px;">
-                        <div style="font-weight: 500;">${itemData.item_code || "N/A"}</div>
-                    </td>
-                    <td style="padding: 12px 16px;">
-                        <div style="font-weight: 500;">${itemData.description || "N/A"}</div>
-                        <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">
-                            ${itemData.unit || "unit"} • ${itemData.gst_rate || 0}% GST
-                        </div>
-                        ${itemData.discount_percent > 0 ? `
-                        <div style="font-size: 12px; color: #dc2626;">
-                            Discount: ${itemData.discount_percent}%
-                        </div>
-                        ` : ''}
-                    </td>
-                    <td style="padding: 12px 16px;">
-                        <div>${itemData.quantity || 0}</div>
-                    </td>
-                    <td style="padding: 12px 16px;">
-                        <div style="font-weight: 500;">
-                            ${formatCurrencyForPrint(getItemRate(itemData))}
-                        </div>
-                    </td>
-                    <td style="padding: 12px 16px;">
-                        <div style="font-weight: 500;">
-                            ${formatCurrencyForPrint(itemData.tax_amount || 0)}
-                        </div>
-                    </td>
-                    <td style="padding: 12px 16px;">
-                        <div style="font-weight: bold;">
-                            ${formatCurrencyForPrint(itemData.total_amount || 0)}
-                        </div>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-    }
-    
-    // Build charges HTML
-    let chargesHTML = '';
-    if (purchaseOrder.freight_charges && parseFloat(purchaseOrder.freight_charges) > 0) {
-        chargesHTML += `
-            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                <span>Freight Charges</span>
-                <span>${formatCurrencyForPrint(purchaseOrder.freight_charges)}</span>
-            </div>
-        `;
-    }
-    
-    if (purchaseOrder.other_charges && parseFloat(purchaseOrder.other_charges) > 0) {
-        chargesHTML += `
-            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                <span>Other Charges</span>
-                <span>${formatCurrencyForPrint(purchaseOrder.other_charges)}</span>
-            </div>
-        `;
-    }
-    
-    if (purchaseOrder.discount_on_all && parseFloat(purchaseOrder.discount_on_all) > 0) {
-        chargesHTML += `
-            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                <span>Discount on All</span>
-                <span style="color: #dc2626;">-${formatCurrencyForPrint(purchaseOrder.discount_on_all)}</span>
-            </div>
-        `;
-    }
-    
-    if (purchaseOrder.round_off && parseFloat(purchaseOrder.round_off) !== 0) {
-        const roundOffColor = parseFloat(purchaseOrder.round_off) >= 0 ? '#059669' : '#dc2626';
-        chargesHTML += `
-            <div style="display: flex; justify-content: space-between; padding: 4px 0;">
-                <span>Round Off</span>
-                <span style="color: ${roundOffColor}">
-                    ${parseFloat(purchaseOrder.round_off) >= 0 ? '+' : ''}${formatCurrencyForPrint(purchaseOrder.round_off)}
-                </span>
-            </div>
-        `;
-    }
-    
-    // Create the HTML content - EXACT COPY OF VIEW PAGE
-    const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Purchase Order: ${purchaseOrder.order_number || 'N/A'}</title>
-            <style>
-                * {
-                    margin: 0;
-                    padding: 0;
-                    box-sizing: border-box;
-                }
-                
-                body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                    color: #111827;
-                    background-color: #f9fafb;
-                    padding: 24px;
-                    line-height: 1.5;
-                }
-                
-                .container {
-                    max-width: 1200px;
-                    margin: 0 auto;
-                }
-                
-                /* Header */
-                .header {
-                    margin-bottom: 24px;
-                }
-                
-                .breadcrumb {
-                    margin-bottom: 24px;
-                    font-size: 14px;
-                }
-                
-                .breadcrumb ol {
-                    display: flex;
-                    align-items: center;
-                    list-style: none;
-                    gap: 8px;
-                }
-                
-                .breadcrumb a {
-                    color: #6b7280;
-                    text-decoration: none;
-                }
-                
-                .breadcrumb a:hover {
-                    color: #4f46e5;
-                }
-                
-                .page-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: flex-start;
-                    margin-bottom: 24px;
-                }
-                
-                .page-title h1 {
-                    font-size: 24px;
-                    font-weight: bold;
-                    margin-bottom: 8px;
-                }
-                
-                .page-info {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 12px;
-                    align-items: center;
-                    font-size: 14px;
-                    color: #6b7280;
-                }
-                
-                .page-actions {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 8px;
-                }
-                
-                .status-badge {
-                    display: inline-flex;
-                    align-items: center;
-                    padding: 4px 12px;
-                    border-radius: 9999px;
-                    font-size: 14px;
-                    font-weight: 500;
-                }
-                
-                .status-draft {
-                    background-color: #fef3c7;
-                    color: #92400e;
-                }
-                
-                .btn {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 8px;
-                    padding: 8px 16px;
-                    border-radius: 8px;
-                    font-size: 14px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    border: 1px solid #d1d5db;
-                    background-color: white;
-                    color: #111827;
-                    text-decoration: none;
-                }
-                
-                .btn-primary {
-                    background-color: #4f46e5;
-                    color: white;
-                    border-color: #4f46e5;
-                }
-                
-                .grid {
-                    display: grid;
-                    grid-template-columns: 1fr;
-                    gap: 24px;
-                }
-                
-                @media (min-width: 1024px) {
-                    .grid {
-                        grid-template-columns: 1fr 2fr;
-                    }
-                }
-                
-                .card {
-                    background-color: white;
-                    border-radius: 12px;
-                    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-                    padding: 24px;
-                }
-                
-                .card h2 {
-                    font-size: 18px;
-                    font-weight: 600;
-                    margin-bottom: 16px;
-                }
-                
-                .info-grid {
-                    display: grid;
-                    gap: 12px;
-                }
-                
-                .info-row {
-                    display: flex;
-                    justify-content: space-between;
-                }
-                
-                table {
-                    width: 100%;
-                    border-collapse: collapse;
-                }
-                
-                thead th {
-                    text-align: left;
-                    padding: 12px 16px;
-                    font-size: 14px;
-                    font-weight: 500;
-                    color: #6b7280;
-                    border-bottom: 1px solid #e5e7eb;
-                }
-                
-                tbody td {
-                    padding: 12px 16px;
-                    border-bottom: 1px solid #e5e7eb;
-                }
-                
-                .totals-grid {
-                    display: grid;
-                    grid-template-columns: 1fr;
-                    gap: 24px;
-                }
-                
-                @media (min-width: 1024px) {
-                    .totals-grid {
-                        grid-template-columns: 1fr 1fr;
-                    }
-                }
-                
-                .total-section {
-                    background-color: white;
-                    border-radius: 12px;
-                    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-                    padding: 24px;
-                }
-                
-                .total-row {
-                    display: flex;
-                    justify-content: space-between;
-                    padding: 8px 0;
-                }
-                
-                .total-row.final {
-                    border-top: 2px solid #e5e7eb;
-                    padding-top: 16px;
-                    margin-top: 16px;
-                    font-size: 18px;
-                    font-weight: bold;
-                }
-                
-                .text-primary {
-                    color: #4f46e5;
-                }
-                
-                .text-green {
-                    color: #059669;
-                }
-                
-                .text-red {
-                    color: #dc2626;
-                }
-                
-                @media print {
-                    body {
-                        padding: 0;
-                        background-color: white;
-                    }
-                    
-                    .no-print {
-                        display: none !important;
-                    }
-                    
-                    .card {
-                        box-shadow: none;
-                        border: 1px solid #e5e7eb;
-                    }
-                    
-                    .btn {
-                        display: none !important;
-                    }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <!-- Header -->
-                <div class="header">
-                    <nav class="breadcrumb no-print">
-                        <ol>
-                            <li><a href="#">Home</a></li>
-                            <li>/</li>
-                            <li><a href="#">Purchase Orders</a></li>
-                            <li>/</li>
-                            <li>View Purchase Order</li>
-                        </ol>
-                    </nav>
-                    
-                    <div class="page-header">
-                        <div class="page-title">
-                            <h1>Purchase Order: ${purchaseOrder.order_number || 'N/A'}</h1>
-                            <div class="page-info">
-                                <div>
-                                    <span>Created: ${formatDateForPrint(purchaseOrder.created_at)}</span>
-                                </div>
-                                ${purchaseOrder.expected_date ? `
-                                <div>
-                                    <span>Expected: ${formatDateForPrint(purchaseOrder.expected_date)}</span>
-                                </div>
-                                ` : ''}
-                                <div class="status-badge ${purchaseOrder.status === 'draft' ? 'status-draft' : ''}">
-                                    ${purchaseOrder.status === 'draft' ? 'Draft' : purchaseOrder.status}
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="page-actions no-print">
-                            <button class="btn btn-primary" onclick="window.print()">
-                                Print Document
-                            </button>
-                            <button class="btn" onclick="window.close()">
-                                Close Window
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="grid">
-                    <!-- Left Column - Order Information -->
-                    <div style="display: flex; flex-direction: column; gap: 24px;">
-                        <!-- Order Summary Card -->
-                        <div class="card">
-                            <h2>Order Summary</h2>
-                            <div class="info-grid">
-                                <div class="info-row">
-                                    <span>Order Number</span>
-                                    <span style="font-weight: 500;">${purchaseOrder.order_number || 'N/A'}</span>
-                                </div>
-                                <div class="info-row">
-                                    <span>Order Date</span>
-                                    <span style="font-weight: 500;">${formatDateForPrint(purchaseOrder.order_date)}</span>
-                                </div>
-                                ${purchaseOrder.expected_date ? `
-                                <div class="info-row">
-                                    <span>Expected Date</span>
-                                    <span style="font-weight: 500;">${formatDateForPrint(purchaseOrder.expected_date)}</span>
-                                </div>
-                                ` : ''}
-                                ${purchaseOrder.reference_number ? `
-                                <div class="info-row">
-                                    <span>Reference No.</span>
-                                    <span style="font-weight: 500;">${purchaseOrder.reference_number}</span>
-                                </div>
-                                ` : ''}
-                                <div class="info-row">
-                                    <span>Currency</span>
-                                    <span style="font-weight: 500;">${purchaseOrder.currency || 'INR'}</span>
-                                </div>
-                                ${showConvertedAmount ? `
-                                <div class="info-row">
-                                    <span>Exchange Rate</span>
-                                    <span style="font-weight: 500;">
-                                        1 ${purchaseOrder.currency} = ${purchaseOrder.exchange_rate} INR
-                                    </span>
-                                </div>
-                                ` : ''}
-                                <div class="info-row">
-                                    <span>Created By</span>
-                                    <span style="font-weight: 500;">
-                                        ${purchaseOrder.creator_name || purchaseOrder.created_by || "System"}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Supplier Information -->
-                        <div class="card">
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
-                                <span style="color: #4f46e5;">Supplier Information</span>
-                            </div>
-                            <div class="info-grid">
-                                ${purchaseOrder.vendor_id || purchaseOrder.vendor ? `
-                                    ${purchaseOrder.vendor?.name || purchaseOrder.vendor_name ? `
-                                    <div>
-                                        <div style="font-size: 14px; color: #6b7280;">Name</div>
-                                        <div style="font-weight: 500;">${purchaseOrder.vendor?.name || purchaseOrder.vendor_name || "N/A"}</div>
-                                    </div>
-                                    ` : ''}
-                                    ${purchaseOrder.vendor?.email || purchaseOrder.vendor_email ? `
-                                    <div>
-                                        <div style="font-size: 14px; color: #6b7280;">Email</div>
-                                        <div style="font-weight: 500;">${purchaseOrder.vendor?.email || purchaseOrder.vendor_email}</div>
-                                    </div>
-                                    ` : ''}
-                                    ${purchaseOrder.vendor?.contact || purchaseOrder.vendor_contact ? `
-                                    <div>
-                                        <div style="font-size: 14px; color: #6b7280;">Contact</div>
-                                        <div style="font-weight: 500;">${purchaseOrder.vendor?.contact || purchaseOrder.vendor_contact}</div>
-                                    </div>
-                                    ` : ''}
-                                ` : `
-                                    <div style="color: #6b7280;">No supplier information available</div>
-                                `}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Middle Column - Items List -->
-                    <div>
-                        <!-- Items Table -->
-                        <div class="card" style="margin-bottom: 24px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                                <h2>Order Items</h2>
-                                <div style="color: #6b7280;">
-                                    Total Items: ${purchaseOrder.items?.length || 0}
-                                </div>
-                            </div>
-                            
-                            ${purchaseOrder.items && purchaseOrder.items.length > 0 ? `
-                            <div style="overflow-x: auto;">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>#</th>
-                                            <th>Item</th>
-                                            <th>Item Code</th>
-                                            <th>Description</th>
-                                            <th>Qty</th>
-                                            <th>Rate</th>
-                                            <th>Tax</th>
-                                            <th>Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${itemsTableHTML}
-                                    </tbody>
-                                </table>
-                            </div>
-                            ` : `
-                            <div style="text-align: center; padding: 32px; color: #6b7280;">
-                                No items found in this purchase order
-                            </div>
-                            `}
-                        </div>
-                        
-                        <!-- Totals and Notes -->
-                        <div class="totals-grid">
-                            <!-- Totals Card -->
-                            <div class="card">
-                                <h2>Amount Summary</h2>
-                                <div style="display: flex; flex-direction: column; gap: 12px;">
-                                    <div class="total-row">
-                                        <span>Subtotal</span>
-                                        <span>${formatCurrencyForPrint(purchaseOrder.subtotal || 0)}</span>
-                                    </div>
-                                    <div class="total-row">
-                                        <span>Tax Amount</span>
-                                        <span>${formatCurrencyForPrint(purchaseOrder.tax_amount || 0)}</span>
-                                    </div>
-                                    ${chargesHTML}
-                                    <div class="total-row final">
-                                        <span>Total Amount</span>
-                                        <span class="text-primary">${formatCurrencyForPrint(purchaseOrder.total_amount || 0)}</span>
-                                    </div>
-                                    ${showConvertedAmount ? `
-                                    <div class="total-row" style="font-size: 14px; color: #6b7280;">
-                                        <span>Amount in INR</span>
-                                        <span>${formatCurrencyForPrint(convertedAmount)}</span>
-                                    </div>
-                                    ` : ''}
-                                </div>
-                            </div>
-                            
-                            <!-- Notes and Terms -->
-                            <div style="display: flex; flex-direction: column; gap: 24px;">
-                                ${purchaseOrder.notes ? `
-                                <div class="card">
-                                    <h2>Notes</h2>
-                                    <div style="color: #6b7280; white-space: pre-line;">${purchaseOrder.notes}</div>
-                                </div>
-                                ` : ''}
-                                
-                                ${purchaseOrder.terms ? `
-                                <div class="card">
-                                    <h2>Terms & Conditions</h2>
-                                    <div style="color: #6b7280; white-space: pre-line;">${purchaseOrder.terms}</div>
-                                </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <script>
-                // Auto print after loading
-                window.onload = function() {
-                    setTimeout(function() {
-                        window.print();
-                    }, 1000);
-                }
-            </script>
-        </body>
-        </html>
-    `;
-    
-    // Write to print window
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    window.print();
 };
+
+    useEffect(() => {
+        if (searchParams.get("print") === "1" && purchaseOrder && !hasAutoPrinted.current) {
+            hasAutoPrinted.current = true;
+            setTimeout(() => {
+                window.print();
+            }, 200);
+        }
+    }, [searchParams, purchaseOrder]);
+
     const loadPurchaseOrder = async () => {
         try {
             setIsLoading(true);
@@ -988,11 +386,30 @@ const handlePrint = () => {
     const convertedAmount = showConvertedAmount 
         ? purchaseOrder.total_amount * (purchaseOrder.exchange_rate || 1)
         : purchaseOrder.total_amount;
+    const shouldPrint = searchParams.get("print") === "1";
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-dark p-4 md:p-6">
+            {shouldPrint && (
+                <style jsx global>{`
+                    @media print {
+                        aside,
+                        header {
+                            display: none !important;
+                        }
+                        main {
+                            margin: 0 !important;
+                            padding: 0 !important;
+                            max-width: 100% !important;
+                        }
+                        body {
+                            background: #fff !important;
+                        }
+                    }
+                `}</style>
+            )}
             {/* Breadcrumb */}
-            <nav className="mb-6">
+            <nav className={`mb-6 ${shouldPrint ? "print:hidden" : ""}`}>
                 <ol className="flex items-center space-x-2 text-sm">
                     <li>
                         <Link href="/" className="text-dark-6 hover:text-primary dark:text-gray-400">
@@ -1033,7 +450,7 @@ const handlePrint = () => {
                             </div>
                         </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className={`flex flex-wrap gap-2 ${shouldPrint ? "print:hidden" : ""}`}>
                         {purchaseOrder.status === "draft" && (
                             <Link
                                 href={`/purchase/purchase-orders/edit/${params.id}`}
@@ -1337,3 +754,4 @@ const handlePrint = () => {
         </div>
     );
 }
+

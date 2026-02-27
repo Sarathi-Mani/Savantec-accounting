@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 import { vendorsApi, productsApi, purchasesApi } from "@/services/api";
@@ -236,7 +236,7 @@ function CurrencySelect({
                                     <div className="text-xs text-dark-6">
                                         {currency.name} 
                                         {currency.code !== "INR" && (
-                                            <div>1 {currency.code} = ₹{currency.exchangeRate}</div>
+                                            <div>1 {currency.code} = â‚¹{currency.exchangeRate}</div>
                                         )}
                                     </div>
                                 </div>
@@ -265,7 +265,7 @@ function CurrencySelect({
             {/* Show conversion tooltip when item has price */}
             {itemPrice && selectedCurrency.code !== "INR" && inrValue && (
                 <div className="absolute -top-8 left-0 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                    ₹{inrValue.toFixed(2)} INR
+                    â‚¹{inrValue.toFixed(2)} INR
                 </div>
             )}
         </div>
@@ -274,6 +274,7 @@ function CurrencySelect({
 
 export default function AddPurchasePage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { company, user } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showOtherFields, setShowOtherFields] = useState(false);
@@ -313,16 +314,16 @@ export default function AddPurchasePage() {
     
     // State for currencies
  const [currencies, setCurrencies] = useState([
-    { code: "INR", name: "Indian Rupee", symbol: "₹", exchangeRate: 1 },
+    { code: "INR", name: "Indian Rupee", symbol: "â‚¹", exchangeRate: 1 },
     { code: "USD", name: "US Dollar", symbol: "$", exchangeRate: 83.5 },
-    { code: "EUR", name: "Euro", symbol: "€", exchangeRate: 90.2 },
-    { code: "GBP", name: "British Pound", symbol: "£", exchangeRate: 106.3 },
-    { code: "JPY", name: "Japanese Yen", symbol: "¥", exchangeRate: 0.56 },
+    { code: "EUR", name: "Euro", symbol: "â‚¬", exchangeRate: 90.2 },
+    { code: "GBP", name: "British Pound", symbol: "Â£", exchangeRate: 106.3 },
+    { code: "JPY", name: "Japanese Yen", symbol: "Â¥", exchangeRate: 0.56 },
     { code: "CAD", name: "Canadian Dollar", symbol: "CA$", exchangeRate: 61.8 },
     { code: "AUD", name: "Australian Dollar", symbol: "A$", exchangeRate: 54.9 },
-    { code: "CNY", name: "Chinese Yuan", symbol: "¥", exchangeRate: 11.6 },
+    { code: "CNY", name: "Chinese Yuan", symbol: "Â¥", exchangeRate: 11.6 },
     { code: "SGD", name: "Singapore Dollar", symbol: "S$", exchangeRate: 62.1 },
-    { code: "AED", name: "UAE Dirham", symbol: "د.إ", exchangeRate: 22.7 },
+    { code: "AED", name: "UAE Dirham", symbol: "Ø¯.Ø¥", exchangeRate: 22.7 },
 ]);
     
     const [showAddCurrencyModal, setShowAddCurrencyModal] = useState(false);
@@ -352,6 +353,8 @@ export default function AddPurchasePage() {
 
     // Previous payments state
     const [previousPayments, setPreviousPayments] = useState<any[]>([]);
+    const hasPrefilledFromOrder = useRef(false);
+    const [isPrefilledFromPurchaseOrder, setIsPrefilledFromPurchaseOrder] = useState(false);
 
     // Form state
     const [formData, setFormData] = useState({
@@ -419,6 +422,13 @@ export default function AddPurchasePage() {
         company?.id ||
         (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
 
+    const getToken = () => {
+        if (typeof window === "undefined") return null;
+        const userType = localStorage.getItem("user_type");
+        if (userType === "employee") return localStorage.getItem("employee_token");
+        return localStorage.getItem("employee_token") || localStorage.getItem("access_token");
+    };
+
     // Load data on component mount
     useEffect(() => {
         if (resolvedCompanyId) {
@@ -432,6 +442,105 @@ export default function AddPurchasePage() {
         if (!resolvedCompanyId) return;
         loadNextPurchaseNumber();
     }, [resolvedCompanyId, formData.purchase_date]);
+
+    useEffect(() => {
+        const rate = Number(formData.exchange_rate);
+        const safeRate = !Number.isNaN(rate) && rate > 0 ? rate : 1;
+        setPaymentExchangeRateInput(String(safeRate));
+    }, [formData.exchange_rate]);
+
+    useEffect(() => {
+        const prefillFromPurchaseOrder = async () => {
+            const from = searchParams.get("from");
+            const purchaseOrderId = searchParams.get("purchase_order_id");
+
+            if (from !== "purchase-order" || !purchaseOrderId) return;
+            if (!resolvedCompanyId) return;
+            if (hasPrefilledFromOrder.current) return;
+
+            const token = getToken();
+            if (!token) return;
+
+            hasPrefilledFromOrder.current = true;
+
+            try {
+                const response = await fetch(
+                    `${process.env.NEXT_PUBLIC_API_URL}/companies/${resolvedCompanyId}/orders/purchase/${purchaseOrderId}`,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            "Content-Type": "application/json",
+                        },
+                    }
+                );
+
+                if (!response.ok) {
+                    throw new Error("Failed to load purchase order details");
+                }
+
+                const order = await response.json();
+                setIsPrefilledFromPurchaseOrder(true);
+
+                setPurchaseType("purchase");
+                const prefillCurrency = order.currency || "INR";
+                const parsedOrderRate = Number(order.exchange_rate);
+                const prefillExchangeRate = !Number.isNaN(parsedOrderRate) && parsedOrderRate > 0 ? parsedOrderRate : 1;
+                setFormData((prev) => ({
+                    ...prev,
+                    supplier_id: order.vendor_id || "",
+                    purchase_date: order.order_date ? new Date(order.order_date).toISOString().split("T")[0] : prev.purchase_date,
+                    due_date: order.expected_date ? new Date(order.expected_date).toISOString().split("T")[0] : "",
+                    reference_no: order.reference_number || order.order_number || "",
+                    payment_type: prefillCurrency,
+                    exchange_rate: prefillExchangeRate,
+                    notes: order.notes || "",
+                    terms: order.terms || prev.terms,
+                    freight_charges: Number(order.freight_charges || 0),
+                    pf_charges: Number(order.other_charges || 0),
+                    discount_on_all: Number(order.discount_on_all || 0),
+                    round_off: Number(order.round_off || 0),
+                    contact_person: order?.vendor?.name || prev.contact_person,
+                    contact_phone: order?.vendor?.contact || prev.contact_phone,
+                    contact_email: order?.vendor?.email || prev.contact_email,
+                    shipping_address: order?.vendor?.shipping_address || order?.vendor?.address || prev.shipping_address,
+                    billing_address: order?.vendor?.billing_address || order?.vendor?.address || prev.billing_address,
+                }));
+                setPaymentExchangeRateInput(String(prefillExchangeRate));
+
+                const prefilledItems = Array.isArray(order.items)
+                    ? order.items.map((item: any, index: number) => ({
+                        id: Date.now() + index,
+                        product_id: item.product_id || "",
+                        description: item.description || "",
+                        item_code: item.item_code || "",
+                        hsn_code: item.hsn_code || "",
+                        quantity: Number(item.quantity || 1),
+                        unit: item.unit || "unit",
+                        purchase_price: Number(item.unit_price ?? item.rate ?? 0),
+                        discount_percent: Number(item.discount_percent || 0),
+                        discount_amount: Number(item.discount_amount || 0),
+                        gst_rate: Number(item.gst_rate || 0),
+                        cgst_rate: Number(item.cgst_rate || 0),
+                        sgst_rate: Number(item.sgst_rate || 0),
+                        igst_rate: Number(item.igst_rate || 0),
+                        tax_amount: Number(item.tax_amount || 0),
+                        unit_cost: Number(item.unit_price ?? item.rate ?? 0),
+                        total_amount: Number(item.total_amount || 0),
+                        currency: prefillCurrency,
+                    }))
+                    : [];
+
+                if (prefilledItems.length > 0) {
+                    setItems(prefilledItems);
+                }
+            } catch (error) {
+                console.error("Failed to prefill from purchase order:", error);
+                alert("Failed to prefill from purchase order");
+            }
+        };
+
+        prefillFromPurchaseOrder();
+    }, [searchParams, resolvedCompanyId]);
 
     const loadNextPurchaseNumber = async () => {
         if (!resolvedCompanyId) return;
@@ -608,7 +717,7 @@ const calculateTotals = () => {
     items.forEach(item => {
         // Get currency exchange rate
         const currency = currencies.find(c => c.code === item.currency) || currencies[0];
-        const exchangeRate = currency.exchangeRate || 1;
+        const exchangeRate = isPrefilledFromPurchaseOrder ? 1 : (currency.exchangeRate || 1);
         
         // Convert to INR if needed
         const priceInINR = item.purchase_price * exchangeRate;
@@ -624,7 +733,7 @@ const calculateTotals = () => {
         
         // Log conversion for debugging
         if (item.currency !== "INR") {
-            console.log(`Item ${item.description}: ${item.currency} ${item.purchase_price} = ₹${priceInINR.toFixed(2)}`);
+            console.log(`Item ${item.description}: ${item.currency} ${item.purchase_price} = â‚¹${priceInINR.toFixed(2)}`);
         }
     });
 
@@ -804,10 +913,10 @@ const calculateTotals = () => {
         setIsSubmitting(true);
         
         try {
-            console.log("🚀 ========== STARTING PURCHASE SUBMISSION ==========");
-            console.log("📋 Purchase Type Selected:", purchaseType);
-            console.log("🏢 Company ID:", company.id);
-            console.log("👥 Supplier ID:", formData.supplier_id);
+            console.log("ðŸš€ ========== STARTING PURCHASE SUBMISSION ==========");
+            console.log("ðŸ“‹ Purchase Type Selected:", purchaseType);
+            console.log("ðŸ¢ Company ID:", company.id);
+            console.log("ðŸ‘¥ Supplier ID:", formData.supplier_id);
             
             // Validate supplier
             if (!formData.supplier_id) {
@@ -834,11 +943,12 @@ const calculateTotals = () => {
                 }
             }
 
-            console.log("🔄 Purchase type (as is):", purchaseType);
+            console.log("ðŸ”„ Purchase type (as is):", purchaseType);
 
             // Prepare data based on purchase type
             let purchaseData: any = {
                 vendor_id: formData.supplier_id,
+                reference_no: formData.reference_no || "",
                 vendor_invoice_number: formData.vendor_invoice_number || "",
                 vendor_invoice_date: formData.vendor_invoice_date || undefined,
                 purchase_date: formData.purchase_date,
@@ -910,7 +1020,7 @@ const calculateTotals = () => {
         itemData.exchange_rate = exchangeRate; // Send exchange rate used
     }
 
-      console.log(`📦 Regular Item ${index + 1}:`, {
+      console.log(`ðŸ“¦ Regular Item ${index + 1}:`, {
         product_id: itemData.product_id,
         description: itemData.description.substring(0, 50),
         quantity: itemData.quantity,
@@ -927,10 +1037,10 @@ const calculateTotals = () => {
 });
     
     purchaseData.items = preparedItems;
-    console.log(`📊 Total regular items: ${preparedItems.length}`);
+    console.log(`ðŸ“Š Total regular items: ${preparedItems.length}`);
 }
  else if (purchaseType === "purchase-expenses") {
-                console.log("💰 Expense purchase - NOT including regular items");
+                console.log("ðŸ’° Expense purchase - NOT including regular items");
             }
 
             // Add import items for purchase and purchase-import types with currency
@@ -946,7 +1056,7 @@ const calculateTotals = () => {
                         amount: Number(item.amount) || 0,
                     };
 
-                    console.log(`📦 Import Item ${index + 1}:`, {
+                    console.log(`ðŸ“¦ Import Item ${index + 1}:`, {
                         name: importItemData.name,
                         quantity: importItemData.quantity,
                         rate: importItemData.rate,
@@ -958,7 +1068,7 @@ const calculateTotals = () => {
                 });
                 
                 purchaseData.import_items = preparedImportItems;
-                console.log(`📊 Total import items: ${preparedImportItems.length}`);
+                console.log(`ðŸ“Š Total import items: ${preparedImportItems.length}`);
             }
             
             // Add expense items ONLY for expense purchases
@@ -971,7 +1081,7 @@ const calculateTotals = () => {
                         amount: Number(item.amount) || 0,
                     };
 
-                    console.log(`💰 Expense Item ${index + 1}:`, {
+                    console.log(`ðŸ’° Expense Item ${index + 1}:`, {
                         particulars: expenseItemData.particulars,
                         rate: expenseItemData.rate,
                         amount: expenseItemData.amount
@@ -981,7 +1091,7 @@ const calculateTotals = () => {
                 });
                 
                 purchaseData.expense_items = preparedExpenseItems;
-                console.log(`📊 Total expense items: ${preparedExpenseItems.length}`);
+                console.log(`ðŸ“Š Total expense items: ${preparedExpenseItems.length}`);
             }
 
             // Remove empty arrays to avoid validation errors
@@ -996,7 +1106,7 @@ const calculateTotals = () => {
             }
 
             // Log final payload
-            console.log("📤 FINAL PAYLOAD TO BE SENT:");
+            console.log("ðŸ“¤ FINAL PAYLOAD TO BE SENT:");
             console.log("Purchase Type:", purchaseData.purchase_type);
             console.log("Vendor ID:", purchaseData.vendor_id);
             console.log("Items:", purchaseData.items ? purchaseData.items.length : 0);
@@ -1004,13 +1114,13 @@ const calculateTotals = () => {
             console.log("Expense items:", purchaseData.expense_items ? purchaseData.expense_items.length : 0);
             
             // Log the full payload for debugging
-            console.log("📄 Full payload:", JSON.stringify(purchaseData, null, 2));
+            console.log("ðŸ“„ Full payload:", JSON.stringify(purchaseData, null, 2));
 
             // Call the API
-            console.log("⏳ Calling API...");
+            console.log("â³ Calling API...");
             const response = await purchasesApi.create(company.id, purchaseData);
             
-            console.log('✅ Purchase created successfully! Response:', response);
+            console.log('âœ… Purchase created successfully! Response:', response);
             const respData = response as any;
             const purchaseNumber =
                 respData.purchase_number ||
@@ -1021,7 +1131,7 @@ const calculateTotals = () => {
             router.push(`/purchase/purchase-list`);
 
         } catch (error: any) {
-            console.error("❌ ========== PURCHASE CREATION FAILED ==========");
+            console.error("âŒ ========== PURCHASE CREATION FAILED ==========");
             console.error("Error object:", error);
             
             if (error.response) {
@@ -1056,7 +1166,7 @@ const calculateTotals = () => {
             
         } finally {
             setIsSubmitting(false);
-            console.log("🏁 Submission process completed");
+            console.log("ðŸ Submission process completed");
         }
     };
 
@@ -1366,7 +1476,7 @@ useEffect(() => {
 
             {/* Page Header */}
             <div className="mb-6">
-                <h1 className="text-2xl font-bold text-dark dark:text-white">Purchase – Add / Update Purchase</h1>
+                <h1 className="text-2xl font-bold text-dark dark:text-white">Purchase â€“ Add / Update Purchase</h1>
                 <p className="text-dark-6">Create new purchase invoice with supplier details and items</p>
             </div>
 
@@ -1424,7 +1534,7 @@ useEffect(() => {
                                     type="text"
                                     value={newCurrency.symbol}
                                     onChange={(e) => setNewCurrency(prev => ({ ...prev, symbol: e.target.value }))}
-                                    placeholder="e.g., $, €, £"
+                                    placeholder="e.g., $, â‚¬, Â£"
                                     className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                     maxLength={5}
                                 />
@@ -1767,7 +1877,7 @@ useEffect(() => {
             {/* Show INR conversion below */}
             {item.currency !== "INR" && (
                 <div className="text-xs text-gray-500 mt-1">
-                    ₹{(item.purchase_price * (currencies.find(c => c.code === item.currency)?.exchangeRate || 1)).toFixed(2)} INR
+                    â‚¹{(item.purchase_price * (currencies.find(c => c.code === item.currency)?.exchangeRate || 1)).toFixed(2)} INR
                 </div>
             )}
         </div>
@@ -1799,7 +1909,7 @@ useEffect(() => {
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <span className="font-medium">
-                                                            ₹{(item.tax_amount || 0).toFixed(2)}
+                                                            â‚¹{(item.tax_amount || 0).toFixed(2)}
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-3">
@@ -1826,7 +1936,7 @@ useEffect(() => {
         )}
         {/* Always show INR value */}
         <div>
-            ₹{(
+            â‚¹{(
                 item.total_amount * 
                 (currencies.find(c => c.code === item.currency)?.exchangeRate || 1)
             ).toFixed(2)}
@@ -1971,7 +2081,7 @@ useEffect(() => {
                                                             {formData.round_off >= 0 ? '+' : '-'}
                                                         </div>
                                                         <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                                                            ₹
+                                                            â‚¹
                                                         </div>
                                                     </div>
                                                     <button
@@ -2013,30 +2123,30 @@ useEffect(() => {
                                     <div className="space-y-3">
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Subtotal</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
+                                            <span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Freight Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.freight.toLocaleString('en-IN')}</span>
+                                            <span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{totals.freight.toLocaleString('en-IN')}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">P & F Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.pf.toLocaleString('en-IN')}</span>
+                                            <span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{totals.pf.toLocaleString('en-IN')}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Discount on All</span>
-                                            <span className="font-medium text-red-600">-₹{totals.discountAll.toLocaleString('en-IN')}</span>
+                                            <span className="font-medium text-red-600">-{paymentCurrencySymbol}{totals.discountAll.toLocaleString('en-IN')}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Round Off</span>
                                             <span className={`font-medium ${totals.roundOff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                {totals.roundOff >= 0 ? '+₹' : '-₹'}{Math.abs(totals.roundOff).toLocaleString('en-IN')}
+                                                {totals.roundOff >= 0 ? `+${paymentCurrencySymbol}` : `-${paymentCurrencySymbol}`}{Math.abs(totals.roundOff).toLocaleString('en-IN')}
                                             </span>
                                         </div>
                                         <div className="border-t border-stroke pt-3 dark:border-dark-3">
                                             <div className="flex justify-between">
                                                 <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
-                                                <span className="text-lg font-bold text-primary">₹{totals.grandTotal.toLocaleString('en-IN')}</span>
+                                                <span className="text-lg font-bold text-primary">{paymentCurrencySymbol}{totals.grandTotal.toLocaleString('en-IN')}</span>
                                             </div>
                                             <div className="mt-2 flex justify-between text-sm">
                                                 <span className="text-dark-6">Total in {paymentCurrencyCode}</span>
@@ -2048,14 +2158,18 @@ useEffect(() => {
                                                 </span>
                                             </div>
                                             {paymentCurrencyCode !== "INR" && (
-                                                <div className="mt-1 flex justify-between text-xs">
-                                                    <span className="text-dark-6">INR Equivalent (Total {paymentCurrencyCode} × {paymentExchangeRate})</span>
-                                                    <span className="font-medium text-dark dark:text-white">
-                                                        Rs. {inrFromSelectedCurrency.toLocaleString("en-IN", {
-                                                            minimumFractionDigits: 2,
-                                                            maximumFractionDigits: 2,
-                                                        })}
-                                                    </span>
+                                                <div className="mt-2 rounded-md bg-yellow-50 px-3 py-2 dark:bg-yellow-900/20">
+                                                    <div className="flex justify-between text-sm">
+                                                        <span className="font-semibold text-amber-700 dark:text-yellow-300">
+                                                            INR Equivalent (Total {paymentCurrencyCode} x {paymentExchangeRate})
+                                                        </span>
+                                                        <span className="text-base font-bold text-amber-800 dark:text-yellow-200">
+                                                            Rs. {inrFromSelectedCurrency.toLocaleString("en-IN", {
+                                                                minimumFractionDigits: 2,
+                                                                maximumFractionDigits: 2,
+                                                            })}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -2296,4 +2410,5 @@ useEffect(() => {
         </div>
     );
 }
+
 

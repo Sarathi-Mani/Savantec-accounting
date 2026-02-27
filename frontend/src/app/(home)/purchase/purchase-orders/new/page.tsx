@@ -268,10 +268,13 @@ export default function AddPurchaseOrderPage() {
         }
     }, [company?.id]);
 
+    const purchaseRequestQueryKey = searchParams.toString();
+
     useEffect(() => {
         const prefillFromPurchaseRequests = async () => {
             if (!company?.id) return;
             if (hasPrefilledFromRequest.current) return;
+            if (!products.length) return;
 
             const from = searchParams.get("from");
             const idsParam = searchParams.get("purchase_request_ids");
@@ -283,8 +286,15 @@ export default function AddPurchaseOrderPage() {
             const requestIds = idsParam.split(",").map((id) => id.trim()).filter(Boolean);
             if (requestIds.length === 0) return;
 
-            hasPrefilledFromRequest.current = true;
             try {
+                const toNumber = (value: any, fallback = 0) => {
+                    if (value === null || value === undefined || value === "") return fallback;
+                    if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
+                    const cleaned = String(value).replace(/[^0-9.-]/g, "");
+                    const parsed = parseFloat(cleaned);
+                    return Number.isFinite(parsed) ? parsed : fallback;
+                };
+
                 const requests = await Promise.all(
                     requestIds.map((requestId) => purchaseRequestsApi.get(company.id, requestId))
                 );
@@ -305,44 +315,69 @@ export default function AddPurchaseOrderPage() {
                             (brandFilterName && reqItemBrandName === brandFilterName);
                         return matchesItem && matchesBrand;
                     }).map((reqItem: any, idx: number) => {
+                        const reqItemName = String(reqItem?.item || reqItem?.description || "").trim();
                         const productId = reqItem?.product_id ? String(reqItem.product_id) : "";
-                        const matchedProduct = productId ? products.find((p: any) => String(p?.id) === productId) : null;
-                        const quantity = Number(
+                        const matchedProduct = productId
+                            ? products.find((p: any) => String(p?.id) === productId)
+                            : products.find((p: any) => String(p?.name || "").trim().toLowerCase() === reqItemName.toLowerCase());
+                        const quantity = toNumber(
                             reqItem?.quantity ??
                             reqItem?.qty ??
                             reqItem?.required_qty ??
                             1
-                        );
-                        const purchasePrice = Number(
+                        , 1);
+                        const purchasePrice = toNumber(
                             reqItem?.unit_price ??
                             reqItem?.purchase_price ??
+                            reqItem?.product_unit_price ??
                             reqItem?.price ??
                             matchedProduct?.price ??
                             matchedProduct?.purchase_price ??
                             matchedProduct?.cost_price ??
                             matchedProduct?.unit_price ??
                             0
-                        );
-                        const baseAmount = Number(reqItem?.total_amount || quantity * purchasePrice);
-                        const gstRate = 18;
-                        const taxAmount = (baseAmount * gstRate) / 100;
+                        , 0);
+                        const gstRate = toNumber(
+                            reqItem?.gst_rate ??
+                            reqItem?.tax_rate ??
+                            matchedProduct?.gst_rate ??
+                            18
+                        , 18);
+                        const discountPercent = toNumber(reqItem?.discount_percent, 0);
+                        const itemTotal = quantity * purchasePrice;
+                        const discountAmount = toNumber(
+                            reqItem?.discount_amount ??
+                            (discountPercent > 0 ? itemTotal * (discountPercent / 100) : 0)
+                        , 0);
+                        const taxableAmount = toNumber(
+                            reqItem?.taxable_amount ??
+                            Math.max(itemTotal - discountAmount, 0)
+                        , Math.max(itemTotal - discountAmount, 0));
+                        const taxAmount = toNumber(
+                            reqItem?.tax_amount ??
+                            (taxableAmount * gstRate) / 100
+                        , (taxableAmount * gstRate) / 100);
+                        const totalAmount = toNumber(
+                            reqItem?.total_amount ??
+                            (taxableAmount + taxAmount)
+                        , (taxableAmount + taxAmount));
                         return {
                             id: Date.now() + idx + Math.floor(Math.random() * 10000),
-                            product_id: productId,
-                            description: reqItem?.item || reqItem?.description || "",
-                            item_code: "",
+                            product_id: productId || String(matchedProduct?.id || ""),
+                            description: reqItemName || matchedProduct?.name || "",
+                            item_code: reqItem?.item_code || matchedProduct?.item_code || "",
                             quantity,
-                            unit: "unit",
+                            unit: reqItem?.unit || matchedProduct?.unit || "unit",
                             purchase_price: purchasePrice,
-                            discount_percent: 0,
-                            discount_amount: 0,
+                            discount_percent: discountPercent,
+                            discount_amount: discountAmount,
                             gst_rate: gstRate,
-                            cgst_rate: 9,
-                            sgst_rate: 9,
+                            cgst_rate: gstRate / 2,
+                            sgst_rate: gstRate / 2,
                             igst_rate: 0,
                             tax_amount: taxAmount,
                             unit_cost: purchasePrice,
-                            total_amount: baseAmount + taxAmount,
+                            total_amount: totalAmount,
                         };
                     }))
                     .filter((item: any) => item.description || item.product_id);
@@ -358,13 +393,14 @@ export default function AddPurchaseOrderPage() {
                         ? `${prev.notes}\n\nFrom Purchase Request: ${requestNos.join(", ")}`
                         : `From Purchase Request: ${requestNos.join(", ")}`,
                 }));
+                hasPrefilledFromRequest.current = true;
             } catch (error) {
                 console.error("Failed to prefill from purchase request:", error);
             }
         };
 
         prefillFromPurchaseRequests();
-    }, [company?.id, searchParams]);
+    }, [company?.id, purchaseRequestQueryKey, products.length]);
 
     useEffect(() => {
         if (!products.length) return;

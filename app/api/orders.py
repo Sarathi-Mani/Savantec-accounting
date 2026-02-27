@@ -13,6 +13,7 @@ from app.database.payroll_models import Employee
 from app.services.order_service import OrderService
 from app.services.invoice_service import InvoiceService
 from app.services.company_service import CompanyService
+from app.services.purchase_service import PurchaseService
 from app.schemas.invoice import InvoiceCreate, InvoiceResponse, InvoiceItemCreate, VoucherType
 from app.auth.dependencies import get_current_active_user
 from app.database.models import User, CreatorType  ,Company, OrderStatus, PurchaseOrder, Vendor  # Add PurchaseOrd 
@@ -1469,6 +1470,85 @@ async def cancel_purchase_order(
     
     service.cancel_purchase_order(order)
     return {"message": "Purchase order cancelled"}
+
+
+@router.post("/purchase/{order_id}/convert-to-invoice")
+async def convert_purchase_order_to_invoice(
+    company_id: str,
+    order_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Convert a purchase order to purchase invoice."""
+    company = get_company_or_404(company_id, current_user, db)
+    order_service = OrderService(db)
+    purchase_service = PurchaseService(db)
+
+    order = order_service.get_purchase_order_with_items(order_id, company)
+    if not order:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+
+    if not order.vendor_id:
+        raise HTTPException(status_code=400, detail="Purchase order vendor is missing")
+
+    if not order.items or len(order.items) == 0:
+        raise HTTPException(status_code=400, detail="Purchase order has no items to convert")
+
+    user_id = _resolve_creator_user_id(current_user, company)
+
+    items_payload = []
+    for item in order.items:
+        items_payload.append({
+            "product_id": str(item.product_id) if item.product_id else None,
+            "description": item.description or "",
+            "item_code": item.item_code or "",
+            "hsn_code": (item.product.hsn_sac if getattr(item, "product", None) and getattr(item.product, "hsn_sac", None) else None),
+            "quantity": float(item.quantity or 0),
+            "unit": item.unit or "unit",
+            "currency": order.currency or "INR",
+            "exchange_rate": float(order.exchange_rate or 1),
+            "purchase_price": float(item.rate or 0),
+            "discount_percent": float(item.discount_percent or 0),
+            "gst_rate": float(item.gst_rate or 0),
+        })
+
+    try:
+        purchase = purchase_service.create_purchase(
+            company_id=company.id,
+            user_id=user_id,
+            vendor_id=str(order.vendor_id),
+            purchase_type="purchase",
+            items=items_payload,
+            reference_no=order.reference_number or order.order_number,
+            invoice_date=order.order_date or datetime.utcnow(),
+            due_date=order.expected_date,
+            payment_type=None,
+            exchange_rate=float(order.exchange_rate or 1),
+            notes=order.notes,
+            terms=order.terms,
+            freight_charges=float(order.freight_charges or 0),
+            freight_type="fixed",
+            packing_forwarding_charges=float(order.other_charges or 0),
+            pf_type="fixed",
+            discount_on_all=float(order.discount_on_all or 0),
+            discount_type="fixed",
+            round_off=float(order.round_off or 0),
+            contact_person=(order.vendor.name if getattr(order, "vendor", None) and getattr(order.vendor, "name", None) else None),
+            contact_phone=(order.vendor.contact if getattr(order, "vendor", None) and getattr(order.vendor, "contact", None) else None),
+            contact_email=(order.vendor.email if getattr(order, "vendor", None) and getattr(order.vendor, "email", None) else None),
+            shipping_address=(order.vendor.shipping_address if getattr(order, "vendor", None) and getattr(order.vendor, "shipping_address", None) else None),
+            billing_address=(order.vendor.billing_address if getattr(order, "vendor", None) and getattr(order.vendor, "billing_address", None) else None),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to convert purchase order: {str(exc)}")
+
+    return {
+        "message": "Purchase order converted to invoice successfully",
+        "purchase_id": str(purchase.id),
+        "purchase_number": purchase.purchase_number,
+    }
 
 
 # ============== Delivery Note Endpoints ==============
