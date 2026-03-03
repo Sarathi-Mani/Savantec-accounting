@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 
 from app.database.connection import get_db
-from app.database.models import User, Company, Customer, QuotationStatus, ContactPerson, Quotation, Enquiry
+from app.database.models import User, Company, Customer, QuotationStatus, ContactPerson, Quotation, Enquiry, EnquiryStatus
 from app.auth.dependencies import get_current_active_user
 from app.services.quotation_service import QuotationService
 from app.services.company_service import CompanyService
@@ -38,6 +38,37 @@ def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company
+
+
+def _sync_enquiry_on_quotation_save(db: Session, company_id: str, quotation: Quotation) -> None:
+    """If quotation is created from enquiry, mark enquiry completed with quotation number."""
+    reference_type = str(getattr(quotation, "reference", "") or "").strip().lower()
+    reference_no = str(getattr(quotation, "reference_no", "") or "").strip()
+    if reference_type != "enquiry" or not reference_no:
+        return
+
+    enquiry = db.query(Enquiry).filter(
+        Enquiry.company_id == company_id,
+        Enquiry.enquiry_number == reference_no
+    ).first()
+
+    # Backward compatibility if frontend accidentally sends enquiry id in reference_no.
+    if not enquiry:
+        enquiry = db.query(Enquiry).filter(
+            Enquiry.company_id == company_id,
+            Enquiry.id == reference_no
+        ).first()
+
+    if not enquiry:
+        return
+
+    enquiry.status = EnquiryStatus.COMPLETED
+    enquiry.quotation_no = quotation.quotation_number
+    enquiry.quotation_date = quotation.quotation_date
+    enquiry.converted_quotation_id = quotation.id
+    enquiry.converted_at = datetime.utcnow()
+    enquiry.updated_at = datetime.utcnow()
+    db.commit()
 
 
 # ==================== SCHEMAS ====================
@@ -613,6 +644,8 @@ async def create_quotation(
             cess_amount=Decimal(str(quotation_data.get("cess_amount", 0))),  # Add this
             is_project=quotation_data.get("is_project"),  # Add this
         )
+
+        _sync_enquiry_on_quotation_save(db, company_id, quotation)
         
         return _quotation_to_response(quotation, db)
         
@@ -890,6 +923,8 @@ async def update_quotation(
             is_project=update_data.get("is_project"),  # Add this
             place_of_supply=update_data.get("place_of_supply"),  # Add this
         )
+
+        _sync_enquiry_on_quotation_save(db, company_id, quotation)
         
         return _quotation_to_response(quotation, db)
         

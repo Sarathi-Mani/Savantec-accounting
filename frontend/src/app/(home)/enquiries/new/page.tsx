@@ -100,6 +100,7 @@ export default function NewEnquiryPage() {
     kind_attn: "",
     mail_id: "",
     phone_no: "",
+    additional_details: "",
     remarks: "",
     salesman_id: "",
     salesman_search: "",
@@ -165,6 +166,7 @@ export default function NewEnquiryPage() {
         kind_attn: "",
         mail_id: "",
         phone_no: "",
+        additional_details: "",
       }));
       setIsManualCustomer(false);
     }
@@ -196,12 +198,6 @@ export default function NewEnquiryPage() {
   }, [showProductDropdowns]);
 
   useEffect(() => {
-    // Generate suggested enquiry number
-    const suggestedNumber = `ENQ-${Math.floor(Math.random() * 10000)
-      .toString()
-      .padStart(4, "0")}`;
-    setFormData((prev) => ({ ...prev, enquiry_no: suggestedNumber }));
-    
     // Fetch data
     if (company?.id) {
       fetchCustomers();
@@ -214,6 +210,36 @@ export default function NewEnquiryPage() {
     // Initialize filteredProducts with all products for first item
     setFilteredProducts([products]);
   }, [company?.id]);
+
+  const fetchNextEnquiryNumber = useCallback(async () => {
+    if (!company?.id) return;
+    try {
+      const token = getToken();
+      if (!token) return;
+      const dateParam = formData.enquiry_date ? `?enquiry_date=${encodeURIComponent(formData.enquiry_date)}` : "";
+      const response = await fetch(
+        `${API_BASE}/companies/${company.id}/enquiries/next-number${dateParam}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      if (!response.ok) return;
+      const data = await response.json();
+      if (data?.enquiry_number) {
+        setFormData((prev) => ({ ...prev, enquiry_no: data.enquiry_number }));
+      }
+    } catch (err) {
+      console.error("Failed to fetch next enquiry number:", err);
+    }
+  }, [company?.id, formData.enquiry_date, getToken]);
+
+  useEffect(() => {
+    if (!company?.id) return;
+    fetchNextEnquiryNumber();
+  }, [company?.id, formData.enquiry_date, fetchNextEnquiryNumber]);
 
   const fetchSalesEngineers = async () => {
     if (!company?.id) return;
@@ -561,6 +587,7 @@ export default function NewEnquiryPage() {
       kind_attn: "", // Reset kind attention
       mail_id: "",
       phone_no: "",
+      additional_details: "",
     }));
     
     setIsManualCustomer(false);
@@ -722,6 +749,9 @@ export default function NewEnquiryPage() {
     if (formData.remarks) {
       formDataToSend.append("remarks", formData.remarks);
     }
+    if (!formData.customer_id && formData.additional_details.trim()) {
+      formDataToSend.append("additional_details", formData.additional_details.trim());
+    }
     
     if (formData.salesman_id) {
       formDataToSend.append("salesman_id", formData.salesman_id);
@@ -859,10 +889,10 @@ export default function NewEnquiryPage() {
                 type="text"
                 name="enquiry_no"
                 value={formData.enquiry_no}
-                onChange={handleChange}
+                readOnly
                 required
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-2 dark:border-dark-3 dark:text-white"
-                placeholder="e.g., ENQ-2024-0001"
+                className="w-full px-4 py-2 border rounded-lg bg-gray-50 dark:bg-dark-3 dark:border-dark-3 dark:text-white"
+                placeholder="Auto generated"
               />
             </div>
             
@@ -924,7 +954,8 @@ export default function NewEnquiryPage() {
                         customer_phone_no: "",
                         kind_attn: "",
                         mail_id: "",
-                        phone_no: ""
+                        phone_no: "",
+                        additional_details: ""
                       });
                       setSelectedCustomerContacts([]);
                       setFilteredContactPersons([]);
@@ -1170,6 +1201,22 @@ export default function NewEnquiryPage() {
             </div>
             
             <div className="md:col-span-3">
+              {isManualCustomer && !formData.customer_id && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Additional Details
+                  </label>
+                  <textarea
+                    name="additional_details"
+                    value={formData.additional_details}
+                    onChange={handleChange}
+                    rows={2}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-2 dark:border-dark-3 dark:text-white"
+                    placeholder="Enter additional details for this manual customer..."
+                  />
+                </div>
+              )}
+
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Remarks
               </label>

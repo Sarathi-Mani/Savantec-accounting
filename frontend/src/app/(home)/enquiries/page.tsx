@@ -50,6 +50,7 @@ interface Enquiry {
   enquiry_date: string;
   subject: string;
   status: string;
+  quotation_no?: string;
   priority: string;
   totalQty?: string;
   products_interested?: EnquiryItem[];
@@ -125,9 +126,13 @@ const isConvertedToQuotationStatus = (status: string): boolean => {
   ].includes(normalized);
 };
 
+const isCompletedStatus = (status: string): boolean => {
+  return status.trim().toLowerCase() === "completed";
+};
+
 export default function EnquiriesPage() {
   const router = useRouter();
-  const { company, getToken, isEmployee } = useAuth();
+  const { company, getToken, isEmployee, user } = useAuth();
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -204,6 +209,12 @@ export default function EnquiriesPage() {
 
   const companyId =
     company?.id || (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
+
+  const designationName =
+    typeof user?.designation === "string"
+      ? user.designation
+      : user?.designation?.name || "";
+  const isSalesEngineerUser = /sales\s*engineer/i.test(designationName);
 
   const getAuthHeaders = (): Record<string, string> | null => {
     const token = getToken();
@@ -1391,13 +1402,25 @@ export default function EnquiriesPage() {
                       )}
                       {visibleColumns.status && (
                         <td className="px-3 py-4 align-top break-words">
-                          <span
-                            className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              getStatusBadgeClass(enquiry.status)
-                            }`}
-                          >
-                            {enquiry.status.replace("_", " ")}
-                          </span>
+                          <div className="space-y-1">
+                            <span
+                              className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                getStatusBadgeClass(enquiry.status)
+                              }`}
+                            >
+                              {enquiry.status.replace("_", " ")}
+                            </span>
+                            {isCompletedStatus(enquiry.status) && enquiry.quotation_no && (
+                              <div className="text-xs">
+                                <span className="mr-1 inline-flex items-center rounded-md bg-sky-100 px-2 py-0.5 font-semibold text-sky-800 ring-1 ring-sky-300 dark:bg-sky-900/30 dark:text-sky-300 dark:ring-sky-700">
+                                  Quotation No:
+                                </span>
+                                <span className="inline-flex items-center rounded-md bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-800 ring-1 ring-emerald-300 animate-pulse dark:bg-emerald-900/30 dark:text-emerald-300 dark:ring-emerald-700">
+                                  {enquiry.quotation_no}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </td>
                       )}
                       {visibleColumns.salesEngineer && (
@@ -1430,7 +1453,7 @@ export default function EnquiriesPage() {
 
                             {activeActionMenu === enquiry.id && (
                               <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                                {isConvertedToQuotationStatus(enquiry.status) ? (
+                                {isConvertedToQuotationStatus(enquiry.status) && !isSalesEngineerUser ? (
                                   <Link
                                     href={`/enquiries/${enquiry.id}`}
                                     onClick={() => setActiveActionMenu(null)}
@@ -1447,10 +1470,10 @@ export default function EnquiriesPage() {
                                       className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                                     >
                                       <Edit className="w-4 h-4 text-gray-400" />
-                                      <span>Edit / Assign</span>
+                                      <span>{isSalesEngineerUser ? "Edit" : "Edit / Assign"}</span>
                                     </Link>
 
-                                    {canDeleteEnquiry(enquiry.status) && (
+                                    {!isSalesEngineerUser && canDeleteEnquiry(enquiry.status) && (
                                       <>
                                         <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
                                         <button

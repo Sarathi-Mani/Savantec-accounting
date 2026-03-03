@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { useAuth } from "@/context/AuthContext";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api";
 const STATIC_BASE_URL = API_BASE.replace(/\/api$/, "") || "http://localhost:6768";
@@ -79,6 +80,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
 export default function EnquiryDetailView() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
   const enquiryId = params.id as string;
 
   const [enquiry, setEnquiry] = useState<Enquiry | null>(null);
@@ -92,6 +94,11 @@ export default function EnquiryDetailView() {
   });
 
   const companyId = typeof window !== "undefined" ? localStorage.getItem("company_id") : null;
+  const designationName =
+    typeof user?.designation === "string"
+      ? user.designation
+      : user?.designation?.name || "";
+  const isSalesEngineerUser = /sales\s*engineer/i.test(designationName);
 useEffect(() => {
   if (companyId && enquiryId) {
     fetchEnquiry();
@@ -349,7 +356,7 @@ useEffect(() => {
                   
                   {getEmail() && (
                     <tr>
-                      <td className="py-3 text-sm text-gray-600">Email</td>
+                      <td className="py-3 text-sm text-gray-600">Kind Attn. Email</td>
                       <td className="py-3">
                         <a href={`mailto:${getEmail()}`} className="text-blue-600 hover:text-blue-800">
                           {getEmail()}
@@ -360,7 +367,7 @@ useEffect(() => {
                   
                   {getPhone() && (
                     <tr>
-                      <td className="py-3 text-sm text-gray-600">Phone</td>
+                      <td className="py-3 text-sm text-gray-600">Kind Attn. Mobile</td>
                       <td className="py-3 text-gray-900">{getPhone()}</td>
                     </tr>
                   )}
@@ -527,8 +534,8 @@ useEffect(() => {
                 </svg>
                 Edit Enquiry
               </Link>
-              
-              {enquiry.status === 'ready_for_quotation' && enquiry.quotation_no && (
+
+              {!isSalesEngineerUser && enquiry.status === 'ready_for_quotation' && enquiry.quotation_no && (
                 <button
                   onClick={() => alert('Convert to quotation functionality')}
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
@@ -539,16 +546,18 @@ useEffect(() => {
                   Convert to Quotation
                 </button>
               )}
-              
-              <button
-                onClick={() => window.print()}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                </svg>
-                Print Details
-              </button>
+
+              {!isSalesEngineerUser && (
+                <button
+                  onClick={() => window.print()}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  Print Details
+                </button>
+              )}
             </div>
           </div>
         </div>

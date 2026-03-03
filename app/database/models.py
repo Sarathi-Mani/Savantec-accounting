@@ -5175,6 +5175,8 @@ class Enquiry(Base):
     prospect_email = Column(String(255))
     prospect_phone = Column(String(20))
     prospect_company = Column(String(255))
+    customer_email = Column(String(255))
+    customer_phone = Column(String(20))
     
     # Sales person
     sales_person_id = Column(String(36), ForeignKey("employees.id", ondelete="SET NULL"))
@@ -5186,6 +5188,7 @@ class Enquiry(Base):
     # Enquiry details
     subject = Column(String(500), nullable=False)
     description = Column(Text)
+    additional_details = Column(Text)
     requirements = Column(Text)
     
     # Products of interest (JSON array of product IDs or descriptions)

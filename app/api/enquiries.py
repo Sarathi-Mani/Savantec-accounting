@@ -9,6 +9,7 @@ from decimal import Decimal
 import json
 from pathlib import Path
 import os
+import re
 
 from app.database.connection import get_db
 from app.database.models import (
@@ -76,9 +77,12 @@ class EnquiryCreate(BaseModel):
     prospect_email: Optional[str] = None
     prospect_phone: Optional[str] = None
     prospect_company: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
     source: EnquirySource = EnquirySource.OTHER
     source_details: Optional[str] = None
     description: Optional[str] = None
+    additional_details: Optional[str] = None
     requirements: Optional[str] = None
     products_interested: Optional[List[Dict]] = None
     expected_value: Decimal = Decimal("0")
@@ -94,6 +98,15 @@ class EnquiryEditUpdate(BaseModel):
     pending_remarks: Optional[str] = None
     quotation_no: Optional[str] = None
     quotation_date: Optional[date] = None
+    enquiry_date: Optional[date] = None
+    customer_name: Optional[str] = None
+    customer_mail_id: Optional[str] = None
+    customer_phone_no: Optional[str] = None
+    kind_attn: Optional[str] = None
+    mail_id: Optional[str] = None
+    phone_no: Optional[str] = None
+    remarks: Optional[str] = None
+    additional_details: Optional[str] = None
     items: Optional[List[Dict[str, Any]]] = None
     
     class Config:
@@ -110,9 +123,12 @@ class EnquiryUpdate(BaseModel):
     prospect_email: Optional[str] = None
     prospect_phone: Optional[str] = None
     prospect_company: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
     source: Optional[EnquirySource] = None
     source_details: Optional[str] = None
     description: Optional[str] = None
+    additional_details: Optional[str] = None
     requirements: Optional[str] = None
     products_interested: Optional[List[Dict]] = None
     expected_value: Optional[Decimal] = None
@@ -178,6 +194,7 @@ class EnquiryResponse(BaseModel):
     source_details: Optional[str]
     subject: str
     description: Optional[str]
+    additional_details: Optional[str]
     requirements: Optional[str]
     products_interested: Optional[List[Dict]]
     expected_value: Decimal
@@ -189,6 +206,8 @@ class EnquiryResponse(BaseModel):
     priority: str
     converted_quotation_id: Optional[str]
     converted_at: Optional[datetime]
+    quotation_no: Optional[str] = None
+    quotation_date: Optional[datetime] = None
     lost_reason: Optional[str]
     lost_to_competitor: Optional[str]
     notes: Optional[str]
@@ -249,6 +268,10 @@ def enrich_enquiry(enquiry: Enquiry, db: Session) -> EnquiryResponse:
             getattr(enquiry.customer, "mobile", None)
             or getattr(enquiry.customer, "phone", None)
         )
+    else:
+        response.customer_name = enquiry.prospect_company
+        response.customer_email = enquiry.customer_email
+        response.customer_mobile = enquiry.customer_phone
     response.kind_attn = enquiry.prospect_name
     response.mail_id = enquiry.prospect_email
     response.phone_no = enquiry.prospect_phone
@@ -290,25 +313,47 @@ def enrich_enquiry(enquiry: Enquiry, db: Session) -> EnquiryResponse:
 class SimpleEnquiryService:
     def __init__(self, db: Session):
         self.db = db
+
+    def get_next_enquiry_number(self, company_id: str, enquiry_date: Optional[date] = None) -> str:
+        """Generate the next enquiry number in legacy ENQ-<number> format."""
+        enquiries = self.db.query(Enquiry.enquiry_number).filter(
+            Enquiry.company_id == company_id,
+            Enquiry.enquiry_number.like("ENQ-%")
+        ).all()
+
+        max_num = 0
+        for row in enquiries:
+            value = (row[0] or "").strip()
+            match = re.match(r"^ENQ-(\d+)$", value)
+            if not match:
+                continue
+            current = int(match.group(1))
+            if current > max_num:
+                max_num = current
+
+        return f"ENQ-{max_num + 1}"
     
     def create_enquiry(self, company_id: str, **kwargs):
         """Create a new enquiry."""
         today = datetime.utcnow()
-        year_month = today.strftime("%Y%m")
-        
-        # Count enquiries this month
-        count = self.db.query(Enquiry).filter(
-            Enquiry.company_id == company_id,
-            Enquiry.enquiry_date >= date(today.year, today.month, 1)
-        ).count()
-        
-        enquiry_number = kwargs.get('enquiry_number', f"ENQ-{year_month}-{count + 1:04d}")
+        enquiry_date_value = kwargs.get('enquiry_date', today)
+        if isinstance(enquiry_date_value, datetime):
+            enquiry_date_for_number = enquiry_date_value.date()
+        elif isinstance(enquiry_date_value, date):
+            enquiry_date_for_number = enquiry_date_value
+        else:
+            enquiry_date_for_number = today.date()
+
+        enquiry_number = kwargs.get(
+            'enquiry_number',
+            self.get_next_enquiry_number(company_id, enquiry_date=enquiry_date_for_number)
+        )
         
         enquiry = Enquiry(
             id=os.urandom(16).hex(),
             company_id=company_id,
             enquiry_number=enquiry_number,
-            enquiry_date=kwargs.get('enquiry_date', today),
+            enquiry_date=enquiry_date_value,
             subject=kwargs.get('subject', 'New Enquiry'),
             customer_id=kwargs.get('customer_id'),
             contact_id=kwargs.get('contact_id'),
@@ -317,9 +362,12 @@ class SimpleEnquiryService:
             prospect_email=kwargs.get('prospect_email'),
             prospect_phone=kwargs.get('prospect_phone'),
             prospect_company=kwargs.get('prospect_company'),
+            customer_email=kwargs.get('customer_email'),
+            customer_phone=kwargs.get('customer_phone'),
             source=kwargs.get('source', EnquirySource.OTHER),
             source_details=kwargs.get('source_details'),
             description=kwargs.get('description'),
+            additional_details=kwargs.get('additional_details'),
             requirements=kwargs.get('requirements'),
             products_interested=kwargs.get('products_interested'),
             expected_value=kwargs.get('expected_value', Decimal("0")),
@@ -484,6 +532,21 @@ def create_enquiry(
     )
     
     return enrich_enquiry(enquiry, db)
+
+
+@router.get("/enquiries/next-number")
+def get_next_enquiry_number(
+    company_id: str,
+    enquiry_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Get next enquiry number for the selected month."""
+    get_company(db, company_id)
+    service = SimpleEnquiryService(db)
+    next_number = service.get_next_enquiry_number(company_id, enquiry_date=enquiry_date)
+    return {"enquiry_number": next_number}
+
+
 @router.post("/enquiries/formdata", response_model=EnquiryResponse)
 async def create_enquiry_formdata(
     company_id: str,
@@ -498,6 +561,7 @@ async def create_enquiry_formdata(
     mail_id: Optional[str] = Form(None),
     phone_no: Optional[str] = Form(None),
     remarks: Optional[str] = Form(None),
+    additional_details: Optional[str] = Form(None),
     salesman_id: Optional[str] = Form(None),
     status: str = Form("pending"),
     items: str = Form("[]"),  # JSON string of items
@@ -507,6 +571,7 @@ async def create_enquiry_formdata(
 ):
     """Create enquiry from FormData (for frontend compatibility)."""
     company = get_company(db, company_id)
+    service = SimpleEnquiryService(db)
     
     # Parse items JSON
     try:
@@ -527,20 +592,24 @@ async def create_enquiry_formdata(
 
     prospect_company = resolved_customer_name if not resolved_customer_id else None
 
-    # For linked customers, prospect email/phone should reflect customer contact.
-    # For manual customers, keep typed customer contact first, then kind-attn fallback.
-    resolved_prospect_email = mail_id or customer_mail_id
-    resolved_prospect_phone = phone_no or customer_phone_no
+    # Keep customer contact and kind-attn contact independent.
+    resolved_prospect_email = mail_id
+    resolved_prospect_phone = phone_no
+
+    generated_enquiry_no = service.get_next_enquiry_number(company_id, enquiry_date=enquiry_date)
 
     # Create enquiry data from form
     enquiry_data = {
         "subject": remarks or f"Enquiry {enquiry_no}",
+        "enquiry_number": generated_enquiry_no,
         "customer_id": resolved_customer_id,
         "sales_person_id": salesman_id,  # Use the salesman_id from form data, not hardcoded "1"
         "prospect_name": kind_attn,
         "prospect_email": resolved_prospect_email,
         "prospect_phone": resolved_prospect_phone,
         "prospect_company": prospect_company,
+        "customer_email": customer_mail_id,
+        "customer_phone": customer_phone_no,
         "description": remarks,
         "notes": remarks,
         "expected_value": Decimal("0"),
@@ -548,16 +617,15 @@ async def create_enquiry_formdata(
         "source": EnquirySource.WEBSITE,
         "enquiry_date": datetime.combine(enquiry_date, datetime.min.time())
     }
+    enquiry_data["additional_details"] = (
+        additional_details.strip() if (not resolved_customer_id and additional_details) else None
+    )
     
     # Create the enquiry
-    service = SimpleEnquiryService(db)
     enquiry = service.create_enquiry(
         company_id=company_id,
         **enquiry_data
     )
-    
-   
-    enquiry.enquiry_number = enquiry_no
     
     # Create upload directory
     upload_dir = Path("uploads") / "enquiries" / enquiry.id
@@ -911,6 +979,34 @@ def update_enquiry_edit(
     
     if data.pending_remarks is not None:
         enquiry.pending_remarks = data.pending_remarks
+
+    if data.enquiry_date is not None:
+        enquiry.enquiry_date = datetime.combine(data.enquiry_date, datetime.min.time())
+
+    if data.customer_name is not None and not enquiry.customer_id:
+        enquiry.prospect_company = data.customer_name
+
+    if data.kind_attn is not None:
+        enquiry.prospect_name = data.kind_attn
+
+    if data.customer_mail_id is not None:
+        enquiry.customer_email = data.customer_mail_id
+
+    if data.customer_phone_no is not None:
+        enquiry.customer_phone = data.customer_phone_no
+
+    if data.mail_id is not None:
+        enquiry.prospect_email = data.mail_id
+
+    if data.phone_no is not None:
+        enquiry.prospect_phone = data.phone_no
+
+    if data.remarks is not None:
+        enquiry.description = data.remarks
+        enquiry.notes = data.remarks
+
+    if data.additional_details is not None:
+        enquiry.additional_details = data.additional_details
     
     if data.quotation_no is not None:
         enquiry.quotation_no = data.quotation_no

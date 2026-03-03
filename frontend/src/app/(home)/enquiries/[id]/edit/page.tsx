@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
@@ -66,19 +66,48 @@ interface EnquiryItem {
   product_name?: string; // Added for display
 }
 
+interface Customer {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  contact_persons?: Array<{
+    id: string;
+    name: string;
+    email?: string;
+    phone?: string;
+    is_primary?: boolean;
+  }>;
+}
+
 export default function EditEnquiryPage() {
   const router = useRouter();
   const params = useParams();
   const enquiryId = params.id as string;
-  const { getToken } = useAuth();
+  const { getToken, user } = useAuth();
   
   const [enquiry, setEnquiry] = useState<Enquiry | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [items, setItems] = useState<EnquiryItem[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [showNewCustomerOption, setShowNewCustomerOption] = useState(false);
+  const [isManualCustomer, setIsManualCustomer] = useState(false);
+  const customerSearchRef = useRef<HTMLDivElement>(null);
   
   const [formData, setFormData] = useState({
+    enquiry_date: new Date().toISOString().split("T")[0],
+    customer_name: "",
+    customer_mail_id: "",
+    customer_phone_no: "",
+    kind_attn: "",
+    mail_id: "",
+    phone_no: "",
+    remarks: "",
+    additional_details: "",
     status: "pending",
     pending_remarks: "",
     quotation_no: "",
@@ -109,8 +138,129 @@ export default function EditEnquiryPage() {
   useEffect(() => {
     if (companyId && enquiryId) {
       fetchEnquiry();
+      fetchCustomers();
     }
   }, [companyId, enquiryId]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (customerSearchRef.current && !customerSearchRef.current.contains(event.target as Node)) {
+        setShowCustomerDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const name = (formData.customer_name || "").trim().toLowerCase();
+    if (!name) {
+      setIsManualCustomer(false);
+      return;
+    }
+    const exactMatch = customers.some((c) => (c.name || "").trim().toLowerCase() === name);
+    setIsManualCustomer(!exactMatch);
+  }, [customers, formData.customer_name]);
+
+  const fetchCustomers = async () => {
+    if (!companyId) return;
+    try {
+      const token = getToken();
+      if (!token) return;
+      const response = await fetch(`${API_BASE}/companies/${companyId}/customers?page=1&page_size=100`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) return;
+      const data = await response.json();
+      const customersList = Array.isArray(data) ? data : Array.isArray(data?.customers) ? data.customers : [];
+      const processed: Customer[] = customersList.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        email: c.email,
+        phone: c.mobile || c.phone || "",
+        contact_persons: c.contact_persons || [],
+      }));
+      setCustomers(processed);
+      setFilteredCustomers(processed);
+    } catch (err) {
+      console.error("Failed to fetch customers:", err);
+    }
+  };
+
+  const filterCustomers = (searchTerm: string) => {
+    const filtered = customers.filter((customer) =>
+      customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.phone?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    setFilteredCustomers(filtered);
+  };
+
+  const handleCustomerSearchChange = (value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      customer_name: value,
+      customer_mail_id: "",
+      customer_phone_no: "",
+      mail_id: "",
+      phone_no: "",
+      kind_attn: "",
+    }));
+
+    if (value.trim()) {
+      filterCustomers(value);
+      setShowCustomerDropdown(true);
+      const exactMatch = customers.find(
+        (customer) => customer.name.toLowerCase() === value.toLowerCase().trim()
+      );
+      if (!exactMatch) {
+        setShowNewCustomerOption(true);
+        setIsManualCustomer(true);
+      } else {
+        setShowNewCustomerOption(false);
+        setIsManualCustomer(false);
+      }
+    } else {
+      setShowCustomerDropdown(false);
+      setShowNewCustomerOption(false);
+      setIsManualCustomer(false);
+    }
+  };
+
+  const handleManualCustomerEntry = () => {
+    const customerName = formData.customer_name.trim();
+    if (!customerName) return;
+    setFormData((prev) => ({
+      ...prev,
+      customer_name: customerName,
+      customer_mail_id: "",
+      customer_phone_no: "",
+      mail_id: "",
+      phone_no: "",
+      kind_attn: "",
+    }));
+    setIsManualCustomer(true);
+    setShowCustomerDropdown(false);
+    setShowNewCustomerOption(false);
+  };
+
+  const selectCustomer = (customer: Customer) => {
+    setFormData((prev) => ({
+      ...prev,
+      customer_name: customer.name,
+      customer_mail_id: customer.email || "",
+      customer_phone_no: customer.phone || "",
+      mail_id: "",
+      phone_no: "",
+      kind_attn: "",
+    }));
+    setIsManualCustomer(false);
+    setShowCustomerDropdown(false);
+    setShowNewCustomerOption(false);
+  };
 
   useEffect(() => {
     const autoSetQuotationNo = async () => {
@@ -141,6 +291,15 @@ export default function EditEnquiryPage() {
     
     // Set form data
     setFormData({
+      enquiry_date: data.enquiry_date ? data.enquiry_date.split("T")[0] : new Date().toISOString().split("T")[0],
+      customer_name: data.customer_name || data.prospect_company || "",
+      customer_mail_id: data.customer_email || data.prospect_email || "",
+      customer_phone_no: data.customer_mobile || data.prospect_phone || "",
+      kind_attn: data.kind_attn || data.prospect_name || "",
+      mail_id: data.mail_id || data.prospect_email || "",
+      phone_no: data.phone_no || data.prospect_phone || "",
+      remarks: data.remarks || data.description || "",
+      additional_details: data.additional_details || "",
       status: data.status || "pending",
       pending_remarks: data.pending_remarks || "",
       quotation_no: data.quotation_no || "",
@@ -283,6 +442,15 @@ const handleSubmit = async (
 
     // Prepare the request body
     const requestBody = {
+      enquiry_date: formData.enquiry_date || null,
+      customer_name: formData.customer_name || null,
+      customer_mail_id: formData.customer_mail_id || null,
+      customer_phone_no: formData.customer_phone_no || null,
+      kind_attn: formData.kind_attn || null,
+      mail_id: formData.mail_id || null,
+      phone_no: formData.phone_no || null,
+      remarks: formData.remarks || null,
+      additional_details: formData.additional_details || null,
       status: formData.status,
       pending_remarks: formData.pending_remarks,
       quotation_no: formData.quotation_no,
@@ -395,14 +563,23 @@ const handleSubmit = async (
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
+  const formatDateForInput = (dateStr?: string) => {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toISOString().split("T")[0];
   };
-  const isLinkedCustomer = Boolean(enquiry?.customer_name);
+  const formatDateDisplay = (dateStr?: string) => {
+    if (!dateStr) return "N/A";
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return "N/A";
+    return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  };
+  const designationName =
+    typeof user?.designation === "string"
+      ? user.designation
+      : user?.designation?.name || "";
+  const isSalesEngineerUser = /sales\s*engineer/i.test(designationName);
 
   if (!companyId) {
     return (
@@ -463,78 +640,253 @@ const handleSubmit = async (
         {/* Basic Information */}
         <div className="bg-white dark:bg-gray-dark rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Basic Information</h2>
-          
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Enquiry Number
-            </label>
-            <input
-              type="text"
-              value={enquiry.enquiry_number}
-              readOnly
-              className="w-full px-4 py-2 border rounded-lg bg-gray-50 dark:bg-dark-2 dark:border-dark-3 dark:text-gray-300 cursor-not-allowed"
-            />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Enquiry Number
+              </label>
+              <input
+                type="text"
+                value={enquiry.enquiry_number}
+                readOnly
+                className="w-full px-4 py-2 border rounded-lg bg-gray-50 dark:bg-dark-2 dark:border-dark-3 dark:text-gray-300 cursor-not-allowed"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Date
+              </label>
+              <input
+                type="date"
+                value={isSalesEngineerUser ? formData.enquiry_date : formatDateForInput(enquiry.enquiry_date)}
+                onChange={(e) => isSalesEngineerUser && setFormData({ ...formData, enquiry_date: e.target.value })}
+                readOnly={!isSalesEngineerUser}
+                className={`w-full px-4 py-2 border rounded-lg dark:bg-dark-2 dark:border-dark-3 ${
+                  isSalesEngineerUser
+                    ? "focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                    : "bg-gray-50 dark:text-gray-300 cursor-not-allowed"
+                }`}
+              />
+            </div>
           </div>
         </div>
 
-        {/* Company Information (Read Only) */}
+        {/* Customer Information (Create-like layout with auto-filled values) */}
         <div className="bg-white dark:bg-gray-dark rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Company Information</h2>
-          
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-3">
-              <tbody className="divide-y divide-gray-200 dark:divide-dark-3">
-                <tr>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2 w-1/4">
-                    Customer Name
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                    {enquiry.customer_name || enquiry.prospect_company || "N/A"}
-                  </td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
-                    Customer Email
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                    {enquiry.customer_email || (!isLinkedCustomer ? enquiry.prospect_email : "N/A") || "N/A"}
-                  </td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
-                    Customer Mobile
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                    {enquiry.customer_mobile || (!isLinkedCustomer ? enquiry.prospect_phone : "N/A") || "N/A"}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
-                    Sales Engineer
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                    {enquiry.salesman?.name || enquiry.sales_person_name || "Not Assigned"}
-                  </td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
-                    Kind Attn.
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                    {enquiry.contact_person || enquiry.prospect_name || "N/A"}
-                  </td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
-                    Enquiry Date
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                    {formatDate(enquiry.enquiry_date)}
-                  </td>
-                </tr>
-                <tr>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
-                    Remarks
-                  </td>
-                  <td colSpan={5} className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                    {enquiry.remarks || enquiry.description || "N/A"}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Customer Information</h2>
+          {isSalesEngineerUser ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div ref={customerSearchRef} className="relative">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Customer Name</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formData.customer_name}
+                    onChange={(e) => handleCustomerSearchChange(e.target.value)}
+                    onFocus={() => {
+                      if (formData.customer_name) {
+                        filterCustomers(formData.customer_name);
+                      }
+                      setShowCustomerDropdown(true);
+                    }}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-2 dark:border-dark-3 dark:text-white"
+                    placeholder="Search customer or enter new customer..."
+                  />
+                  {formData.customer_name && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          customer_name: "",
+                          mail_id: "",
+                          phone_no: "",
+                          kind_attn: "",
+                        });
+                        setFilteredCustomers(customers);
+                        setIsManualCustomer(false);
+                        setShowNewCustomerOption(false);
+                      }}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      x
+                    </button>
+                  )}
+                </div>
+                {showCustomerDropdown && (filteredCustomers.length > 0 || showNewCustomerOption) && (
+                  <div className="absolute z-10 w-full mt-1 bg-white dark:bg-dark-2 border border-gray-300 dark:border-dark-3 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {showNewCustomerOption && formData.customer_name.trim() && (
+                      <div
+                        className="px-4 py-3 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 cursor-pointer border-b dark:border-dark-3"
+                        onClick={handleManualCustomerEntry}
+                      >
+                        <div className="font-medium text-blue-700 dark:text-blue-400">
+                          Add new customer: "{formData.customer_name}"
+                        </div>
+                        <div className="text-sm text-blue-600 dark:text-blue-300 mt-1">
+                          Click to use this customer name
+                        </div>
+                      </div>
+                    )}
+                    {filteredCustomers.map((customer) => (
+                      <div
+                        key={customer.id}
+                        className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-dark-3 cursor-pointer border-b dark:border-dark-3 last:border-b-0"
+                        onClick={() => selectCustomer(customer)}
+                      >
+                        <div className="font-medium text-gray-900 dark:text-white">{customer.name}</div>
+                        {customer.email && (
+                          <div className="text-sm text-gray-600 dark:text-gray-400">Email: {customer.email}</div>
+                        )}
+                        {customer.phone && (
+                          <div className="text-sm text-gray-600 dark:text-gray-400">Phone: {customer.phone}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Customer Email</label>
+                <input
+                  type="text"
+                  value={formData.customer_mail_id}
+                  onChange={(e) => setFormData({ ...formData, customer_mail_id: e.target.value })}
+                  readOnly={!isManualCustomer}
+                  className={`w-full px-4 py-2 border rounded-lg dark:bg-dark-2 dark:border-dark-3 ${
+                    isManualCustomer
+                      ? "focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                      : "bg-gray-50 dark:text-gray-300 cursor-not-allowed"
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Customer Mobile</label>
+                <input
+                  type="text"
+                  value={formData.customer_phone_no}
+                  onChange={(e) => setFormData({ ...formData, customer_phone_no: e.target.value })}
+                  readOnly={!isManualCustomer}
+                  className={`w-full px-4 py-2 border rounded-lg dark:bg-dark-2 dark:border-dark-3 ${
+                    isManualCustomer
+                      ? "focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                      : "bg-gray-50 dark:text-gray-300 cursor-not-allowed"
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sales Engineer</label>
+                <input
+                  type="text"
+                  value={enquiry.salesman?.name || enquiry.sales_person_name || "Not Assigned"}
+                  readOnly
+                  className="w-full px-4 py-2 border rounded-lg bg-gray-50 dark:bg-dark-2 dark:border-dark-3 dark:text-gray-300 cursor-not-allowed"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Enquiry Date</label>
+                <input
+                  type="date"
+                  value={formData.enquiry_date}
+                  onChange={(e) => setFormData({ ...formData, enquiry_date: e.target.value })}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-2 dark:border-dark-3 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kind Attn.</label>
+                <input
+                  type="text"
+                  value={formData.kind_attn}
+                  onChange={(e) => setFormData({ ...formData, kind_attn: e.target.value })}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-2 dark:border-dark-3 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kind Attn. Email</label>
+                <input
+                  type="text"
+                  value={formData.mail_id}
+                  onChange={(e) => setFormData({ ...formData, mail_id: e.target.value })}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-2 dark:border-dark-3 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kind Attn. Mobile</label>
+                <input
+                  type="text"
+                  value={formData.phone_no}
+                  onChange={(e) => setFormData({ ...formData, phone_no: e.target.value })}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-2 dark:border-dark-3 dark:text-white"
+                />
+              </div>
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Remarks</label>
+                <textarea
+                  value={formData.remarks}
+                  onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
+                  rows={2}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-2 dark:border-dark-3 dark:text-white"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-dark-3">
+                <tbody className="divide-y divide-gray-200 dark:divide-dark-3">
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2 w-1/4">
+                      Customer Name
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                      {enquiry.customer_name || enquiry.prospect_company || "N/A"}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
+                      Sales Engineer
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                      {enquiry.salesman?.name || enquiry.sales_person_name || "Not Assigned"}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
+                      Enquiry Date
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                      {formatDateDisplay(enquiry.enquiry_date)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
+                      Kind Attn.
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                      {enquiry.contact_person || enquiry.prospect_name || "N/A"}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
+                      Kind Attn. Email
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                      {enquiry.mail_id || enquiry.prospect_email || "N/A"}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
+                      Kind Attn. Mobile
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                      {enquiry.phone_no || enquiry.prospect_phone || "N/A"}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
+                      Remarks
+                    </td>
+                    <td colSpan={5} className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                      {enquiry.remarks || enquiry.description || "N/A"}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* Items Section */}
@@ -581,23 +933,57 @@ const handleSubmit = async (
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
                       {index + 1}
                     </td>
-                    {/* Item Name - READ ONLY */}
+                    {/* Item Name */}
                     <td className="px-4 py-3">
-                      <div className="px-3 py-1 text-sm text-gray-900 dark:text-white min-h-[38px] flex items-center">
-                        {item.product_name || item.custom_item || item.description || "No item name"}
-                      </div>
+                      {isSalesEngineerUser ? (
+                        <input
+                          type="text"
+                          value={item.product_name || item.custom_item || item.description || ""}
+                          onChange={(e) => {
+                            const nextName = e.target.value;
+                            handleItemChange(index, "product_name", nextName);
+                            if (!item.product_id) {
+                              handleItemChange(index, "custom_item", nextName);
+                            }
+                          }}
+                          className="w-full px-3 py-1 border rounded focus:ring-1 focus:ring-indigo-500 dark:bg-dark-3 dark:border-dark-3 dark:text-white text-sm"
+                        />
+                      ) : (
+                        <div className="px-3 py-1 text-sm text-gray-900 dark:text-white min-h-[38px] flex items-center">
+                          {item.product_name || item.custom_item || item.description || "No item name"}
+                        </div>
+                      )}
                     </td>
-                    {/* Quantity - READ ONLY */}
+                    {/* Quantity */}
                     <td className="px-4 py-3">
-                      <div className="px-3 py-1 text-sm text-gray-900 dark:text-white min-h-[38px] flex items-center">
-                        {item.quantity}
-                      </div>
+                      {isSalesEngineerUser ? (
+                        <input
+                          type="number"
+                          value={item.quantity || 1}
+                          onChange={(e) => handleItemChange(index, "quantity", parseInt(e.target.value, 10) || 1)}
+                          min="1"
+                          className="w-full px-3 py-1 border rounded focus:ring-1 focus:ring-indigo-500 dark:bg-dark-3 dark:border-dark-3 dark:text-white text-sm"
+                        />
+                      ) : (
+                        <div className="px-3 py-1 text-sm text-gray-900 dark:text-white min-h-[38px] flex items-center">
+                          {item.quantity}
+                        </div>
+                      )}
                     </td>
-                    {/* Description - READ ONLY */}
+                    {/* Description */}
                     <td className="px-4 py-3">
-                      <div className="px-3 py-1  text-sm text-gray-900 dark:text-white min-h-[76px] flex items-start">
-                        {item.description || "No description"}
-                      </div>
+                      {isSalesEngineerUser ? (
+                        <textarea
+                          value={item.description || ""}
+                          onChange={(e) => handleItemChange(index, "description", e.target.value)}
+                          rows={3}
+                          className="w-full px-3 py-1 border rounded focus:ring-1 focus:ring-indigo-500 dark:bg-dark-3 dark:border-dark-3 dark:text-white text-sm"
+                        />
+                      ) : (
+                        <div className="px-3 py-1  text-sm text-gray-900 dark:text-white min-h-[76px] flex items-start">
+                          {item.description || "No description"}
+                        </div>
+                      )}
                     </td>
                     {/* Suitable Item - EDITABLE */}
                     <td className="px-4 py-3">
@@ -719,6 +1105,9 @@ const handleSubmit = async (
                 className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-3 dark:border-dark-3 dark:text-white"
                 required
               >
+                <option value="" disabled>
+                  Select status
+                </option>
                 <option value="ready_for_quotation">Ready for Quotation</option>
                 <option value="ready_for_purchase">Ready for Purchase</option>
                 <option value="ignored">Ignore Enquiry</option>
