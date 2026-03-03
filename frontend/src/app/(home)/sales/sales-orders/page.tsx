@@ -997,6 +997,11 @@ export default function SalesOrdersPage() {
     setConvertingOrderId(null);
   };
 
+  const handleConvertToProforma = (orderId: string) => {
+    if (!confirm("Create a Proforma Invoice from this sales order?")) return;
+    router.push(`/sales/proforma-invoices/new?fromSalesOrder=${orderId}`);
+  };
+
   const handlePrintOrder = (orderId: string) => {
     window.open(`/sales/sales-orders/${orderId}?print=1`, "_blank");
   };
@@ -1788,6 +1793,17 @@ export default function SalesOrdersPage() {
                                     </button>
                                   </>
                                 )}
+
+                                <button
+                                  onClick={() => {
+                                    setActiveActionMenu(null);
+                                    handleConvertToProforma(order.id);
+                                  }}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors"
+                                >
+                                  <FileText className="w-4 h-4" />
+                                  <span>Convert to Proforma</span>
+                                </button>
 
                                 <button
                                   onClick={() => handlePrintOrder(order.id)}

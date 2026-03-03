@@ -801,6 +801,25 @@ export default function NewQuotationPage() {
         if (customer) {
           setSelectedCustomer(customer);
           await fetchContactPersons(customer.id);
+
+          const enquiryContactId = enquiry.contact_id;
+          const enquiryContactName = contactName;
+          if (enquiryContactId || enquiryContactName) {
+            setContactPersons((prev: any[]) => {
+              const match = prev.find(
+                (p: any) =>
+                  (enquiryContactId && p.id === enquiryContactId) ||
+                  (enquiryContactName && p.name === enquiryContactName)
+              );
+              if (match) {
+                setSelectedContactPerson(match);
+                setFormData((fd: any) => ({ ...fd, contact_person: match.name || contactName }));
+              } else {
+                setFormData((fd: any) => ({ ...fd, contact_person: contactName }));
+              }
+              return prev;
+            });
+          }
         }
       } else {
         showToast("Enquiry has no linked customer. Select a customer before saving.", "warning");

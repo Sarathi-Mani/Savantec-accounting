@@ -1535,6 +1535,41 @@ export default function PurchaseListPage() {
                   );
                 })
               )}
+              {!loading && paginatedPurchases.length > 0 && (
+                <tr className="bg-gray-100 dark:bg-gray-700/80 font-semibold text-gray-900 dark:text-white border-t-2 border-gray-300 dark:border-gray-600">
+                  <td className="px-3 py-3"></td>
+                  {visibleColumns.purchaseDate && <td className="px-3 py-3"></td>}
+                  {visibleColumns.dueDate && <td className="px-3 py-3"></td>}
+                  {visibleColumns.purchaseCode && <td className="px-3 py-3"></td>}
+                  {visibleColumns.purchaseStatus && <td className="px-3 py-3"></td>}
+                  {visibleColumns.referenceNo && <td className="px-3 py-3"></td>}
+                  {visibleColumns.supplierName && (
+                    <td className="px-3 py-3 text-right font-bold">
+                      Total ({filteredPurchases.length} invoices)
+                    </td>
+                  )}
+                  {visibleColumns.total && (
+                    <td className="px-3 py-3">
+                      <div className="font-bold text-blue-700 dark:text-blue-400">
+                        Rs. {filteredPurchases.reduce((sum, p) => sum + p.total, 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </td>
+                  )}
+                  {visibleColumns.currencyCode && <td className="px-3 py-3">INR</td>}
+                  {visibleColumns.paidAmount && (
+                    <td className="px-3 py-3">
+                      <div className="font-bold text-green-700 dark:text-green-400">
+                        Rs. {filteredPurchases.reduce((sum, p) => sum + p.paidAmount, 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <div className="text-xs font-medium text-red-600 mt-1">
+                        Due: Rs. {filteredPurchases.reduce((sum, p) => sum + (p.total - p.paidAmount), 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </td>
+                  )}
+                  {visibleColumns.paymentStatus && <td className="px-3 py-3"></td>}
+                  {visibleColumns.actions && <td className="px-3 py-3"></td>}
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

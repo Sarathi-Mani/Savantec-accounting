@@ -94,15 +94,31 @@ export default function CreatePurchaseRequestPage() {
     notes: "",
   });
 
-  // Fetch initial customers on component mount
+  const [customerLoadError, setCustomerLoadError] = useState<string | null>(null);
+  const [productLoadError, setProductLoadError] = useState<string | null>(null);
+
+  // Fetch initial customers and products on component mount
   useEffect(() => {
     if (company?.id) {
-      customersApi.list(company.id, { page: 1, page_size: 10 })
+      customersApi.list(company.id, { page: 1, page_size: 100 })
         .then(response => {
           setCustomers(response.customers || []);
+          setCustomerLoadError(null);
         })
-        .catch(error => {
-          console.error("Error fetching initial customers:", error);
+        .catch(err => {
+          console.error("Error fetching initial customers:", err);
+          setCustomerLoadError("Failed to load customers. Type to search.");
+        });
+
+      productsApi.list(company.id, { page_size: 100, search: "" })
+        .then(response => {
+          const items = response.products || [];
+          setProducts(items);
+          setProductLoadError(null);
+        })
+        .catch(err => {
+          console.error("Error fetching initial products:", err);
+          setProductLoadError("Failed to load products. Type to search.");
         });
     }
   }, [company?.id]);
@@ -169,18 +185,32 @@ export default function CreatePurchaseRequestPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showCustomerDropdown, customers, selectedCustomerIndex, showProductDropdown, products, selectedProductIndex]);
 
-  // Create debounced fetch functions
+  // Create debounced fetch functions with fallback to list API
   const debouncedFetchCustomers = useCallback(
     debounce(async (searchValue: string) => {
       if (!company?.id) return;
       
       setFetchingCustomers(true);
+      setCustomerLoadError(null);
       try {
         const customersData = await customersApi.search(company.id, searchValue, 20);
         setCustomers(customersData || []);
-      } catch (error) {
-        console.error("Error fetching customers:", error);
-        setCustomers([]);
+      } catch (searchError) {
+        console.error("Customer search failed, falling back to list:", searchError);
+        try {
+          const response = await customersApi.list(company.id, { page: 1, page_size: 100 });
+          const allCustomers: Customer[] = response.customers || [];
+          const filtered = allCustomers.filter(c =>
+            c.name?.toLowerCase().includes(searchValue.toLowerCase()) ||
+            c.email?.toLowerCase().includes(searchValue.toLowerCase()) ||
+            c.contact?.includes(searchValue)
+          );
+          setCustomers(filtered);
+        } catch (listError) {
+          console.error("Customer list fallback also failed:", listError);
+          setCustomerLoadError("Unable to search customers. Please try again.");
+          setCustomers([]);
+        }
       } finally {
         setFetchingCustomers(false);
       }
@@ -191,18 +221,32 @@ export default function CreatePurchaseRequestPage() {
   const debouncedFetchProducts = useCallback(
     debounce(async (searchValue: string, itemIndex: number) => {
       if (!company?.id || !searchValue.trim()) {
-        setProducts([]);
         return;
       }
       
       setFetchingProducts(true);
+      setProductLoadError(null);
       try {
         const productsData = await productsApi.search(company.id, searchValue, 20);
         setProducts(productsData || []);
-        setSelectedProductIndex(0); // Select first item by default
-      } catch (error) {
-        console.error("Error fetching products:", error);
-        setProducts([]);
+        setSelectedProductIndex(0);
+      } catch (searchError) {
+        console.error("Product search failed, falling back to list:", searchError);
+        try {
+          const response = await productsApi.list(company.id, { page_size: 100, search: "" });
+          const allProducts: Product[] = response.products || [];
+          const filtered = allProducts.filter(p =>
+            p.name?.toLowerCase().includes(searchValue.toLowerCase()) ||
+            p.sku?.toLowerCase().includes(searchValue.toLowerCase()) ||
+            p.description?.toLowerCase().includes(searchValue.toLowerCase())
+          );
+          setProducts(filtered);
+          setSelectedProductIndex(0);
+        } catch (listError) {
+          console.error("Product list fallback also failed:", listError);
+          setProductLoadError("Unable to search products. Please try again.");
+          setProducts([]);
+        }
       } finally {
         setFetchingProducts(false);
       }
@@ -213,6 +257,7 @@ export default function CreatePurchaseRequestPage() {
   const handleCustomerSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
+    setCustomerLoadError(null);
     setFormData(prev => ({ 
       ...prev, 
       customer_name: value,
@@ -222,10 +267,14 @@ export default function CreatePurchaseRequestPage() {
     if (value.trim()) {
       setShowCustomerDropdown(true);
       debouncedFetchCustomers(value);
-      setSelectedCustomerIndex(0); // Select first item by default
+      setSelectedCustomerIndex(0);
     } else {
-      setShowCustomerDropdown(false);
-      setCustomers([]);
+      setShowCustomerDropdown(true);
+      if (!customers.length && company?.id) {
+        customersApi.list(company.id, { page: 1, page_size: 100 })
+          .then(response => setCustomers(response.customers || []))
+          .catch(() => {});
+      }
     }
   };
 
@@ -246,17 +295,35 @@ export default function CreatePurchaseRequestPage() {
     updatedItems[index] = {
       ...updatedItems[index],
       item: value,
-      product_id: "" // Clear product_id when typing
+      product_id: ""
     };
     setFormData(prev => ({ ...prev, items: updatedItems }));
+    setProductLoadError(null);
     
     if (value.trim()) {
       setProductSearchTerm(value);
       setShowProductDropdown(index);
+      // If we already have products loaded, filter locally first for instant results
+      if (products.length > 0) {
+        const filtered = products.filter(p =>
+          p.name?.toLowerCase().includes(value.toLowerCase()) ||
+          p.sku?.toLowerCase().includes(value.toLowerCase())
+        );
+        if (filtered.length > 0) {
+          setProducts(filtered);
+          setSelectedProductIndex(0);
+        }
+      }
       debouncedFetchProducts(value, index);
     } else {
-      setShowProductDropdown(null);
-      setProducts([]);
+      setShowProductDropdown(index);
+      if (!products.length && company?.id) {
+        productsApi.list(company.id, { page_size: 100, search: "" })
+          .then(response => {
+            setProducts(response.products || []);
+          })
+          .catch(() => {});
+      }
     }
   };
 
@@ -498,8 +565,11 @@ export default function CreatePurchaseRequestPage() {
                 value={searchTerm}
                 onChange={handleCustomerSearchChange}
                 onFocus={() => {
-                  if (searchTerm.trim()) {
-                    setShowCustomerDropdown(true);
+                  setShowCustomerDropdown(true);
+                  if (!customers.length && company?.id) {
+                    customersApi.list(company.id, { page: 1, page_size: 100 })
+                      .then(response => setCustomers(response.customers || []))
+                      .catch(() => {});
                   }
                 }}
                 onBlur={() => {
@@ -536,9 +606,13 @@ export default function CreatePurchaseRequestPage() {
               
               {showCustomerDropdown && (
                 <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-stroke bg-white shadow-lg dark:border-dark-3 dark:bg-gray-dark">
-                  {customers.length === 0 ? (
+                  {customerLoadError ? (
+                    <div className="px-4 py-3 text-red-500 dark:text-red-400">
+                      {customerLoadError}
+                    </div>
+                  ) : customers.length === 0 ? (
                     <div className="px-4 py-3 text-dark-6 dark:text-dark-6">
-                      {searchTerm ? "No customers found" : "Start typing to search customers"}
+                      {fetchingCustomers ? "Searching..." : searchTerm ? "No customers found" : "Start typing to search customers"}
                     </div>
                   ) : (
                     customers.map((customer, index) => (
@@ -645,8 +719,13 @@ export default function CreatePurchaseRequestPage() {
                           value={item.item}
                           onChange={(e) => handleItemSearchChange(index, e.target.value)}
                           onFocus={() => {
-                            if (item.item.trim()) {
-                              setShowProductDropdown(index);
+                            setShowProductDropdown(index);
+                            if (!products.length && company?.id) {
+                              productsApi.list(company.id, { page_size: 100, search: "" })
+                                .then(response => {
+                                  setProducts(response.products || []);
+                                })
+                                .catch(() => {});
                             }
                           }}
                           onBlur={() => {
@@ -686,7 +765,14 @@ export default function CreatePurchaseRequestPage() {
                           </div>
                         )}
                         
-                        {showProductDropdown === index && products.length > 0 && (
+                        {showProductDropdown === index && productLoadError && (
+                          <div className="absolute z-20 mt-1 w-full rounded-lg border border-stroke bg-white shadow-lg dark:border-dark-3 dark:bg-gray-dark">
+                            <div className="px-4 py-3 text-red-500 dark:text-red-400">
+                              {productLoadError}
+                            </div>
+                          </div>
+                        )}
+                        {showProductDropdown === index && !productLoadError && products.length > 0 && (
                           <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-stroke bg-white shadow-lg dark:border-dark-3 dark:bg-gray-dark">
                             {products.map((product, productIndex) => (
                               <div

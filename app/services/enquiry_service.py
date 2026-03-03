@@ -218,7 +218,7 @@ class EnquiryService:
             )
             query = query.filter(search_filter)
         
-        return query.order_by(Enquiry.enquiry_date.desc()).offset(skip).limit(limit).all()
+        return query.order_by(Enquiry.enquiry_date.desc(), Enquiry.created_at.desc()).offset(skip).limit(limit).all()
     
     def count_enquiries(
         self,
@@ -300,15 +300,9 @@ class EnquiryService:
         old_status = enquiry.status
         enquiry.status = status
         
-        if status == EnquiryStatus.LOST:
+        if status == EnquiryStatus.IGNORED:
             enquiry.lost_reason = lost_reason
             enquiry.lost_to_competitor = lost_to_competitor
-            # Also update ticket status
-            if enquiry.sales_ticket:
-                enquiry.sales_ticket.status = SalesTicketStatus.LOST
-                enquiry.sales_ticket.loss_reason = lost_reason
-                enquiry.sales_ticket.competitor_name = lost_to_competitor
-                enquiry.sales_ticket.actual_close_date = datetime.utcnow()
         
         enquiry.updated_at = datetime.utcnow()
         
@@ -360,7 +354,7 @@ class EnquiryService:
         
         if quotation:
             # Update enquiry
-            enquiry.status = EnquiryStatus.PROPOSAL_SENT
+            enquiry.status = EnquiryStatus.CONVERTED_TO_QUOT
             enquiry.converted_quotation_id = quotation.id
             enquiry.converted_at = datetime.utcnow()
             
@@ -472,7 +466,7 @@ class EnquiryService:
         enquiry.last_contact_date = datetime.utcnow()
         
         if enquiry.status == EnquiryStatus.NEW:
-            enquiry.status = EnquiryStatus.CONTACTED
+            enquiry.status = EnquiryStatus.PENDING
         
         # Log the contact
         log = SalesTicketLog(
@@ -506,7 +500,7 @@ class EnquiryService:
                 Enquiry.company_id == company_id,
                 Enquiry.follow_up_date <= end_date,
                 Enquiry.follow_up_date >= today,
-                Enquiry.status.not_in([EnquiryStatus.WON, EnquiryStatus.LOST])
+                Enquiry.status.not_in([EnquiryStatus.COMPLETED, EnquiryStatus.IGNORED])
             )
         )
         

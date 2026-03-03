@@ -643,8 +643,9 @@ const fetchNextDcNumber = async () => {
     if (invoiceId) {
       body.invoice_id = invoiceId;
     }
-
-    console.log("Sending data to API:", body); // Debug log
+    if (fromQuotation) {
+      body.quotation_id = fromQuotation;
+    }
 
     const response = await fetch(
       `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/delivery-challans/${endpoint}`,

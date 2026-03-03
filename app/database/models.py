@@ -5212,6 +5212,11 @@ class Enquiry(Base):
     lost_reason = Column(Text)
     lost_to_competitor = Column(String(255))
     
+    # Edit-page fields
+    pending_remarks = Column(Text)
+    quotation_no = Column(String(50))
+    quotation_date = Column(DateTime)
+
     notes = Column(Text)
     
     created_at = Column(DateTime, default=datetime.utcnow)

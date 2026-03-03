@@ -142,14 +142,12 @@ class DeliveryChallanService:
             dc_date=dc_date or datetime.utcnow(),
             dc_type=DeliveryChallanType.DC_OUT,
             status=dc_status,
-             reference_no=reference_no,
-            custom_status=custom_status,  # Your frontend status
-            # New fields
+            reference_no=reference_no,
+            custom_status=custom_status,
             bill_title=bill_title,
             bill_description=bill_description,
             expiry_date=expiry_date,
             salesman_id=salesman_id,
-            # Relationship fields
             sales_ticket_id=sales_ticket_id,
             contact_id=contact_id,
             invoice_id=invoice_id,
@@ -160,6 +158,13 @@ class DeliveryChallanService:
             vehicle_number=vehicle_number,
             eway_bill_number=eway_bill_number,
             notes=notes,
+            subtotal=subtotal,
+            freight_charges=freight_charges,
+            packing_forwarding_charges=packing_forwarding_charges,
+            discount_on_all=discount_on_all,
+            discount_type=discount_type,
+            round_off=round_off,
+            grand_total=grand_total,
         )
         
         # Set delivery address

@@ -185,9 +185,11 @@ class PDFService:
         )
         customer_address = ", ".join([x for x in [
             (customer.billing_address_line1 if customer else None),
+            (customer.billing_address_line2 if customer else None),
             (customer.billing_city if customer else None),
             (customer.billing_state if customer else None),
             (customer.billing_zip if customer else None),
+            (customer.billing_country if customer and customer.billing_country and customer.billing_country != "India" else None),
         ] if x])
         customer_gstin = (
             (customer.gstin if customer else None)
@@ -630,11 +632,17 @@ class PDFService:
             addr_parts = []
             if customer.billing_address_line1:
                 addr_parts.append(customer.billing_address_line1)
+            if customer.billing_address_line2:
+                addr_parts.append(customer.billing_address_line2)
             if customer.billing_city:
                 addr_parts.append(customer.billing_city)
             if customer.billing_state:
                 addr_parts.append(customer.billing_state)
                 customer_state = customer.billing_state
+            if customer.billing_zip:
+                addr_parts.append(customer.billing_zip)
+            if customer.billing_country and customer.billing_country != "India":
+                addr_parts.append(customer.billing_country)
             customer_address = ", ".join(addr_parts)
 
         customer_details = [

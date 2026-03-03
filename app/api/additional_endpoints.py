@@ -1961,7 +1961,13 @@ async def get_next_purchase_return_number(
 @router.get("/companies/{company_id}/purchase-returns")
 async def list_purchase_returns(
     company_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+    search: Optional[str] = None,
     status: Optional[str] = None,
+    vendor_id: Optional[str] = None,
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -1971,8 +1977,26 @@ async def list_purchase_returns(
     query = db.query(PurchaseReturn).filter(PurchaseReturn.company_id == company_id)
     if status:
         query = query.filter(PurchaseReturn.status == status)
+    if vendor_id:
+        query = query.filter(PurchaseReturn.vendor_id == vendor_id)
+    if from_date:
+        query = query.filter(PurchaseReturn.return_date >= datetime.combine(from_date, datetime.min.time()))
+    if to_date:
+        query = query.filter(PurchaseReturn.return_date <= datetime.combine(to_date, datetime.max.time()))
+    if search:
+        search_term = f"%{search}%"
+        from sqlalchemy import or_
+        query = query.filter(
+            or_(
+                PurchaseReturn.return_number.ilike(search_term),
+                PurchaseReturn.reason.ilike(search_term),
+                PurchaseReturn.reference_no.ilike(search_term),
+            )
+        )
 
-    returns = query.order_by(PurchaseReturn.return_date.desc()).limit(200).all()
+    total = query.count()
+    offset = (page - 1) * page_size
+    returns = query.order_by(PurchaseReturn.return_date.desc()).offset(offset).limit(page_size).all()
 
     result = []
     for ret in returns:
@@ -2009,7 +2033,18 @@ async def list_purchase_returns(
             "created_by_name": creator_name,
         })
 
-    return result
+    total_amount_sum = sum(float(r.total_amount or 0) for r in returns)
+    total_paid_sum = sum(float(r.amount_paid or 0) for r in returns)
+
+    return {
+        "returns": result,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_amount": total_amount_sum,
+        "total_paid": total_paid_sum,
+        "total_pending": total_amount_sum - total_paid_sum,
+    }
 
 
 @router.get("/companies/{company_id}/purchase-returns/{return_id}")

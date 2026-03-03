@@ -193,6 +193,7 @@ export default function AddSalesOrderPage() {
         customer_id: "",
         sales_order_date: new Date().toISOString().split('T')[0],
         expire_date: "",
+        status: "draft",
     
         // Reference details
         reference_no: "",
@@ -787,6 +788,7 @@ export default function AddSalesOrderPage() {
                 customer_id: formData.customer_id,
                 sales_order_date: formData.sales_order_date + "T00:00:00Z",
                 expire_date: formData.expire_date ? formData.expire_date + "T00:00:00Z" : null,
+                status: formData.status || "draft",
            
                 reference_no: formData.reference_no || null,
                 reference_date: formData.reference_date ? formData.reference_date + "T00:00:00Z" : null,
@@ -862,7 +864,7 @@ export default function AddSalesOrderPage() {
                 if (field === 'product_id' && value) {
                     const selectedProduct = products.find(p => p.id === value);
                     if (selectedProduct) {
-                        updated.description = selectedProduct.name;
+                        updated.description = selectedProduct.description || selectedProduct.name;
                         const unitPrice = Number(selectedProduct.selling_price || selectedProduct.unit_price || 0);
                         updated.unit_price = unitPrice;  // Set unit_price
                         updated.rate = unitPrice;        // Keep rate for compatibility
@@ -1261,6 +1263,22 @@ export default function AddSalesOrderPage() {
                                         className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                     />
                                 </div>
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                        Status
+                                    </label>
+                                    <select
+                                        value={formData.status}
+                                        onChange={(e) => handleFormChange('status', e.target.value)}
+                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                    >
+                                        <option value="draft">Draft</option>
+                                        <option value="confirmed">Confirmed</option>
+                                        <option value="processing">In Progress</option>
+                                        <option value="completed">Completed</option>
+                                        <option value="cancelled">Cancelled</option>
+                                    </select>
+                                </div>
                               
                                 {/* Salesman Dropdown */}
                                 <div>
@@ -1441,7 +1459,7 @@ export default function AddSalesOrderPage() {
                                                                     return {
                                                                         ...i,
                                                                         product_id: product.id,
-                                                                        description: product.name,
+                                                                        description: product.description || product.name,
                                                                         unit_price: unitPrice,
                                                                         gst_rate: gstRate,
                                                                         discount_amount: 0,

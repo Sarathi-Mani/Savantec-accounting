@@ -45,6 +45,10 @@ interface QuotationData {
   updated_at: string;
   items: QuotationItem[];
   excel_notes_file_url?: string;
+  freight_charges?: number;
+  freight_type?: string;
+  p_and_f_charges?: number;
+  pf_type?: string;
 }
 
 const Toast = ({ message, type = "success", onClose }: { 
@@ -313,10 +317,10 @@ export default function ViewQuotationPage() {
 
         // Resolve model names from products by product_id
         try {
-          const productIds = Array.from(new Set((data?.items || []).map((it: any) => it?.product_id).filter(Boolean)));
+          const productIds: string[] = Array.from(new Set((data?.items || []).map((it: any) => it?.product_id).filter(Boolean)));
           const modelMap: Record<string, string> = {};
           await Promise.all(
-            productIds.map(async (pid: string) => {
+            productIds.map(async (pid) => {
               try {
                 const product = await productsApi.get(company.id, pid);
                 modelMap[pid] = product?.sku || product?.name || "";
@@ -430,7 +434,9 @@ export default function ViewQuotationPage() {
     });
 
     const totalTax = totalCgst + totalSgst + totalIgst;
-    const totalBeforeRoundOff = totalTaxable + totalTax;
+    const freightCharges = Number(quotation.freight_charges || 0);
+    const pAndFCharges = Number(quotation.p_and_f_charges || 0);
+    const totalBeforeRoundOff = totalTaxable + totalTax + freightCharges + pAndFCharges;
     const roundOff = Math.round(totalBeforeRoundOff) - totalBeforeRoundOff;
     const grandTotal = totalBeforeRoundOff + roundOff;
 
@@ -444,6 +450,8 @@ export default function ViewQuotationPage() {
       totalSgst,
       totalIgst,
       totalTax,
+      freightCharges,
+      pAndFCharges,
       roundOff,
       grandTotal
     };
@@ -701,9 +709,22 @@ export default function ViewQuotationPage() {
       doc.text(remarksText.slice(0, 2), left + 1.2, bottomY + 8.2);
 
       const sumX = left + leftW;
-      const sumRowH = remarksH / 3;
-      doc.line(sumX, bottomY + sumRowH, right, bottomY + sumRowH);
-      doc.line(sumX, bottomY + sumRowH * 2, right, bottomY + sumRowH * 2);
+      const sumRows: { label: string; value: string }[] = [
+        { label: "Subtotal", value: money(totals?.subtotal || 0) },
+        { label: "Tax Amount", value: money(totals?.totalTax || 0) },
+      ];
+      if ((totals?.freightCharges || 0) > 0) {
+        sumRows.push({ label: "Freight Charges", value: money(totals?.freightCharges || 0) });
+      }
+      if ((totals?.pAndFCharges || 0) > 0) {
+        sumRows.push({ label: "P & F Charges", value: money(totals?.pAndFCharges || 0) });
+      }
+      sumRows.push({ label: "Grand Total", value: money(totals?.grandTotal || 0) });
+
+      const sumRowH = remarksH / sumRows.length;
+      for (let i = 1; i < sumRows.length; i++) {
+        doc.line(sumX, bottomY + sumRowH * i, right, bottomY + sumRowH * i);
+      }
       doc.line(sumX + 22, bottomY, sumX + 22, bottomY + remarksH);
       const putSum = (label: string, value: string, y: number, bold = false) => {
         doc.setFont("helvetica", bold ? "bold" : "normal");
@@ -711,9 +732,9 @@ export default function ViewQuotationPage() {
         doc.text(label, sumX + 20.8, y, { align: "right" });
         doc.text(value, right - 1.5, y, { align: "right" });
       };
-      putSum("Subtotal", money(totals?.subtotal || 0), bottomY + 3.8, true);
-      putSum("Tax Amount", money(totals?.totalTax || 0), bottomY + 3.8 + sumRowH, true);
-      putSum("Grand Total", money(totals?.grandTotal || 0), bottomY + 3.8 + sumRowH * 2, true);
+      sumRows.forEach((row, i) => {
+        putSum(row.label, row.value, bottomY + 3.8 + sumRowH * i, true);
+      });
 
       // Row 2: Terms + signature
       const termsY = bottomY + remarksH;
@@ -1106,6 +1127,18 @@ export default function ViewQuotationPage() {
                   <span className="font-semibold text-gray-900 dark:text-white">Total Tax</span>
                   <span className="font-semibold text-gray-900 dark:text-white">{formatCurrency(totals?.totalTax || 0)}</span>
                 </div>
+                {(totals?.freightCharges || 0) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Freight Charges</span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">{formatCurrency(totals?.freightCharges || 0)}</span>
+                  </div>
+                )}
+                {(totals?.pAndFCharges || 0) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">P & F Charges</span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">{formatCurrency(totals?.pAndFCharges || 0)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600 dark:text-gray-400">Round Off</span>
                   <span className={`text-sm font-medium ${(totals?.roundOff || 0) > 0 ? 'text-green-600' : (totals?.roundOff || 0) < 0 ? 'text-red-600' : 'text-gray-900'} dark:text-white`}>

@@ -929,6 +929,11 @@ export default function QuotationsPage() {
     router.push(`/sales/sales-orders/new?fromQuotation=${quotationId}`);
   };
 
+  const handleConvertToProforma = (quotationId: string) => {
+    if (!confirm("Create a Proforma Invoice from this quotation?")) return;
+    router.push(`/sales/proforma-invoices/new?fromQuotation=${quotationId}`);
+  };
+
   const handlePrintQuotation = (quotationId: string) => {
     window.open(`/quotations/${quotationId}/print`, "_blank");
   };
@@ -1454,7 +1459,7 @@ export default function QuotationsPage() {
                                   </Link>
                                 )}
 
-                                {quotation.status !== "converted" && !quotation.converted_invoice_id && (
+                                {!quotation.converted_invoice_id && (
                                   <button
                                     onClick={() => {
                                       handleConvertToInvoice(quotation.id);
@@ -1472,18 +1477,27 @@ export default function QuotationsPage() {
                                   </button>
                                 )}
 
-                                {quotation.status !== "converted" && (
-                                  <button
-                                    onClick={() => {
-                                      handleConvertToSalesOrder(quotation.id);
-                                      setActiveActionMenu(null);
-                                    }}
-                                    className="flex w-full items-center gap-3 px-3 py-2 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
-                                  >
-                                    <FileText className="w-4 h-4" />
-                                    <span>Convert to Sales Order</span>
-                                  </button>
-                                )}
+                                <button
+                                  onClick={() => {
+                                    handleConvertToSalesOrder(quotation.id);
+                                    setActiveActionMenu(null);
+                                  }}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+                                >
+                                  <FileText className="w-4 h-4" />
+                                  <span>Convert to Sales Order</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    handleConvertToProforma(quotation.id);
+                                    setActiveActionMenu(null);
+                                  }}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors"
+                                >
+                                  <FileText className="w-4 h-4" />
+                                  <span>Convert to Proforma Invoice</span>
+                                </button>
 
                                 <button
                                   onClick={() => {

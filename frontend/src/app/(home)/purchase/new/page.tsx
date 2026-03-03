@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -236,7 +236,7 @@ function CurrencySelect({
                                     <div className="text-xs text-dark-6">
                                         {currency.name} 
                                         {currency.code !== "INR" && (
-                                            <div>1 {currency.code} = â‚¹{currency.exchangeRate}</div>
+                                            <div>1 {currency.code} = ₹{currency.exchangeRate}</div>
                                         )}
                                     </div>
                                 </div>
@@ -265,7 +265,7 @@ function CurrencySelect({
             {/* Show conversion tooltip when item has price */}
             {itemPrice && selectedCurrency.code !== "INR" && inrValue && (
                 <div className="absolute -top-8 left-0 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                    â‚¹{inrValue.toFixed(2)} INR
+                    ₹{inrValue.toFixed(2)} INR
                 </div>
             )}
         </div>
@@ -314,10 +314,10 @@ export default function AddPurchasePage() {
     
     // State for currencies
  const [currencies, setCurrencies] = useState([
-    { code: "INR", name: "Indian Rupee", symbol: "â‚¹", exchangeRate: 1 },
+    { code: "INR", name: "Indian Rupee", symbol: "₹", exchangeRate: 1 },
     { code: "USD", name: "US Dollar", symbol: "$", exchangeRate: 83.5 },
-    { code: "EUR", name: "Euro", symbol: "â‚¬", exchangeRate: 90.2 },
-    { code: "GBP", name: "British Pound", symbol: "Â£", exchangeRate: 106.3 },
+    { code: "EUR", name: "Euro", symbol: "€", exchangeRate: 90.2 },
+    { code: "GBP", name: "British Pound", symbol: "£", exchangeRate: 106.3 },
     { code: "JPY", name: "Japanese Yen", symbol: "Â¥", exchangeRate: 0.56 },
     { code: "CAD", name: "Canadian Dollar", symbol: "CA$", exchangeRate: 61.8 },
     { code: "AUD", name: "Australian Dollar", symbol: "A$", exchangeRate: 54.9 },
@@ -356,6 +356,56 @@ export default function AddPurchasePage() {
     const hasPrefilledFromOrder = useRef(false);
     const [isPrefilledFromPurchaseOrder, setIsPrefilledFromPurchaseOrder] = useState(false);
 
+    const normalizeStateCode = (value: any) => {
+        const text = String(value ?? "").trim();
+        const match = text.match(/\d{2}/);
+        return match ? match[0] : text;
+    };
+
+    const isIntraStateSupply = (placeOfSupply: any) =>
+        normalizeStateCode(placeOfSupply) === normalizeStateCode(company?.state_code);
+
+    const INDIAN_STATES = [
+        { code: "01", name: "Jammu & Kashmir" },
+        { code: "02", name: "Himachal Pradesh" },
+        { code: "03", name: "Punjab" },
+        { code: "04", name: "Chandigarh" },
+        { code: "05", name: "Uttarakhand" },
+        { code: "06", name: "Haryana" },
+        { code: "07", name: "Delhi" },
+        { code: "08", name: "Rajasthan" },
+        { code: "09", name: "Uttar Pradesh" },
+        { code: "10", name: "Bihar" },
+        { code: "11", name: "Sikkim" },
+        { code: "12", name: "Arunachal Pradesh" },
+        { code: "13", name: "Nagaland" },
+        { code: "14", name: "Manipur" },
+        { code: "15", name: "Mizoram" },
+        { code: "16", name: "Tripura" },
+        { code: "17", name: "Meghalaya" },
+        { code: "18", name: "Assam" },
+        { code: "19", name: "West Bengal" },
+        { code: "20", name: "Jharkhand" },
+        { code: "21", name: "Odisha" },
+        { code: "22", name: "Chhattisgarh" },
+        { code: "23", name: "Madhya Pradesh" },
+        { code: "24", name: "Gujarat" },
+        { code: "25", name: "Daman & Diu" },
+        { code: "26", name: "Dadra & Nagar Haveli" },
+        { code: "27", name: "Maharashtra" },
+        { code: "28", name: "Andhra Pradesh (Old)" },
+        { code: "29", name: "Karnataka" },
+        { code: "30", name: "Goa" },
+        { code: "31", name: "Lakshadweep" },
+        { code: "32", name: "Kerala" },
+        { code: "33", name: "Tamil Nadu" },
+        { code: "34", name: "Puducherry" },
+        { code: "35", name: "Andaman & Nicobar Islands" },
+        { code: "36", name: "Telangana" },
+        { code: "37", name: "Andhra Pradesh" },
+        { code: "38", name: "Ladakh" }
+    ];
+
     // Form state
     const [formData, setFormData] = useState({
         supplier_id: "",
@@ -366,6 +416,7 @@ export default function AddPurchasePage() {
         vendor_invoice_date: "",
         payment_type: "",
         exchange_rate: 1,
+        place_of_supply: "",
         notes: "",
         terms: `1. Goods must be delivered in perfect condition.
 2. All items must be properly packed.
@@ -733,7 +784,7 @@ const calculateTotals = () => {
         
         // Log conversion for debugging
         if (item.currency !== "INR") {
-            console.log(`Item ${item.description}: ${item.currency} ${item.purchase_price} = â‚¹${priceInINR.toFixed(2)}`);
+            console.log(`Item ${item.description}: ${item.currency} ${item.purchase_price} = ₹${priceInINR.toFixed(2)}`);
         }
     });
 
@@ -955,6 +1006,8 @@ const calculateTotals = () => {
                 due_date: formData.due_date || undefined,
                 payment_type: formData.payment_type || "",
                 exchange_rate: Number(formData.exchange_rate || 1),
+                place_of_supply: formData.place_of_supply || company?.state_code || "",
+                place_of_supply_name: INDIAN_STATES.find(s => s.code === formData.place_of_supply)?.name || "",
                 notes: formData.notes || "",
                 terms: formData.terms || "",
                 purchase_type: purchaseType,
@@ -1204,15 +1257,17 @@ const calculateTotals = () => {
                     currency: productCurrency
                 });
                 
+                const intra = isIntraStateSupply(formData.place_of_supply);
                 return {
                     ...item,
                     product_id: product.id,
-                    description: product.name || product.description || "",
+                    description: product.description || product.name || "",
                     hsn_code: hsnCode,
                     purchase_price: purchasePrice,
                     gst_rate: gstRate,
-                    cgst_rate: gstRate / 2,
-                    sgst_rate: gstRate / 2,
+                    cgst_rate: intra ? gstRate / 2 : 0,
+                    sgst_rate: intra ? gstRate / 2 : 0,
+                    igst_rate: intra ? 0 : gstRate,
                     discount_amount: discount,
                     tax_amount: tax,
                     unit_cost: purchasePrice,
@@ -1243,9 +1298,15 @@ const updateItem = (id: number, field: string, value: any) => {
                 updated.unit_cost = updated.purchase_price;
                 updated.total_amount = taxable + tax;
 
-                // Update CGST/SGST rates based on GST rate
-                updated.cgst_rate = updated.gst_rate / 2;
-                updated.sgst_rate = updated.gst_rate / 2;
+                if (isIntraStateSupply(formData.place_of_supply)) {
+                    updated.cgst_rate = updated.gst_rate / 2;
+                    updated.sgst_rate = updated.gst_rate / 2;
+                    updated.igst_rate = 0;
+                } else {
+                    updated.cgst_rate = 0;
+                    updated.sgst_rate = 0;
+                    updated.igst_rate = updated.gst_rate;
+                }
 
                 // REMOVED: Don't set currency to INR here
                 // if (!updated.currency) {
@@ -1302,6 +1363,22 @@ useEffect(() => {
             ...prev,
             [field]: value,
         }));
+
+        if (field === 'place_of_supply') {
+            setItems(prevItems => prevItems.map(item => {
+                const updated = { ...item };
+                if (isIntraStateSupply(value)) {
+                    updated.cgst_rate = updated.gst_rate / 2;
+                    updated.sgst_rate = updated.gst_rate / 2;
+                    updated.igst_rate = 0;
+                } else {
+                    updated.cgst_rate = 0;
+                    updated.sgst_rate = 0;
+                    updated.igst_rate = updated.gst_rate;
+                }
+                return updated;
+            }));
+        }
     };
 
     const handleProductSearch = (value: string) => {
@@ -1405,18 +1482,38 @@ useEffect(() => {
     const handleSupplierChange = (field: string, value: any) => {
         handleFormChange(field, value);
         
-        // Auto-fill supplier contact details if available
         if (value) {
             const selectedSupplier = suppliers.find(s => s.id === value);
             if (selectedSupplier) {
+                const vendorState = selectedSupplier.billing_state_code || selectedSupplier.state_code || selectedSupplier.state || "";
                 setFormData(prev => ({
                     ...prev,
+                    supplier_id: value,
                     contact_email: selectedSupplier.email || prev.contact_email,
                     contact_phone: selectedSupplier.mobile || selectedSupplier.phone || prev.contact_phone,
                     contact_person: selectedSupplier.contact_person || selectedSupplier.name || prev.contact_person,
                     shipping_address: selectedSupplier.shipping_address || selectedSupplier.address || prev.shipping_address,
                     billing_address: selectedSupplier.billing_address || selectedSupplier.address || prev.billing_address,
+                    place_of_supply: vendorState || prev.place_of_supply,
                 }));
+
+                // Recalculate item tax splits based on the new place of supply
+                const pos = vendorState || formData.place_of_supply;
+                if (pos) {
+                    setItems(prevItems => prevItems.map(item => {
+                        const updated = { ...item };
+                        if (isIntraStateSupply(pos)) {
+                            updated.cgst_rate = updated.gst_rate / 2;
+                            updated.sgst_rate = updated.gst_rate / 2;
+                            updated.igst_rate = 0;
+                        } else {
+                            updated.cgst_rate = 0;
+                            updated.sgst_rate = 0;
+                            updated.igst_rate = updated.gst_rate;
+                        }
+                        return updated;
+                    }));
+                }
             }
         }
     };
@@ -1534,7 +1631,7 @@ useEffect(() => {
                                     type="text"
                                     value={newCurrency.symbol}
                                     onChange={(e) => setNewCurrency(prev => ({ ...prev, symbol: e.target.value }))}
-                                    placeholder="e.g., $, â‚¬, Â£"
+                                    placeholder="e.g., $, €, £"
                                     className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                     maxLength={5}
                                 />
@@ -1650,6 +1747,26 @@ useEffect(() => {
                                     {suppliers.length > 0 && (
                                         <p className="mt-1 text-xs text-gray-500">
                                             Showing {suppliers.length} suppliers
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <SelectField
+                                        label="Place of Supply (State)"
+                                        name="place_of_supply"
+                                        value={formData.place_of_supply}
+                                        onChange={handleFormChange}
+                                        options={INDIAN_STATES.map(state => ({
+                                            value: state.code,
+                                            label: `${state.name} (${state.code})`
+                                        }))}
+                                        required={true}
+                                        placeholder="Select State"
+                                    />
+                                    {formData.place_of_supply && (
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            {isIntraStateSupply(formData.place_of_supply) ? "Intra-state (CGST + SGST)" : "Inter-state (IGST)"}
                                         </p>
                                     )}
                                 </div>
@@ -1877,7 +1994,7 @@ useEffect(() => {
             {/* Show INR conversion below */}
             {item.currency !== "INR" && (
                 <div className="text-xs text-gray-500 mt-1">
-                    â‚¹{(item.purchase_price * (currencies.find(c => c.code === item.currency)?.exchangeRate || 1)).toFixed(2)} INR
+                    ₹{(item.purchase_price * (currencies.find(c => c.code === item.currency)?.exchangeRate || 1)).toFixed(2)} INR
                 </div>
             )}
         </div>
@@ -1909,7 +2026,7 @@ useEffect(() => {
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <span className="font-medium">
-                                                            â‚¹{(item.tax_amount || 0).toFixed(2)}
+                                                            ₹{(item.tax_amount || 0).toFixed(2)}
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-3">
@@ -1936,7 +2053,7 @@ useEffect(() => {
         )}
         {/* Always show INR value */}
         <div>
-            â‚¹{(
+            ₹{(
                 item.total_amount * 
                 (currencies.find(c => c.code === item.currency)?.exchangeRate || 1)
             ).toFixed(2)}
@@ -2081,7 +2198,7 @@ useEffect(() => {
                                                             {formData.round_off >= 0 ? '+' : '-'}
                                                         </div>
                                                         <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                                                            â‚¹
+                                                            ₹
                                                         </div>
                                                     </div>
                                                     <button

@@ -382,7 +382,7 @@ class SimpleEnquiryService:
                 )
             )
         
-        return query.order_by(Enquiry.enquiry_date.desc()).offset(kwargs.get('skip', 0)).limit(kwargs.get('limit', 50)).all()
+        return query.order_by(Enquiry.enquiry_date.desc(), Enquiry.created_at.desc()).offset(kwargs.get('skip', 0)).limit(kwargs.get('limit', 50)).all()
     
     def count_enquiries(self, company_id: str, **kwargs):
         query = self.db.query(Enquiry).filter(Enquiry.company_id == company_id)
@@ -914,6 +914,8 @@ def update_enquiry_edit(
     
     if data.quotation_no is not None:
         enquiry.quotation_no = data.quotation_no
+        if data.quotation_no.strip():
+            update_data['status'] = EnquiryStatus.CONVERTED_TO_QUOT
     
     if data.quotation_date is not None:
         enquiry.quotation_date = data.quotation_date

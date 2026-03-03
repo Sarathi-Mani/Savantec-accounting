@@ -237,6 +237,18 @@ export default function AddSalesReturnPage() {
     const [prefillLoading, setPrefillLoading] = useState(false);
     const [prefillError, setPrefillError] = useState("");
 
+    const normalizeStateCode = (value: any) => {
+        const text = String(value ?? "").trim();
+        const match = text.match(/\d{2}/);
+        return match ? match[0] : text;
+    };
+
+    const isIntraStateSupply = () => {
+        const selectedCustomer = customers.find(c => String(c.id) === String(formData.customer_id));
+        const customerState = selectedCustomer?.billing_state_code || selectedCustomer?.state_code || "";
+        return normalizeStateCode(customerState) === normalizeStateCode(company?.state_code);
+    };
+
     const getAuthToken = () => {
         if (typeof window === "undefined") return null;
         const userType = localStorage.getItem("user_type");
@@ -626,9 +638,12 @@ export default function AddSalesReturnPage() {
             const taxable = itemTotal - discount;
             const tax = taxable * (item.gst_rate / 100);
 
-            cgstTotal += tax / 2;
-            sgstTotal += tax / 2;
-            igstTotal += tax;
+            if (isIntraStateSupply()) {
+                cgstTotal += tax / 2;
+                sgstTotal += tax / 2;
+            } else {
+                igstTotal += tax;
+            }
 
             subtotal += taxable;
             totalTax += tax;
@@ -774,7 +789,7 @@ export default function AddSalesReturnPage() {
                     if (field === 'product_id' && value) {
                         const selectedProduct = products.find(p => p.id === value);
                         if (selectedProduct) {
-                            updated.description = selectedProduct.name;
+                            updated.description = selectedProduct.description || selectedProduct.name;
                             updated.unit_price = selectedProduct.unit_price || 0;
                             updated.gst_rate = parseFloat(selectedProduct.gst_rate) || 18;
                             updated.hsn_code = selectedProduct.hsn_code || selectedProduct.hsn;
@@ -791,9 +806,15 @@ export default function AddSalesReturnPage() {
                     updated.taxable_amount = taxable;
                     updated.total_amount = taxable + tax;
 
-                    updated.cgst_rate = updated.gst_rate / 2;
-                    updated.sgst_rate = updated.gst_rate / 2;
-                    updated.igst_rate = updated.gst_rate;
+                    if (isIntraStateSupply()) {
+                        updated.cgst_rate = updated.gst_rate / 2;
+                        updated.sgst_rate = updated.gst_rate / 2;
+                        updated.igst_rate = 0;
+                    } else {
+                        updated.cgst_rate = 0;
+                        updated.sgst_rate = 0;
+                        updated.igst_rate = updated.gst_rate;
+                    }
 
                     return updated;
                 }
@@ -1155,16 +1176,22 @@ export default function AddSalesReturnPage() {
                                                                         ...i,
                                                                         product_id: product.id,
                                                                         item_code: i.item_code || "",
-                                                                        description: product.name,
+                                                                        description: product.description || product.name,
                                                                         hsn_code: product.hsn_code || product.hsn || "",
                                                                         unit_price: unitPrice,
                                                                         gst_rate: gstRate,
                                                                         discount_amount: 0,
                                                                         taxable_amount: taxable,
                                                                         total_amount: taxable + tax,
-                                                                        cgst_rate: gstRate / 2,
-                                                                        sgst_rate: gstRate / 2,
-                                                                        igst_rate: gstRate,
+                                                                        ...(isIntraStateSupply() ? {
+                                                                            cgst_rate: gstRate / 2,
+                                                                            sgst_rate: gstRate / 2,
+                                                                            igst_rate: 0,
+                                                                        } : {
+                                                                            cgst_rate: 0,
+                                                                            sgst_rate: 0,
+                                                                            igst_rate: gstRate,
+                                                                        }),
                                                                     };
                                                                 })
                                                             );
@@ -1389,18 +1416,23 @@ export default function AddSalesReturnPage() {
                                             <span className="text-dark-6">Subtotal</span>
                                             <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">CGST</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.cgstTotal.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">SGST</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.sgstTotal.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">IGST</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.igstTotal.toLocaleString('en-IN')}</span>
-                                        </div>
+                                        {isIntraStateSupply() ? (
+                                            <>
+                                                <div className="flex justify-between">
+                                                    <span className="text-dark-6">CGST</span>
+                                                    <span className="font-medium text-dark dark:text-white">₹{totals.cgstTotal.toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-dark-6">SGST</span>
+                                                    <span className="font-medium text-dark dark:text-white">₹{totals.sgstTotal.toLocaleString('en-IN')}</span>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="flex justify-between">
+                                                <span className="text-dark-6">IGST</span>
+                                                <span className="font-medium text-dark dark:text-white">₹{totals.igstTotal.toLocaleString('en-IN')}</span>
+                                            </div>
+                                        )}
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Total Tax</span>
                                             <span className="font-medium text-dark dark:text-white">₹{totals.totalTax.toLocaleString('en-IN')}</span>

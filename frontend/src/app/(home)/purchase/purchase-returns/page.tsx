@@ -949,16 +949,16 @@ export default function PurchaseReturnsPage() {
           doc.setFillColor(241, 245, 249);
           doc.rect(14, y - 3, 182, 7, "F");
           doc.setFontSize(10);
-          doc.setFont(undefined, "bold");
+          doc.setFont("helvetica", "bold");
           doc.text(title, 16, y + 1);
-          doc.setFont(undefined, "normal");
+          doc.setFont("helvetica", "normal");
           y += 9;
         };
         const addLine = (label: string, value: any) => {
           doc.setFontSize(9);
-          doc.setFont(undefined, "bold");
+          doc.setFont("helvetica", "bold");
           doc.text(`${label}:`, 14, y);
-          doc.setFont(undefined, "normal");
+          doc.setFont("helvetica", "normal");
           const lines = doc.splitTextToSize(val(value), 145);
           doc.text(lines, 50, y);
           y += Math.max(1, lines.length) * 4.6;
@@ -1063,10 +1063,10 @@ export default function PurchaseReturnsPage() {
         doc.text("Round Off", 121, totalsY + 25);
         doc.text(money(returnItem.round_off), 193, totalsY + 25, { align: "right" });
         
-        doc.setFont(undefined, "bold");
+        doc.setFont("helvetica", "bold");
         doc.text("Grand Total", 121, totalsY + 31);
         doc.text(money(totalAmount), 193, totalsY + 31, { align: "right" });
-        doc.setFont(undefined, "normal");
+        doc.setFont("helvetica", "normal");
 
         doc.setFontSize(8.5);
         doc.text(`Paid: ${money(paidAmount)}`, 14, totalsY + 27);

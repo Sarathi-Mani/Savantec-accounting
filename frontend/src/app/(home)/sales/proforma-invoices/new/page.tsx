@@ -4,7 +4,7 @@ import { useState, useEffect,useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
-import { customersApi, productsApi, proformaInvoicesApi } from "@/services/api";
+import { customersApi, productsApi, proformaInvoicesApi, ordersApi } from "@/services/api";
 import { employeesApi } from "@/services/api";
 import Select from 'react-select';
 import { useRef } from "react";
@@ -157,13 +157,66 @@ function ProductSelectField({
     );
 }
 
+const INDIAN_STATES = [
+    { code: "01", name: "Jammu & Kashmir" },
+    { code: "02", name: "Himachal Pradesh" },
+    { code: "03", name: "Punjab" },
+    { code: "04", name: "Chandigarh" },
+    { code: "05", name: "Uttarakhand" },
+    { code: "06", name: "Haryana" },
+    { code: "07", name: "Delhi" },
+    { code: "08", name: "Rajasthan" },
+    { code: "09", name: "Uttar Pradesh" },
+    { code: "10", name: "Bihar" },
+    { code: "11", name: "Sikkim" },
+    { code: "12", name: "Arunachal Pradesh" },
+    { code: "13", name: "Nagaland" },
+    { code: "14", name: "Manipur" },
+    { code: "15", name: "Mizoram" },
+    { code: "16", name: "Tripura" },
+    { code: "17", name: "Meghalaya" },
+    { code: "18", name: "Assam" },
+    { code: "19", name: "West Bengal" },
+    { code: "20", name: "Jharkhand" },
+    { code: "21", name: "Odisha" },
+    { code: "22", name: "Chhattisgarh" },
+    { code: "23", name: "Madhya Pradesh" },
+    { code: "24", name: "Gujarat" },
+    { code: "25", name: "Daman & Diu" },
+    { code: "26", name: "Dadra & Nagar Haveli" },
+    { code: "27", name: "Maharashtra" },
+    { code: "28", name: "Andhra Pradesh (Old)" },
+    { code: "29", name: "Karnataka" },
+    { code: "30", name: "Goa" },
+    { code: "31", name: "Lakshadweep" },
+    { code: "32", name: "Kerala" },
+    { code: "33", name: "Tamil Nadu" },
+    { code: "34", name: "Puducherry" },
+    { code: "35", name: "Andaman & Nicobar Islands" },
+    { code: "36", name: "Telangana" },
+    { code: "37", name: "Andhra Pradesh" },
+    { code: "38", name: "Ladakh" }
+];
+
 export default function AddProformaInvoicePage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const editId = searchParams?.get("editId");
+    const fromQuotationId = searchParams?.get("fromQuotation");
+    const fromSalesOrderId = searchParams?.get("fromSalesOrder");
     const isEditMode = Boolean(editId);
     const { company, user } = useAuth();
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [prefillLoading, setPrefillLoading] = useState(false);
+
+    const normalizeStateCode = (value: any) => {
+        const text = String(value ?? "").trim();
+        const match = text.match(/\d{2}/);
+        return match ? match[0] : text;
+    };
+
+    const isIntraStateSupply = (placeOfSupply: any) =>
+        normalizeStateCode(placeOfSupply) === normalizeStateCode(company?.state_code);
     const [showTerms, setShowTerms] = useState(true);
     const [showOtherFields, setShowOtherFields] = useState(false);
     const [proformaCode, setProformaCode] = useState("");
@@ -209,7 +262,12 @@ const [contactPersons, setContactPersons] = useState<any[]>([]);
         
         // Charges & discounts
         freight_charges: 0,
+        freight_type: "tax@18%",
         pf_charges: 0,
+        pf_type: "tax@18%",
+
+        // GST details
+        place_of_supply: "",
         
         // Additional fields
         notes: "",
@@ -316,7 +374,10 @@ const [contactPersons, setContactPersons] = useState<any[]>([]);
                     sales_person_id: existing.sales_person_id || "",
                     bank_account_id: existing.bank_account_id || "",
                     freight_charges: Number(existing.freight_charges || 0),
+                    freight_type: existing.freight_type || prev.freight_type,
                     pf_charges: Number(existing.pf_charges || 0),
+                    pf_type: existing.pf_type || prev.pf_type,
+                    place_of_supply: existing.place_of_supply || prev.place_of_supply,
                     notes: existing.notes || "",
                     terms: existing.terms || prev.terms,
                     subtotal: Number(existing.subtotal || 0),
@@ -366,6 +427,161 @@ const [contactPersons, setContactPersons] = useState<any[]>([]);
         loadExisting();
     }, [company?.id, editId]);
 
+    useEffect(() => {
+        if (!company?.id || isEditMode) return;
+        if (fromQuotationId) {
+            prefillFromQuotation(fromQuotationId);
+        } else if (fromSalesOrderId) {
+            prefillFromSalesOrder(fromSalesOrderId);
+        }
+    }, [company?.id, fromQuotationId, fromSalesOrderId]);
+
+    const prefillFromQuotation = async (quotationId: string) => {
+        if (!company?.id) return;
+        const token = localStorage.getItem("employee_token") || localStorage.getItem("access_token");
+        if (!token) return;
+
+        setPrefillLoading(true);
+        try {
+            const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/quotations/${quotationId}`,
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            if (!response.ok) throw new Error(`Failed to fetch quotation (${response.status})`);
+            const quotation = await response.json();
+
+            setFormData(prev => ({
+                ...prev,
+                customer_id: quotation.customer_id || prev.customer_id,
+                contact_id: quotation.contact_person_id || quotation.contact_person || prev.contact_id,
+                sales_person_id: quotation.sales_person_id || prev.sales_person_id,
+                reference_no: quotation.reference_no || quotation.quotation_number || prev.reference_no,
+                reference_date: quotation.quotation_date ? quotation.quotation_date.split("T")[0] : prev.reference_date,
+                notes: quotation.notes || prev.notes,
+                terms: quotation.terms || prev.terms,
+                freight_charges: Number(quotation.freight_charges ?? prev.freight_charges) || 0,
+                freight_type: quotation.freight_type || prev.freight_type,
+                pf_charges: Number(quotation.pf_charges ?? prev.pf_charges) || 0,
+                pf_type: quotation.pf_type || prev.pf_type,
+                place_of_supply: quotation.place_of_supply || prev.place_of_supply,
+            }));
+
+            if (quotation.items && Array.isArray(quotation.items) && quotation.items.length > 0) {
+                setItems(quotation.items.map((item: any, index: number) => {
+                    const unitPrice = Number(item.unit_price ?? item.rate ?? 0);
+                    const quantity = Number(item.quantity ?? 1);
+                    const discountPercent = Number(item.discount_percent ?? 0);
+                    const gstRate = Number(item.gst_rate ?? 18);
+                    const itemTotal = quantity * unitPrice;
+                    const discountAmount = discountPercent > 0 ? itemTotal * (discountPercent / 100) : 0;
+                    const taxable = itemTotal - discountAmount;
+                    const tax = taxable * (gstRate / 100);
+
+                    return {
+                        id: Date.now() + index,
+                        product_id: item.product_id || "",
+                        item_code: item.item_code || item.hsn_code || "",
+                        description: item.description || "",
+                        quantity,
+                        unit: item.unit || "unit",
+                        unit_price: unitPrice,
+                        discount_percent: discountPercent,
+                        discount_amount: discountAmount,
+                        gst_rate: gstRate,
+                        cgst_rate: Number(item.cgst_rate || gstRate / 2),
+                        sgst_rate: Number(item.sgst_rate || gstRate / 2),
+                        igst_rate: Number(item.igst_rate || 0),
+                        taxable_amount: taxable,
+                        total_amount: taxable + tax,
+                    };
+                }));
+            }
+
+            if (quotation.customer_id) {
+                fetchContactPersons(quotation.customer_id);
+            }
+        } catch (error) {
+            console.error("Failed to prefill from quotation:", error);
+        } finally {
+            setPrefillLoading(false);
+        }
+    };
+
+    const prefillFromSalesOrder = async (orderId: string) => {
+        if (!company?.id) return;
+        setPrefillLoading(true);
+        try {
+            const order = await ordersApi.getSalesOrder(company.id, orderId) as any;
+            if (!order) return;
+
+            setFormData(prev => ({
+                ...prev,
+                customer_id: order.customer_id || prev.customer_id,
+                contact_id: order.contact_person_id || order.contact_person || prev.contact_id,
+                sales_person_id: order.sales_person_id || prev.sales_person_id,
+                reference_no: order.reference_no || order.order_number || prev.reference_no,
+                reference_date: order.order_date ? order.order_date.split("T")[0] : prev.reference_date,
+                due_date: order.expire_date ? order.expire_date.split("T")[0] : prev.due_date,
+                notes: order.notes || prev.notes,
+                terms: order.terms || prev.terms,
+                freight_charges: Number(order.freight_charges ?? prev.freight_charges) || 0,
+                freight_type: order.freight_type || prev.freight_type,
+                pf_charges: Number(order.p_and_f_charges ?? order.pf_charges ?? prev.pf_charges) || 0,
+                pf_type: order.pf_type || prev.pf_type,
+                place_of_supply: order.place_of_supply || prev.place_of_supply,
+                payment_terms: order.payment_terms || prev.payment_terms,
+                delivery_note: order.delivery_note || prev.delivery_note,
+                supplier_ref: order.supplier_ref || prev.supplier_ref,
+                other_references: order.other_references || prev.other_references,
+                buyer_order_no: order.buyer_order_no || prev.buyer_order_no,
+                buyer_order_date: order.buyer_order_date ? order.buyer_order_date.split("T")[0] : prev.buyer_order_date,
+                despatch_doc_no: order.despatch_doc_no || prev.despatch_doc_no,
+                delivery_note_date: order.delivery_note_date ? order.delivery_note_date.split("T")[0] : prev.delivery_note_date,
+                despatched_through: order.despatched_through || prev.despatched_through,
+                destination: order.destination || prev.destination,
+                terms_of_delivery: order.terms_of_delivery || prev.terms_of_delivery,
+            }));
+
+            if (order.items && Array.isArray(order.items) && order.items.length > 0) {
+                setItems(order.items.map((item: any, index: number) => {
+                    const unitPrice = Number(item.unit_price ?? item.rate ?? 0);
+                    const quantity = Number(item.quantity ?? 1);
+                    const discountPercent = Number(item.discount_percent ?? 0);
+                    const gstRate = Number(item.gst_rate ?? 18);
+                    const itemTotal = quantity * unitPrice;
+                    const discountAmount = discountPercent > 0 ? itemTotal * (discountPercent / 100) : 0;
+                    const taxable = itemTotal - discountAmount;
+                    const tax = taxable * (gstRate / 100);
+
+                    return {
+                        id: Date.now() + index,
+                        product_id: item.product_id || "",
+                        item_code: item.item_code || item.hsn_code || "",
+                        description: item.description || "",
+                        quantity,
+                        unit: item.unit || "unit",
+                        unit_price: unitPrice,
+                        discount_percent: discountPercent,
+                        discount_amount: discountAmount,
+                        gst_rate: gstRate,
+                        cgst_rate: Number(item.cgst_rate || gstRate / 2),
+                        sgst_rate: Number(item.sgst_rate || gstRate / 2),
+                        igst_rate: Number(item.igst_rate || 0),
+                        taxable_amount: taxable,
+                        total_amount: taxable + tax,
+                    };
+                }));
+            }
+
+            if (order.customer_id) {
+                fetchContactPersons(order.customer_id);
+            }
+        } catch (error) {
+            console.error("Failed to prefill from sales order:", error);
+        } finally {
+            setPrefillLoading(false);
+        }
+    };
 
     // Add this function to fetch contact persons
 const fetchContactPersons = async (customerId: string) => {
@@ -584,23 +800,61 @@ const salesmanOptions = useMemo(() => {
     const calculateTotals = () => {
         let subtotal = 0;
         let totalTax = 0;
+        let cgstTotal = 0;
+        let sgstTotal = 0;
+        let igstTotal = 0;
 
         items.forEach(item => {
             const itemTotal = item.quantity * item.unit_price;
             const discount = item.discount_percent > 0 ?
                 itemTotal * (item.discount_percent / 100) : 0;
             const taxable = itemTotal - discount;
-            const tax = taxable * (item.gst_rate / 100);
+
+            const itemCgstRate = Number(item.cgst_rate || 0);
+            const itemSgstRate = Number(item.sgst_rate || 0);
+            const itemIgstRate = Number(item.igst_rate || 0);
+            const hasExplicitSplitRates = (itemCgstRate + itemSgstRate + itemIgstRate) > 0;
+
+            let itemCgst = 0;
+            let itemSgst = 0;
+            let itemIgst = 0;
+
+            if (hasExplicitSplitRates) {
+                itemCgst = taxable * (itemCgstRate / 100);
+                itemSgst = taxable * (itemSgstRate / 100);
+                itemIgst = taxable * (itemIgstRate / 100);
+            } else {
+                const fallbackTax = taxable * (Number(item.gst_rate || 0) / 100);
+                if (isIntraStateSupply(formData.place_of_supply)) {
+                    itemCgst = fallbackTax / 2;
+                    itemSgst = fallbackTax / 2;
+                } else {
+                    itemIgst = fallbackTax;
+                }
+            }
+
+            const tax = itemCgst + itemSgst + itemIgst;
+            cgstTotal += itemCgst;
+            sgstTotal += itemSgst;
+            igstTotal += itemIgst;
 
             subtotal += taxable;
             totalTax += tax;
         });
 
-        // Calculate additional charges
-        const freightCharges = formData.freight_charges || 0;
-        const pfCharges = formData.pf_charges || 0;
-        
-        // Calculate round off based on type
+        const calculateWithTax = (baseAmount: number, taxType: string) => {
+            if (taxType === 'fixed') return baseAmount;
+            const match = taxType.match(/tax@(\d+)%/);
+            if (match) {
+                const taxRate = parseInt(match[1]);
+                return baseAmount * (1 + taxRate / 100);
+            }
+            return baseAmount;
+        };
+
+        const freightCharges = calculateWithTax(formData.freight_charges || 0, formData.freight_type || "fixed");
+        const pfCharges = calculateWithTax(formData.pf_charges || 0, formData.pf_type || "fixed");
+
         let roundOffAmount = 0;
         if (roundOff.type === "plus") {
             roundOffAmount = roundOff.amount;
@@ -614,6 +868,9 @@ const salesmanOptions = useMemo(() => {
         return {
             subtotal: Number(subtotal.toFixed(2)),
             totalTax: Number(totalTax.toFixed(2)),
+            cgstTotal: Number(cgstTotal.toFixed(2)),
+            sgstTotal: Number(sgstTotal.toFixed(2)),
+            igstTotal: Number(igstTotal.toFixed(2)),
             freightAmount: Number(freightCharges.toFixed(2)),
             pfAmount: Number(pfCharges.toFixed(2)),
             roundOffAmount: Number(roundOffAmount.toFixed(2)),
@@ -643,7 +900,11 @@ const handleSubmit = async (e: React.FormEvent) => {
             notes: formData.notes,
             terms: formData.terms,
             freight_charges: formData.freight_charges,
+            freight_type: formData.freight_type,
             pf_charges: formData.pf_charges,
+            pf_type: formData.pf_type,
+            place_of_supply: formData.place_of_supply || company?.state_code || "",
+            place_of_supply_name: INDIAN_STATES.find(s => s.code === formData.place_of_supply)?.name || company?.state || "",
             round_off: totals.roundOffAmount,
             subtotal: totals.subtotal,
             total_tax: totals.totalTax,
@@ -659,6 +920,7 @@ const handleSubmit = async (e: React.FormEvent) => {
             despatched_through: formData.despatched_through,
             destination: formData.destination,
             terms_of_delivery: formData.terms_of_delivery,
+            payment_terms: formData.payment_terms,
             company_id: company!.id,
             items: items.map(item => ({
                 product_id: item.product_id || undefined,
@@ -713,17 +975,15 @@ const handleSubmit = async (e: React.FormEvent) => {
             if (item.id === id) {
                 const updated = { ...item, [field]: value };
 
-                // Auto-fill product details when product is selected
                 if (field === 'product_id' && value) {
                     const selectedProduct = products.find(p => p.id === value);
                     if (selectedProduct) {
-                        updated.description = selectedProduct.name;
+                        updated.description = selectedProduct.description || selectedProduct.name;
                         updated.unit_price = selectedProduct.unit_price || 0;
                         updated.gst_rate = parseFloat(selectedProduct.gst_rate) || 18;
                     }
                 }
 
-                // Recalculate item totals
                 const itemTotal = updated.quantity * updated.unit_price;
                 const discount = updated.discount_percent > 0 ?
                     itemTotal * (updated.discount_percent / 100) : 0;
@@ -733,6 +993,16 @@ const handleSubmit = async (e: React.FormEvent) => {
                 updated.discount_amount = discount;
                 updated.taxable_amount = taxable;
                 updated.total_amount = taxable + tax;
+
+                if (isIntraStateSupply(formData.place_of_supply)) {
+                    updated.cgst_rate = updated.gst_rate / 2;
+                    updated.sgst_rate = updated.gst_rate / 2;
+                    updated.igst_rate = 0;
+                } else {
+                    updated.cgst_rate = 0;
+                    updated.sgst_rate = 0;
+                    updated.igst_rate = updated.gst_rate;
+                }
 
                 return updated;
             }
@@ -747,16 +1017,34 @@ const handleFormChange = (field: string, value: any) => {
         [field]: value,
     }));
 
-    // When customer is selected, fetch contact persons
+    if (field === 'place_of_supply') {
+        setItems(prevItems => prevItems.map(item => {
+            const updated = { ...item };
+            if (isIntraStateSupply(value)) {
+                updated.cgst_rate = updated.gst_rate / 2;
+                updated.sgst_rate = updated.gst_rate / 2;
+                updated.igst_rate = 0;
+            } else {
+                updated.cgst_rate = 0;
+                updated.sgst_rate = 0;
+                updated.igst_rate = updated.gst_rate;
+            }
+            return updated;
+        }));
+    }
+
     if (field === 'customer_id' && value) {
         const selectedCustomer = customers.find(c => c.id === value);
         if (selectedCustomer) {
-            // Clear contact person when customer changes
+            const customerState =
+                selectedCustomer.billing_state_code ||
+                selectedCustomer.state_code ||
+                company?.state_code || "";
             setFormData(prev => ({
                 ...prev,
-                contact_person: "",
+                contact_id: "",
+                place_of_supply: customerState,
             }));
-            // Fetch contact persons for this customer
             fetchContactPersons(value);
         }
     }
@@ -981,6 +1269,19 @@ const customerOptions = useMemo(() => {
                                 </div>
                                 <div>
                                     <SelectField
+                                        label="Place of Supply (State)"
+                                        name="place_of_supply"
+                                        value={formData.place_of_supply}
+                                        onChange={handleFormChange}
+                                        options={INDIAN_STATES.map(state => ({
+                                            value: state.code,
+                                            label: `${state.name} (${state.code})`
+                                        }))}
+                                        placeholder="Select State"
+                                    />
+                                </div>
+                                <div>
+                                    <SelectField
                                         label="Bank Details"
                                         name="bank_account_id"
                                         value={formData.bank_account_id}
@@ -1111,15 +1412,21 @@ const customerOptions = useMemo(() => {
                                                                     return {
                                                                         ...i,
                                                                         product_id: product.id,
-                                                                        description: product.name,
+                                                                        description: product.description || product.name,
                                                                         unit_price: unitPrice,
                                                                         gst_rate: gstRate,
                                                                         discount_amount: 0,
                                                                         taxable_amount: taxable,
                                                                         total_amount: taxable + tax,
-                                                                        cgst_rate: gstRate / 2,
-                                                                        sgst_rate: gstRate / 2,
-                                                                        igst_rate: 0,
+                                                                        ...(isIntraStateSupply(formData.place_of_supply) ? {
+                                                                            cgst_rate: gstRate / 2,
+                                                                            sgst_rate: gstRate / 2,
+                                                                            igst_rate: 0,
+                                                                        } : {
+                                                                            cgst_rate: 0,
+                                                                            sgst_rate: 0,
+                                                                            igst_rate: gstRate,
+                                                                        }),
                                                                     };
                                                                 })
                                                             );
@@ -1215,25 +1522,51 @@ const customerOptions = useMemo(() => {
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
-                                            <input
-                                                type="number"
-                                                value={formData.freight_charges}
-                                                onChange={(e) => setFormData({ ...formData, freight_charges: parseFloat(e.target.value) || 0 })}
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                min="0"
-                                                step="0.01"
-                                            />
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="number"
+                                                    value={formData.freight_charges}
+                                                    onChange={(e) => handleFormChange('freight_charges', parseFloat(e.target.value) || 0)}
+                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    min="0"
+                                                    step="0.01"
+                                                />
+                                                <select
+                                                    value={formData.freight_type || "tax@18%"}
+                                                    onChange={(e) => handleFormChange('freight_type', e.target.value)}
+                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                >
+                                                    <option value="fixed">Fixed</option>
+                                                    <option value="tax@5%">Tax@5%</option>
+                                                    <option value="tax@12%">Tax@12%</option>
+                                                    <option value="tax@18%">Tax@18%</option>
+                                                    <option value="tax@28%">Tax@28%</option>
+                                                </select>
+                                            </div>
                                         </div>
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                            <input
-                                                type="number"
-                                                value={formData.pf_charges}
-                                                onChange={(e) => setFormData({ ...formData, pf_charges: parseFloat(e.target.value) || 0 })}
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                min="0"
-                                                step="0.01"
-                                            />
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="number"
+                                                    value={formData.pf_charges}
+                                                    onChange={(e) => handleFormChange('pf_charges', parseFloat(e.target.value) || 0)}
+                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    min="0"
+                                                    step="0.01"
+                                                />
+                                                <select
+                                                    value={formData.pf_type || "tax@18%"}
+                                                    onChange={(e) => handleFormChange('pf_type', e.target.value)}
+                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                >
+                                                    <option value="fixed">Fixed</option>
+                                                    <option value="tax@5%">Tax@5%</option>
+                                                    <option value="tax@12%">Tax@12%</option>
+                                                    <option value="tax@18%">Tax@18%</option>
+                                                    <option value="tax@28%">Tax@28%</option>
+                                                </select>
+                                            </div>
                                         </div>
                                         <div className="md:col-span-2">
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Remarks</label>

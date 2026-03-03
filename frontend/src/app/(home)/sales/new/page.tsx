@@ -1161,7 +1161,7 @@ export default function AddSalesPage() {
                     if (field === 'product_id' && value) {
                         const selectedProduct = products.find(p => p.id === value);
                         if (selectedProduct) {
-                            updated.description = selectedProduct.name;
+                            updated.description = selectedProduct.description || selectedProduct.name;
                             updated.unit_price = selectedProduct.unit_price || 0;
                             updated.gst_rate = parseFloat(selectedProduct.gst_rate) || 18;
                             updated.hsn_code = selectedProduct.hsn_code || selectedProduct.hsn;
@@ -1609,7 +1609,34 @@ export default function AddSalesPage() {
 
                         {/* SECTION 2: Shipping Address */}
                         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                            <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Shipping Address</h2>
+                            <div className="mb-4 flex items-center justify-between">
+                                <h2 className="text-lg font-semibold text-dark dark:text-white">Shipping Address</h2>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const selectedCustomer = customers.find(c => String(c.id) === String(formData.customer_id));
+                                        if (!selectedCustomer) {
+                                            alert("Please select a customer first.");
+                                            return;
+                                        }
+                                        const billingState = selectedCustomer.billing_state_code || selectedCustomer.state_code || "";
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            address: selectedCustomer.billing_address || "",
+                                            city: selectedCustomer.billing_city || "",
+                                            postcode: selectedCustomer.billing_zip || selectedCustomer.billing_pincode || "",
+                                            country: selectedCustomer.billing_country || "India",
+                                            place_of_supply: billingState || prev.place_of_supply,
+                                        }));
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-blue-600 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
+                                >
+                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                    </svg>
+                                    Copy from Billing
+                                </button>
+                            </div>
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
@@ -1796,7 +1823,7 @@ export default function AddSalesPage() {
                                                                         ...i,
                                                                         product_id: product.id,
                                                                         item_code: i.item_code || "",
-                                                                        description: product.name,
+                                                                        description: product.description || product.name,
 
                                                                         hsn_code: product.hsn_code || product.hsn || "",
                                                                         unit_price: unitPrice,

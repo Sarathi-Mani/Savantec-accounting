@@ -622,7 +622,7 @@ class InvoiceService:
         
         # Pagination
         offset = (page - 1) * page_size
-        invoices = query.order_by(Invoice.created_at.desc()).offset(offset).limit(page_size).all()
+        invoices = query.order_by(Invoice.invoice_date.desc(), Invoice.created_at.desc()).offset(offset).limit(page_size).all()
         
         return invoices, total, summary_dict
 

@@ -14,8 +14,8 @@ import {
 import { useAuth } from "@/context/AuthContext";
 
 type ProductDetails = Product & {
-  brand?: { id?: string; name?: string } | null;
-  category?: { id?: string; name?: string } | null;
+  brand?: { id?: string; name?: string } | string | null;
+  category?: { id?: string; name?: string } | string | null;
   godown_name?: string | null;
   barcode?: string;
   opening_stock?: number | null;
@@ -25,6 +25,16 @@ type ProductDetails = Product & {
   purchase_price?: number | string | null;
   profit_margin?: number | string | null;
   sales_price?: number | string | null;
+};
+
+const resolveName = (
+  field: { id?: string; name?: string } | string | null | undefined,
+  fallbackName?: string | null,
+): string => {
+  if (!field && !fallbackName) return "-";
+  if (typeof field === "string") return field || fallbackName || "-";
+  if (field && typeof field === "object") return field.name || fallbackName || "-";
+  return fallbackName || "-";
 };
 
 const getProductImageUrl = (raw?: string | null) => {
@@ -108,8 +118,8 @@ export default function ProductDetailPage() {
         ["SKU", product.sku || "-"],
         ["Barcode", product.barcode || "-"],
         ["HSN/SAC", product.hsn_code || "-"],
-        ["Brand", product.brand?.name || "-"],
-        ["Category", product.category?.name || "-"],
+        ["Brand", resolveName(product.brand, product.brand_name)],
+        ["Category", resolveName(product.category, product.category_name)],
         ["Store", product.godown_name || company?.name || "-"],
         ["Unit", product.unit || "-"],
         ["Unit Price", `Rs. ${toNumber(product.unit_price).toFixed(2)}`],
@@ -252,11 +262,15 @@ export default function ProductDetailPage() {
             <dl className="space-y-4">
               <div>
                 <dt className="text-sm text-gray-500 dark:text-gray-400">Brand</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white font-medium">{product.brand?.name || "-"}</dd>
+                <dd className="mt-1 text-gray-900 dark:text-white font-medium">{resolveName(product.brand, product.brand_name)}</dd>
               </div>
               <div>
                 <dt className="text-sm text-gray-500 dark:text-gray-400">Category</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white font-medium">{product.category?.name || "-"}</dd>
+                <dd className="mt-1 text-gray-900 dark:text-white font-medium">{resolveName(product.category, product.category_name)}</dd>
+              </div>
+              <div>
+                <dt className="text-sm text-gray-500 dark:text-gray-400">Unit</dt>
+                <dd className="mt-1 text-gray-900 dark:text-white font-medium">{product.unit || "-"}</dd>
               </div>
               <div>
                 <dt className="text-sm text-gray-500 dark:text-gray-400">Store</dt>
@@ -274,7 +288,9 @@ export default function ProductDetailPage() {
               </div>
               <div>
                 <dt className="text-sm text-gray-500 dark:text-gray-400">GST Rate</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white">{toNumber(product.gst_rate)}%</dd>
+                <dd className="mt-1 text-gray-900 dark:text-white">
+                  {toNumber(product.gst_rate)}%{product.is_inclusive ? " (Inclusive)" : " (Exclusive)"}
+                </dd>
               </div>
               <div>
                 <dt className="text-sm text-gray-500 dark:text-gray-400">Seller Points</dt>

@@ -7,6 +7,8 @@ import dayjs from "dayjs";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface DCItem {
   id: string;
@@ -316,6 +318,117 @@ export default function DeliveryChallanDetailPage() {
     }
   };
 
+  const generateDCPdf = (showPrices: boolean) => {
+    const doc = new jsPDF("p", "mm", "a4");
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 15;
+
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text(company?.name || "Company", pageWidth / 2, y, { align: "center" });
+    y += 8;
+
+    doc.setFontSize(12);
+    doc.text("DELIVERY CHALLAN", pageWidth / 2, y, { align: "center" });
+    y += 10;
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+
+    const leftX = 14;
+    const rightX = pageWidth / 2 + 10;
+    const lineHeight = 5;
+
+    doc.text(`DC No: ${dc.dc_number}`, leftX, y);
+    doc.text(`Date: ${dayjs(dc.dc_date).format("DD MMM YYYY")}`, rightX, y);
+    y += lineHeight;
+
+    if (dc.customer_name) {
+      doc.text(`Customer: ${dc.customer_name}`, leftX, y);
+      y += lineHeight;
+    }
+    if (dc.reference_no) {
+      doc.text(`Reference No: ${dc.reference_no}`, leftX, y);
+      y += lineHeight;
+    }
+    if (dc.transporter_name) {
+      doc.text(`Transporter: ${dc.transporter_name}`, leftX, y);
+      if (dc.vehicle_number) {
+        doc.text(`Vehicle: ${dc.vehicle_number}`, rightX, y);
+      }
+      y += lineHeight;
+    }
+    if (dc.eway_bill_number) {
+      doc.text(`E-Way Bill: ${dc.eway_bill_number}`, leftX, y);
+      if (dc.lr_number) {
+        doc.text(`LR No: ${dc.lr_number}`, rightX, y);
+      }
+      y += lineHeight;
+    }
+
+    if (dc.delivery_to_address) {
+      const addrParts = [
+        dc.delivery_to_address,
+        dc.delivery_to_city,
+        dc.delivery_to_state,
+        dc.delivery_to_pincode ? `- ${dc.delivery_to_pincode}` : null,
+      ].filter(Boolean);
+      doc.text(`Delivery To: ${addrParts.join(", ")}`, leftX, y);
+      y += lineHeight;
+    }
+
+    y += 4;
+
+    const baseHead = ["#", "Description", "HSN", "Qty", "Unit"];
+    const priceHead = showPrices ? ["Rate", "Amount"] : [];
+    const head = [baseHead.concat(priceHead)];
+
+    const body = (dc.items || []).map((item, idx) => {
+      const baseRow: (string | number)[] = [
+        idx + 1,
+        item.description,
+        item.hsn_code || "-",
+        item.quantity,
+        item.unit,
+      ];
+      if (showPrices) {
+        baseRow.push(
+          Number(item.unit_price).toFixed(2),
+          Number(item.total_amount).toFixed(2)
+        );
+      }
+      return baseRow;
+    });
+
+    autoTable(doc, {
+      startY: y,
+      head,
+      body,
+      theme: "grid",
+      headStyles: { fillColor: [41, 128, 185], fontSize: 8 },
+      bodyStyles: { fontSize: 8 },
+      styles: { cellPadding: 2 },
+      columnStyles: showPrices
+        ? { 0: { halign: "center" }, 3: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right" } }
+        : { 0: { halign: "center" }, 3: { halign: "right" } },
+    });
+
+    if (showPrices) {
+      const finalY = (doc as any).lastAutoTable?.finalY || y + 40;
+      let ty = finalY + 8;
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Subtotal: ${formatMoney(itemSubtotal)}`, pageWidth - 14, ty, { align: "right" });
+      ty += 5;
+      doc.text(`Tax: ${formatMoney(itemTax)}`, pageWidth - 14, ty, { align: "right" });
+      ty += 5;
+      doc.setFont("helvetica", "bold");
+      doc.text(`Grand Total: ${formatMoney(itemGrandTotal)}`, pageWidth - 14, ty, { align: "right" });
+    }
+
+    doc.save(`DC-${dc.dc_number}.pdf`);
+  };
+
   return (
     <div className="mx-auto max-w-5xl">
       {/* Header */}
@@ -412,6 +525,19 @@ export default function DeliveryChallanDetailPage() {
               {actionLoading === "cancel" ? "..." : "Cancel"}
             </button>
           )}
+
+          <button
+            onClick={() => generateDCPdf(true)}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
+          >
+            PDF (With Price)
+          </button>
+          <button
+            onClick={() => generateDCPdf(false)}
+            className="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10"
+          >
+            PDF (Without Price)
+          </button>
         </div>
       </div>
 

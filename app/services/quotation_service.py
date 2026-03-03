@@ -1008,6 +1008,8 @@ class QuotationService:
             sales_person_id=quotation.sales_person_id,
             reference_no=quotation.reference_no or quotation.reference,
             payment_terms=quotation.payment_terms,
+            freight_charges=quotation.freight_charges or Decimal("0"),
+            packing_forwarding_charges=quotation.p_and_f_charges or Decimal("0"),
         )
         
         self.db.add(invoice)

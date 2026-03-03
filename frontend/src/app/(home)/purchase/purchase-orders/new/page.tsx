@@ -706,7 +706,7 @@ export default function AddPurchaseOrderPage() {
                         if (selectedProduct) {
                             const selectedPrice = getProductPurchasePrice(selectedProduct);
                             const selectedDiscount = getProductDiscountPercent(selectedProduct);
-                            updated.description = selectedProduct.name;
+                            updated.description = selectedProduct.description || selectedProduct.name;
                             updated.purchase_price = selectedPrice;
                             updated.discount_percent = selectedDiscount;
                             updated.gst_rate = parseFloat(selectedProduct.gst_rate) || 18;
@@ -725,6 +725,8 @@ export default function AddPurchaseOrderPage() {
                     updated.tax_amount = tax;
                     updated.unit_cost = updated.purchase_price;
                     updated.total_amount = taxable + tax;
+                    updated.cgst_rate = updated.gst_rate / 2;
+                    updated.sgst_rate = updated.gst_rate / 2;
 
                     return updated;
                 }
@@ -1040,6 +1042,7 @@ export default function AddPurchaseOrderPage() {
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Purchase Price</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Discount</th>
+                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">GST %</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax Amount</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit Cost</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Total Amount</th>
@@ -1074,7 +1077,7 @@ export default function AddPurchaseOrderPage() {
                                                                     return {
                                                                         ...i,
                                                                         product_id: product.id,
-                                                                        description: product.name,
+                                                                        description: product.description || product.name,
                                                                         purchase_price: purchasePrice,
                                                                         gst_rate: gstRate,
                                                                         discount_percent: discountPercent,
@@ -1137,6 +1140,17 @@ export default function AddPurchaseOrderPage() {
                                                         />
                                                         <span className="flex items-center px-1 py-1.5 text-xs">%</span>
                                                     </div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <input
+                                                        type="number"
+                                                        value={item.gst_rate}
+                                                        onChange={(e) => updateItem(item.id, 'gst_rate', parseFloat(e.target.value) || 0)}
+                                                        className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        min="0"
+                                                        max="100"
+                                                        step="0.01"
+                                                    />
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <span className="font-medium">

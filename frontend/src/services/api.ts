@@ -320,10 +320,16 @@ export interface Product {
   image?: string;
   main_image?: string;
   additional_image?: string;
-  // Add other properties if needed:
-  hsn?: string; // Add this if your backend uses `hsn` instead of `hsn_code`
-  tax_rate?: number; // Add this if needed
-  sales_price?: number; // Add this if needed
+  brand_id?: string;
+  brand_name?: string;
+  category_id?: string;
+  category_name?: string;
+  purchase_price?: number;
+  profit_margin?: number;
+  tax_type?: string;
+  hsn?: string;
+  tax_rate?: number;
+  sales_price?: number;
 }
 
 export interface ProductListResponse {
@@ -2872,6 +2878,7 @@ export interface VendorOpeningBalanceItem {
   vendor_id: string;
   date: string;
   voucher_name: string;
+  balance_type?: string;
   days?: number;
   amount: number;
   created_at: string;
@@ -3043,6 +3050,7 @@ export interface Employee {
   blood_group?: string;
   email?: string;
   phone?: string;
+  mobile?: string;
   department_id?: string;
   designation_id?: string;
 
@@ -4242,9 +4250,17 @@ export interface PurchaseReturn {
 // ============== Purchase Returns API ==============
 
 export const purchaseReturnsApi = {
-  list: async (companyId: string, params?: { status?: string }) => {
+  list: async (companyId: string, params?: {
+    page?: number;
+    page_size?: number;
+    search?: string;
+    status?: string;
+    vendor_id?: string;
+    from_date?: string;
+    to_date?: string;
+  }) => {
     const response = await api.get(`/companies/${companyId}/purchase-returns`, { params });
-    return response.data as PurchaseReturn[];
+    return response.data;
   },
 
   get: async (companyId: string, returnId: string) => {
