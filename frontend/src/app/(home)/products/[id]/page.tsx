@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import jsPDF from "jspdf";
@@ -25,6 +25,7 @@ type ProductDetails = Product & {
   purchase_price?: number | string | null;
   profit_margin?: number | string | null;
   sales_price?: number | string | null;
+  alert_quantity?: number | null;
 };
 
 const resolveName = (
@@ -51,6 +52,9 @@ const toNumber = (value: number | string | undefined | null, fallback = 0) => {
   const num = typeof value === "number" ? value : parseFloat(value);
   return Number.isFinite(num) ? num : fallback;
 };
+
+const getAlertQuantity = (product: ProductDetails) =>
+  toNumber(product.alert_quantity ?? product.min_stock_level ?? 0);
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -102,6 +106,12 @@ export default function ProductDetailPage() {
 
   const handleDownloadPdf = () => {
     if (!product) return;
+    const mainImageUrl = getProductImageUrl(
+      product.image_url || product.main_image_url || product.image || product.main_image || null
+    );
+    const additionalImageUrl = getProductImageUrl(
+      product.additional_image_url || product.additional_image || null
+    );
 
     const doc = new jsPDF();
     doc.setFontSize(16);
@@ -113,26 +123,29 @@ export default function ProductDetailPage() {
       startY: 30,
       head: [["Field", "Value"]],
       body: [
-        ["Name", product.name || "-"],
-        ["Type", product.is_service ? "Service" : "Product"],
-        ["SKU", product.sku || "-"],
+        ["Item Name", product.name || "-"],
+        ["HSN", product.hsn_code || "-"],
         ["Barcode", product.barcode || "-"],
-        ["HSN/SAC", product.hsn_code || "-"],
+        ["SKU", product.sku || "-"],
         ["Brand", resolveName(product.brand, product.brand_name)],
         ["Category", resolveName(product.category, product.category_name)],
-        ["Store", product.godown_name || company?.name || "-"],
+        ["Company", product.godown_name || company?.name || "-"],
         ["Unit", product.unit || "-"],
-        ["Unit Price", `Rs. ${toNumber(product.unit_price).toFixed(2)}`],
-        ["GST Rate", `${toNumber(product.gst_rate)}%`],
-        ["Seller Points", `${toNumber(product.seller_points)}`],
-        ["Discount", `${toNumber(product.discount)}${product.discount_type === "fixed" ? " (fixed)" : "%"}`],
-        ["Purchase Price", `Rs. ${toNumber(product.purchase_price).toFixed(2)}`],
-        ["Sales Price", `Rs. ${toNumber(product.sales_price).toFixed(2)}`],
-        ["Profit Margin", `${toNumber(product.profit_margin)}%`],
+        ["Alert Quantity", `${getAlertQuantity(product)} ${product.unit || ""}`.trim()],
         ["Opening Stock", `${toNumber(product.opening_stock)} ${product.unit || ""}`.trim()],
-        ["Current Stock", `${toNumber(product.current_stock)} ${product.unit || ""}`.trim()],
-        ["Min Stock Level", `${toNumber(product.min_stock_level)} ${product.unit || ""}`.trim()],
         ["Description", product.description || "-"],
+        ["Unit Price", `Rs. ${toNumber(product.unit_price).toFixed(2)}`],
+        ["Seller Points", `${toNumber(product.seller_points)}`],
+        ["Discount Type", product.discount_type || "-"],
+        ["Discount", `${toNumber(product.discount)}${product.discount_type === "fixed" ? " (fixed)" : "%"}`],
+        ["GST %", `${toNumber(product.gst_rate)}%`],
+        ["Purchase Price", `Rs. ${toNumber(product.purchase_price).toFixed(2)}`],
+        ["Profit Margin (%)", `${toNumber(product.profit_margin)}%`],
+        ["Sales Price", `Rs. ${toNumber(product.sales_price).toFixed(2)}`],
+        ["Current Stock", `${toNumber(product.current_stock)} ${product.unit || ""}`.trim()],
+        ["Minimum Stock Level", `${toNumber(product.min_stock_level)} ${product.unit || ""}`.trim()],
+        ["Main Image", mainImageUrl || "-"],
+        ["Additional Image", additionalImageUrl || "-"],
       ],
       styles: { fontSize: 9, cellPadding: 2.5 },
       headStyles: { fillColor: [79, 70, 229] },
@@ -171,12 +184,40 @@ export default function ProductDetailPage() {
   const additionalImage = getProductImageUrl(
     product.additional_image_url || product.additional_image || null
   );
+  const detailRows: Array<{ label: string; value: ReactNode }> = [
+    { label: "Item Name", value: product.name || "-" },
+    { label: "HSN", value: product.hsn_code || "-" },
+    { label: "Barcode", value: product.barcode || "-" },
+    { label: "SKU", value: product.sku || "-" },
+    { label: "Brand", value: resolveName(product.brand, product.brand_name) },
+    { label: "Category", value: resolveName(product.category, product.category_name) },
+    { label: "Company", value: product.godown_name || company?.name || "-" },
+    { label: "Unit", value: product.unit || "-" },
+    { label: "Alert Quantity", value: `${getAlertQuantity(product)} ${product.unit || ""}`.trim() },
+    { label: "Opening Stock", value: `${toNumber(product.opening_stock)} ${product.unit || ""}`.trim() },
+    { label: "Description", value: product.description || "-" },
+    // { label: "Is Service", value: product.is_service ? "Yes" : "No" },
+    { label: "Unit Price", value: `Rs. ${toNumber(product.unit_price).toFixed(2)}` },
+    { label: "Seller Points", value: `${toNumber(product.seller_points)}` },
+    { label: "Discount Type", value: product.discount_type || "-" },
+    {
+      label: "Discount",
+      value: `${toNumber(product.discount)}${product.discount_type === "fixed" ? " (fixed)" : "%"}`,
+    },
+    { label: "GST %", value: `${toNumber(product.gst_rate)}%` },
+    { label: "Purchase Price", value: `Rs. ${toNumber(product.purchase_price).toFixed(2)}` },
+    { label: "Profit Margin (%)", value: `${toNumber(product.profit_margin)}%` },
+    { label: "Sales Price", value: `Rs. ${toNumber(product.sales_price).toFixed(2)}` },
+    // { label: "Price Inclusive of Tax", value: product.is_inclusive ? "Yes" : "No" },
+    { label: "Current Stock", value: `${toNumber(product.current_stock)} ${product.unit || ""}`.trim() },
+    { label: "Minimum Stock Level", value: `${toNumber(product.min_stock_level)} ${product.unit || ""}`.trim() },
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3 sm:items-center sm:gap-4">
             <Link
               href="/products"
               className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -185,9 +226,9 @@ export default function ProductDetailPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </Link>
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{product.name}</h1>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                <h1 className="truncate text-xl font-bold text-gray-900 sm:text-2xl dark:text-white">{product.name}</h1>
                 {product.is_service && (
                   <span className="px-2 py-1 text-xs font-medium rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
                     Service
@@ -199,27 +240,27 @@ export default function ProductDetailPage() {
                   </span>
                 )}
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              <p className="mt-1 break-words text-sm text-gray-500 dark:text-gray-400">
                 SKU: {product.sku || "-"} {product.barcode ? `| Barcode: ${product.barcode}` : ""}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:flex sm:items-center sm:justify-end">
             <button
               onClick={handleDownloadPdf}
-              className="px-4 py-2 text-indigo-600 dark:text-indigo-400 border border-indigo-300 dark:border-indigo-700 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center gap-2"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-indigo-300 px-4 py-2 text-indigo-600 hover:bg-indigo-50 sm:w-auto dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-900/20"
             >
               PDF
             </button>
             <Link
               href={`/products/${productId}/edit`}
-              className="px-4 py-2 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-100 sm:w-auto dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
             >
               Edit
             </Link>
             <button
               onClick={handleDelete}
-              className="px-4 py-2 text-red-600 dark:text-red-400 border border-red-300 dark:border-red-600 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-red-300 px-4 py-2 text-red-600 hover:bg-red-50 sm:w-auto dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20"
             >
               Delete
             </button>
@@ -227,191 +268,115 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
-      <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-6">
-          {(mainImage || additionalImage) && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Images</h2>
-              <div className="grid grid-cols-1 gap-4">
-                {mainImage && (
-                  <div>
-                    <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">Main Image</p>
-                    <img
-                      src={mainImage}
-                      alt={`${product.name} main`}
-                      className="h-52 w-full rounded-lg border border-gray-200 dark:border-gray-700 object-cover"
-                    />
-                  </div>
-                )}
-                {additionalImage && (
-                  <div>
-                    <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">Additional Image</p>
-                    <img
-                      src={additionalImage}
-                      alt={`${product.name} additional`}
-                      className="h-52 w-full rounded-lg border border-gray-200 dark:border-gray-700 object-cover"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Details</h2>
-            <dl className="space-y-4">
-              <div>
-                <dt className="text-sm text-gray-500 dark:text-gray-400">Brand</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white font-medium">{resolveName(product.brand, product.brand_name)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500 dark:text-gray-400">Category</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white font-medium">{resolveName(product.category, product.category_name)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500 dark:text-gray-400">Unit</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white font-medium">{product.unit || "-"}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500 dark:text-gray-400">Store</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white font-medium">
-                  {product.godown_name || company?.name || "-"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500 dark:text-gray-400">HSN/SAC</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white font-medium">{product.hsn_code || "-"}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500 dark:text-gray-400">Unit Price</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white">Rs. {toNumber(product.unit_price).toFixed(2)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500 dark:text-gray-400">GST Rate</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white">
-                  {toNumber(product.gst_rate)}%{product.is_inclusive ? " (Inclusive)" : " (Exclusive)"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500 dark:text-gray-400">Seller Points</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white">{toNumber(product.seller_points)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500 dark:text-gray-400">Discount</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white">
-                  {toNumber(product.discount)}{product.discount_type === "fixed" ? " (fixed)" : "%"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500 dark:text-gray-400">Purchase Price</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white">Rs. {toNumber(product.purchase_price).toFixed(2)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500 dark:text-gray-400">Sales Price</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white">Rs. {toNumber(product.sales_price).toFixed(2)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-gray-500 dark:text-gray-400">Profit Margin</dt>
-                <dd className="mt-1 text-gray-900 dark:text-white">{toNumber(product.profit_margin)}%</dd>
-              </div>
-              {product.description && (
-                <div>
-                  <dt className="text-sm text-gray-500 dark:text-gray-400">Description</dt>
-                  <dd className="mt-1 text-gray-700 dark:text-gray-300 text-sm whitespace-pre-wrap">
-                    {product.description}
-                  </dd>
-                </div>
-              )}
-            </dl>
+      <div className="space-y-6 p-6">
+        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+          <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Product Details</h2>
           </div>
-
-          {!product.is_service && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Stock</h2>
-              <dl className="space-y-4">
-                <div>
-                  <dt className="text-sm text-gray-500 dark:text-gray-400">Opening Stock</dt>
-                  <dd className="mt-1 text-gray-900 dark:text-white">
-                    {toNumber(product.opening_stock)} {product.unit}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-gray-500 dark:text-gray-400">Current Stock</dt>
-                  <dd className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
-                    {toNumber(product.current_stock)} {product.unit}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm text-gray-500 dark:text-gray-400">Minimum Stock Level</dt>
-                  <dd className="mt-1 text-gray-900 dark:text-white">
-                    {toNumber(product.min_stock_level)} {product.unit}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-          )}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                {detailRows.map((row) => (
+                  <tr key={row.label}>
+                    <th className="w-10 bg-white px-6 py-3 text-left text-sm font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                      {row.label}
+                    </th>
+                    <td className="whitespace-pre-wrap px-6 py-3 text-sm text-gray-900 dark:text-gray-100">
+                      {row.value}
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <th className="bg-white px-6 py-3 text-left text-sm font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">Main Image</th>
+                  <td className="px-6 py-3 text-sm text-gray-900 dark:text-gray-100">
+                    {mainImage ? (
+                      <img
+                        src={mainImage}
+                        alt={`${product.name} main`}
+                        className="h-auto w-auto max-w-[220px] rounded-lg border border-gray-200 object-contain dark:border-gray-700"
+                      />
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                </tr>
+                <tr>
+                  <th className="bg-white px-6 py-3 text-left text-sm font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">Additional Image</th>
+                  <td className="px-6 py-3 text-sm text-gray-900 dark:text-gray-100">
+                    {additionalImage ? (
+                      <img
+                        src={additionalImage}
+                        alt={`${product.name} additional`}
+                        className="h-auto w-auto max-w-[220px] rounded-lg border border-gray-200 object-contain dark:border-gray-700"
+                      />
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div className="lg:col-span-2">
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Alternative Products ({alternatives.length})
-              </h2>
+        <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Alternative Products ({alternatives.length})
+            </h2>
+            <Link
+              href="/inventory/alternative-products"
+              className="text-sm text-emerald-600 hover:underline dark:text-emerald-400"
+            >
+              Manage Alternatives
+            </Link>
+          </div>
+
+          {alternatives.length === 0 ? (
+            <div className="p-12 text-center">
+              <p className="mb-4 text-gray-500 dark:text-gray-400">No alternative products mapped yet.</p>
               <Link
                 href="/inventory/alternative-products"
-                className="text-sm text-emerald-600 dark:text-emerald-400 hover:underline"
+                className="inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-700"
               >
-                Manage Alternatives
+                Browse Alternatives
               </Link>
             </div>
-
-            {alternatives.length === 0 ? (
-              <div className="p-12 text-center">
-                <p className="text-gray-500 dark:text-gray-400 mb-4">No alternative products mapped yet.</p>
-                <Link
-                  href="/inventory/alternative-products"
-                  className="inline-flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm"
-                >
-                  Browse Alternatives
-                </Link>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                {alternatives.map((alt) => (
-                  <div key={alt.mapping_id} className="px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <Link
-                          href={`/inventory/alternative-products/${alt.alternative_id}`}
-                          className="font-medium text-emerald-600 dark:text-emerald-400 hover:underline"
-                        >
-                          {alt.alternative_name}
-                        </Link>
-                        <div className="mt-1 flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
-                          {alt.manufacturer && <span>{alt.manufacturer}</span>}
-                          {alt.model_number && <span>Model: {alt.model_number}</span>}
-                        </div>
-                        {alt.reference_price && (
-                          <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
-                            Ref. Price: Rs. {Number(alt.reference_price).toLocaleString()}
-                          </p>
-                        )}
-                        {alt.notes && (
-                          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{alt.notes}</p>
-                        )}
+          ) : (
+            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+              {alternatives.map((alt) => (
+                <div key={alt.mapping_id} className="px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <Link
+                        href={`/inventory/alternative-products/${alt.alternative_id}`}
+                        className="font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+                      >
+                        {alt.alternative_name}
+                      </Link>
+                      <div className="mt-1 flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+                        {alt.manufacturer && <span>{alt.manufacturer}</span>}
+                        {alt.model_number && <span>Model: {alt.model_number}</span>}
                       </div>
-                      {alt.priority > 0 && (
-                        <span className="px-2 py-0.5 text-xs font-medium rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
-                          Priority: {alt.priority}
-                        </span>
+                      {alt.reference_price && (
+                        <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+                          Ref. Price: Rs. {Number(alt.reference_price).toLocaleString()}
+                        </p>
+                      )}
+                      {alt.notes && (
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{alt.notes}</p>
                       )}
                     </div>
+                    {alt.priority > 0 && (
+                      <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                        Priority: {alt.priority}
+                      </span>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { productsApi, brandsApi, categoriesApi, inventoryApi, Godown, getErrorMessage } from "@/services/api";
+import { getStoredProductUnits, ProductUnitOption } from "@/utils/product-units";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -40,6 +41,7 @@ export default function EditProductPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [godowns, setGodowns] = useState<Godown[]>([]);
+  const [units, setUnits] = useState<ProductUnitOption[]>([]);
   const [companySelection, setCompanySelection] = useState("company");
 
   const [mainImage, setMainImage] = useState<File | null>(null);
@@ -129,6 +131,14 @@ export default function EditProductPage() {
             product.additional_image_url || product.additional_image || null
           )
         );
+
+        const availableUnits = getStoredProductUnits(companyId);
+        const currentUnit = product.unit || "";
+        const hasCurrentUnit = availableUnits.some((item) => item.value === currentUnit);
+        const mergedUnits = hasCurrentUnit || !currentUnit
+          ? availableUnits
+          : [...availableUnits, { value: currentUnit, label: currentUnit }];
+        setUnits(mergedUnits);
       } catch (err: any) {
         setError(getErrorMessage(err, "Failed to load product details"));
       } finally {
@@ -465,23 +475,21 @@ export default function EditProductPage() {
                     name="unit"
                     value={formData.unit}
                     onChange={handleChange}
+                    disabled={units.length === 0}
                     className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                   >
-                    <option value="unit">Unit</option>
-                    <option value="pcs">Pieces</option>
-                    <option value="kg">KG</option>
-                    <option value="gm">Gram</option>
-                    <option value="ltr">Litre</option>
-                    <option value="ml">ML</option>
-                    <option value="mtr">Metre</option>
-                    <option value="sqft">Sq.Ft</option>
-                    <option value="sqm">Sq.M</option>
-                    <option value="box">Box</option>
-                    <option value="pack">Pack</option>
-                    <option value="hr">Hour</option>
-                    <option value="day">Day</option>
-                    <option value="month">Month</option>
+                    <option value="" disabled>
+                      {units.length > 0 ? "Select unit" : "No units available"}
+                    </option>
+                    {units.map((unit) => (
+                      <option key={unit.value} value={unit.value}>
+                        {unit.label}
+                      </option>
+                    ))}
                   </select>
+                  <p className="mt-1 text-xs text-dark-6">
+                    Need more units? <a className="text-primary underline" href="/products/units">Add Unit</a>
+                  </p>
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Alert Quantity</label>

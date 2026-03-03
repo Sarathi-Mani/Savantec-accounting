@@ -37,6 +37,13 @@ async def create_product(
     unit_price: float = Form(0.0),
     unit: str = Form("unit"),
     gst_rate: str = Form("18"),
+    seller_points: int = Form(0),
+    discount_type: str = Form("percentage"),
+    discount: float = Form(0.0),
+    purchase_price: Optional[float] = Form(None),
+    profit_margin: float = Form(0.0),
+    sales_price: Optional[float] = Form(None),
+    is_inclusive: bool = Form(False),
     brand_id: Optional[str] = Form(None),
     category_id: Optional[str] = Form(None),
     godown_id: Optional[str] = Form(None),
@@ -67,6 +74,13 @@ async def create_product(
         unit_price=unit_price,
         unit=unit,
         gst_rate=gst_rate,
+        seller_points=seller_points,
+        discount_type=discount_type,
+        discount=discount,
+        purchase_price=purchase_price,
+        profit_margin=profit_margin,
+        sales_price=sales_price,
+        is_inclusive=is_inclusive,
         brand_id=brand_id,
         category_id=category_id,
         godown_id=godown_id,
@@ -107,6 +121,13 @@ async def update_product(
     unit_price: Optional[float] = Form(None),
     unit: Optional[str] = Form(None),
     gst_rate: Optional[str] = Form(None),
+    seller_points: Optional[int] = Form(None),
+    discount_type: Optional[str] = Form(None),
+    discount: Optional[float] = Form(None),
+    purchase_price: Optional[float] = Form(None),
+    profit_margin: Optional[float] = Form(None),
+    sales_price: Optional[float] = Form(None),
+    is_inclusive: Optional[bool] = Form(None),
     brand_id: Optional[str] = Form(None),
     category_id: Optional[str] = Form(None),
     godown_id: Optional[str] = Form(None),
@@ -152,6 +173,20 @@ async def update_product(
         update_data["unit"] = unit
     if gst_rate is not None:
         update_data["gst_rate"] = gst_rate
+    if seller_points is not None:
+        update_data["seller_points"] = seller_points
+    if discount_type is not None:
+        update_data["discount_type"] = discount_type
+    if discount is not None:
+        update_data["discount"] = discount
+    if purchase_price is not None:
+        update_data["purchase_price"] = purchase_price
+    if profit_margin is not None:
+        update_data["profit_margin"] = profit_margin
+    if sales_price is not None:
+        update_data["sales_price"] = sales_price
+    if is_inclusive is not None:
+        update_data["is_inclusive"] = is_inclusive
     if brand_id is not None:
         update_data["brand_id"] = brand_id
     if category_id is not None:
