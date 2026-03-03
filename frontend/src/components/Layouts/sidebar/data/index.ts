@@ -86,6 +86,13 @@ export const NAV_DATA = [
         ]
       },
       {
+        title: "Units",
+        icon: Icons.Table,
+        items: [
+          { title: "Manage Units", url: "/products/units" }
+        ]
+      },
+      {
         title: "Products",
         icon: Icons.FourCircle,
         items: [
