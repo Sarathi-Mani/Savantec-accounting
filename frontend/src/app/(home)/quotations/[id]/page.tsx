@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { useRouter, useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { addPdfPageNumbers } from "@/utils/pdfTheme";
@@ -11,6 +11,8 @@ import { companiesApi, customersApi, employeesApi, productsApi } from "@/service
 interface QuotationItem {
   id?: string;
   product_id?: string;
+  image_url?: string;
+  item_code?: string;
   description: string;
   hsn_code: string;
   quantity: number;
@@ -18,6 +20,13 @@ interface QuotationItem {
   unit_price: number;
   discount_percent: number;
   gst_rate: number;
+  is_project?: boolean;
+  sub_items?: Array<{
+    id?: string;
+    description: string;
+    quantity: number;
+    image_url?: string;
+  }>;
 }
 
 interface QuotationData {
@@ -40,6 +49,18 @@ interface QuotationData {
   payment_terms: string;
   place_of_supply: string;
   remarks: string;
+  quotation_type?: "item" | "project";
+  is_project?: boolean;
+  show_images?: boolean;
+  show_images_in_pdf?: boolean;
+  other_charges?: Array<{
+    id?: string;
+    name?: string;
+    amount?: number;
+    type?: "fixed" | "percentage";
+    tax?: number;
+  }>;
+  round_off?: number;
   contact_person: string;
   created_at: string;
   updated_at: string;
@@ -437,7 +458,10 @@ export default function ViewQuotationPage() {
     const freightCharges = Number(quotation.freight_charges || 0);
     const pAndFCharges = Number(quotation.p_and_f_charges || 0);
     const totalBeforeRoundOff = totalTaxable + totalTax + freightCharges + pAndFCharges;
-    const roundOff = Math.round(totalBeforeRoundOff) - totalBeforeRoundOff;
+    const roundOff =
+      quotation.round_off !== undefined && quotation.round_off !== null
+        ? Number(quotation.round_off)
+        : Math.round(totalBeforeRoundOff) - totalBeforeRoundOff;
     const grandTotal = totalBeforeRoundOff + roundOff;
 
     return {
@@ -952,6 +976,16 @@ export default function ViewQuotationPage() {
                     {quotation.tax_regime === "cgst_sgst" ? "CGST + SGST" : "IGST"}
                   </p>
                 </div>
+                <div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Quotation Type</p>
+                  <p className="font-medium text-gray-900 dark:text-white">
+                    {(quotation.quotation_type || "item") === "project" ? "Project Quotation" : "Item Quotation"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Subject</p>
+                  <p className="font-medium text-gray-900 dark:text-white">{quotation.subject || "-"}</p>
+                </div>
               </div>
             </div>
 
@@ -1002,17 +1036,57 @@ export default function ViewQuotationPage() {
                     {quotation.items.map((item, index) => {
                       const itemTotal = calculateItemTotal(item);
                       return (
-                        <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{index + 1}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{item.description}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{item.hsn_code}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{item.quantity}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{item.unit}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{formatCurrency(item.unit_price)}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{item.discount_percent}%</td>
-                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{item.gst_rate}%</td>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{formatCurrency(itemTotal.total)}</td>
-                        </tr>
+                        <Fragment key={`item-group-${index}`}>
+                          <tr key={`item-${index}`} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{index + 1}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                              <div className="space-y-1">
+                                <p>{item.description}</p>
+                                {item.item_code && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">Code: {item.item_code}</p>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{item.hsn_code}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{item.quantity}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{item.unit}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{formatCurrency(item.unit_price)}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{item.discount_percent}%</td>
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{item.gst_rate}%</td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{formatCurrency(itemTotal.total)}</td>
+                          </tr>
+                          {!!item.sub_items?.length && (
+                            <tr key={`sub-items-${index}`} className="bg-blue-50/40 dark:bg-blue-900/10">
+                              <td colSpan={9} className="px-4 py-3">
+                                <div className="rounded-lg border border-blue-100 bg-white p-3 dark:border-blue-900/30 dark:bg-gray-800">
+                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                                    Project Components
+                                  </p>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full">
+                                      <thead>
+                                        <tr className="border-b border-gray-200 dark:border-gray-700">
+                                          <th className="py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">#</th>
+                                          <th className="py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Description</th>
+                                          <th className="py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Qty</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {item.sub_items.map((subItem, subIndex) => (
+                                          <tr key={`sub-item-${index}-${subIndex}`} className="border-b border-gray-100 last:border-b-0 dark:border-gray-700">
+                                            <td className="py-2 text-xs text-gray-700 dark:text-gray-300">{subIndex + 1}</td>
+                                            <td className="py-2 text-xs text-gray-900 dark:text-white">{subItem.description || "-"}</td>
+                                            <td className="py-2 text-xs text-gray-700 dark:text-gray-300">{subItem.quantity ?? 0}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -1139,6 +1213,17 @@ export default function ViewQuotationPage() {
                     <span className="text-sm font-medium text-gray-900 dark:text-white">{formatCurrency(totals?.pAndFCharges || 0)}</span>
                   </div>
                 )}
+                {!!quotation.other_charges?.length &&
+                  quotation.other_charges.map((charge, chargeIndex) => (
+                    <div key={`other-charge-${chargeIndex}`} className="flex justify-between">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                        {charge.name || "Other Charges"}
+                      </span>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        {formatCurrency(Number(charge.amount || 0))}
+                      </span>
+                    </div>
+                  ))}
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600 dark:text-gray-400">Round Off</span>
                   <span className={`text-sm font-medium ${(totals?.roundOff || 0) > 0 ? 'text-green-600' : (totals?.roundOff || 0) < 0 ? 'text-red-600' : 'text-gray-900'} dark:text-white`}>

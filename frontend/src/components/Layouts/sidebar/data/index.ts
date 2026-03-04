@@ -330,9 +330,8 @@ export const NAV_DATA = [
         title: "Delivery Challans",
         icon: Icons.Truck,
         items: [
-          { title: "All Challans", url: "/delivery-challans" },
-          { title: "DC Out (Dispatch)", url: "/delivery-challans/new?type=dc_out" },
-          { title: "DC In (Returns)", url: "/delivery-challans/new?type=dc_in" },
+          { title: "DC Out List", url: "/delivery-challans/dc-out" },
+          { title: "DC In List", url: "/delivery-challans/dc-in" },
         ],
       },
     ],

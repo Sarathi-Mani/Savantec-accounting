@@ -49,6 +49,17 @@ class DeliveryChallanService:
             next_num = 1
         
         return f"{prefix}-{current_year}-{next_num:04d}"
+
+    def _get_valid_contact_id(self, company_id: str, contact_id: Optional[str]) -> Optional[str]:
+        """Return contact_id only if it exists under the given company."""
+        if not contact_id:
+            return None
+
+        contact = self.db.query(Contact).filter(
+            Contact.id == contact_id,
+            Contact.company_id == company_id
+        ).first()
+        return contact.id if contact else None
     
     def create_dc_out(
         self,
@@ -124,6 +135,9 @@ class DeliveryChallanService:
         elif status.lower() == "received":
             dc_status = DeliveryChallanStatus.RECEIVED
 
+        # Validate incoming contact_id to avoid FK violations from stale IDs
+        contact_id = self._get_valid_contact_id(company.id, contact_id)
+
         # Try to get contact from contact_person name
         if not contact_id and contact_person and customer_id:
             contact = self.db.query(Contact).filter(
@@ -158,13 +172,6 @@ class DeliveryChallanService:
             vehicle_number=vehicle_number,
             eway_bill_number=eway_bill_number,
             notes=notes,
-            subtotal=subtotal,
-            freight_charges=freight_charges,
-            packing_forwarding_charges=packing_forwarding_charges,
-            discount_on_all=discount_on_all,
-            discount_type=discount_type,
-            round_off=round_off,
-            grand_total=grand_total,
         )
         
         # Set delivery address
@@ -323,6 +330,9 @@ class DeliveryChallanService:
             dc_status = DeliveryChallanStatus.RECEIVED
         elif status.lower() == "cancelled":
             dc_status = DeliveryChallanStatus.CANCELLED
+
+        # Validate incoming/derived contact_id to avoid FK violations from stale IDs
+        contact_id = self._get_valid_contact_id(company.id, contact_id)
 
         # Try to get contact from contact_person name
         if not contact_id and contact_person and customer_id:

@@ -122,6 +122,49 @@ export default function NewDeliveryChallanPage() {
   const [productSearch, setProductSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Product[]>([]);
 
+  const formatApiError = (payload: any): string => {
+    const fallback = "Failed to create delivery challan";
+    if (!payload) return fallback;
+
+    if (typeof payload === "string") {
+      return payload || fallback;
+    }
+
+    const formatIssue = (issue: any): string => {
+      if (!issue) return "";
+      if (typeof issue === "string") return issue;
+      if (typeof issue !== "object") return String(issue);
+
+      const loc = Array.isArray(issue.loc)
+        ? issue.loc.filter((part: any) => part !== "body").join(" > ")
+        : "";
+      const msg = issue.msg || issue.message || "";
+      if (loc && msg) return `${loc}: ${msg}`;
+      if (msg) return String(msg);
+      return JSON.stringify(issue);
+    };
+
+    if (Array.isArray(payload)) {
+      return payload.map(formatIssue).filter(Boolean).join(", ") || fallback;
+    }
+
+    if (typeof payload === "object") {
+      const detail = (payload as any).detail;
+      if (typeof detail === "string") return detail || fallback;
+      if (Array.isArray(detail)) {
+        return detail.map(formatIssue).filter(Boolean).join(", ") || fallback;
+      }
+      if (detail && typeof detail === "object") {
+        return formatIssue(detail) || fallback;
+      }
+      if (typeof (payload as any).message === "string") {
+        return (payload as any).message || fallback;
+      }
+    }
+
+    return fallback;
+  };
+
   // Status options from image
   const statusOptions = [
     { value: "Open", label: "Open" },
@@ -603,6 +646,11 @@ const fetchNextDcNumber = async () => {
   try {
     const endpoint = dcType === "dc_out" ? "dc-out" : "dc-in";
     const { reference_no, ...formPayload } = formData;
+    const emptyToUndefined = (value: string | undefined | null) =>
+      value && value.trim() ? value : undefined;
+    const toIsoDateTime = (value: string | undefined | null) =>
+      value && value.trim() ? `${value}T00:00:00` : undefined;
+
     const body: any = {
       ...formPayload,
       items: validItems.map(item => ({
@@ -620,16 +668,17 @@ const fetchNextDcNumber = async () => {
         godown_id: dcType === "dc_out" ? formData.from_godown_id : formData.to_godown_id,
       })),
       // FIX: Include all the new fields
-      dc_number: formData.dc_number,
+      dc_number: emptyToUndefined(formData.dc_number),
       status: formData.status,
       custom_status: formData.status,
-      reference_no,
-      contact_id: formData.contact_person || undefined,
-      bill_title: formData.bill_title,
-      bill_description: formData.bill_description,
-      contact_person: selectedContactPerson?.name || undefined,
-      expiry_date: formData.expiry_date,
-      salesman_id: formData.salesman_id,
+      dc_date: toIsoDateTime(formData.dc_date),
+      reference_no: emptyToUndefined(reference_no),
+      contact_id: emptyToUndefined(formData.contact_person),
+      bill_title: emptyToUndefined(formData.bill_title),
+      bill_description: emptyToUndefined(formData.bill_description),
+      contact_person: emptyToUndefined(selectedContactPerson?.name),
+      expiry_date: toIsoDateTime(formData.expiry_date),
+      salesman_id: emptyToUndefined(formData.salesman_id),
       // Include totals for reference
       subtotal: totals.subtotal,
       freight_charges: formData.freightCharges,
@@ -663,8 +712,14 @@ const fetchNextDcNumber = async () => {
         const data = await response.json();
         router.push(`/delivery-challans/${data.id}`);
       } else {
-        const errorData = await response.json();
-        setError(errorData.detail || "Failed to create delivery challan");
+        const rawError = await response.text();
+        let parsedError: any = null;
+        try {
+          parsedError = rawError ? JSON.parse(rawError) : null;
+        } catch {
+          parsedError = rawError;
+        }
+        setError(formatApiError(parsedError));
       }
     } catch (err) {
       console.error("Error creating delivery challan:", err);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -325,7 +325,13 @@ const getToken = () => {
 
 export default function DeliveryChallansPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const { company } = useAuth();
+  const forcedDcType = pathname?.includes("/delivery-challans/dc-out")
+    ? "dc_out"
+    : pathname?.includes("/delivery-challans/dc-in")
+      ? "dc_in"
+      : "";
   const [data, setData] = useState<DCListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -334,7 +340,7 @@ export default function DeliveryChallansPage() {
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [typeFilter, setTypeFilter] = useState<string>("");
+  const [typeFilter, setTypeFilter] = useState<string>(forcedDcType);
   const [statusFilter, setStatusFilter] = useState<string>("");
 
   // UI state
@@ -373,6 +379,11 @@ export default function DeliveryChallansPage() {
       fetchDeliveryChallans();
     }
   }, [company?.id, currentPage, typeFilter, statusFilter]);
+
+  useEffect(() => {
+    if (!forcedDcType) return;
+    setTypeFilter(forcedDcType);
+  }, [forcedDcType]);
 
   useEffect(() => {
     if (company?.id) {
@@ -492,7 +503,7 @@ export default function DeliveryChallansPage() {
     setSearch("");
     setFromDate("");
     setToDate("");
-    setTypeFilter("");
+    setTypeFilter(forcedDcType || "");
     setStatusFilter("");
     setCurrentPage(1);
     fetchDeliveryChallans();
@@ -1047,6 +1058,12 @@ export default function DeliveryChallansPage() {
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   };
 
+  useEffect(() => {
+    if (pathname === "/delivery-challans") {
+      router.replace("/delivery-challans/dc-out");
+    }
+  }, [pathname, router]);
+
   if (!company?.id) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
@@ -1075,25 +1092,24 @@ export default function DeliveryChallansPage() {
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Delivery Challans</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              {forcedDcType === "dc_out" ? "DC Out Challans" : forcedDcType === "dc_in" ? "DC In Challans" : "Delivery Challans"}
+            </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Manage dispatch (DC Out) and returns (DC In)
+              {forcedDcType === "dc_out"
+                ? "Manage dispatch challans"
+                : forcedDcType === "dc_in"
+                  ? "Manage inward/return challans"
+                  : "Manage dispatch (DC Out) and returns (DC In)"}
             </p>
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => router.push('/delivery-challans/new?type=dc_out')}
+              onClick={() => router.push(`/delivery-challans/new?type=${forcedDcType || "dc_out"}`)}
               className="px-4 py-2 transition bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2"
             >
               <Plus className="w-5 h-5" />
-              DC Out (Dispatch)
-            </button>
-            <button
-              onClick={() => router.push('/delivery-challans/new?type=dc_in')}
-              className="px-4 py-2 transition bg-white dark:bg-gray-700 border border-indigo-600 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg flex items-center gap-2"
-            >
-              <Plus className="w-5 h-5" />
-              DC In (Return)
+              {forcedDcType === "dc_in" ? "Create DC In" : "Create DC Out"}
             </button>
           </div>
         </div>
@@ -1101,7 +1117,7 @@ export default function DeliveryChallansPage() {
 
       {/* Summary Cards */}
       <div className="px-6 py-6 bg-gray-50 dark:bg-gray-900">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -1143,9 +1159,9 @@ export default function DeliveryChallansPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-2xl font-bold text-indigo-600">
-                  {data?.items?.filter(dc => dc.dc_type === 'dc_out').length || 0}
+                  {data?.items?.filter(dc => dc.dc_type === (forcedDcType || 'dc_out')).length || 0}
                 </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">DC Out (Dispatch)</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{forcedDcType === "dc_in" ? "DC In (Return)" : "DC Out (Dispatch)"}</p>
               </div>
               <div className="w-12 h-12 rounded-lg bg-indigo-100 dark:bg-indigo-900/20 flex items-center justify-center">
                 <Package className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
@@ -1269,18 +1285,20 @@ export default function DeliveryChallansPage() {
 
         {showFilters && (
           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              >
-                <option value="">All Types</option>
-                <option value="dc_out">DC Out (Dispatch)</option>
-                <option value="dc_in">DC In (Return)</option>
-              </select>
-            </div>
+            {!forcedDcType && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                >
+                  <option value="">All Types</option>
+                  <option value="dc_out">DC Out (Dispatch)</option>
+                  <option value="dc_in">DC In (Return)</option>
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
               <select
@@ -1361,7 +1379,7 @@ export default function DeliveryChallansPage() {
                       <Truck className="w-12 h-12 text-gray-400 mb-2" />
                       <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">No delivery challans found</p>
                       <p className="text-gray-500 dark:text-gray-400 mb-4">
-                        {statusFilter || typeFilter || search || fromDate || toDate
+                        {statusFilter || (!forcedDcType && typeFilter) || search || fromDate || toDate
                           ? "No delivery challans found matching your filters. Try adjusting your search criteria."
                           : "Create your first delivery challan to start managing dispatches."}
                       </p>
