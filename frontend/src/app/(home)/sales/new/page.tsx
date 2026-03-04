@@ -158,6 +158,7 @@ function ProductSelectField({
         <Select
             ref={selectRef}
             options={options}
+            className="w-full"
 
             value={options.find(o => String(o.value) === String(value)) || null}
             getOptionValue={(option) => String(option.value)}
@@ -198,10 +199,16 @@ function ProductSelectField({
             menuPosition="fixed"
 
             styles={{
+                container: (base: any) => ({
+                    ...base,
+                    width: "100%",
+                    minWidth: "100%",
+                }),
                 control: (base: any, state: any) => ({
                     ...base,
                     minHeight: "36px",
                     height: "36px",
+                    width: "100%",
                     borderRadius: "0.375rem",
                     borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
                     boxShadow: state.isFocused ? "0 0 0 1px rgba(99,102,241,0.5)" : "none",
@@ -210,6 +217,13 @@ function ProductSelectField({
                     ...base,
                     height: "36px",
                     padding: "0 8px",
+                }),
+                singleValue: (base: any) => ({
+                    ...base,
+                    maxWidth: "100%",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
                 }),
                 input: (base: any) => ({
                     ...base,
@@ -231,16 +245,23 @@ function ProductSelectField({
             }}
             classNamePrefix="react-select"
             menuPlacement="auto"
-            formatOptionLabel={(option: any) => (
-                <div>
-                    <div className="whitespace-normal break-words text-sm">{option.label}</div>
-                    {option.subLabel ? (
-                        <div className="whitespace-normal break-words text-xs text-gray-500 dark:text-gray-400">
-                            {option.subLabel}
-                        </div>
-                    ) : null}
-                </div>
-            )}
+            formatOptionLabel={(option: any, { context }: any) => {
+                // Keep selected value display clean in input;
+                // show rich multi-line details only in dropdown menu.
+                if (context === "value") {
+                    return option.label;
+                }
+                return (
+                    <div>
+                        <div className="whitespace-normal break-words text-sm">{option.label}</div>
+                        {option.subLabel ? (
+                            <div className="whitespace-normal break-words text-xs text-gray-500 dark:text-gray-400">
+                                {option.subLabel}
+                            </div>
+                        ) : null}
+                    </div>
+                );
+            }}
         />
     );
 }
@@ -993,7 +1014,17 @@ export default function AddSalesPage() {
     const additionalChargesTax = Number(
         Math.max(0, (totals.freight - freightBaseValue) + (totals.pf - pfBaseValue)).toFixed(2)
     );
-    const summaryTaxValue = Number((totals.totalTax + additionalChargesTax).toFixed(2));
+    const isIntraSupply = isIntraStateSupply(formData.place_of_supply);
+    const summaryCgstValue = isIntraSupply
+        ? Number((totals.cgstTotal + (additionalChargesTax / 2)).toFixed(2))
+        : 0;
+    const summarySgstValue = isIntraSupply
+        ? Number((totals.sgstTotal + (additionalChargesTax / 2)).toFixed(2))
+        : 0;
+    const summaryIgstValue = !isIntraSupply
+        ? Number((totals.igstTotal + additionalChargesTax).toFixed(2))
+        : 0;
+    const summaryDiscountOnAllValue = Number((totals.discountAll + totals.itemDiscount).toFixed(2));
 
     const ensureCountryOption = (country: string) => {
         const trimmedCountry = country.trim();
@@ -1084,7 +1115,8 @@ export default function AddSalesPage() {
                 sgst_rate: Number(item.sgst_rate || 0),
                 igst_rate: Number(item.igst_rate || 0),
                 taxable_amount: Number(item.taxable_amount || (item.quantity * item.unit_price - item.discount_amount)),
-                total_amount: Number(item.total_amount || ((item.quantity * item.unit_price - item.discount_amount) * (1 + (item.gst_rate || 0) / 100))),
+                // Item table total should not include discount/GST adjustments.
+                total_amount: Number((item.quantity || 0) * (item.unit_price || 0)),
             }));
 
             // Prepare invoice data with ALL required fields
@@ -1227,7 +1259,8 @@ export default function AddSalesPage() {
 
                     updated.discount_amount = discount;
                     updated.taxable_amount = taxable;
-                    updated.total_amount = taxable + tax;
+                    // Line total is base amount only.
+                    updated.total_amount = itemTotal;
 
                     // Set CGST/SGST/IGST rates
                     if (isIntraStateSupply(formData.place_of_supply)) {
@@ -1828,10 +1861,10 @@ export default function AddSalesPage() {
                                 </div>
                             </div>
                             <div className="overflow-x-auto">
-                                <table className="w-full min-w-[1580px] border-collapse">
+                                <table className="w-full min-w-[2050px] border-collapse">
                                     <thead>
                                         <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
-                                            <th className="w-[450px] min-w-[450px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item</th>
+                                            <th className="w-[880px] min-w-[880px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item</th>
                                             <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item Code</th>
                                             <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">HSN Code</th>
                                             <th className="w-[200px] min-w-[200px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Description</th>
@@ -1847,7 +1880,7 @@ export default function AddSalesPage() {
                                     <tbody>
                                         {items.map((item) => (
                                             <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                                                <td className="w-[450px] min-w-[450px] px-3 py-3">
+                                                <td className="w-[880px] min-w-[880px] px-3 py-3">
                                                     <ProductSelectField
                                                         value={item.product_id}
                                                         products={products}
@@ -1880,7 +1913,7 @@ export default function AddSalesPage() {
                                                                         gst_rate: gstRate,
                                                                         discount_amount: 0,
                                                                         taxable_amount: taxable,
-                                                                        total_amount: taxable + tax,
+                                                                        total_amount: qty * unitPrice,
                                                                         ...(isIntraStateSupply(formData.place_of_supply) ? {
                                                                             cgst_rate: gstRate / 2,
                                                                             sgst_rate: gstRate / 2,
@@ -1978,7 +2011,7 @@ export default function AddSalesPage() {
                                                     </select>
                                                 </td>
                                                 <td className="px-4 py-3 font-medium">
-                                                    ₹{item.total_amount.toFixed(2)}
+                                                    ₹{((Number(item.quantity) || 0) * (Number(item.unit_price) || 0)).toFixed(2)}
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <button
@@ -2008,19 +2041,19 @@ export default function AddSalesPage() {
                                         {/* In the Charges & Discounts section */}
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
-                                            <div className="flex gap-2">
+                                            <div className="flex min-w-0 items-center gap-2">
                                                 <input
                                                     type="number"
                                                     value={formData.freightCharges}
                                                     onChange={(e) => setFormData({ ...formData, freightCharges: parseFloat(e.target.value) || 0 })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="min-w-0 w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                     step="0.01"
                                                 />
                                                 <select
                                                     value={formData.freightType}
                                                     onChange={(e) => setFormData({ ...formData, freightType: e.target.value })}
-                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="w-28 shrink-0 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
                                                     <option value="tax@0%">Tax@0%</option>
@@ -2039,19 +2072,19 @@ export default function AddSalesPage() {
 
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                            <div className="flex gap-2">
+                                            <div className="flex min-w-0 items-center gap-2">
                                                 <input
                                                     type="number"
                                                     value={formData.pfCharges}
                                                     onChange={(e) => setFormData({ ...formData, pfCharges: parseFloat(e.target.value) || 0 })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="min-w-0 w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                     step="0.01"
                                                 />
                                                 <select
                                                     value={formData.pfType}
                                                     onChange={(e) => setFormData({ ...formData, pfType: e.target.value })}
-                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="w-28 shrink-0 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
                                                     <option value="tax@0%">Tax@0%</option>
@@ -2138,10 +2171,24 @@ export default function AddSalesPage() {
                                             <span className="text-dark-6">Subtotal</span>
                                             <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">Tax</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{summaryTaxValue.toLocaleString('en-IN')}</span>
-                                        </div>
+
+                                        {isIntraSupply ? (
+                                            <>
+                                                <div className="flex justify-between">
+                                                    <span className="text-dark-6">CGST</span>
+                                                    <span className="font-medium text-dark dark:text-white">Rs. {summaryCgstValue.toLocaleString('en-IN')}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span className="text-dark-6">SGST</span>
+                                                    <span className="font-medium text-dark dark:text-white">Rs. {summarySgstValue.toLocaleString('en-IN')}</span>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="flex justify-between">
+                                                <span className="text-dark-6">IGST</span>
+                                                <span className="font-medium text-dark dark:text-white">Rs. {summaryIgstValue.toLocaleString('en-IN')}</span>
+                                            </div>
+                                        )}
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Freight Charges</span>
                                             <span className="font-medium text-dark dark:text-white">₹{freightBaseValue.toLocaleString('en-IN')}</span>
@@ -2156,84 +2203,81 @@ export default function AddSalesPage() {
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Discount on All</span>
-                                            <span className="font-medium text-red-600">-₹{totals.discountAll.toLocaleString('en-IN')}</span>
+                                            <span className="font-medium text-red-600">-₹{summaryDiscountOnAllValue.toLocaleString('en-IN')}</span>
                                         </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-dark-6">Round Off</span>
 
-                                            <div className="flex items-center gap-2">
-                                                {/* - Button: Makes amount negative */}
+                                        <div className="rounded-lg border border-stroke/80 p-3 dark:border-dark-3/80">
+                                            <div className="mb-2 flex items-center justify-between">
+                                                <span className="text-dark-6">Round Off</span>
+                                                <span
+                                                    className={`rounded-md px-2 py-1 text-sm font-semibold ${totals.roundOff >= 0
+                                                        ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                        : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                        }`}
+                                                >
+                                                    {totals.roundOff >= 0 ? '+Rs. ' : '-Rs. '}
+                                                    {Math.abs(totals.roundOff).toFixed(2)}
+                                                </span>
+                                            </div>
+
+                                            <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2">
                                                 <button
                                                     type="button"
                                                     onClick={() => {
                                                         const currentValue = Math.abs(formData.roundOff || 0);
-                                                        // Set to negative version of the absolute value
                                                         setFormData(prev => ({
                                                             ...prev,
                                                             roundOff: -currentValue
                                                         }));
                                                     }}
-                                                    className="p-2 rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400"
-                                                    title="Make amount negative (subtract from total)"
+                                                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
+                                                    title="Subtract from total"
                                                 >
-                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                                                     </svg>
                                                 </button>
 
-                                                {/* Input Field */}
                                                 <div className="relative">
                                                     <input
                                                         type="number"
-                                                        value={Math.abs(formData.roundOff || 0)} // Show absolute value only
+                                                        value={Math.abs(formData.roundOff || 0)}
                                                         onChange={(e) => {
                                                             const inputValue = parseFloat(e.target.value) || 0;
                                                             const currentSign = formData.roundOff >= 0 ? 1 : -1;
-                                                            // Apply current sign to the new input value
                                                             setFormData(prev => ({
                                                                 ...prev,
                                                                 roundOff: currentSign * inputValue
                                                             }));
                                                         }}
-                                                        className="w-32 px-10 py-2 text-center border border-stroke dark:border-dark-3 rounded-lg bg-transparent outline-none focus:border-primary"
+                                                        className="w-full rounded-lg border border-stroke bg-transparent px-10 py-2 text-center outline-none focus:border-primary dark:border-dark-3"
                                                         step="0.01"
                                                         min="0"
                                                     />
-                                                    {/* Left sign indicator */}
-                                                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none">
+                                                    <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
                                                         {formData.roundOff >= 0 ? '+' : '-'}
                                                     </div>
-                                                    {/* Right currency symbol */}
-                                                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                                                        ₹
+                                                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                                        Rs
                                                     </div>
                                                 </div>
 
-                                                {/* + Button: Makes amount positive */}
                                                 <button
                                                     type="button"
                                                     onClick={() => {
                                                         const currentValue = Math.abs(formData.roundOff || 0);
-                                                        // Set to positive version of the absolute value
                                                         setFormData(prev => ({
                                                             ...prev,
                                                             roundOff: currentValue
                                                         }));
                                                     }}
-                                                    className="p-2 rounded-lg bg-green-50 hover:bg-green-100 dark:bg-green-900/30 dark:hover:bg-green-900/50 text-green-600 dark:text-green-400"
-                                                    title="Make amount positive (add to total)"
+                                                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 text-green-600 transition hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
+                                                    title="Add to total"
                                                 >
-                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                                                     </svg>
                                                 </button>
-
-                                                {/* Display with sign */}
-                                                <div className={`min-w-[100px] px-3 py-2 rounded-lg text-center ${totals.roundOff >= 0 ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                                                    <span className="font-medium">
-                                                        {totals.roundOff >= 0 ? '+₹' : '-₹'}{Math.abs(totals.roundOff).toFixed(2)}
-                                                    </span>
-                                                </div>
                                             </div>
                                         </div>
                                         <div className="border-t border-stroke pt-3 dark:border-dark-3">
