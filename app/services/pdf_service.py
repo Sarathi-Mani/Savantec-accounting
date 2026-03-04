@@ -183,14 +183,54 @@ class PDFService:
             or invoice.customer_name
             or "Walk-in Customer"
         )
-        customer_address = ", ".join([x for x in [
-            (customer.billing_address_line1 if customer else None),
-            (customer.billing_address_line2 if customer else None),
-            (customer.billing_city if customer else None),
-            (customer.billing_state if customer else None),
-            (customer.billing_zip if customer else None),
-            (customer.billing_country if customer and customer.billing_country and customer.billing_country != "India" else None),
-        ] if x])
+        customer_address = ""
+        if customer:
+            # Prefer full billing address text when available, then supplement with missing parts.
+            billing_parts = []
+            if getattr(customer, "billing_address", None):
+                billing_parts.append(str(customer.billing_address).strip())
+            for field in (
+                "billing_address_line1",
+                "billing_address_line2",
+                "billing_city",
+                "billing_state",
+                "billing_zip",
+            ):
+                value = getattr(customer, field, None)
+                if value:
+                    value_text = str(value).strip()
+                    if value_text and value_text not in billing_parts:
+                        billing_parts.append(value_text)
+
+            billing_country = getattr(customer, "billing_country", None)
+            if billing_country and str(billing_country).strip() != "India":
+                billing_parts.append(str(billing_country).strip())
+
+            # If billing is empty, use shipping details as fallback.
+            if not billing_parts:
+                shipping_parts = []
+                if getattr(customer, "shipping_address", None):
+                    shipping_parts.append(str(customer.shipping_address).strip())
+                for field in (
+                    "shipping_address_line1",
+                    "shipping_address_line2",
+                    "shipping_city",
+                    "shipping_state",
+                    "shipping_zip",
+                ):
+                    value = getattr(customer, field, None)
+                    if value:
+                        value_text = str(value).strip()
+                        if value_text and value_text not in shipping_parts:
+                            shipping_parts.append(value_text)
+
+                shipping_country = getattr(customer, "shipping_country", None)
+                if shipping_country and str(shipping_country).strip() != "India":
+                    shipping_parts.append(str(shipping_country).strip())
+
+                customer_address = ", ".join([x for x in shipping_parts if x])
+            else:
+                customer_address = ", ".join([x for x in billing_parts if x])
         customer_gstin = (
             (customer.gstin if customer else None)
             or invoice.customer_gstin

@@ -409,8 +409,6 @@ export default function CreateVendorPage() {
       return false;
     }
 
-    const contactRegex = /^[0-9]{10}$/;
-
     // Validate email if provided
     if (formData.email && !isValidEmail(formData.email)) {
       setError("Please enter a valid email address");
@@ -497,45 +495,14 @@ export default function CreateVendorPage() {
     }
 
     // Validate contact persons emails
-    const isDomestic = !formData.billing_country || isIndiaCountry(formData.billing_country);
     for (const [index, person] of formData.contact_persons.entries()) {
       if (person.email && !isValidEmail(person.email)) {
         setError(`Please enter a valid email address for contact person ${index + 1}`);
         return false;
       }
-      
-      if (person.phone) {
-        const digits = person.phone.replace(/\D/g, '');
-        if (isDomestic && !contactRegex.test(digits)) {
-          setError(`Please enter a valid 10-digit phone number for contact person ${index + 1}`);
-          return false;
-        }
-        if (!isDomestic && digits.length < 4) {
-          setError(`Please enter a valid phone number for contact person ${index + 1}`);
-          return false;
-        }
-      }
     }
 
-    // Validate bank details
-    for (const [index, bank] of formData.bank_details.entries()) {
-      if (isDomestic) {
-        if (bank.account_number && !/^\d{9,18}$/.test(bank.account_number.replace(/\D/g, ''))) {
-          setError(`Please enter a valid account number for bank ${index + 1} (9-18 digits)`);
-          return false;
-        }
-        
-        if (bank.ifsc_code && !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bank.ifsc_code.toUpperCase())) {
-          setError(`Please enter a valid IFSC code for bank ${index + 1} (e.g., SBIN0001234)`);
-          return false;
-        }
-      } else {
-        if (bank.account_number && bank.account_number.trim().length < 4) {
-          setError(`Please enter a valid account/IBAN number for bank ${index + 1}`);
-          return false;
-        }
-      }
-    }
+    // No validation for mobile/account number/IFSC as requested.
 
     return true;
   };
@@ -1232,14 +1199,13 @@ export default function CreateVendorPage() {
 
                   <div>
                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                      Account Number <span className="text-red-500">*</span>
+                      Account Number
                     </label>
                     <input
                       type="text"
                       value={bank.account_number}
                       onChange={(e) => handleBankDetailChange(index, "account_number", e.target.value)}
                       placeholder="Enter account number"
-                      required
                       className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                     />
                   </div>
@@ -1247,14 +1213,12 @@ export default function CreateVendorPage() {
                   <div>
                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                       {isIndiaCountry(formData.billing_country) ? "IFSC Code" : "IFSC / SWIFT / Bank Code"}{" "}
-                      <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={bank.ifsc_code}
                       onChange={(e) => handleBankDetailChange(index, "ifsc_code", e.target.value)}
                       placeholder={isIndiaCountry(formData.billing_country) ? "Enter IFSC code (e.g., SBIN0001234)" : "Enter IFSC / SWIFT / bank code"}
-                      required
                       className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                       style={{ textTransform: 'uppercase' }}
                     />

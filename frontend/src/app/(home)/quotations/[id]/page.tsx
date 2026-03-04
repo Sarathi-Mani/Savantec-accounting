@@ -869,7 +869,33 @@ export default function ViewQuotationPage() {
       const bottomY = itemEndY;
       const rightW = 46;
       const leftW = width - rightW;
-      const remarksH = 14;
+      const sumRows: { label: string; value: string }[] = [
+        { label: "Total Items", value: String(totals?.totalItems || 0) },
+        { label: "Total Quantity", value: Number(totals?.totalQuantity || 0).toFixed(2) },
+        { label: "Subtotal", value: money(totals?.subtotal || 0) },
+        { label: "Discount", value: money(totals?.totalDiscount || 0) },
+        { label: "Taxable Amount", value: money(totals?.totalTaxable || 0) },
+      ];
+      if (quotation.tax_regime === "cgst_sgst") {
+        sumRows.push({ label: "CGST", value: money(totals?.totalCgst || 0) });
+        sumRows.push({ label: "SGST", value: money(totals?.totalSgst || 0) });
+      } else {
+        sumRows.push({ label: "IGST", value: money(totals?.totalIgst || 0) });
+      }
+      sumRows.push({ label: "Total Tax", value: money(totals?.totalTax || 0) });
+      if ((totals?.freightCharges || 0) > 0) {
+        sumRows.push({ label: "Freight Charges", value: money(totals?.freightCharges || 0) });
+      }
+      if ((totals?.pAndFCharges || 0) > 0) {
+        sumRows.push({ label: "P & F Charges", value: money(totals?.pAndFCharges || 0) });
+      }
+      (quotation.other_charges || []).forEach((charge) => {
+        const amount = Number(charge?.amount || 0);
+        sumRows.push({ label: charge?.name || "Other Charges", value: money(amount) });
+      });
+      sumRows.push({ label: "Round Off", value: money(totals?.roundOff || 0) });
+      sumRows.push({ label: "Grand Total", value: money(totals?.grandTotal || 0) });
+      const remarksH = Math.max(14, sumRows.length * 4.2);
       const termsH = 57;
 
       // Row 1: Remarks + totals summary
@@ -882,18 +908,6 @@ export default function ViewQuotationPage() {
       doc.text(remarksText.slice(0, 2), left + 1.2, bottomY + 8.2);
 
       const sumX = left + leftW;
-      const sumRows: { label: string; value: string }[] = [
-        { label: "Subtotal", value: money(totals?.subtotal || 0) },
-        { label: "Tax Amount", value: money(totals?.totalTax || 0) },
-      ];
-      if ((totals?.freightCharges || 0) > 0) {
-        sumRows.push({ label: "Freight Charges", value: money(totals?.freightCharges || 0) });
-      }
-      if ((totals?.pAndFCharges || 0) > 0) {
-        sumRows.push({ label: "P & F Charges", value: money(totals?.pAndFCharges || 0) });
-      }
-      sumRows.push({ label: "Grand Total", value: money(totals?.grandTotal || 0) });
-
       const sumRowH = remarksH / sumRows.length;
       for (let i = 1; i < sumRows.length; i++) {
         doc.line(sumX, bottomY + sumRowH * i, right, bottomY + sumRowH * i);

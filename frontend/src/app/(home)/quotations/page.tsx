@@ -407,24 +407,36 @@ export default function QuotationsPage() {
     if (!companyId || !token) return [];
 
     try {
-      const params = new URLSearchParams();
-      params.append("page", "1");
-      params.append("page_size", "1000");
-      if (statusFilter) params.append("status", statusFilter);
+      const pageSizeForExport = 100; // Backend allows max page_size=100
+      let page = 1;
+      let totalPages = 1;
+      const allItems: Quotation[] = [];
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/companies/${companyId}/quotations?${params}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      while (page <= totalPages) {
+        const params = new URLSearchParams();
+        params.append("page", String(page));
+        params.append("page_size", String(pageSizeForExport));
+        if (statusFilter) params.append("status", statusFilter);
 
-      if (!response.ok) throw new Error("Failed to fetch quotations for export");
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/companies/${companyId}/quotations?${params}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
 
-      const result = await response.json();
-      const list = result?.items || [];
+        if (!response.ok) throw new Error("Failed to fetch quotations for export");
+
+        const result = await response.json();
+        const pageItems = Array.isArray(result?.items) ? result.items : [];
+        allItems.push(...pageItems);
+        totalPages = Number(result?.total_pages || 1);
+        page += 1;
+      }
+
+      const list = allItems;
       setCachedExportData(list);
       return list;
     } catch (error) {
@@ -467,6 +479,14 @@ export default function QuotationsPage() {
       currency: "INR",
       minimumFractionDigits: 0,
     }).format(amount);
+  };
+
+  const formatExportCurrency = (amount: number) => {
+    const value = Number(amount || 0);
+    return `INR ${new Intl.NumberFormat("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value)}`;
   };
 
   const getStatusColor = (status: string): string => {
@@ -611,7 +631,7 @@ export default function QuotationsPage() {
 
         if (visibleColumns.total) {
           if (!headers.includes("Total")) headers.push("Total");
-          row.push(formatCurrency(quotation.total_amount));
+          row.push(formatExportCurrency(quotation.total_amount));
         }
 
         if (visibleColumns.salesman) {
@@ -669,7 +689,7 @@ export default function QuotationsPage() {
         }
 
         if (visibleColumns.total) {
-          row["Total"] = quotation.total_amount;
+          row["Total"] = formatExportCurrency(quotation.total_amount);
         }
 
         if (visibleColumns.salesman) {
@@ -737,7 +757,7 @@ export default function QuotationsPage() {
 
         if (visibleColumns.total) {
           if (!headers.includes("Total")) headers.push("Total");
-          row.push(formatCurrency(quotation.total_amount));
+          row.push(formatExportCurrency(quotation.total_amount));
         }
 
         if (visibleColumns.salesman) {
@@ -806,7 +826,7 @@ export default function QuotationsPage() {
         }
 
         if (visibleColumns.total) {
-          row["Total"] = formatCurrency(quotation.total_amount);
+          row["Total"] = formatExportCurrency(quotation.total_amount);
         }
 
         if (visibleColumns.salesman) {
@@ -818,7 +838,7 @@ export default function QuotationsPage() {
 
       const ws = XLSX.utils.json_to_sheet(exportData);
       const csv = XLSX.utils.sheet_to_csv(ws);
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8;" });
       saveAs(blob, "quotations.csv");
     } catch (error) {
       console.error("CSV export failed:", error);
