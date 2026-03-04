@@ -537,8 +537,8 @@ export const uploadApi = {
     const formData = new FormData();
     formData.append("file", file);
 
-    // Use the correct endpoint
-    const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
+    // API_BASE_URL already includes `/api`, so use `/upload` to avoid `/api/api/upload`
+    const response = await axios.post(`${API_BASE_URL}/upload`, formData, {
       headers: {
         "Content-Type": "multipart/form-data",
       },

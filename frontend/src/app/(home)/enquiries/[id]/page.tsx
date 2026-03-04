@@ -29,6 +29,7 @@ interface Enquiry {
   priority: string;
   source: string;
   description?: string;
+  additional_details?: string;
   expected_value: number;
   customer_name?: string;
   contact_name?: string;
@@ -406,7 +407,7 @@ useEffect(() => {
           </div>
 
           {/* Description Card */}
-          {(enquiry.description || enquiry.remarks) && (
+          {(enquiry.description || enquiry.remarks || enquiry.additional_details) && (
             <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
               <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
                 <h2 className="text-lg font-semibold text-gray-900">Description & Remarks</h2>
@@ -425,6 +426,14 @@ useEffect(() => {
                     <h3 className="text-sm font-medium text-gray-700 mb-2">Remarks</h3>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <p className="text-gray-700 whitespace-pre-wrap">{enquiry.remarks}</p>
+                    </div>
+                  </div>
+                )}
+                {enquiry.additional_details && (
+                  <div className="mt-4">
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Additional Details</h3>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <p className="text-gray-700 whitespace-pre-wrap">{enquiry.additional_details}</p>
                     </div>
                   </div>
                 )}

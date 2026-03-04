@@ -17,6 +17,7 @@ interface Enquiry {
   priority: string;
   source: string;
   description?: string;
+  additional_details?: string;
   expected_value: number;
   customer_name?: string;
   customer_email?: string;
@@ -830,6 +831,15 @@ const handleSubmit = async (
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-2 dark:border-dark-3 dark:text-white"
                 />
               </div>
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Additional Details</label>
+                <textarea
+                  value={formData.additional_details}
+                  onChange={(e) => setFormData({ ...formData, additional_details: e.target.value })}
+                  rows={3}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-dark-2 dark:border-dark-3 dark:text-white"
+                />
+              </div>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -881,6 +891,14 @@ const handleSubmit = async (
                     </td>
                     <td colSpan={5} className="px-4 py-3 text-sm text-gray-900 dark:text-white">
                       {enquiry.remarks || enquiry.description || "N/A"}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-dark-2">
+                      Additional Details
+                    </td>
+                    <td colSpan={5} className="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-pre-wrap">
+                      {enquiry.additional_details || "N/A"}
                     </td>
                   </tr>
                 </tbody>

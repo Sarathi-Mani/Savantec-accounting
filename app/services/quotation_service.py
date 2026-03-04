@@ -584,6 +584,7 @@ class QuotationService:
         self,
         quotation: Quotation,
         items: Optional[List[Dict[str, Any]]] = None,
+        quotation_type: Optional[str] = None,
         validity_days: Optional[int] = None,
         subject: Optional[str] = None,
         notes: Optional[str] = None,
@@ -669,6 +670,13 @@ class QuotationService:
             quotation.cess_amount = cess_amount
         if is_project is not None:
             quotation.is_project = is_project
+        if quotation_type is not None:
+            raw_type = str(quotation_type).strip().lower()
+            if raw_type in ("item", "project"):
+                quotation.quotation_type = raw_type
+                # Keep is_project aligned with quotation_type when explicitly provided.
+                if raw_type == "project":
+                    quotation.is_project = True
         if place_of_supply is not None:
             normalized_place_of_supply = self._normalize_state_code(place_of_supply)
             if normalized_place_of_supply:

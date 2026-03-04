@@ -890,6 +890,7 @@ async def update_quotation(
         quotation = service.update_quotation(
             quotation=quotation,
             items=items,
+            quotation_type=update_data.get("quotation_type"),
             validity_days=update_data.get("validity_days"),
             subject=update_data.get("subject"),
             notes=update_data.get("notes"),

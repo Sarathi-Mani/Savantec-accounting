@@ -430,7 +430,8 @@ class SimpleEnquiryService:
                 )
             )
         
-        return query.order_by(Enquiry.enquiry_date.desc(), Enquiry.created_at.desc()).offset(kwargs.get('skip', 0)).limit(kwargs.get('limit', 50)).all()
+        # Show latest inserted enquiries first.
+        return query.order_by(Enquiry.created_at.desc(), Enquiry.enquiry_date.desc()).offset(kwargs.get('skip', 0)).limit(kwargs.get('limit', 50)).all()
     
     def count_enquiries(self, company_id: str, **kwargs):
         query = self.db.query(Enquiry).filter(Enquiry.company_id == company_id)

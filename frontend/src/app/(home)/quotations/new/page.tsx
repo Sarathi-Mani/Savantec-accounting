@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { customersApi, productsApi, salesmenApi } from "@/services/api";
+import { customersApi, productsApi, salesmenApi, uploadApi } from "@/services/api";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Select from "react-select";
@@ -148,6 +148,16 @@ const parseCsvLine = (line: string): string[] => {
   }
   values.push(current);
   return values;
+};
+
+const resolveProductDescription = (product: any): string => {
+  return String(
+    product?.description ||
+    product?.item_description ||
+    product?.long_description ||
+    product?.product_description ||
+    ""
+  ).trim();
 };
 
 export default function NewQuotationPage() {
@@ -555,7 +565,7 @@ export default function NewQuotationPage() {
         if (itemDesc) {
           const byNameOrDesc = productPool.find((p: any) => {
             const name = String(p.name || "").trim().toLowerCase();
-            const desc = String(p.description || "").trim().toLowerCase();
+            const desc = resolveProductDescription(p).toLowerCase();
             return itemDesc === name || itemDesc === desc;
           });
           if (byNameOrDesc) return byNameOrDesc;
@@ -583,6 +593,10 @@ export default function NewQuotationPage() {
               matchedEnquiryItem.product_name ||
               "";
             const matchedProduct = findMatchedProduct(item, matchedEnquiryItem);
+            const hasLinkedProduct = Boolean(
+              item.product_id || matchedEnquiryItem.product_id || matchedProduct.id
+            );
+            const matchedProductDescription = resolveProductDescription(matchedProduct);
 
             const quantity = toNumber(
               item.quantity ?? matchedCachedItem.quantity ?? matchedEnquiryItem.quantity,
@@ -647,13 +661,23 @@ export default function NewQuotationPage() {
                 matchedProduct.code ||
                 "",
               description:
-                manualName ||
-                item.description ||
-                matchedCachedItem.description ||
-                matchedEnquiryItem.description ||
-                matchedProduct.description ||
-                matchedProduct.name ||
-                "Item",
+                hasLinkedProduct
+                  ? (
+                      matchedProductDescription ||
+                      item.description ||
+                      matchedCachedItem.description ||
+                      matchedEnquiryItem.description ||
+                      manualName ||
+                      "Item"
+                    )
+                  : (
+                      manualName ||
+                      item.description ||
+                      matchedCachedItem.description ||
+                      matchedEnquiryItem.description ||
+                      matchedProductDescription ||
+                      "Item"
+                    ),
               quantity,
               unit: item.unit || matchedCachedItem.unit || matchedEnquiryItem.unit || matchedProduct.unit || "unit",
               unit_price: fallbackFromAmount,
@@ -682,7 +706,7 @@ export default function NewQuotationPage() {
                     description: subItem.description || "",
                     quantity: Number(subItem.quantity) || 1,
                     image: null,
-                    imageUrl: subItem.image_url || "",
+                    imageUrl: normalizeImageUrl(subItem.image_url) || "",
                   }))
                 : [],
             };
@@ -855,6 +879,22 @@ export default function NewQuotationPage() {
       }
 
       const quotation = await response.json();
+      const inferredQuotationType: "item" | "project" = (() => {
+        const rawType = String(quotation?.quotation_type || "").trim().toLowerCase();
+        if (rawType === "project" || rawType === "item") {
+          return rawType as "item" | "project";
+        }
+        if (quotation?.is_project === true) {
+          return "project";
+        }
+        const hasProjectItems = Array.isArray(quotation?.items)
+          && quotation.items.some((item: any) => {
+            const rawItemType = String(item?.item_type || "").trim().toLowerCase();
+            const hasSubItems = Array.isArray(item?.sub_items) && item.sub_items.length > 0;
+            return item?.is_project === true || rawItemType === "project" || hasSubItems;
+          });
+        return hasProjectItems ? "project" : "item";
+      })();
 
       setFormData(prev => ({
         ...prev,
@@ -898,11 +938,11 @@ export default function NewQuotationPage() {
         contact_person: quotation.contact_person || "",
         show_images: quotation.show_images !== false,
         show_images_in_pdf: quotation.show_images_in_pdf !== false,
-        quotation_type: quotation.quotation_type || "item",
+        quotation_type: inferredQuotationType,
       }));
 
       if (Array.isArray(quotation.items) && quotation.items.length > 0) {
-        setItems(quotation.items.map((item: any, itemIndex: number) => ({
+        const editItems = quotation.items.map((item: any, itemIndex: number) => ({
           product_id: item.product_id || "",
           image_url: item.image_url || "",
           hsn: item.hsn_code || item.hsn || "",
@@ -911,7 +951,7 @@ export default function NewQuotationPage() {
           quantity: Number(item.quantity) || 1,
           unit: item.unit || "unit",
           unit_price: Number(item.unit_price) || 0,
-          discount_percent: Number(item.discount_percent) || 0,
+          discount_percent: normalizeDiscountPercent(item.discount_percent),
           gst_rate: Number(item.gst_rate) || 18,
           subItems: Array.isArray(item.sub_items)
             ? item.sub_items.map((subItem: any, idx: number) => ({
@@ -919,13 +959,47 @@ export default function NewQuotationPage() {
                 description: subItem.description || "",
                 quantity: Number(subItem.quantity) || 1,
                 image: null,
-                imageUrl: subItem.image_url || "",
+                imageUrl: normalizeImageUrl(subItem.image_url) || "",
               }))
             : [],
-        })));
+        }));
+        setItems(editItems);
+
+        // Prefill "All Items Discount" in edit mode from existing item discounts.
+        const tolerance = 0.0001;
+        const discountPercents = editItems.map((it: any) => normalizeDiscountPercent(it.discount_percent || 0));
+        const firstPercent = discountPercents[0] || 0;
+        const allSamePercent = discountPercents.every((dp: number) => Math.abs(dp - firstPercent) <= tolerance);
+        const lineDiscountAmounts = editItems.map((it: any) => {
+          const subtotal = Number(it.quantity || 0) * Number(it.unit_price || 0);
+          if (subtotal <= 0) return 0;
+          return Number((subtotal * (Number(it.discount_percent || 0) / 100)).toFixed(2));
+        });
+        const firstAmount = lineDiscountAmounts[0] || 0;
+        const allSameAmount = lineDiscountAmounts.every((amt: number) => Math.abs(amt - firstAmount) <= 0.05);
+
+        // Prefer fixed-mode detection first so saved rupee discounts keep showing as rupee.
+        // Ambiguous case: when both are possible, prefer percentage mode.
+        if (allSamePercent && firstPercent > 0) {
+          setGlobalDiscount({ type: "percentage", value: normalizeDiscountPercent(firstPercent) });
+        } else if (allSameAmount && firstAmount > 0) {
+          setGlobalDiscount({ type: "fixed", value: Number(firstAmount.toFixed(2)) });
+        } else {
+          setGlobalDiscount({ type: "percentage", value: 0 });
+        }
+
+        const savedPreference = loadGlobalDiscountPreference(quotationId);
+        if (savedPreference) {
+          setGlobalDiscount(savedPreference);
+        }
+      } else {
+        setGlobalDiscount({ type: "percentage", value: 0 });
       }
 
-      if (Array.isArray(quotation.other_charges) && quotation.other_charges.length > 0) {
+      const savedOtherCharges = loadOtherChargesPreference(quotationId);
+      if (savedOtherCharges && savedOtherCharges.length > 0) {
+        setOtherCharges(savedOtherCharges);
+      } else if (Array.isArray(quotation.other_charges) && quotation.other_charges.length > 0) {
         setOtherCharges(
           quotation.other_charges.map((charge: any, idx: number) => ({
             id: String(charge.id || `charge-${idx}`),
@@ -1080,10 +1154,34 @@ export default function NewQuotationPage() {
         quantity: item.quantity || 1,
         unit: item.unit || "unit",
         unit_price: item.unit_price || 0,
-        discount_percent: Number(item.discount_percent ?? 0),
+        discount_percent: normalizeDiscountPercent(item.discount_percent ?? 0),
         gst_rate: item.gst_rate || 18
       }));
       setItems(newItems);
+
+      // Prefill top "All Items Discount" control in create-copy flow as well.
+      const tolerance = 0.0001;
+      const discountPercents = newItems.map((it: any) => normalizeDiscountPercent(it.discount_percent || 0));
+      const firstPercent = discountPercents[0] || 0;
+      const allSamePercent = discountPercents.every((dp: number) => Math.abs(dp - firstPercent) <= tolerance);
+      const lineDiscountAmounts = newItems.map((it: any) => {
+        const subtotal = Number(it.quantity || 0) * Number(it.unit_price || 0);
+        if (subtotal <= 0) return 0;
+        return Number((subtotal * (Number(it.discount_percent || 0) / 100)).toFixed(2));
+      });
+      const firstAmount = lineDiscountAmounts[0] || 0;
+      const allSameAmount = lineDiscountAmounts.every((amt: number) => Math.abs(amt - firstAmount) <= 0.05);
+
+      // Ambiguous case: when both are possible, prefer percentage mode.
+      if (allSamePercent && firstPercent > 0) {
+        setGlobalDiscount({ type: "percentage", value: normalizeDiscountPercent(firstPercent) });
+      } else if (allSameAmount && firstAmount > 0) {
+        setGlobalDiscount({ type: "fixed", value: Number(firstAmount.toFixed(2)) });
+      } else {
+        setGlobalDiscount({ type: "percentage", value: 0 });
+      }
+    } else {
+      setGlobalDiscount({ type: "percentage", value: 0 });
     }
     
     if (quotation.sales_person_id && salesmen.length > 0) {
@@ -1261,6 +1359,93 @@ export default function NewQuotationPage() {
     value: 0,
     type: "percentage" as "percentage" | "fixed"
   });
+
+  const normalizeDiscountPercent = (value: any): number => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Number(Math.min(n, 100).toFixed(6));
+  };
+
+  const getGlobalDiscountStorageKey = (quotationId: string) =>
+    `quotation_global_discount_${company?.id || "unknown"}_${quotationId}`;
+
+  const saveGlobalDiscountPreference = (
+    quotationId: string,
+    discount: { type: "percentage" | "fixed"; value: number }
+  ) => {
+    if (typeof window === "undefined" || !quotationId) return;
+    try {
+      window.localStorage.setItem(
+        getGlobalDiscountStorageKey(quotationId),
+        JSON.stringify({
+          type: discount.type,
+          value: Number(discount.value || 0),
+          saved_at: Date.now(),
+        })
+      );
+    } catch {
+      // ignore storage failures
+    }
+  };
+
+  const loadGlobalDiscountPreference = (
+    quotationId: string
+  ): { type: "percentage" | "fixed"; value: number } | null => {
+    if (typeof window === "undefined" || !quotationId) return null;
+    try {
+      const raw = window.localStorage.getItem(getGlobalDiscountStorageKey(quotationId));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || (parsed.type !== "percentage" && parsed.type !== "fixed")) return null;
+      return {
+        type: parsed.type,
+        value: Number(parsed.value) || 0,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const getOtherChargesStorageKey = (quotationId: string) =>
+    `quotation_other_charges_${company?.id || "unknown"}_${quotationId}`;
+
+  const saveOtherChargesPreference = (quotationId: string, charges: OtherCharge[]) => {
+    if (typeof window === "undefined" || !quotationId) return;
+    try {
+      const payload = (charges || [])
+        .filter((c) => c.name?.trim() || Number(c.amount) > 0)
+        .map((c) => ({
+          id: String(c.id || ""),
+          name: String(c.name || "Other Charges"),
+          amount: Number(c.amount) || 0,
+          type: c.type === "percentage" ? "percentage" : "fixed",
+          tax: Number(c.tax) || 0,
+        }));
+      window.localStorage.setItem(getOtherChargesStorageKey(quotationId), JSON.stringify(payload));
+    } catch {
+      // ignore storage failures
+    }
+  };
+
+  const loadOtherChargesPreference = (quotationId: string): OtherCharge[] | null => {
+    if (typeof window === "undefined" || !quotationId) return null;
+    try {
+      const raw = window.localStorage.getItem(getOtherChargesStorageKey(quotationId));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return null;
+      const normalized: OtherCharge[] = parsed.map((c: any, idx: number) => ({
+        id: String(c?.id || `charge-${idx}`),
+        name: String(c?.name || "Other Charges"),
+        amount: Number(c?.amount) || 0,
+        type: c?.type === "percentage" ? "percentage" : "fixed",
+        tax: Number(c?.tax) || 0,
+      }));
+      return normalized.length > 0 ? normalized : null;
+    } catch {
+      return null;
+    }
+  };
 
   const showToast = (message: string, type: "success" | "error" | "info" | "warning" = "success") => {
     toastCounterRef.current += 1;
@@ -1727,7 +1912,7 @@ const productOptions = useMemo(() =>
         
         const name = product.name || "Unnamed Product";
         const itemCode = product.item_code || product.code || "";
-        const description = product.description || "";
+        const description = resolveProductDescription(product);
         const hsn = product.hsn_code || product.hsn || "";
         
       const rawMainImage =
@@ -1759,9 +1944,9 @@ const productOptions = useMemo(() =>
           subLabel: subLabel,
           item_code: itemCode,
           hsn: hsn,
-          description: description || name,
+          description: description,
           unit_price: product.unit_price || product.sales_price || 0,
-          discount_percent: Number(product.discount_percent ?? product.discount ?? 0),
+          discount_percent: normalizeDiscountPercent(product.discount_percent ?? product.discount ?? 0),
           gst_rate: product.tax_rate || product.gst_rate || 18,
           unit: product.unit || "unit",
           sku: product.sku || "",
@@ -2000,7 +2185,7 @@ const productOptions = useMemo(() =>
             if (!product || !product.id) return false;
             
             product.name = product.name || "Unnamed Product";
-            product.description = product.description || "";
+            product.description = resolveProductDescription(product);
             product.hsn = product.hsn || product.hsn_code || product.hsn_no || "";
             product.unit_price = parseFloat(product.unit_price) || 0;
             product.sales_price = parseFloat(product.sales_price) || product.unit_price || 0;
@@ -2253,6 +2438,26 @@ const productOptions = useMemo(() =>
     };
   }, [items, otherCharges, formData.tax_regime, calculateItemTotal, round2]);
 
+  const globalDiscountCalculatedAmount = useMemo(() => {
+    if (!globalDiscount.value || globalDiscount.value <= 0) return 0;
+    const amount = items.reduce((sum, item) => {
+      const subtotal = round2(Number(item.quantity || 0) * Number(item.unit_price || 0));
+      if (subtotal <= 0) return sum;
+      if (globalDiscount.type === "percentage") {
+        return round2(sum + round2(subtotal * (Number(globalDiscount.value || 0) / 100)));
+      }
+      // Fixed mode is per item row.
+      return round2(sum + Math.min(Number(globalDiscount.value || 0), subtotal));
+    }, 0);
+    return round2(amount);
+  }, [globalDiscount.type, globalDiscount.value, items, round2]);
+
+  const allItemsDiscountDisplayAmount = useMemo(() => {
+    if (totals.totalDiscount > 0) return totals.totalDiscount;
+    if (globalDiscount.value > 0) return globalDiscountCalculatedAmount;
+    return 0;
+  }, [totals.totalDiscount, globalDiscount.value, globalDiscountCalculatedAmount]);
+
   const addSubItem = (itemIndex: number) => {
     const newItems = [...items];
     if (!newItems[itemIndex].subItems) {
@@ -2280,7 +2485,7 @@ const productOptions = useMemo(() =>
     showToast("Sub-item removed", "info");
   };
 
-  const updateSubItem = (
+  const updateSubItem = async (
     itemIndex: number, 
     subItemId: string, 
     field: keyof SubItem, 
@@ -2293,11 +2498,21 @@ const productOptions = useMemo(() =>
     
     if (subItemIndex !== -1) {
       if (field === "image" && value instanceof File) {
-        const imageUrl = URL.createObjectURL(value);
+        let uploadedUrl = "";
+        try {
+          const uploadResponse = await uploadApi.uploadFile(value);
+          uploadedUrl = String(uploadResponse?.url || "").trim();
+        } catch (err: any) {
+          showToast(
+            err?.response?.data?.detail || err?.message || "Failed to upload component image",
+            "error"
+          );
+          uploadedUrl = "";
+        }
         newItems[itemIndex].subItems![subItemIndex] = {
           ...newItems[itemIndex].subItems![subItemIndex],
           image: value,
-          imageUrl: imageUrl
+          imageUrl: uploadedUrl
         };
       } else {
         newItems[itemIndex].subItems![subItemIndex] = {
@@ -2350,15 +2565,19 @@ const productOptions = useMemo(() =>
             "",
           hsn: product.hsn || product.hsn_code || "",
           item_code: product.item_code || product.code || "",
-          description: product.description || product.name || "Product",
+          description: resolveProductDescription(product) || "Item",
           unit_price: product.unit_price || product.sales_price || 0,
-          discount_percent: Number(product.discount ?? product.discount_percent ?? 0),
+          discount_percent: normalizeDiscountPercent(product.discount ?? product.discount_percent ?? 0),
           quantity: 1,
           gst_rate: Number(product.tax_rate || product.gst_rate || 18)
         };
       }
     } else {
-      newItems[index] = { ...newItems[index], [field]: value };
+      if (field === "discount_percent") {
+        newItems[index] = { ...newItems[index], discount_percent: normalizeDiscountPercent(value) };
+      } else {
+        newItems[index] = { ...newItems[index], [field]: value };
+      }
     }
     
     if (field === "description" && !value.trim()) {
@@ -2392,26 +2611,35 @@ const productOptions = useMemo(() =>
     ));
   };
 
-  const applyGlobalDiscount = () => {
-    if (globalDiscount.value <= 0) {
-      showToast("Please enter a discount value", "warning");
+  const applyGlobalDiscount = (
+    nextDiscount?: { value: number; type: "percentage" | "fixed" },
+    notify: boolean = true
+  ) => {
+    const effectiveDiscount = nextDiscount || globalDiscount;
+
+    if (effectiveDiscount.value <= 0) {
+      if (notify) showToast("Please enter a discount value", "warning");
       return;
     }
 
     const newItems = items.map(item => {
-      if (globalDiscount.type === "percentage") {
-        const finalDiscount = Math.min(globalDiscount.value, 100);
+      if (effectiveDiscount.type === "percentage") {
+        const finalDiscount = normalizeDiscountPercent(effectiveDiscount.value);
         return { ...item, discount_percent: finalDiscount };
       } else {
-        const itemSubtotal = item.quantity * item.unit_price;
-        const percentageDiscount = (globalDiscount.value / itemSubtotal) * 100;
-        const finalDiscount = Math.min(percentageDiscount, 100);
+        // Fixed mode: apply entered INR per item row (line), not per unit.
+        const itemSubtotal = Number(item.quantity || 0) * Number(item.unit_price || 0);
+        if (itemSubtotal <= 0) {
+          return { ...item, discount_percent: 0 };
+        }
+        const percentageDiscount = (effectiveDiscount.value / itemSubtotal) * 100;
+        const finalDiscount = normalizeDiscountPercent(percentageDiscount);
         return { ...item, discount_percent: finalDiscount };
       }
     });
 
     setItems(newItems);
-    showToast("Discount applied to all items", "success");
+    if (notify) showToast("Discount applied to all items", "success");
   };
 
   const handleCustomerChange = async (option: any) => {
@@ -2589,6 +2817,7 @@ const productOptions = useMemo(() =>
         reference_no: formData.reference_no || undefined,
         reference_date: formData.reference_date || undefined,
         quotation_type: formData.quotation_type || "item", 
+        is_project: (formData.quotation_type || "item") === "project",
         payment_terms: formData.payment_terms || undefined,
         excel_notes: excelDataText || undefined,
         show_images: formData.show_images !== false,
@@ -2637,6 +2866,14 @@ const productOptions = useMemo(() =>
 
       if (response.ok) {
         const data = await response.json();
+        const savedQuotationId = isEditMode ? (editQuotationId || data?.id || "") : (data?.id || "");
+        if (savedQuotationId) {
+          saveGlobalDiscountPreference(savedQuotationId, {
+            type: globalDiscount.type,
+            value: Number(globalDiscount.value || 0),
+          });
+          saveOtherChargesPreference(savedQuotationId, otherCharges);
+        }
         showToast(isEditMode ? "Quotation updated successfully!" : "Quotation created successfully!", "success");
         router.push(isEditMode ? `/quotations/${editQuotationId}` : `/quotations`);
       } else {
@@ -3384,9 +3621,9 @@ const productOptions = useMemo(() =>
                                       selectedProduct.main_image ||
                                       "",
                                     hsn: selectedProduct.hsn || selectedProduct.hsn_code || "",
-                                    description: selectedProduct.description || selectedProduct.name || "Product",
+                                    description: resolveProductDescription(selectedProduct) || "Item",
                                     unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
-                                    discount_percent: Number(
+                                    discount_percent: normalizeDiscountPercent(
                                       selectedProduct.discount ?? selectedProduct.discount_percent ?? 0
                                     ),
                                     gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
@@ -3561,7 +3798,7 @@ const productOptions = useMemo(() =>
                             onChange={(e) => updateItem(index, "discount_percent", parseFloat(e.target.value) || 0)}
                             min={0}
                             max={100}
-                            step={0.01}
+                            step="any"
                             className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1.5 text-sm"
                           />
                         </td>
@@ -3689,9 +3926,9 @@ const productOptions = useMemo(() =>
                                           selectedProduct.main_image ||
                                           "",
                                         hsn: selectedProduct.hsn || selectedProduct.hsn_code || "",
-                                        description: selectedProduct.description || selectedProduct.name || "Product",
+                                        description: resolveProductDescription(selectedProduct) || "Item",
                                         unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
-                                        discount_percent: Number(
+                                        discount_percent: normalizeDiscountPercent(
                                           selectedProduct.discount ?? selectedProduct.discount_percent ?? 0
                                         ),
                                         gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
@@ -3851,7 +4088,7 @@ const productOptions = useMemo(() =>
                                 onChange={(e) => updateItem(itemIndex, "discount_percent", parseFloat(e.target.value) || 0)}
                                 min={0}
                                 max={100}
-                                step={0.01}
+                                step="any"
                                 className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm"
                               />
                             </td>
@@ -3968,7 +4205,7 @@ const productOptions = useMemo(() =>
                                         {subItem.imageUrl ? (
                                           <div className="relative flex-shrink-0">
                                             <img
-                                              src={subItem.imageUrl}
+                                              src={normalizeImageUrl(subItem.imageUrl) || subItem.imageUrl}
                                               alt="Component preview"
                                               className="h-10 w-10 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
                                             />
@@ -4255,27 +4492,34 @@ const productOptions = useMemo(() =>
                       <input
                         type="number"
                         value={globalDiscount.value}
-                        onChange={(e) => setGlobalDiscount({ ...globalDiscount, value: parseFloat(e.target.value) || 0 })}
+                        onChange={(e) => {
+                          const next = {
+                            ...globalDiscount,
+                            value: parseFloat(e.target.value) || 0,
+                          };
+                          setGlobalDiscount(next);
+                          applyGlobalDiscount(next, false);
+                        }}
                         className="w-24 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm"
                         min={0}
                       />
                       <select
                         value={globalDiscount.type}
-                        onChange={(e) => setGlobalDiscount({ ...globalDiscount, type: e.target.value as "percentage" | "fixed" })}
+                        onChange={(e) => {
+                          const next = {
+                            ...globalDiscount,
+                            type: e.target.value as "percentage" | "fixed",
+                          };
+                          setGlobalDiscount(next);
+                          applyGlobalDiscount(next, false);
+                        }}
                         className="w-20 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm"
                       >
                         <option value="percentage">%</option>
                         <option value="fixed">₹</option>
                       </select>
-                      <button
-                        type="button"
-                        onClick={applyGlobalDiscount}
-                        className="rounded bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:hover:bg-blue-800"
-                      >
-                        Apply
-                      </button>
                     </div>
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">{formatCurrency(totals.totalDiscount)}</span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">{formatCurrency(allItemsDiscountDisplayAmount)}</span>
                   </div>
                 </div>
 

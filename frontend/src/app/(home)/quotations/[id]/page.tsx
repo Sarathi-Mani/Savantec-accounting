@@ -23,6 +23,7 @@ interface QuotationItem {
   is_project?: boolean;
   sub_items?: Array<{
     id?: string;
+    component_name?: string;
     description: string;
     quantity: number;
     image_url?: string;
@@ -522,6 +523,33 @@ export default function ViewQuotationPage() {
         .catch(reject);
     });
 
+  const uploadsBaseUrl = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/api$/, "");
+  const resolveUploadUrl = (raw?: string) => {
+    const value = String(raw || "").trim();
+    if (!value) return "";
+    if (/^data:image\//i.test(value)) return value;
+    if (/^blob:/i.test(value)) return value;
+    if (/^https?:\/\//i.test(value)) return value;
+    if (value.startsWith("/")) return `${uploadsBaseUrl}${value}`;
+    return `${uploadsBaseUrl}/uploads/${value.replace(/^\/+/, "")}`;
+  };
+
+  const getItemName = (item: QuotationItem) => {
+    const anyItem = item as any;
+    const descKey = String(item.description || "").trim().toLowerCase();
+    return (
+      String(anyItem?.item_name || "").trim() ||
+      String(anyItem?.product_name || "").trim() ||
+      String(anyItem?.name || "").trim() ||
+      String(anyItem?.model_name || "").trim() ||
+      (item.product_id ? String(productModelById[item.product_id] || "").trim() : "") ||
+      (item.product_id ? String(enquiryModelByProductId[item.product_id] || "").trim() : "") ||
+      String(enquiryModelByDescription[descKey] || "").trim() ||
+      String(item.item_code || "").trim() ||
+      "-"
+    );
+  };
+
   const generatePDF = async () => {
     if (!quotation) return;
     
@@ -534,6 +562,7 @@ export default function ViewQuotationPage() {
       const splitX = left + 92;
       const money = (v: number | undefined | null) =>
         new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v || 0));
+      const showImagesInPdf = quotation.show_images !== false;
 
       const customerNameText = customerDisplayName || quotation.customer_name || "-";
       const customerDetailText = [customerAddress, `GSTIN: ${customerGstin || "-"}`]
@@ -667,7 +696,38 @@ export default function ViewQuotationPage() {
 
       // Items table
       const tableStartY = shipY + shipH;
-      const rows = quotation.items.map((item, index) => {
+      const itemImageDataByIndex: Record<number, string> = {};
+      const componentImageDataByKey: Record<string, string> = {};
+      if (showImagesInPdf) {
+        await Promise.all(
+          quotation.items.map(async (item, idx) => {
+            const imageSrc = resolveUploadUrl((item as any).image_url);
+            if (!imageSrc) return;
+            try {
+              itemImageDataByIndex[idx] = await loadImageAsDataUrl(imageSrc);
+            } catch {
+              // ignore per-row image failure
+            }
+          })
+        );
+        await Promise.all(
+          quotation.items.flatMap((item, itemIndex) =>
+            (item.sub_items || []).map(async (subItem, subIndex) => {
+              const imageSrc = resolveUploadUrl(subItem.image_url);
+              if (!imageSrc) return;
+              try {
+                componentImageDataByKey[`${itemIndex}-${subIndex}`] = await loadImageAsDataUrl(imageSrc);
+              } catch {
+                // ignore per-component image failure
+              }
+            })
+          )
+        );
+      }
+      const rows: string[][] = [];
+      const rowImageDataByIndex: Record<number, string> = {};
+      const componentRowIndexes = new Set<number>();
+      quotation.items.forEach((item, index) => {
         const itemTotal = calculateItemTotal(item);
         const descKey = String(item.description || "").trim().toLowerCase();
         const modelName =
@@ -676,23 +736,85 @@ export default function ViewQuotationPage() {
           enquiryModelByDescription[descKey] ||
           item.description ||
           "-";
-        return [
-          String(index + 1),
-          item.description || "-",
-          modelName,
-          item.hsn_code || "-",
-          Number(item.quantity || 0).toFixed(2),
-          Number(item.unit_price || 0).toFixed(2),
-          item.unit || "-",
-          `${Number(item.gst_rate || 0).toFixed(2)}%`,
-          `${Number(item.discount_percent || 0).toFixed(0)}%`,
-          Number(itemTotal.total || 0).toFixed(2),
-        ];
+
+        if (showImagesInPdf) {
+          rows.push([
+            String(index + 1),
+            item.description || "-",
+            "__IMG__",
+            item.hsn_code || "-",
+            Number(item.quantity || 0).toFixed(2),
+            Number(item.unit_price || 0).toFixed(2),
+            item.unit || "-",
+            `${Number(item.gst_rate || 0).toFixed(2)}%`,
+            `${Number(item.discount_percent || 0).toFixed(0)}%`,
+            Number(itemTotal.total || 0).toFixed(2),
+          ]);
+          if (itemImageDataByIndex[index]) {
+            rowImageDataByIndex[rows.length - 1] = itemImageDataByIndex[index];
+          }
+        } else {
+          rows.push([
+            String(index + 1),
+            item.description || "-",
+            modelName,
+            item.hsn_code || "-",
+            Number(item.quantity || 0).toFixed(2),
+            Number(item.unit_price || 0).toFixed(2),
+            item.unit || "-",
+            `${Number(item.gst_rate || 0).toFixed(2)}%`,
+            `${Number(item.discount_percent || 0).toFixed(0)}%`,
+            Number(itemTotal.total || 0).toFixed(2),
+          ]);
+        }
+
+        (item.sub_items || []).forEach((subItem, subIndex) => {
+          const componentName = String(subItem.component_name || subItem.description || "-").trim() || "-";
+          const componentQty = Number(subItem.quantity || 0).toFixed(2);
+          const componentNumber = `${index + 1}.${subIndex + 1}`;
+          if (showImagesInPdf) {
+            rows.push([
+              "",
+              `  ${componentNumber} ${componentName}`,
+              "__IMG__",
+              "-",
+              componentQty,
+              "-",
+              "-",
+              "-",
+              "-",
+              "-",
+            ]);
+            componentRowIndexes.add(rows.length - 1);
+            const compImg = componentImageDataByKey[`${index}-${subIndex}`];
+            if (compImg) {
+              rowImageDataByIndex[rows.length - 1] = compImg;
+            }
+          } else {
+            rows.push([
+              "",
+              `  ${componentNumber} ${componentName}`,
+              "",
+              "",
+              componentQty,
+              "",
+              "",
+              "",
+              "",
+              "",
+            ]);
+            componentRowIndexes.add(rows.length - 1);
+          }
+        });
       });
 
       autoTable(doc, {
         startY: tableStartY,
-        head: [["S No", "Description", "Model No", "HSN", "Qty", "Rate", "UOM", "Tax Rate", "Disc.", "Amount"]],
+        head: [
+          showImagesInPdf
+            ? ["S No", "Description", "Image", "HSN", "Qty", "Rate", "UOM", "Tax Rate", "Disc.", "Amount"]
+            : ["S No", "Description", "Model No", "HSN", "Qty", "Rate", "UOM", "Tax Rate", "Disc.", "Amount"]
+        ],
         body: rows.length ? rows : [["1", "-", "-", "-", "-", "-", "-", "-", "-", "-"]],
         theme: "grid",
         margin: { left, right: 14 },
@@ -701,7 +823,7 @@ export default function ViewQuotationPage() {
         bodyStyles: { minCellHeight: 11 },
         columnStyles: {
           0: { cellWidth: 9, halign: "center" },
-          1: { cellWidth: 50 },
+          1: { cellWidth: showImagesInPdf ? 56 : 50 },
           2: { cellWidth: 18 },
           3: { cellWidth: 12 },
           4: { cellWidth: 9, halign: "right" },
@@ -710,6 +832,33 @@ export default function ViewQuotationPage() {
           7: { cellWidth: 16, halign: "right" },
           8: { cellWidth: 9, halign: "right" },
           9: { cellWidth: 17, halign: "right" },
+        },
+        didDrawCell: (data: any) => {
+          if (!showImagesInPdf) return;
+          if (data.section !== "body") return;
+          if (data.column.index !== 2) return;
+          const img = rowImageDataByIndex[data.row.index];
+          if (!img) return;
+          try {
+            const x = data.cell.x + 1.2;
+            const y = data.cell.y + 1;
+            const w = Math.max(6, data.cell.width - 2.4);
+            const h = Math.max(6, data.cell.height - 2);
+            const fmt = img.startsWith("data:image/png") ? "PNG" : "JPEG";
+            doc.addImage(img, fmt as any, x, y, w, h);
+          } catch {
+            // ignore draw failure
+          }
+        },
+        didParseCell: (data: any) => {
+          if (data.section !== "body") return;
+          if (!componentRowIndexes.has(data.row.index)) return;
+          data.cell.styles.fillColor = [246, 248, 252];
+          data.cell.styles.fontStyle = "normal";
+          data.cell.styles.textColor = [60, 60, 60];
+          if (data.column.index === 1) {
+            data.cell.styles.fontStyle = "bold";
+          }
         },
       });
 
@@ -853,6 +1002,7 @@ export default function ViewQuotationPage() {
   }
 
   const totals = calculateTotals();
+  const showImagesInView = quotation.show_images !== false;
   const excelDownloadUrl = quotation?.excel_notes_file_url
     ? `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/api$/, "")}/uploads/${String(
         quotation.excel_notes_file_url
@@ -905,6 +1055,19 @@ export default function ViewQuotationPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
                 Edit Quotation
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(quotation.quotation_number);
+                  showToast("Quotation number copied to clipboard", "success");
+                }}
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Copy Quotation No
               </button>
               <button
                 type="button"
@@ -1022,7 +1185,11 @@ export default function ViewQuotationPage() {
                   <thead>
                     <tr className="border-b border-gray-200 dark:border-gray-700">
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">#</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Item Name</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Description</th>
+                      {showImagesInView && (
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Image</th>
+                      )}
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">HSN</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Qty</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Unit</th>
@@ -1041,12 +1208,28 @@ export default function ViewQuotationPage() {
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{index + 1}</td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
                               <div className="space-y-1">
-                                <p>{item.description}</p>
+                                <p>{getItemName(item)}</p>
                                 {item.item_code && (
                                   <p className="text-xs text-gray-500 dark:text-gray-400">Code: {item.item_code}</p>
                                 )}
                               </div>
                             </td>
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                              {item.description || "-"}
+                            </td>
+                            {showImagesInView && (
+                              <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                                {item.image_url ? (
+                                  <img
+                                    src={resolveUploadUrl(item.image_url)}
+                                    alt={item.description || "Item"}
+                                    className="h-10 w-10 rounded border border-gray-200 object-cover dark:border-gray-700"
+                                  />
+                                ) : (
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">No image</span>
+                                )}
+                              </td>
+                            )}
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{item.hsn_code}</td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{item.quantity}</td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">{item.unit}</td>
@@ -1057,7 +1240,7 @@ export default function ViewQuotationPage() {
                           </tr>
                           {!!item.sub_items?.length && (
                             <tr key={`sub-items-${index}`} className="bg-blue-50/40 dark:bg-blue-900/10">
-                              <td colSpan={9} className="px-4 py-3">
+                              <td colSpan={showImagesInView ? 11 : 10} className="px-4 py-3">
                                 <div className="rounded-lg border border-blue-100 bg-white p-3 dark:border-blue-900/30 dark:bg-gray-800">
                                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
                                     Project Components
@@ -1067,7 +1250,10 @@ export default function ViewQuotationPage() {
                                       <thead>
                                         <tr className="border-b border-gray-200 dark:border-gray-700">
                                           <th className="py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">#</th>
-                                          <th className="py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Description</th>
+                                          <th className="py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Component Name</th>
+                                          {showImagesInView && (
+                                            <th className="py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Image</th>
+                                          )}
                                           <th className="py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300">Qty</th>
                                         </tr>
                                       </thead>
@@ -1075,7 +1261,22 @@ export default function ViewQuotationPage() {
                                         {item.sub_items.map((subItem, subIndex) => (
                                           <tr key={`sub-item-${index}-${subIndex}`} className="border-b border-gray-100 last:border-b-0 dark:border-gray-700">
                                             <td className="py-2 text-xs text-gray-700 dark:text-gray-300">{subIndex + 1}</td>
-                                            <td className="py-2 text-xs text-gray-900 dark:text-white">{subItem.description || "-"}</td>
+                                            <td className="py-2 text-xs text-gray-900 dark:text-white">
+                                              {subItem.component_name || subItem.description || "-"}
+                                            </td>
+                                            {showImagesInView && (
+                                              <td className="py-2 text-xs text-gray-700 dark:text-gray-300">
+                                                {subItem.image_url ? (
+                                                  <img
+                                                    src={resolveUploadUrl(subItem.image_url)}
+                                                    alt={subItem.component_name || subItem.description || "Component"}
+                                                    className="h-9 w-9 rounded border border-gray-200 object-cover dark:border-gray-700"
+                                                  />
+                                                ) : (
+                                                  <span className="text-xs text-gray-500 dark:text-gray-400">No image</span>
+                                                )}
+                                              </td>
+                                            )}
                                             <td className="py-2 text-xs text-gray-700 dark:text-gray-300">{subItem.quantity ?? 0}</td>
                                           </tr>
                                         ))}
@@ -1093,39 +1294,6 @@ export default function ViewQuotationPage() {
                 </table>
               </div>
             </div>
-
-            {/* Notes and Terms */}
-            {quotation.notes && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Notes</h2>
-                <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">{quotation.notes}</p>
-              </div>
-            )}
-
-            {quotation.remarks && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Remarks</h2>
-                <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">{quotation.remarks}</p>
-              </div>
-            )}
-
-            {quotation.payment_terms && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Terms & Conditions</h2>
-                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">
-                  {quotation.payment_terms}
-                </div>
-              </div>
-            )}
-
-            {quotation.terms && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Additional Terms</h2>
-                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">
-                  {quotation.terms}
-                </div>
-              </div>
-            )}
 
             {/* Excel Notes */}
             {quotation.excel_notes_file_url && (
@@ -1276,10 +1444,7 @@ export default function ViewQuotationPage() {
                   <p className="text-sm text-gray-600 dark:text-gray-400">Created</p>
                   <p className="font-medium text-gray-900 dark:text-white">{formatDate(quotation.created_at)}</p>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Last Updated</p>
-                  <p className="font-medium text-gray-900 dark:text-white">{formatDate(quotation.updated_at)}</p>
-                </div>
+               
                 <div>
                   <p className="text-sm text-gray-600 dark:text-gray-400">Valid Until</p>
                   <p className="font-medium text-gray-900 dark:text-white">
@@ -1289,56 +1454,41 @@ export default function ViewQuotationPage() {
               </div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Actions</h2>
-              <div className="space-y-2">
-                <button
-                  onClick={() => router.push(`/quotations/${quotation.id}/edit`)}
-                  className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  Edit Quotation
-                </button>
-                <button
-                  onClick={generatePDF}
-                  disabled={downloadingPDF}
-                  className="w-full flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                >
-                  {downloadingPDF ? (
-                    <>
-                      <svg className="h-4 w-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      Generating PDF...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      Download as PDF
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={() => {
-                    // Copy quotation number to clipboard
-                    navigator.clipboard.writeText(quotation.quotation_number);
-                    showToast("Quotation number copied to clipboard", "success");
-                  }}
-                  className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  Copy Quotation No
-                </button>
+            {/* Notes and Terms */}
+            {quotation.notes && (
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Notes</h2>
+                <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">{quotation.notes}</p>
               </div>
-            </div>
+            )}
+
+            {quotation.remarks && (
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Remarks</h2>
+                <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">{quotation.remarks}</p>
+              </div>
+            )}
+
+            {quotation.payment_terms && (
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Terms & Conditions</h2>
+                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">
+                  {quotation.payment_terms}
+                </div>
+              </div>
+            )}
+
+            {quotation.terms && (
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Additional Terms</h2>
+                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-line">
+                  {quotation.terms}
+                </div>
+              </div>
+            )}
+
+            {/* Quick Actions */}
+          
           </div>
         </div>
       </div>

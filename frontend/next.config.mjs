@@ -2,6 +2,20 @@
 const nextConfig = {
   // Enable standalone output for Docker
   output: "standalone",
+  async redirects() {
+    return [
+      {
+        source: "/login",
+        destination: "/auth/sign-in",
+        permanent: false,
+      },
+      {
+        source: "/login/:path*",
+        destination: "/auth/sign-in",
+        permanent: false,
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {

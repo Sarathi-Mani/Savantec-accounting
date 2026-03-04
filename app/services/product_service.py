@@ -323,9 +323,7 @@ class ProductService:
             response_data["image_url"] = image_url
             response_data["main_image"] = relative_path  # For backward compatibility
             response_data["main_image_url"] = image_url  # For backward compatibility
-            if not file_exists:
-                print(f"Warning: main image file not found on disk, returning URL anyway: {full_path}")
-        
+            
         if product.additional_image:
             # Normalize the path first
             additional_path = product.additional_image
@@ -449,8 +447,8 @@ class ProductService:
         # print(f"Response keys: {list(response_data.keys())}")
         # print(f"Has image_url: {'image_url' in response_data}")
         # print(f"Has image: {'image' in response_data}")
-        if 'image_url' in response_data:
-            print(f"Image URL: {response_data['image_url']}")
+        # if 'image_url' in response_data:
+        #     print(f"Image URL: {response_data['image_url']}")
         # print(f"=== DEBUG: End of get_product_with_stock ===\n")
         
         return response_data
