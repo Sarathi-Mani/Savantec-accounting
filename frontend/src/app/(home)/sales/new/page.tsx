@@ -988,6 +988,12 @@ export default function AddSalesPage() {
     };
     // Calculate totals once
     const totals = calculateTotals();
+    const freightBaseValue = Number(formData.freightCharges || 0);
+    const pfBaseValue = Number(formData.pfCharges || 0);
+    const additionalChargesTax = Number(
+        Math.max(0, (totals.freight - freightBaseValue) + (totals.pf - pfBaseValue)).toFixed(2)
+    );
+    const summaryTaxValue = Number((totals.totalTax + additionalChargesTax).toFixed(2));
 
     const ensureCountryOption = (country: string) => {
         const trimmedCountry = country.trim();
@@ -1014,16 +1020,59 @@ export default function AddSalesPage() {
         e.preventDefault();
         if (!company?.id) return;
 
+        const formatApiError = (payload: any): string => {
+            if (!payload) return "Validation failed";
+            if (typeof payload === "string") return payload;
+            if (Array.isArray(payload)) {
+                return payload
+                    .map((entry) => {
+                        if (!entry) return "";
+                        if (typeof entry === "string") return entry;
+                        const loc = Array.isArray(entry.loc)
+                            ? entry.loc.filter((part: any) => part !== "body").join(" > ")
+                            : "";
+                        const msg = entry.msg || entry.message || "";
+                        return loc && msg ? `${loc}: ${msg}` : (msg || JSON.stringify(entry));
+                    })
+                    .filter(Boolean)
+                    .join(", ");
+            }
+            if (typeof payload === "object") {
+                if (typeof payload.detail === "string") return payload.detail;
+                if (Array.isArray(payload.detail)) return formatApiError(payload.detail);
+                if (payload.detail && typeof payload.detail === "object") return formatApiError([payload.detail]);
+                if (typeof payload.message === "string") return payload.message;
+            }
+            return "Validation failed";
+        };
+
         setIsSubmitting(true);
         try {
             // Get selected customer for denormalized data
             const selectedCustomer = customers.find(c => c.id === formData.customer_id);
 
+            // Keep only valid rows; ignore blank draft rows to avoid 422 on item validation.
+            const validItems = items.filter((item) =>
+                String(item.description || "").trim() &&
+                Number(item.quantity) > 0 &&
+                Number(item.unit_price) > 0
+            );
+            if (validItems.length === 0) {
+                alert("Add at least one item with description, quantity and unit price.");
+                setIsSubmitting(false);
+                return;
+            }
+
             // Prepare items with proper structure
-            const preparedItems = items.map(item => ({
+            const preparedItems = validItems.map(item => ({
+                // Backend expects HSN 4-8 digits when provided.
+                // Send undefined for invalid/blank values to avoid 422 validation.
+                hsn_code: (() => {
+                    const rawHsn = String(item.hsn_code || "").trim();
+                    return /^\d{4,8}$/.test(rawHsn) ? rawHsn : undefined;
+                })(),
                 product_id: item.product_id || undefined,
                 description: item.description || "",
-                hsn_code: item.hsn_code || "",
                 quantity: Number(item.quantity),
                 unit: item.unit || "unit",
                 unit_price: Number(item.unit_price),
@@ -1051,7 +1100,7 @@ export default function AddSalesPage() {
                 ),
 
                 // GST Details
-                place_of_supply: formData.place_of_supply || company?.state_code || "",
+                place_of_supply: normalizeStateCode(formData.place_of_supply || company?.state_code || ""),
                 place_of_supply_name: INDIAN_STATES.find(s => s.code === formData.place_of_supply)?.name || company?.state || "",
                 is_reverse_charge: formData.is_reverse_charge || false,
 
@@ -1144,7 +1193,8 @@ export default function AddSalesPage() {
                 console.error("Response status:", error.response.status);
             }
 
-            alert(`Failed to create invoice: ${error.message || "Unknown error"}`);
+            const detail = error?.response?.data?.detail ?? error?.response?.data ?? error?.message;
+            alert(`Failed to create invoice: ${formatApiError(detail)}`);
         } finally {
             setIsSubmitting(false);
         }
@@ -2018,30 +2068,6 @@ export default function AddSalesPage() {
                                             )}
                                         </div>
                                         <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={formData.pfCharges}
-                                                    onChange={(e) => setFormData({ ...formData, pfCharges: parseFloat(e.target.value) })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                />
-                                                <select
-                                                    value={formData.pfType}
-                                                    onChange={(e) => setFormData({ ...formData, pfType: e.target.value })}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="fixed">Fixed</option>
-                                                    <option value="tax@18%">Tax@18%</option>
-                                                    <option value="tax@0%">Tax@0%</option>
-                                                    <option value="tax@5%">Tax@5%</option>
-                                                    <option value="tax@28%">Tax@28%</option>
-                                                    <option value="tax@12%">Tax@12%</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount Coupon Code</label>
                                             <input
                                                 type="text"
@@ -2113,12 +2139,16 @@ export default function AddSalesPage() {
                                             <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
                                         </div>
                                         <div className="flex justify-between">
+                                            <span className="text-dark-6">Tax</span>
+                                            <span className="font-medium text-dark dark:text-white">₹{summaryTaxValue.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between">
                                             <span className="text-dark-6">Freight Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.freight.toLocaleString('en-IN')}</span>
+                                            <span className="font-medium text-dark dark:text-white">₹{freightBaseValue.toLocaleString('en-IN')}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">P & F Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.pf.toLocaleString('en-IN')}</span>
+                                            <span className="font-medium text-dark dark:text-white">₹{pfBaseValue.toLocaleString('en-IN')}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Coupon Discount</span>

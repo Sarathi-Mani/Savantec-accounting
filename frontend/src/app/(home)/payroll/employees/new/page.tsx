@@ -33,9 +33,7 @@ const selectStyles = {
     borderWidth: "1px",
     borderStyle: "solid",
     borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
-    boxShadow: state.isFocused
-      ? "0 0 0 2px rgba(99,102,241,0.4)"
-      : "none",
+    boxShadow: "none",
     backgroundColor: "transparent",
     "&:hover": {
       borderColor: "0 0 0 2px rgba(99,102,241,0.4)",
@@ -72,7 +70,13 @@ const selectStyles = {
     ...base,
     zIndex: 50,
   }),
+  menuPortal: (base: any) => ({
+    ...base,
+    zIndex: 60,
+  }),
 };
+
+const animatedSelectComponents = makeAnimated();
 
 export function SelectField({
   label,
@@ -92,6 +96,10 @@ export function SelectField({
         options={options}
         placeholder={placeholder}
         isClearable
+        isSearchable
+        components={animatedSelectComponents}
+        menuPortalTarget={typeof window !== "undefined" ? document.body : undefined}
+        noOptionsMessage={() => "No matching options"}
         styles={selectStyles}
         classNamePrefix="react-select"
       />
@@ -108,10 +116,6 @@ export default function NewEmployeePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("personal");
-
-  const animatedComponents = makeAnimated();
-
-
 
   const calculateCTC = (data: typeof formData) => {
     const monthlyBasic = parseFloat(data.monthly_basic) || 0;
