@@ -9,6 +9,77 @@ import { employeesApi } from "@/services/api";
 import Select from 'react-select';
 import { useRef } from "react";
 
+const INDIAN_STATE_CODES: Record<string, string> = {
+    "01": "Jammu & Kashmir",
+    "02": "Himachal Pradesh",
+    "03": "Punjab",
+    "04": "Chandigarh",
+    "05": "Uttarakhand",
+    "06": "Haryana",
+    "07": "Delhi",
+    "08": "Rajasthan",
+    "09": "Uttar Pradesh",
+    "10": "Bihar",
+    "11": "Sikkim",
+    "12": "Arunachal Pradesh",
+    "13": "Nagaland",
+    "14": "Manipur",
+    "15": "Mizoram",
+    "16": "Tripura",
+    "17": "Meghalaya",
+    "18": "Assam",
+    "19": "West Bengal",
+    "20": "Jharkhand",
+    "21": "Odisha",
+    "22": "Chhattisgarh",
+    "23": "Madhya Pradesh",
+    "24": "Gujarat",
+    "25": "Daman & Diu",
+    "26": "Dadra & Nagar Haveli and Daman & Diu",
+    "27": "Maharashtra",
+    "29": "Karnataka",
+    "30": "Goa",
+    "31": "Lakshadweep",
+    "32": "Kerala",
+    "33": "Tamil Nadu",
+    "34": "Puducherry",
+    "35": "Andaman & Nicobar Islands",
+    "36": "Telangana",
+    "37": "Andhra Pradesh",
+    "38": "Ladakh",
+    "97": "Other Territory",
+    "99": "Centre Jurisdiction",
+};
+
+const normalizeStateCode = (stateValue?: string | null): string | undefined => {
+    if (!stateValue) return undefined;
+    const raw = String(stateValue).trim();
+    if (!raw) return undefined;
+
+    if (/^\d+$/.test(raw)) {
+        const code = raw.padStart(2, "0");
+        if (INDIAN_STATE_CODES[code]) return code;
+    }
+
+    const normalizedInput = raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+    for (const [code, name] of Object.entries(INDIAN_STATE_CODES)) {
+        const normalizedName = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (normalizedName === normalizedInput) return code;
+    }
+
+    const aliases: Record<string, string> = {
+        tamilnadu: "33",
+        andhrapradesh: "37",
+        maharastra: "27",
+        chhattisgarh: "22",
+        chattisgarh: "22",
+        odisa: "21",
+        orissa: "21",
+    };
+
+    return aliases[normalizedInput];
+};
+
 // Reusable SelectField component
 function SelectField({
     label,
@@ -102,11 +173,17 @@ function ProductSelectField({
 }) {
     const selectRef = useRef<any>(null);
 
-    const options = products.map(product => ({
-        value: product.id,
-        label: `${product.name} ${product.sku ? `(${product.sku})` : ""}`,
-        product,
-    }));
+    const options = products.map(product => {
+        const productName = String(product?.name || "").trim();
+        const productSku = String(product?.sku || "").trim();
+        const label = productSku ? `${productName} (${productSku})` : productName;
+
+        return {
+            value: product.id,
+            label,
+            product,
+        };
+    });
 
     return (
         <Select
@@ -139,6 +216,10 @@ function ProductSelectField({
             menuPortalTarget={typeof window !== "undefined" ? document.body : null}
             menuPosition="fixed"
             styles={{
+                container: (base: any) => ({
+                    ...base,
+                    width: "100%",
+                }),
                 control: (base: any, state: any) => ({
                     ...base,
                     minHeight: "38px",
@@ -147,6 +228,38 @@ function ProductSelectField({
                     boxShadow: state.isFocused
                         ? "0 0 0 1px rgba(99,102,241,0.5)"
                         : "none",
+                }),
+                valueContainer: (base: any) => ({
+                    ...base,
+                    padding: "0 8px",
+                }),
+                indicatorsContainer: (base: any) => ({
+                    ...base,
+                    display: "none",
+                }),
+                indicatorSeparator: () => ({
+                    display: "none",
+                }),
+                singleValue: (base: any) => ({
+                    ...base,
+                    margin: 0,
+                    maxWidth: "100%",
+                }),
+                input: (base: any) => ({
+                    ...base,
+                    margin: 0,
+                    padding: 0,
+                }),
+                menu: (base: any) => ({
+                    ...base,
+                    minWidth: "520px",
+                    width: "max-content",
+                    maxWidth: "760px",
+                }),
+                option: (base: any) => ({
+                    ...base,
+                    whiteSpace: "normal",
+                    wordBreak: "break-word",
                 }),
                 menuPortal: (base: any) => ({
                     ...base,
@@ -215,6 +328,11 @@ export default function AddSalesOrderPage() {
         freight_type: "tax@18%",
         p_and_f_charges: 0,
         pf_type: "tax@18%",
+        couponCode: "",
+        couponType: "Fixed",
+        couponValue: 0,
+        discountOnAll: 0,
+        discountType: "percentage",
         send_message: false,
 
         // Calculated fields
@@ -639,6 +757,30 @@ export default function AddSalesOrderPage() {
         }
     };
 
+    const fetchCustomerById = async (customerId: string) => {
+        if (!company?.id || !customerId) return null;
+        try {
+            const token = localStorage.getItem("employee_token") || localStorage.getItem("access_token");
+            if (!token) return null;
+
+            const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/customers/${customerId}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
+
+            if (!response.ok) return null;
+            return await response.json();
+        } catch (error) {
+            console.error("Failed to fetch customer by id:", error);
+            return null;
+        }
+    };
+
     // Prepare customer options for dropdown
     const customerOptions = useMemo(() => {
         return customers.map(customer => ({
@@ -664,46 +806,99 @@ export default function AddSalesOrderPage() {
         }));
     }, [contactPersons]);
 
+    const getCustomerStateCode = (customer: any): string | undefined => {
+        if (!customer) return undefined;
+
+        return normalizeStateCode(
+            customer?.shipping_state_code ||
+            customer?.shipping_state ||
+            customer?.shipping_state_name ||
+            customer?.shippingAddress?.state_code ||
+            customer?.shippingAddress?.state ||
+            customer?.shipping_address?.state_code ||
+            customer?.shipping_address?.state ||
+            customer?.billing_state_code ||
+            customer?.billing_state ||
+            customer?.state_code ||
+            customer?.state
+        );
+    };
+
+    const isIntraStateSupply = () => {
+        const customerStateCode = getCustomerStateCode(selectedCustomer);
+        const companyStateCode = normalizeStateCode(company?.state_code || company?.state);
+
+        if (customerStateCode && companyStateCode) {
+            return customerStateCode === companyStateCode;
+        }
+        return true;
+    };
+
     // Calculate totals based on items
     const calculateTotals = () => {
         let subtotal = 0;
         let totalTax = 0;
+        let cgstTotal = 0;
+        let sgstTotal = 0;
+        let igstTotal = 0;
+        let totalItemDiscount = 0;
+
+        const intraSupply = isIntraStateSupply();
 
         items.forEach(item => {
-            const itemTotal = item.quantity * item.unit_price;
-            const discount = item.discount_percent > 0 ?
-                itemTotal * (item.discount_percent / 100) : 0;
+            const itemTotal = Number(item.quantity || 0) * Number(item.unit_price || 0);
+            const discount = item.discount_percent > 0
+                ? itemTotal * (Number(item.discount_percent) / 100)
+                : 0;
             const taxable = itemTotal - discount;
-            const tax = taxable * (item.gst_rate / 100);
+            const gstRate = Number(item.gst_rate || 0);
 
+            let itemCgst = 0;
+            let itemSgst = 0;
+            let itemIgst = 0;
+
+            if (intraSupply) {
+                itemCgst = taxable * (gstRate / 2 / 100);
+                itemSgst = taxable * (gstRate / 2 / 100);
+            } else {
+                itemIgst = taxable * (gstRate / 100);
+            }
+
+            const tax = itemCgst + itemSgst + itemIgst;
             subtotal += taxable;
             totalTax += tax;
+            cgstTotal += itemCgst;
+            sgstTotal += itemSgst;
+            igstTotal += itemIgst;
+            totalItemDiscount += discount;
         });
 
-        // Function to calculate tax like in sales page
-        const calculateWithTax = (baseAmount: number, taxType: string) => {
-            if (taxType === 'fixed') {
-                return baseAmount;
-            }
+        const freightBase = Number(formData.freight_charges || 0);
+        const pAndFBase = Number(formData.p_and_f_charges || 0);
+        const couponValue = Number(formData.couponValue || 0);
+        const discountOnAll = Number(formData.discountOnAll || 0);
 
-            // Extract tax percentage from string like "tax@18%"
-            const match = taxType.match(/tax@(\d+)%/);
-            if (match) {
-                const taxRate = parseInt(match[1]);
-                return baseAmount * (1 + taxRate / 100);
-            }
-
-            return baseAmount;
+        const getTaxRateFromType = (taxType: string) => {
+            const match = String(taxType || "").match(/tax@(\d+)%/);
+            return match ? parseInt(match[1], 10) : 0;
         };
 
-        // Calculate charges with tax (if tax types are added)
-        const freightCharges = calculateWithTax(formData.freight_charges || 0, formData.freight_type || "fixed");
-        const pAndFCharges = calculateWithTax(formData.p_and_f_charges || 0, formData.pf_type || "fixed");
+        const freightTax = freightBase * (getTaxRateFromType(formData.freight_type) / 100);
+        const pAndFTax = pAndFBase * (getTaxRateFromType(formData.pf_type) / 100);
+        const freightChargesWithTax = freightBase + freightTax;
+        const pAndFChargesWithTax = pAndFBase + pAndFTax;
+        const chargesTaxTotal = freightTax + pAndFTax;
+        totalTax += chargesTaxTotal;
 
-        // Calculate total before round off
-        const totalBeforeRoundOff = subtotal + totalTax + freightCharges + pAndFCharges;
+        const discountAllAmount = formData.discountType === "percentage"
+            ? subtotal * (discountOnAll / 100)
+            : discountOnAll;
 
-        // Apply round off
+        const totalAfterTax = subtotal + totalTax;
+        const totalAfterCharges = totalAfterTax + freightBase + pAndFBase;
+        const totalAfterCoupon = totalAfterCharges - couponValue;
+        const totalAfterDiscountAll = totalAfterCoupon - discountAllAmount;
+
         let finalRoundOff = 0;
         if (roundOff.type === "plus") {
             finalRoundOff = roundOff.amount;
@@ -711,20 +906,30 @@ export default function AddSalesOrderPage() {
             finalRoundOff = -roundOff.amount;
         }
 
-        const grandTotal = totalBeforeRoundOff + finalRoundOff;
+        const grandTotal = totalAfterDiscountAll + finalRoundOff;
 
         return {
             subtotal: Number(subtotal.toFixed(2)),
             totalTax: Number(totalTax.toFixed(2)),
-            freightCharges: Number(freightCharges.toFixed(2)),
-            pAndFCharges: Number(pAndFCharges.toFixed(2)),
-            totalBeforeRoundOff: Number(totalBeforeRoundOff.toFixed(2)),
+            cgstTotal: Number(cgstTotal.toFixed(2)),
+            sgstTotal: Number(sgstTotal.toFixed(2)),
+            igstTotal: Number(igstTotal.toFixed(2)),
+            itemDiscount: Number(totalItemDiscount.toFixed(2)),
+            freightCharges: Number(freightChargesWithTax.toFixed(2)),
+            pAndFCharges: Number(pAndFChargesWithTax.toFixed(2)),
+            couponDiscount: Number(couponValue.toFixed(2)),
+            discountAll: Number(discountAllAmount.toFixed(2)),
+            totalBeforeRoundOff: Number(totalAfterDiscountAll.toFixed(2)),
             roundOff: Number(finalRoundOff.toFixed(2)),
             grandTotal: Number(grandTotal.toFixed(2)),
+            chargesTax: Number(chargesTaxTotal.toFixed(2)),
         };
     };
 
     const totals = calculateTotals();
+    const freightBaseValue = Number(formData.freight_charges || 0);
+    const pfBaseValue = Number(formData.p_and_f_charges || 0);
+    const summaryDiscountOnAllValue = Number((totals.discountAll + totals.itemDiscount).toFixed(2));
 
     // Handle round off amount change
     const handleRoundOffChange = (type: "plus" | "minus" | "none", amount: number) => {
@@ -763,6 +968,10 @@ export default function AddSalesOrderPage() {
                 const taxableAmount = itemTotal - discountAmount;
                 const taxAmount = taxableAmount * (gstRate / 100);
                 const totalAmount = taxableAmount + taxAmount;
+                const isIntraSupply = isIntraStateSupply();
+                const cgstRate = isIntraSupply ? gstRate / 2 : 0;
+                const sgstRate = isIntraSupply ? gstRate / 2 : 0;
+                const igstRate = isIntraSupply ? 0 : gstRate;
 
                 // Return object with unit_price
                 return {
@@ -777,9 +986,9 @@ export default function AddSalesOrderPage() {
                     taxable_amount: taxableAmount,
                     tax_amount: taxAmount,
                     total_amount: totalAmount,
-                    cgst_rate: gstRate / 2,
-                    sgst_rate: gstRate / 2,
-                    igst_rate: 0,
+                    cgst_rate: cgstRate,
+                    sgst_rate: sgstRate,
+                    igst_rate: igstRate,
                     item_code: item.item_code || '',
                 };
             });   // Prepare sales order data
@@ -798,9 +1007,9 @@ export default function AddSalesOrderPage() {
                 notes: formData.notes || null,
                 terms: formData.terms,
                 other_charges: 0,
-                discount_on_all: 0,
-                freight_charges: Number(totals.freightCharges) || 0,
-                p_and_f_charges: Number(totals.pAndFCharges) || 0,
+                discount_on_all: Number(formData.discountOnAll || 0),
+                freight_charges: Number(formData.freight_charges || 0),
+                p_and_f_charges: Number(formData.p_and_f_charges || 0),
                 round_off: Number(totals.roundOff) || 0,
                 subtotal: Number(totals.subtotal) || 0,
                 total_tax: Number(totals.totalTax) || 0,
@@ -900,6 +1109,12 @@ export default function AddSalesOrderPage() {
                 updated.tax_amount = tax;
                 updated.total_amount = taxable + tax;
 
+                const intraSupply = isIntraStateSupply();
+                const gstRate = Number(updated.gst_rate) || 0;
+                updated.cgst_rate = intraSupply ? gstRate / 2 : 0;
+                updated.sgst_rate = intraSupply ? gstRate / 2 : 0;
+                updated.igst_rate = intraSupply ? 0 : gstRate;
+
                 return updated;
             }
             return item;
@@ -995,11 +1210,18 @@ export default function AddSalesOrderPage() {
             contact_person: "" // Clear contact person when customer changes
         }));
 
-        // Find and set selected customer
-        const customer = customers.find(c => c.id === customerId);
-        setSelectedCustomer(customer);
-
         if (customerId) {
+            const customerFromList = customers.find(c => String(c.id) === String(customerId));
+            const customerDetails = await fetchCustomerById(customerId);
+            const customer = customerDetails || customerFromList || null;
+
+            setSelectedCustomer(customer);
+            if (customerDetails) {
+                setCustomers(prev =>
+                    prev.map((c: any) => (String(c.id) === String(customerDetails.id) ? customerDetails : c))
+                );
+            }
+
             // Fetch contact persons for this customer
             await fetchContactPersons(customerId);
 
@@ -1013,6 +1235,7 @@ export default function AddSalesOrderPage() {
         } else {
             // Clear contact persons if no customer selected
             setContactPersons([]);
+            setSelectedCustomer(null);
         }
     };
 
@@ -1392,49 +1615,59 @@ export default function AddSalesOrderPage() {
 
                         {/* SECTION 2: Sales Items Table */}
                         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                            <div className="mb-4 flex items-center justify-between">
-                                <h2 className="text-lg font-semibold text-dark dark:text-white">Sales Items</h2>
-                                <div className="flex gap-2">
-                                    <div className="text-dark-6">
-                                        Total Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
-                                    </div>
-                                    <div className="text-dark-6">
-                                        Items: {items.length}
-                                    </div>
+                            <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Sales Items</h2>
+                                    <p className="mt-1 text-sm text-dark-6">Add items to your sales order</p>
+                                </div>
+                                <div className="mt-2 flex gap-2 sm:mt-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => router.push('/products/new')}
+                                        className="inline-flex items-center gap-2 rounded-lg border border-blue-600 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
+                                    >
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        Add New Product
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => addItem()}
+                                        className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                                    >
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        Add Item
+                                    </button>
                                 </div>
                             </div>
-                            <div className="mb-4 flex justify-end">
-                                <button
-                                    type="button"
-                                    onClick={() => addItem()}
-                                    className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
-                                >
-                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                    </svg>
-                                </button>
-                            </div>{/* Items Table */}
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="border-b border-stroke dark:border-dark-3">
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Name</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Code</th>
 
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit Price</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Discount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax Amount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Total Amount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
+                            <div className="mb-3 text-sm text-dark-6">
+                                Total Quantity: {items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)} | Items: {items.length}
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-[1650px] border-collapse">
+                                    <thead>
+                                        <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+                                            <th className="w-[520px] min-w-[520px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item</th>
+                                            <th className="w-[130px] min-w-[130px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item Code</th>
+                                            <th className="w-[220px] min-w-[220px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Description</th>
+                                            <th className="w-[90px] min-w-[90px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Qty</th>
+                                            <th className="w-[130px] min-w-[130px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Unit Price</th>
+                                            <th className="w-[100px] min-w-[100px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount %</th>
+                                            <th className="w-[130px] min-w-[130px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount Amt</th>
+                                            <th className="w-[90px] min-w-[90px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">GST %</th>
+                                            <th className="w-[140px] min-w-[140px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Total</th>
+                                            <th className="w-[70px] min-w-[70px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {items.map((item) => (
                                             <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                                                <td className="px-4 py-3 min-w-[200px]">
+                                                <td className="w-[520px] min-w-[520px] px-3 py-3">
                                                     <ProductSelectField
                                                         value={item.product_id}
                                                         products={products}
@@ -1445,13 +1678,10 @@ export default function AddSalesOrderPage() {
                                                                 prev.map(i => {
                                                                     if (i.id !== item.id) return i;
 
-                                                                    const unitPrice =
-                                                                        product.selling_price ??
-                                                                        product.unit_price ??
-                                                                        0;
-
+                                                                    const unitPrice = product.selling_price ?? product.unit_price ?? 0;
                                                                     const gstRate = Number(product.gst_rate) || 0;
                                                                     const qty = i.quantity || 1;
+                                                                    const intraSupply = isIntraStateSupply();
 
                                                                     const taxable = qty * unitPrice;
                                                                     const tax = taxable * (gstRate / 100);
@@ -1465,9 +1695,9 @@ export default function AddSalesOrderPage() {
                                                                         discount_amount: 0,
                                                                         taxable_amount: taxable,
                                                                         total_amount: taxable + tax,
-                                                                        cgst_rate: gstRate / 2,
-                                                                        sgst_rate: gstRate / 2,
-                                                                        igst_rate: 0,
+                                                                        cgst_rate: intraSupply ? gstRate / 2 : 0,
+                                                                        sgst_rate: intraSupply ? gstRate / 2 : 0,
+                                                                        igst_rate: intraSupply ? 0 : gstRate,
                                                                     };
                                                                 })
                                                             );
@@ -1478,9 +1708,9 @@ export default function AddSalesOrderPage() {
                                                 <td className="px-4 py-3">
                                                     <input
                                                         type="text"
-                                                        value={item.item_code || ''}  // Make sure to bind to item.item_code
-                                                        onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}  // Add onChange handler
-                                                        className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        value={item.item_code || ''}
+                                                        onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}
+                                                        className="w-full min-w-[120px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
                                                         placeholder="Enter item code"
                                                     />
                                                 </td>
@@ -1505,17 +1735,18 @@ export default function AddSalesOrderPage() {
                                                 <td className="px-4 py-3">
                                                     <input
                                                         type="number"
-                                                        value={item.unit_price || 0}  // Show unit_price
+                                                        value={item.unit_price || 0}
                                                         onChange={(e) => {
                                                             const value = parseFloat(e.target.value) || 0;
-                                                            updateItem(item.id, 'unit_price', value);  // Update unit_price field
+                                                            updateItem(item.id, 'unit_price', value);
                                                         }}
                                                         className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
                                                         min="0"
                                                         step="0.01"
                                                         required
                                                     />
-                                                </td>                                                <td className="px-4 py-3">
+                                                </td>
+                                                <td className="px-4 py-3">
                                                     <div className="flex gap-1">
                                                         <input
                                                             type="number"
@@ -1529,9 +1760,7 @@ export default function AddSalesOrderPage() {
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-3">
-                                                    <span className="font-medium">
-                                                        ₹{(item.discount_amount || 0).toFixed(2)}
-                                                    </span>
+                                                    <span className="font-medium">Rs. {(item.discount_amount || 0).toFixed(2)}</span>
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <select
@@ -1546,9 +1775,7 @@ export default function AddSalesOrderPage() {
                                                         <option value="28">28%</option>
                                                     </select>
                                                 </td>
-                                                <td className="px-4 py-3 font-medium">
-                                                    ₹{item.total_amount.toFixed(2)}
-                                                </td>
+                                                <td className="px-4 py-3 font-medium">Rs. {(item.total_amount || 0).toFixed(2)}</td>
                                                 <td className="px-4 py-3">
                                                     <button
                                                         type="button"
@@ -1569,34 +1796,25 @@ export default function AddSalesOrderPage() {
 
                         {/* SECTION 3: Charges & Adjustments */}
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                            {/* Left side - Charges & Adjustments */}
                             <div className="lg:col-span-2">
                                 <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                                     <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Charges & Adjustments</h2>
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                        <div className="flex items-center gap-4">
-                                            <div className="text-dark-6">
-                                                Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
-                                            </div>
-                                            <div className="text-dark-6">
-                                                Items: {items.length}
-                                            </div>
-                                        </div>
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
-                                            <div className="flex gap-2">
+                                            <div className="flex min-w-0 items-center gap-2">
                                                 <input
                                                     type="number"
                                                     value={formData.freight_charges}
                                                     onChange={(e) => handleFormChange('freight_charges', parseFloat(e.target.value) || 0)}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="min-w-0 w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                     step="0.01"
                                                 />
                                                 <select
-                                                    value={formData.freight_type || "tax@18%"}
+                                                    value={formData.freight_type || 'tax@18%'}
                                                     onChange={(e) => handleFormChange('freight_type', e.target.value)}
-                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="w-28 shrink-0 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
                                                     <option value="tax@0%">Tax@0%</option>
@@ -1607,21 +1825,22 @@ export default function AddSalesOrderPage() {
                                                 </select>
                                             </div>
                                         </div>
+
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                            <div className="flex gap-2">
+                                            <div className="flex min-w-0 items-center gap-2">
                                                 <input
                                                     type="number"
                                                     value={formData.p_and_f_charges}
                                                     onChange={(e) => handleFormChange('p_and_f_charges', parseFloat(e.target.value) || 0)}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="min-w-0 w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                     step="0.01"
                                                 />
                                                 <select
-                                                    value={formData.pf_type || "tax@18%"}
+                                                    value={formData.pf_type || 'tax@18%'}
                                                     onChange={(e) => handleFormChange('pf_type', e.target.value)}
-                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="w-28 shrink-0 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
                                                     <option value="tax@0%">Tax@0%</option>
@@ -1632,6 +1851,61 @@ export default function AddSalesOrderPage() {
                                                 </select>
                                             </div>
                                         </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount Coupon Code</label>
+                                            <input
+                                                type="text"
+                                                value={formData.couponCode}
+                                                onChange={(e) => handleFormChange("couponCode", e.target.value)}
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Coupon Type</label>
+                                            <input
+                                                type="text"
+                                                value={formData.couponType}
+                                                readOnly
+                                                className="w-full rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 dark:border-dark-3 dark:bg-dark-2"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Coupon Value</label>
+                                            <input
+                                                type="number"
+                                                value={formData.couponValue}
+                                                onChange={(e) => handleFormChange("couponValue", parseFloat(e.target.value) || 0)}
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                min="0"
+                                                step="0.01"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount on All</label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="number"
+                                                    value={formData.discountOnAll}
+                                                    onChange={(e) => handleFormChange("discountOnAll", parseFloat(e.target.value) || 0)}
+                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    min="0"
+                                                    step="0.01"
+                                                />
+                                                <select
+                                                    value={formData.discountType}
+                                                    onChange={(e) => handleFormChange("discountType", e.target.value)}
+                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                >
+                                                    <option value="percentage">%</option>
+                                                    <option value="fixed">Fixed</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
                                         <div className="md:col-span-2">
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Remarks</label>
                                             <textarea
@@ -1659,122 +1933,102 @@ export default function AddSalesOrderPage() {
                                 </div>
                             </div>
 
-                            {/* Right side - Total Summary */}
                             <div className="lg:col-span-1">
-                                {/* Total Summary */}
                                 <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                                     <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Total Summary</h2>
                                     <div className="space-y-3">
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Subtotal</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
+                                            <span className="font-medium text-dark dark:text-white">Rs. {totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-dark-6">Tax</span>
+                                            <span className="font-medium text-dark dark:text-white">Rs. {totals.totalTax.toLocaleString('en-IN')}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Freight Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.freightCharges.toLocaleString('en-IN')}</span>
+                                            <span className="font-medium text-dark dark:text-white">Rs. {freightBaseValue.toLocaleString('en-IN')}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">P & F Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.pAndFCharges.toLocaleString('en-IN')}</span>
+                                            <span className="font-medium text-dark dark:text-white">Rs. {pfBaseValue.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-dark-6">Coupon Discount</span>
+                                            <span className="font-medium text-red-600">-Rs. {totals.couponDiscount.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-dark-6">Discount on All</span>
+                                            <span className="font-medium text-red-600">-Rs. {summaryDiscountOnAllValue.toLocaleString('en-IN')}</span>
                                         </div>
 
-                                        <div className="border-t border-stroke pt-3 dark:border-dark-3">
-                                            <div className="flex justify-between mb-3">
-                                                <span className="font-semibold text-dark dark:text-white">Total before Round Off</span>
-                                                <span className="font-bold text-dark dark:text-white">₹{totals.totalBeforeRoundOff.toLocaleString('en-IN')}</span>
+                                        <div className="rounded-lg border border-stroke/80 p-3 dark:border-dark-3/80">
+                                            <div className="mb-2 flex items-center justify-between">
+                                                <span className="text-dark-6">Round Off</span>
+                                                <span
+                                                    className={`rounded-md px-2 py-1 text-sm font-semibold ${totals.roundOff >= 0
+                                                        ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                        : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                        }`}
+                                                >
+                                                    {totals.roundOff >= 0 ? '+Rs. ' : '-Rs. '}{Math.abs(totals.roundOff).toFixed(2)}
+                                                </span>
                                             </div>
 
-                                            {/* Round Off Controls */}
-                                            <div className="flex justify-between items-center mb-2">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-dark-6">Round Off</span>
-                                                    <div className="flex gap-1">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                const newAmount = roundOff.amount + 1;
-                                                                handleRoundOffChange("plus", newAmount);
-                                                            }}
-                                                            className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "plus" ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-                                                        >
-                                                            +
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                const newAmount = roundOff.amount > 0 ? roundOff.amount - 1 : 0;
-                                                                handleRoundOffChange("minus", newAmount);
-                                                            }}
-                                                            className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "minus" ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-                                                        >
-                                                            -
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleRoundOffChange("none", 0)}
-                                                            className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "none" ? 'bg-gray-200 text-gray-700' : 'bg-gray-100 text-gray-600'}`}
-                                                        >
-                                                            0
-                                                        </button>
+                                            <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const currentValue = Math.abs(roundOff.amount || 0);
+                                                        handleRoundOffChange('minus', currentValue);
+                                                    }}
+                                                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
+                                                    title="Subtract from total"
+                                                >
+                                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                                                    </svg>
+                                                </button>
+
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        value={Math.abs(roundOff.amount || 0)}
+                                                        onChange={(e) => {
+                                                            const inputValue = parseFloat(e.target.value) || 0;
+                                                            const type = roundOff.type === 'minus' ? 'minus' : 'plus';
+                                                            handleRoundOffChange(type as any, inputValue);
+                                                        }}
+                                                        className="w-full rounded-lg border border-stroke bg-transparent px-10 py-2 text-center outline-none focus:border-primary dark:border-dark-3"
+                                                        step="0.01"
+                                                        min="0"
+                                                    />
+                                                    <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                                                        {roundOff.type === 'minus' ? '-' : '+'}
                                                     </div>
+                                                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">Rs</div>
                                                 </div>
 
-                                                <div className="flex items-center gap-2">
-                                                    <div className="relative">
-                                                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                                                            {roundOff.type === "plus" ? "+" : roundOff.type === "minus" ? "-" : ""}₹
-                                                        </span>
-                                                        <input
-                                                            type="number"
-                                                            value={roundOff.amount}
-                                                            onChange={(e) => {
-                                                                const amount = parseFloat(e.target.value) || 0;
-                                                                // Keep the current type, just update the amount
-                                                                setRoundOff(prev => ({
-                                                                    ...prev,
-                                                                    amount: amount
-                                                                }));
-                                                            }}
-                                                            className={`w-28 rounded border pl-8 pr-2 py-1.5 outline-none focus:border-primary dark:border-dark-3 ${roundOff.type === "plus" ? 'border-green-300 bg-green-50' :
-                                                                roundOff.type === "minus" ? 'border-red-300 bg-red-50' :
-                                                                    'border-stroke bg-transparent'
-                                                                }`}
-                                                            min="0"
-                                                            step="0.01"
-                                                            disabled={roundOff.type === "none"}
-                                                        />
-                                                    </div>
-                                                    <span className={`font-medium ${roundOff.type === "plus" ? 'text-green-600' :
-                                                        roundOff.type === "minus" ? 'text-red-600' :
-                                                            'text-gray-600'
-                                                        }`}>
-                                                        {roundOff.type === "plus" ? "+₹" : roundOff.type === "minus" ? "-₹" : "₹"}
-                                                        {roundOff.amount.toFixed(2)}
-                                                    </span>
-                                                </div>
-                                            </div>
-
-
-
-
-                                            {/* Round Off Amount Display */}
-                                            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-dark-6">Applied Round Off:</span>
-                                                    <span className={`font-medium ${roundOff.type === "plus" ? 'text-green-600' :
-                                                        roundOff.type === "minus" ? 'text-red-600' :
-                                                            'text-gray-600'
-                                                        }`}>
-                                                        {roundOff.type === "plus" ? '+₹' : roundOff.type === "minus" ? '-₹' : '₹'}
-                                                        {totals.roundOff.toFixed(2)}
-                                                    </span>
-                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const currentValue = Math.abs(roundOff.amount || 0);
+                                                        handleRoundOffChange('plus', currentValue);
+                                                    }}
+                                                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 text-green-600 transition hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
+                                                    title="Add to total"
+                                                >
+                                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                                    </svg>
+                                                </button>
                                             </div>
                                         </div>
+
                                         <div className="border-t border-stroke pt-3 dark:border-dark-3">
                                             <div className="flex justify-between">
                                                 <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
-                                                <span className="text-lg font-bold text-primary">₹{totals.grandTotal.toLocaleString('en-IN')}</span>
+                                                <span className="text-lg font-bold text-primary">Rs. {totals.grandTotal.toLocaleString('en-IN')}</span>
                                             </div>
                                         </div>
                                     </div>

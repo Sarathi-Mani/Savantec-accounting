@@ -954,25 +954,17 @@ export default function AddSalesPage() {
         const couponValue = formData.couponValue || 0;
         const discountOnAll = formData.discountOnAll || 0;
 
-        // Function to apply tax based on selected type
-        const calculateWithTax = (baseAmount: number, taxType: string) => {
-            if (taxType === 'fixed' || taxType === 'percentage') {
-                return baseAmount;
-            }
-
-            // Extract tax percentage from string like "tax@18%"
-            const match = taxType.match(/tax@(\d+)%/);
-            if (match) {
-                const taxRate = parseInt(match[1]);
-                return baseAmount * (1 + taxRate / 100);
-            }
-
-            return baseAmount;
+        const getTaxRateFromType = (taxType: string) => {
+            const match = String(taxType || "").match(/tax@(\d+)%/);
+            return match ? parseInt(match[1], 10) : 0;
         };
 
-        // Calculate charges with tax
-        const freightCharges = calculateWithTax(freightBase, formData.freightType);
-        const pfCharges = calculateWithTax(pfBase, formData.pfType);
+        const freightTax = freightBase * (getTaxRateFromType(formData.freightType) / 100);
+        const pfTax = pfBase * (getTaxRateFromType(formData.pfType) / 100);
+        const freightChargesWithTax = freightBase + freightTax;
+        const pfChargesWithTax = pfBase + pfTax;
+        const chargesTaxTotal = freightTax + pfTax;
+        totalTax += chargesTaxTotal;
 
         // Calculate discount on all based on type
         const discountAllAmount = formData.discountType === 'percentage'
@@ -982,7 +974,7 @@ export default function AddSalesPage() {
         // Calculate totals step by step
         const totalBeforeTax = subtotal;
         const totalAfterTax = totalBeforeTax + totalTax;
-        const totalAfterCharges = totalAfterTax + freightCharges + pfCharges;
+        const totalAfterCharges = totalAfterTax + freightBase + pfBase;
         const totalAfterCoupon = totalAfterCharges - couponValue;
         const totalAfterDiscountAll = totalAfterCoupon - discountAllAmount;
         const grandTotal = totalAfterDiscountAll + (formData.roundOff || 0);
@@ -995,8 +987,8 @@ export default function AddSalesPage() {
             igstTotal: Number(igstTotal.toFixed(2)),
             itemDiscount: Number(totalItemDiscount.toFixed(2)),
             totalBeforeCharges: Number(totalAfterTax.toFixed(2)),
-            freight: Number(freightCharges.toFixed(2)),
-            pf: Number(pfCharges.toFixed(2)),
+            freight: Number(freightChargesWithTax.toFixed(2)),
+            pf: Number(pfChargesWithTax.toFixed(2)),
             couponDiscount: Number(couponValue.toFixed(2)),
             discountAll: Number(discountAllAmount.toFixed(2)),
             roundOff: Number(formData.roundOff || 0),
@@ -1005,25 +997,13 @@ export default function AddSalesPage() {
             totalAfterCharges: Number(totalAfterCharges.toFixed(2)),
             totalAfterCoupon: Number(totalAfterCoupon.toFixed(2)),
             totalAfterDiscountAll: Number(totalAfterDiscountAll.toFixed(2)),
+            chargesTax: Number(chargesTaxTotal.toFixed(2)),
         };
     };
     // Calculate totals once
     const totals = calculateTotals();
     const freightBaseValue = Number(formData.freightCharges || 0);
     const pfBaseValue = Number(formData.pfCharges || 0);
-    const additionalChargesTax = Number(
-        Math.max(0, (totals.freight - freightBaseValue) + (totals.pf - pfBaseValue)).toFixed(2)
-    );
-    const isIntraSupply = isIntraStateSupply(formData.place_of_supply);
-    const summaryCgstValue = isIntraSupply
-        ? Number((totals.cgstTotal + (additionalChargesTax / 2)).toFixed(2))
-        : 0;
-    const summarySgstValue = isIntraSupply
-        ? Number((totals.sgstTotal + (additionalChargesTax / 2)).toFixed(2))
-        : 0;
-    const summaryIgstValue = !isIntraSupply
-        ? Number((totals.igstTotal + additionalChargesTax).toFixed(2))
-        : 0;
     const summaryDiscountOnAllValue = Number((totals.discountAll + totals.itemDiscount).toFixed(2));
 
     const ensureCountryOption = (country: string) => {
@@ -2172,23 +2152,10 @@ export default function AddSalesPage() {
                                             <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
                                         </div>
 
-                                        {isIntraSupply ? (
-                                            <>
-                                                <div className="flex justify-between">
-                                                    <span className="text-dark-6">CGST</span>
-                                                    <span className="font-medium text-dark dark:text-white">Rs. {summaryCgstValue.toLocaleString('en-IN')}</span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                    <span className="text-dark-6">SGST</span>
-                                                    <span className="font-medium text-dark dark:text-white">Rs. {summarySgstValue.toLocaleString('en-IN')}</span>
-                                                </div>
-                                            </>
-                                        ) : (
-                                            <div className="flex justify-between">
-                                                <span className="text-dark-6">IGST</span>
-                                                <span className="font-medium text-dark dark:text-white">Rs. {summaryIgstValue.toLocaleString('en-IN')}</span>
-                                            </div>
-                                        )}
+                                        <div className="flex justify-between">
+                                            <span className="text-dark-6">Tax</span>
+                                            <span className="font-medium text-dark dark:text-white">Rs. {totals.totalTax.toLocaleString('en-IN')}</span>
+                                        </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Freight Charges</span>
                                             <span className="font-medium text-dark dark:text-white">₹{freightBaseValue.toLocaleString('en-IN')}</span>
