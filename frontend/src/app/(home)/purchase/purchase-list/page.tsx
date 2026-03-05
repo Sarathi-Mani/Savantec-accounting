@@ -422,9 +422,17 @@ export default function PurchaseListPage() {
   const [showColumnDropdown, setShowColumnDropdown] = useState(false);
 
   const mapPurchaseToRow = (purchase: PurchaseInvoice): PurchaseRow => {
-    const total = Number(purchase.total_amount || 0);
-    const paid = Number(purchase.amount_paid || 0);
-    const balance = Number(purchase.balance_due || 0);
+    const paymentType = String((purchase as any).payment_type || "INR").toUpperCase();
+    const exchangeRate = Number((purchase as any).exchange_rate || 1);
+    const needsConversion = paymentType !== "INR" && exchangeRate > 0;
+
+    const rawTotal = Number(purchase.total_amount || 0);
+    const rawPaid = Number(purchase.amount_paid || 0);
+    const rawBalance = Number(purchase.balance_due || 0);
+
+    const total = needsConversion ? rawTotal * exchangeRate : rawTotal;
+    const paid = needsConversion ? rawPaid * exchangeRate : rawPaid;
+    const balance = needsConversion ? rawBalance * exchangeRate : rawBalance;
     const rawStatus = String(purchase.status || "").toLowerCase();
     const purchaseStatus: "Received" | "Pending" =
       rawStatus === "approved" || rawStatus === "paid" || rawStatus === "partially_paid"
@@ -809,6 +817,70 @@ export default function PurchaseListPage() {
       alert("Failed to prepare print view. Please try again.");
     } finally {
       setPrintLoading(false);
+    }
+  };
+
+  const handleViewPayment = (purchaseId: string) => {
+    setActiveActionMenu(null);
+    router.push(`/purchase/${purchaseId}#payments`);
+  };
+
+  const handlePayNow = (purchaseId: string) => {
+    setActiveActionMenu(null);
+    router.push(`/purchase/edit/${purchaseId}?focus=payment`);
+  };
+
+  const handlePurchaseReturn = (purchaseId: string) => {
+    setActiveActionMenu(null);
+    router.push(`/purchase/purchase-returns/new?fromPurchaseInvoice=${purchaseId}`);
+  };
+
+  const handleDeletePurchase = async (purchaseId: string) => {
+    setActiveActionMenu(null);
+    if (!company?.id) return;
+    if (!window.confirm("Are you sure you want to delete this purchase invoice?")) return;
+    try {
+      await purchasesApi.delete(company.id, purchaseId);
+      await fetchPurchases();
+      alert("Purchase deleted successfully");
+    } catch (err) {
+      console.error("Failed to delete purchase:", err);
+      alert("Failed to delete purchase");
+    }
+  };
+
+  const handlePrintSinglePurchase = async (purchaseId: string) => {
+    setActiveActionMenu(null);
+    if (!company?.id) return;
+    try {
+      const response = await purchasesApi.downloadPdf(company.id, purchaseId);
+      const blob = new Blob([response], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, "_blank");
+    } catch (error) {
+      console.error("Failed to print purchase:", error);
+      alert("Failed to print purchase");
+    }
+  };
+
+  const handleDownloadSinglePurchasePdf = async (purchaseId: string) => {
+    setActiveActionMenu(null);
+    if (!company?.id) return;
+
+    try {
+      const response = await purchasesApi.downloadPdf(company.id, purchaseId);
+      const blob = new Blob([response], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Purchase_${purchaseId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to download purchase PDF:", error);
+      alert("Failed to download purchase PDF");
     }
   };
 
@@ -1496,7 +1568,7 @@ export default function PurchaseListPage() {
                             </button>
 
                             {activeActionMenu === purchase.id && (
-                              <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                              <div className="absolute right-0 mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                                 <Link
                                   href={`/purchase/${purchase.id}`}
                                   onClick={() => setActiveActionMenu(null)}
@@ -1515,12 +1587,49 @@ export default function PurchaseListPage() {
                                   <span>Edit</span>
                                 </Link>
 
+                                <button
+                                  onClick={() => handleViewPayment(purchase.id)}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                >
+                                  <CreditCard className="w-4 h-4 text-gray-400" />
+                                  <span>View Payment</span>
+                                </button>
+
+                                <button
+                                  onClick={() => handlePayNow(purchase.id)}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                >
+                                  <DollarSign className="w-4 h-4 text-gray-400" />
+                                  <span>Pay Now</span>
+                                </button>
+
+                                <button
+                                  onClick={() => handlePrintSinglePurchase(purchase.id)}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                >
+                                  <Printer className="w-4 h-4 text-gray-400" />
+                                  <span>Print</span>
+                                </button>
+
+                                <button
+                                  onClick={() => handleDownloadSinglePurchasePdf(purchase.id)}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                >
+                                  <FileText className="w-4 h-4 text-gray-400" />
+                                  <span>PDF</span>
+                                </button>
+
+                                <button
+                                  onClick={() => handlePurchaseReturn(purchase.id)}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                >
+                                  <Receipt className="w-4 h-4 text-gray-400" />
+                                  <span>Purchase Return</span>
+                                </button>
+
                                 <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
                                 <button
-                                  onClick={() => {
-                                    // handleDelete(purchase.id);
-                                    setActiveActionMenu(null);
-                                  }}
+                                  onClick={() => handleDeletePurchase(purchase.id)}
                                   className="flex w-full items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                                 >
                                   <Trash2 className="w-4 h-4" />

@@ -18,11 +18,34 @@ type SalesReturn = {
   amount_paid?: number;
   payment_status?: string;
   reason?: string;
+  notes?: string;
   status?: string;
   reference_no?: string;
+  subtotal?: number;
+  discount_amount?: number;
+  cgst_amount?: number;
+  sgst_amount?: number;
+  igst_amount?: number;
+  total_tax?: number;
+  round_off?: number;
+  freight_charges?: number;
+  packing_forwarding_charges?: number;
   created_by?: string;
   created_by_name?: string;
   created_at?: string;
+  items?: Array<{
+    id: string;
+    description?: string;
+    hsn_code?: string;
+    quantity?: number;
+    unit?: string;
+    unit_price?: number;
+    discount_percent?: number;
+    discount_amount?: number;
+    gst_rate?: number;
+    taxable_amount?: number;
+    total_amount?: number;
+  }>;
 };
 
 const formatCurrency = (amount: number | undefined) =>
@@ -44,12 +67,6 @@ const formatDate = (value?: string) => {
   });
 };
 
-const normalizeList = (response: unknown): SalesReturn[] => {
-  if (Array.isArray(response)) return response as SalesReturn[];
-  const obj = (response || {}) as { returns?: SalesReturn[] };
-  return obj.returns || [];
-};
-
 export default function SalesReturnViewPage() {
   const router = useRouter();
   const params = useParams();
@@ -66,13 +83,8 @@ export default function SalesReturnViewPage() {
       setLoading(true);
       setError("");
       try {
-        const response = await salesReturnsApi.list(company.id);
-        const allReturns = normalizeList(response);
-        const found = allReturns.find((item) => item.id === returnId) || null;
-        if (!found) {
-          setError("Sales return not found.");
-        }
-        setSalesReturn(found);
+        const response = await salesReturnsApi.get(company.id, returnId);
+        setSalesReturn((response || null) as SalesReturn | null);
       } catch (err) {
         console.error(err);
         setError("Failed to load sales return details.");
@@ -189,6 +201,70 @@ export default function SalesReturnViewPage() {
           )}
         </div>
       </div>
+
+      <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Amount Breakdown</h2>
+        <div className="mt-4 grid grid-cols-1 gap-3 text-sm text-gray-700 dark:text-gray-300 md:grid-cols-2">
+          <p><span className="text-gray-500">Subtotal:</span> {formatCurrency(salesReturn.subtotal)}</p>
+          <p><span className="text-gray-500">Discount:</span> {formatCurrency(salesReturn.discount_amount)}</p>
+          <p><span className="text-gray-500">CGST:</span> {formatCurrency(salesReturn.cgst_amount)}</p>
+          <p><span className="text-gray-500">SGST:</span> {formatCurrency(salesReturn.sgst_amount)}</p>
+          <p><span className="text-gray-500">IGST:</span> {formatCurrency(salesReturn.igst_amount)}</p>
+          <p><span className="text-gray-500">Total Tax:</span> {formatCurrency(salesReturn.total_tax)}</p>
+          <p><span className="text-gray-500">Freight Charges:</span> {formatCurrency(salesReturn.freight_charges)}</p>
+          <p><span className="text-gray-500">P & F Charges:</span> {formatCurrency(salesReturn.packing_forwarding_charges)}</p>
+          <p><span className="text-gray-500">Round Off:</span> {formatCurrency(salesReturn.round_off)}</p>
+          <p><span className="text-gray-500">Grand Total:</span> {formatCurrency(salesReturn.total_amount)}</p>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Return Items</h2>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[900px]">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-gray-700">
+                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600 dark:text-gray-300">#</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600 dark:text-gray-300">Description</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600 dark:text-gray-300">HSN</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold uppercase text-gray-600 dark:text-gray-300">Qty</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold uppercase text-gray-600 dark:text-gray-300">Rate</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold uppercase text-gray-600 dark:text-gray-300">Disc%</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold uppercase text-gray-600 dark:text-gray-300">GST%</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold uppercase text-gray-600 dark:text-gray-300">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              {(salesReturn.items || []).map((item, index) => (
+                <tr key={item.id || `${index}`} className="text-sm text-gray-700 dark:text-gray-300">
+                  <td className="px-3 py-2">{index + 1}</td>
+                  <td className="px-3 py-2">{item.description || "-"}</td>
+                  <td className="px-3 py-2">{item.hsn_code || "-"}</td>
+                  <td className="px-3 py-2 text-right">{Number(item.quantity || 0).toFixed(2)} {item.unit || ""}</td>
+                  <td className="px-3 py-2 text-right">{formatCurrency(item.unit_price)}</td>
+                  <td className="px-3 py-2 text-right">{Number(item.discount_percent || 0).toFixed(2)}%</td>
+                  <td className="px-3 py-2 text-right">{Number(item.gst_rate || 0).toFixed(2)}%</td>
+                  <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">{formatCurrency(item.total_amount)}</td>
+                </tr>
+              ))}
+              {!salesReturn.items?.length && (
+                <tr>
+                  <td colSpan={8} className="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                    No return items found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {!!salesReturn.notes && (
+        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Notes</h2>
+          <p className="mt-3 whitespace-pre-line text-sm text-gray-700 dark:text-gray-300">{salesReturn.notes}</p>
+        </div>
+      )}
     </div>
   );
 }

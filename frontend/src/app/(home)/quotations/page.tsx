@@ -869,12 +869,62 @@ export default function QuotationsPage() {
     setVisibleColumns(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const handleConvertToInvoice = async (quotationId: string) => {
+  const handleConvertToInvoice = async (quotation: Quotation) => {
     const token = getToken();
+    const quotationId = quotation.id;
     if (!companyId || !token || !confirm("Convert this quotation to an invoice?")) return;
+
+    if (quotation.converted_invoice_id) {
+      router.push(`/sales/${quotation.converted_invoice_id}/edit`);
+      return;
+    }
 
     setConverting(quotationId);
     try {
+      let otherCharges: Array<{ name?: string; amount?: number; type?: string; tax?: number }> = [];
+
+      // Prefer the same saved split charges used by quotation edit page autofill.
+      try {
+        const storageKey = `quotation_other_charges_${companyId}_${quotationId}`;
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            otherCharges = parsed.filter((c: any) => Number(c?.amount || 0) > 0);
+          }
+        }
+      } catch (storageErr) {
+        console.error("Failed to load saved other charges from local storage:", storageErr);
+      }
+
+      // Fallback to API if local saved split charges are not available.
+      try {
+        if (otherCharges.length === 0) {
+          const quotationResp = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/companies/${companyId}/quotations/${quotationId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+          if (quotationResp.ok) {
+            const quotationData = await quotationResp.json();
+            if (Array.isArray(quotationData?.other_charges)) {
+              otherCharges = quotationData.other_charges.filter((c: any) => Number(c?.amount || 0) > 0);
+            }
+          }
+        }
+      } catch (fetchErr) {
+        console.error("Failed to load quotation charges before conversion:", fetchErr);
+      }
+
+      console.log("[Quotation Convert] Passing other_charges:", {
+        quotationId,
+        count: otherCharges.length,
+        otherCharges,
+      });
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/companies/${companyId}/quotations/${quotationId}/convert`,
         {
@@ -883,7 +933,9 @@ export default function QuotationsPage() {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({
+            other_charges: otherCharges,
+          }),
         }
       );
 
@@ -959,7 +1011,7 @@ export default function QuotationsPage() {
   };
 
   const handlePDF = (quotationId: string) => {
-    window.open(`/quotations/${quotationId}/pdf`, "_blank");
+    window.open(`/quotations/${quotationId}?auto_download=pdf`, "_blank");
   };
 
   if (!companyId) {
@@ -1479,23 +1531,21 @@ export default function QuotationsPage() {
                                   </Link>
                                 )}
 
-                                {!quotation.converted_invoice_id && (
-                                  <button
-                                    onClick={() => {
-                                      handleConvertToInvoice(quotation.id);
+                                <button
+                                  onClick={() => {
+                                      handleConvertToInvoice(quotation);
                                       setActiveActionMenu(null);
                                     }}
-                                    disabled={converting === quotation.id}
-                                    className="flex w-full items-center gap-3 px-3 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors disabled:opacity-50"
-                                  >
-                                    {converting === quotation.id ? (
-                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-purple-600 border-t-transparent" />
-                                    ) : (
-                                      <CheckCircle className="w-4 h-4" />
-                                    )}
-                                    <span>Convert to Invoice</span>
-                                  </button>
-                                )}
+                                  disabled={converting === quotation.id}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors disabled:opacity-50"
+                                >
+                                  {converting === quotation.id ? (
+                                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-purple-600 border-t-transparent" />
+                                  ) : (
+                                    <CheckCircle className="w-4 h-4" />
+                                  )}
+                                  <span>Convert to Invoice</span>
+                                </button>
 
                                 <button
                                   onClick={() => {

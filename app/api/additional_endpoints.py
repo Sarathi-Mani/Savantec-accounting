@@ -1,7 +1,7 @@
 """
 Additional API Endpoints - Serial Numbers, Manufacturing, Price Levels, Period Locks, etc.
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List, Tuple
@@ -23,6 +23,7 @@ from app.database.models import (
 )
 from app.database.payroll_models import Employee
 from app.auth.dependencies import get_current_active_user
+from app.services.pdf_service import PDFService
 
 router = APIRouter(tags=["Additional Features"])
 
@@ -1642,6 +1643,34 @@ async def get_sales_return(
     }
 
 
+@router.get("/companies/{company_id}/sales-returns/{return_id}/pdf")
+async def download_sales_return_pdf(
+    company_id: str,
+    return_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Download sales return as PDF using invoice template layout."""
+    company = get_company_or_404(company_id, current_user, db)
+
+    ret = db.query(SalesReturn).filter(
+        SalesReturn.id == return_id,
+        SalesReturn.company_id == company_id
+    ).first()
+    if not ret:
+        raise HTTPException(status_code=404, detail="Sales return not found")
+
+    pdf_service = PDFService()
+    pdf_buffer = pdf_service.generate_sales_return_pdf(ret, company, ret.customer)
+    filename = f"SalesReturn_{ret.return_number or ret.id}.pdf"
+
+    return Response(
+        content=pdf_buffer.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
 @router.post("/companies/{company_id}/sales-returns", status_code=status.HTTP_201_CREATED)
 async def create_sales_return(
     company_id: str,
@@ -2125,6 +2154,34 @@ async def get_purchase_return(
             "total_amount": float(item.total_amount or 0),
         } for item in (ret.items or [])],
     }
+
+
+@router.get("/companies/{company_id}/purchase-returns/{return_id}/pdf")
+async def download_purchase_return_pdf(
+    company_id: str,
+    return_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Download purchase return as PDF using invoice template layout."""
+    company = get_company_or_404(company_id, current_user, db)
+
+    ret = db.query(PurchaseReturn).filter(
+        PurchaseReturn.id == return_id,
+        PurchaseReturn.company_id == company_id
+    ).first()
+    if not ret:
+        raise HTTPException(status_code=404, detail="Purchase return not found")
+
+    pdf_service = PDFService()
+    pdf_buffer = pdf_service.generate_purchase_return_pdf(ret, company, ret.vendor)
+    filename = f"PurchaseReturn_{ret.return_number or ret.id}.pdf"
+
+    return Response(
+        content=pdf_buffer.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 @router.post("/companies/{company_id}/purchase-returns", status_code=status.HTTP_201_CREATED)

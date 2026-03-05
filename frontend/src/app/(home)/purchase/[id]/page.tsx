@@ -363,7 +363,7 @@ export default function PurchaseInvoiceViewPage() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+      <div id="payments" className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
         <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-white">Payments</h2>
         {(purchase.payments || []).length === 0 ? (
           <p className="text-sm text-gray-500">No payments added</p>

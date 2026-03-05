@@ -237,16 +237,113 @@ export default function AddSalesReturnPage() {
     const [prefillLoading, setPrefillLoading] = useState(false);
     const [prefillError, setPrefillError] = useState("");
 
-    const normalizeStateCode = (value: any) => {
-        const text = String(value ?? "").trim();
-        const match = text.match(/\d{2}/);
-        return match ? match[0] : text;
+    const INDIAN_STATE_CODES: Record<string, string> = {
+        "01": "Jammu and Kashmir",
+        "02": "Himachal Pradesh",
+        "03": "Punjab",
+        "04": "Chandigarh",
+        "05": "Uttarakhand",
+        "06": "Haryana",
+        "07": "Delhi",
+        "08": "Rajasthan",
+        "09": "Uttar Pradesh",
+        "10": "Bihar",
+        "11": "Sikkim",
+        "12": "Arunachal Pradesh",
+        "13": "Nagaland",
+        "14": "Manipur",
+        "15": "Mizoram",
+        "16": "Tripura",
+        "17": "Meghalaya",
+        "18": "Assam",
+        "19": "West Bengal",
+        "20": "Jharkhand",
+        "21": "Odisha",
+        "22": "Chattisgarh",
+        "23": "Madhya Pradesh",
+        "24": "Gujarat",
+        "26": "Dadra & Nagar Haveli and Daman & Diu",
+        "27": "Maharashtra",
+        "28": "Andhra Pradesh (Old)",
+        "29": "Karnataka",
+        "30": "Goa",
+        "31": "Lakshadweep",
+        "32": "Kerala",
+        "33": "Tamil Nadu",
+        "34": "Puducherry",
+        "35": "Andaman & Nicobar Islands",
+        "36": "Telangana",
+        "37": "Andhra Pradesh",
+        "38": "Ladakh",
+        "97": "Other Territory",
+        "99": "Centre Jurisdiction",
     };
 
-    const isIntraStateSupply = () => {
-        const selectedCustomer = customers.find(c => String(c.id) === String(formData.customer_id));
-        const customerState = selectedCustomer?.billing_state_code || selectedCustomer?.state_code || "";
-        return normalizeStateCode(customerState) === normalizeStateCode(company?.state_code);
+    const normalizeStateCode = (value: any) => {
+        const raw = String(value ?? "").trim();
+        if (!raw) return "";
+
+        if (/^\d+$/.test(raw)) {
+            const code = raw.padStart(2, "0");
+            if (INDIAN_STATE_CODES[code]) return code;
+        }
+
+        const twoDigitMatch = raw.match(/\b\d{2}\b/);
+        if (twoDigitMatch && INDIAN_STATE_CODES[twoDigitMatch[0]]) {
+            return twoDigitMatch[0];
+        }
+
+        const normalizedInput = raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+        for (const [code, name] of Object.entries(INDIAN_STATE_CODES)) {
+            const normalizedName = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+            if (normalizedName === normalizedInput) return code;
+        }
+
+        const aliases: Record<string, string> = {
+            tamilnadu: "33",
+            andhrapradesh: "37",
+            maharastra: "27",
+            chhattisgarh: "22",
+            chattisgarh: "22",
+            odisa: "21",
+            orissa: "21",
+        };
+
+        return aliases[normalizedInput] || "";
+    };
+
+    const getCustomerSupplyStateCode = (customer: any) => {
+        return (
+            customer?.shipping_state_code ||
+            customer?.shipping_state ||
+            customer?.billing_state_code ||
+            customer?.billing_state ||
+            customer?.state_code ||
+            customer?.state ||
+            ""
+        );
+    };
+
+    const getGstDecisionInfo = (customerId?: string) => {
+        const selectedCustomer = customers.find(
+            c => String(c.id) === String(customerId ?? formData.customer_id)
+        );
+        const customerStateRaw = getCustomerSupplyStateCode(selectedCustomer);
+        const customerStateCode = normalizeStateCode(customerStateRaw);
+        const companyStateCode = normalizeStateCode(company?.state_code);
+        const isIntra = customerStateCode === companyStateCode;
+        return {
+            customerId: customerId ?? formData.customer_id,
+            customerStateRaw,
+            customerStateCode,
+            companyStateCode,
+            taxRegime: isIntra ? "CGST+SGST" : "IGST",
+            isIntra,
+        };
+    };
+
+    const isIntraStateSupply = (customerId?: string) => {
+        return getGstDecisionInfo(customerId).isIntra;
     };
 
     const getAuthToken = () => {
@@ -695,6 +792,7 @@ export default function AddSalesReturnPage() {
         setIsSubmitting(true);
         try {
             const selectedCustomer = customers.find(c => c.id === formData.customer_id);
+            console.log("[SalesReturn GST Decision][Submit]", getGstDecisionInfo(formData.customer_id));
 
             const preparedItems = items.map(item => ({
                 product_id: item.product_id || undefined,
@@ -828,6 +926,20 @@ export default function AddSalesReturnPage() {
             ...prev,
             [field]: value,
         }));
+
+        if (field === "customer_id") {
+            const decision = getGstDecisionInfo(String(value || ""));
+            const intraState = decision.isIntra;
+            console.log("[SalesReturn GST Decision]", decision);
+            setItems(prevItems =>
+                prevItems.map(item => ({
+                    ...item,
+                    cgst_rate: intraState ? Number(item.gst_rate || 0) / 2 : 0,
+                    sgst_rate: intraState ? Number(item.gst_rate || 0) / 2 : 0,
+                    igst_rate: intraState ? 0 : Number(item.gst_rate || 0),
+                }))
+            );
+        }
     };
 
     const handleProductSearch = (value: string) => {

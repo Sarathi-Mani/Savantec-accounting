@@ -188,7 +188,9 @@ class ProformaInvoiceService:
         if not subtotal or not total_tax or not total_amount:
             print("DEBUG: Calculating totals from items")
             calculated_subtotal = sum(item.taxable_amount for item in created_items)
-            calculated_total_tax = sum(item.tax_amount for item in created_items)
+            calculated_total_tax = sum(
+                (item.taxable_amount * item.gst_rate / Decimal("100")) for item in created_items
+            )
             
             # Add freight and PF charges to subtotal
             final_subtotal = calculated_subtotal + (freight_charges or Decimal("0")) + (pf_charges or Decimal("0"))

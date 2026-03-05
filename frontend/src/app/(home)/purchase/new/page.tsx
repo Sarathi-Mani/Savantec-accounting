@@ -162,6 +162,17 @@ function ProductSelectField({
                     ...base,
                     zIndex: 9999,
                 }),
+                menu: (base: any) => ({
+                    ...base,
+                    minWidth: "560px",
+                    width: "max-content",
+                    maxWidth: "820px",
+                }),
+                option: (base: any) => ({
+                    ...base,
+                    whiteSpace: "normal",
+                    wordBreak: "break-word",
+                }),
             }}
         />
     );
@@ -761,7 +772,7 @@ export default function AddPurchasePage() {
     // Calculate totals based on purchase type
 const calculateTotals = () => {
     let subtotal = 0;
-    let totalTax = 0;
+    let itemTaxTotal = 0;
     let totalItemDiscount = 0;
 
     // Calculate from regular items with currency conversion
@@ -779,7 +790,7 @@ const calculateTotals = () => {
         const tax = taxable * (item.gst_rate / 100);
 
         subtotal += taxable;
-        totalTax += tax;
+        itemTaxTotal += tax;
         totalItemDiscount += discount;
         
         // Log conversion for debugging
@@ -807,25 +818,16 @@ const calculateTotals = () => {
     }
 
     // Calculate additional charges and discounts (all in INR)
-    let freightCharges = formData.freight_charges || 0;
-    let pfCharges = formData.pf_charges || 0;
+    const freightCharges = Number(formData.freight_charges || 0);
+    const pfCharges = Number(formData.pf_charges || 0);
     const discountOnAll = formData.discount_on_all || 0;
-
-    // Calculate tax for freight if TAX option is selected
-    if (formData.freight_type.startsWith('tax')) {
-        const taxRate = parseFloat(formData.freight_type.replace('tax', ''));
-        const freightTax = freightCharges * (taxRate / 100);
-        totalTax += freightTax;
-        freightCharges += freightTax;
-    }
-
-    // Calculate tax for P&F if TAX option is selected
-    if (formData.pf_type.startsWith('tax')) {
-        const taxRate = parseFloat(formData.pf_type.replace('tax', ''));
-        const pfTax = pfCharges * (taxRate / 100);
-        totalTax += pfTax;
-        pfCharges += pfTax;
-    }
+    const getTaxRateFromType = (type?: string) => {
+        if (!String(type || "").startsWith("tax")) return 0;
+        return Number(String(type).replace("tax", "")) || 0;
+    };
+    const freightTax = freightCharges * (getTaxRateFromType(formData.freight_type) / 100);
+    const pfTax = pfCharges * (getTaxRateFromType(formData.pf_type) / 100);
+    const totalTax = itemTaxTotal + freightTax + pfTax;
 
     // Calculate discount on all based on type
     const discountAllAmount = formData.discount_type === 'percentage'
@@ -834,14 +836,17 @@ const calculateTotals = () => {
 
     // Calculate totals step by step
     const totalBeforeTax = subtotal;
-    const totalAfterTax = totalBeforeTax + totalTax;
-    const totalAfterCharges = totalAfterTax + freightCharges + pfCharges;
-    const totalAfterDiscountAll = totalAfterCharges - discountAllAmount;
-    const grandTotal = totalAfterDiscountAll + (formData.round_off || 0);
+    const totalAfterCharges = totalBeforeTax + freightCharges + pfCharges;
+    const totalAfterTax = totalAfterCharges + totalTax;
+    const totalAfterDiscountAll = totalAfterTax - discountAllAmount;
+    const grandTotal = totalAfterTax - discountAllAmount + (formData.round_off || 0);
 
     return {
         subtotal: Number(totalBeforeTax.toFixed(2)),
         totalTax: Number(totalTax.toFixed(2)),
+        itemTax: Number(itemTaxTotal.toFixed(2)),
+        freightTax: Number(freightTax.toFixed(2)),
+        pfTax: Number(pfTax.toFixed(2)),
         itemDiscount: Number(totalItemDiscount.toFixed(2)),
         freight: Number(freightCharges.toFixed(2)),
         pf: Number(pfCharges.toFixed(2)),
@@ -1877,14 +1882,17 @@ useEffect(() => {
 
                         {/* SECTION 2: Regular Purchase Items (VISIBLE for purchase and purchase-import) */}
                         {purchaseType !== "purchase-expenses" && (
-                            <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                                <div className="mb-4 flex items-center justify-between">
-                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Purchase Items</h2>
-                                    <div className="flex gap-2">
-                                        <div className="text-dark-6">
+                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
+                                <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Purchase Items</h2>
+                                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Add items to your purchase invoice</p>
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <div className="text-sm text-gray-600 dark:text-gray-400">
                                             Total Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
                                         </div>
-                                        <div className="text-dark-6">
+                                        <div className="text-sm text-gray-600 dark:text-gray-400">
                                             Items: {items.length}
                                         </div>
                                     </div>
@@ -1893,40 +1901,41 @@ useEffect(() => {
                                 <button
                                     type="button"
                                     onClick={() => addItem()}
-                                    className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
+                                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                                 >
-                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                                     </svg>
+                                    Add Item
                                 </button>
                             </div>{/* Items Table - Different columns based on purchase type */}
                                 <div className="overflow-x-auto">
-                                    <table className="w-full">
+                                    <table className="w-full border-collapse min-w-[1400px]">
                                         <thead>
-                                            <tr className="border-b border-stroke dark:border-dark-3">
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Name</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Code</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">HSN</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
-                                              <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">
+                                            <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item Name</th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item Code</th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">HSN</th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Description</th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Quantity</th>
+                                              <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">
     <div className="flex items-center gap-1">
         <span>Purchase Price</span>
         {purchaseType === "purchase-import" && (
-            <span className="text-xs text-dark-6">(with currency)</span>
+            <span className="text-[10px] text-gray-500 dark:text-gray-400">(with currency)</span>
         )}
     </div>
 </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Discount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax Amount</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax %</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Total Amount</th>
-                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount</th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Tax Amount</th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Tax %</th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Total Amount</th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Action</th>
                                             </tr>
                                         </thead>
-                                        <tbody>
+                                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                                             {items.map((item) => (
-                                                <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
+                                                <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                                     <td className="px-4 py-3 min-w-[200px]">
                                                         <ProductSelectField
                                                             value={item.product_id}
@@ -2249,6 +2258,10 @@ useEffect(() => {
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">P & F Charges</span>
                                             <span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{totals.pf.toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-dark-6">Tax</span>
+                                            <span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{totals.totalTax.toLocaleString('en-IN')}</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-dark-6">Discount on All</span>

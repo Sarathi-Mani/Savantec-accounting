@@ -59,6 +59,38 @@ class InvoiceService:
             "orissa": "21",
         }
         return aliases.get(normalized_input)
+
+    def _sanitize_invoice_phone(self, value: Optional[str]) -> Optional[str]:
+        """Sanitize phone-like text for invoices (DB column is VARCHAR(15))."""
+        if value is None:
+            return None
+        raw = str(value).strip()
+        if not raw:
+            return None
+        # Keep a compact, phone-safe representation.
+        compact = re.sub(r"[^\d+]", "", raw)
+        if not compact:
+            return None
+        return compact[:15]
+
+    def _sanitize_invoice_gstin(self, value: Optional[str]) -> Optional[str]:
+        """Normalize GSTIN text to fit invoice column size."""
+        if value is None:
+            return None
+        raw = str(value).strip().upper()
+        if not raw:
+            return None
+        return raw[:15]
+
+    def _sanitize_invoice_state_code(self, value: Optional[str]) -> Optional[str]:
+        """Normalize/limit state code for invoice column (VARCHAR(2))."""
+        normalized = self._normalize_state_code(value)
+        if normalized:
+            return normalized[:2]
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        return raw[:2]
     
     def _calculate_gst_split(
         self,
@@ -247,10 +279,14 @@ class InvoiceService:
             
             # Denormalized customer info
             customer_name=customer.name if customer else getattr(data, 'customer_name', None),
-            customer_gstin=customer.tax_number if customer else getattr(data, 'customer_gstin', None),
-            customer_phone=customer.contact if customer else getattr(data, 'customer_phone', None),
+            customer_gstin=self._sanitize_invoice_gstin(customer.tax_number if customer else getattr(data, 'customer_gstin', None)),
+            customer_phone=self._sanitize_invoice_phone(
+                (customer.mobile if customer and getattr(customer, "mobile", None) else None)
+                or (customer.contact if customer else None)
+                or getattr(data, 'customer_phone', None)
+            ),
             customer_state=getattr(data, 'customer_state', None),
-            customer_state_code=getattr(data, 'customer_state_code', None),
+            customer_state_code=self._sanitize_invoice_state_code(getattr(data, 'customer_state_code', None)),
             
             # Other fields
             reference_no=getattr(data, 'reference_no', None),
@@ -622,7 +658,7 @@ class InvoiceService:
         
         # Pagination
         offset = (page - 1) * page_size
-        invoices = query.order_by(Invoice.invoice_date.desc(), Invoice.created_at.desc()).offset(offset).limit(page_size).all()
+        invoices = query.order_by(Invoice.created_at.desc(), Invoice.invoice_date.desc()).offset(offset).limit(page_size).all()
         
         return invoices, total, summary_dict
 
@@ -744,6 +780,14 @@ class InvoiceService:
 
     def update_invoice(self, invoice: Invoice, data: InvoiceUpdate, company: Company) -> Invoice:
         """Update an invoice."""
+        marker = "[OTHER_CHARGES_JSON]"
+        existing_marker_blob = None
+        for source in (invoice.notes or "", invoice.other_references or ""):
+            idx = source.find(marker)
+            if idx != -1:
+                existing_marker_blob = source[idx:].strip()
+                break
+
         update_data = data.model_dump(exclude_unset=True)
         items_data = update_data.pop("items", None)
 
@@ -754,8 +798,25 @@ class InvoiceService:
                 # Normalize to InvoiceVoucher enum
                 normalized = value.value if hasattr(value, "value") else str(value)
                 setattr(invoice, field, InvoiceVoucher(normalized))
+            elif field == "customer_phone":
+                setattr(invoice, field, self._sanitize_invoice_phone(value))
+            elif field == "customer_gstin":
+                setattr(invoice, field, self._sanitize_invoice_gstin(value))
+            elif field == "customer_state_code":
+                setattr(invoice, field, self._sanitize_invoice_state_code(value))
             else:
                 setattr(invoice, field, value)
+
+        # Preserve converted split other-charges marker across invoice edits.
+        if existing_marker_blob:
+            has_marker_now = marker in (invoice.notes or "") or marker in (invoice.other_references or "")
+            if not has_marker_now:
+                current_ref = (invoice.other_references or "").strip()
+                invoice.other_references = (
+                    f"{current_ref}\n{existing_marker_blob}".strip()
+                    if current_ref
+                    else existing_marker_blob
+                )
 
         if items_data is not None:
             # Replace all items (draft invoices only - enforced in API)

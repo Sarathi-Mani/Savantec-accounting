@@ -2386,6 +2386,14 @@ export const purchasesApi = {
     return response.data;
   },
 
+  downloadPdf: async (companyId: string, invoiceId: string): Promise<ArrayBuffer> => {
+    const response = await api.get(`/purchases/${invoiceId}/pdf`, {
+      params: { company_id: companyId },
+      responseType: "arraybuffer",
+    });
+    return response.data;
+  },
+
   create: async (companyId: string, data: {
     vendor_id: string;
     vendor_invoice_number?: string;
@@ -2461,6 +2469,13 @@ export const purchasesApi = {
 
   cancel: async (companyId: string, invoiceId: string, reason?: string): Promise<PurchaseInvoice> => {
     const response = await api.post(`/purchases/${invoiceId}/cancel`, reason ? { reason } : undefined, {
+      params: { company_id: companyId }
+    });
+    return response.data;
+  },
+
+  delete: async (companyId: string, invoiceId: string): Promise<{ message: string }> => {
+    const response = await api.delete(`/purchases/${invoiceId}`, {
       params: { company_id: companyId }
     });
     return response.data;
@@ -4161,6 +4176,13 @@ export const salesReturnsApi = {
     }
   },
 
+  downloadPdf: async (companyId: string, returnId: string): Promise<ArrayBuffer> => {
+    const response = await api.get(`/companies/${companyId}/sales-returns/${returnId}/pdf`, {
+      responseType: "arraybuffer",
+    });
+    return response.data;
+  },
+
   create: async (companyId: string, data: any) => {
     try {
       const response = await api.post(`/companies/${companyId}/sales-returns`, data);
@@ -4266,6 +4288,13 @@ export const purchaseReturnsApi = {
   get: async (companyId: string, returnId: string) => {
     const response = await api.get(`/companies/${companyId}/purchase-returns/${returnId}`);
     return response.data as PurchaseReturn;
+  },
+
+  downloadPdf: async (companyId: string, returnId: string): Promise<ArrayBuffer> => {
+    const response = await api.get(`/companies/${companyId}/purchase-returns/${returnId}/pdf`, {
+      responseType: "arraybuffer",
+    });
+    return response.data;
   },
 
   getNextNumber: async (companyId: string): Promise<{ return_number: string }> => {

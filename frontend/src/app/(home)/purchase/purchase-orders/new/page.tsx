@@ -166,6 +166,11 @@ function ProductSelectField({
                     ...base,
                     zIndex: 9999,
                 }),
+                menu: (base: any) => ({
+                    ...base,
+                    minWidth: "420px",
+                    width: "max-content",
+                }),
             }}
         />
     );
@@ -1043,7 +1048,6 @@ export default function AddPurchaseOrderPage() {
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Purchase Price</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Discount</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">GST %</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax Amount</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit Cost</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Total Amount</th>
                                             <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
@@ -1142,21 +1146,19 @@ export default function AddPurchaseOrderPage() {
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-3">
-                                                    <input
-                                                        type="number"
+                                                    <select
                                                         value={item.gst_rate}
-                                                        onChange={(e) => updateItem(item.id, 'gst_rate', parseFloat(e.target.value) || 0)}
+                                                        onChange={(e) => updateItem(item.id, 'gst_rate', parseFloat(e.target.value))}
                                                         className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        min="0"
-                                                        max="100"
-                                                        step="0.01"
-                                                    />
+                                                    >
+                                                        {[0, 3, 5, 12, 18, 28].map((rate) => (
+                                                            <option key={rate} value={rate}>
+                                                                {rate}%
+                                                            </option>
+                                                        ))}
+                                                    </select>
                                                 </td>
-                                                <td className="px-4 py-3">
-                                                    <span className="font-medium">
-                                                        {formatAmount(item.tax_amount || 0)}
-                                                    </span>
-                                                </td>
+                                              
                                                 <td className="px-4 py-3">
                                                     <span className="font-medium">
                                                         {formatAmount(item.unit_cost || item.purchase_price)}

@@ -1,5 +1,5 @@
 """Purchase API routes - Handles all purchase types."""
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body,Path
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body,Path, Response
 from sqlalchemy.orm import Session
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime
@@ -11,6 +11,7 @@ from app.database.models import User, Company, PurchaseType, PurchaseInvoiceStat
 from app.services.purchase_service import PurchaseService
 from app.services.company_service import CompanyService
 from app.services.vendor_service import VendorService
+from app.services.pdf_service import PDFService
 from app.auth.dependencies import get_current_active_user
 
 router = APIRouter(prefix="/api/purchases", tags=["Purchases"])
@@ -735,6 +736,36 @@ async def add_payment_to_purchase(
         payment_note=payment.payment_note,
         reference_number=payment.reference_number,
         created_at=payment.created_at,
+    )
+
+
+@router.get("/{purchase_id}/pdf")
+async def download_purchase_pdf(
+    company_id: str = Query(..., description="Company ID"),
+    purchase_id: str = Path(..., description="Purchase ID"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Download purchase invoice as PDF using invoice template layout."""
+    company = get_company_or_404(company_id, current_user, db)
+
+    purchase_service = PurchaseService(db)
+    purchase = purchase_service.get_purchase(purchase_id, company.id)
+
+    if not purchase:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Purchase not found"
+        )
+
+    pdf_service = PDFService()
+    pdf_buffer = pdf_service.generate_purchase_pdf(purchase, company, purchase.vendor)
+    filename = f"Purchase_{purchase.purchase_number or purchase.id}.pdf"
+
+    return Response(
+        content=pdf_buffer.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 

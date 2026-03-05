@@ -4,7 +4,6 @@ from sqlalchemy import func
 from typing import List, Optional, Tuple, Dict, Any
 from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP
-import uuid
 import re
 
 from app.database.models import (
@@ -42,16 +41,33 @@ class PurchaseService:
         return datetime.utcnow()
 
     def _get_next_purchase_number(self, company_id: str, value: Optional[Any] = None) -> str:
-        """Generate purchase number in PUR-XXXXXXXX format."""
-        while True:
-            suffix = uuid.uuid4().hex[:8].upper()
-            candidate = f"PUR-{suffix}"
-            exists = self.db.query(Purchase.id).filter(
-                Purchase.company_id == company_id,
-                Purchase.purchase_number == candidate,
-            ).first()
-            if not exists:
-                return candidate
+        """Generate purchase number in PUR-INV-0001 sequential format."""
+        prefix = "PUR-INV-"
+        pattern = re.compile(r"^PUR-INV-(\d+)$")
+
+        existing_numbers = self.db.query(Purchase.purchase_number).filter(
+            Purchase.company_id == company_id,
+            Purchase.purchase_number.like(f"{prefix}%"),
+        ).all()
+
+        max_sequence = 0
+        for row in existing_numbers:
+            purchase_number = str(row[0] or "")
+            match = pattern.match(purchase_number)
+            if match:
+                max_sequence = max(max_sequence, int(match.group(1)))
+
+        next_sequence = max_sequence + 1
+        candidate = f"{prefix}{next_sequence:04d}"
+
+        while self.db.query(Purchase.id).filter(
+            Purchase.company_id == company_id,
+            Purchase.purchase_number == candidate,
+        ).first():
+            next_sequence += 1
+            candidate = f"{prefix}{next_sequence:04d}"
+
+        return candidate
 
     def get_next_purchase_number(self, company_id: str, value: Optional[Any] = None) -> str:
         """Public helper for next purchase number."""
@@ -239,7 +255,7 @@ class PurchaseService:
         self.db.add(purchase)
         self.db.flush()
         # Safety: if any DB-side logic overrides purchase_number, force API format before commit.
-        if not re.match(r"^PUR-[A-Z0-9]{8}$", str(purchase.purchase_number or "")):
+        if not re.match(r"^PUR-INV-\d{4,}$", str(purchase.purchase_number or "")):
             # print(
             #     f"⚠️ purchase_number overridden to '{purchase.purchase_number}', "
             #     f"forcing format '{purchase_number}'"

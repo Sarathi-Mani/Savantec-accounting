@@ -323,6 +323,7 @@ class QuotationListResponse(BaseModel):
 class ConvertToInvoiceRequest(BaseModel):
     invoice_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
+    other_charges: Optional[List[dict]] = None
 
 
 class SendRequest(BaseModel):
@@ -1046,10 +1047,19 @@ async def convert_to_invoice(
         raise HTTPException(status_code=404, detail="Quotation not found")
     
     try:
+        print(
+            "[Quotation Convert] Received other_charges:",
+            {
+                "quotation_id": quotation_id,
+                "count": len(data.other_charges or []),
+                "other_charges": data.other_charges or [],
+            },
+        )
         invoice = service.convert_to_invoice(
             quotation=quotation,
             invoice_date=data.invoice_date,
             due_date=data.due_date,
+            other_charges=data.other_charges,
         )
         
         return {

@@ -152,6 +152,11 @@ function ProductSelectField({
                     ...base,
                     zIndex: 9999,
                 }),
+                menu: (base: any) => ({
+                    ...base,
+                    minWidth: "420px",
+                    width: "420px",
+                }),
             }}
         />
     );
@@ -842,18 +847,19 @@ const salesmanOptions = useMemo(() => {
             totalTax += tax;
         });
 
-        const calculateWithTax = (baseAmount: number, taxType: string) => {
-            if (taxType === 'fixed') return baseAmount;
-            const match = taxType.match(/tax@(\d+)%/);
-            if (match) {
-                const taxRate = parseInt(match[1]);
-                return baseAmount * (1 + taxRate / 100);
-            }
-            return baseAmount;
+        const getTaxRateFromType = (taxType: string) => {
+            if (!taxType || taxType === "fixed") return 0;
+            const match = String(taxType).match(/tax@(\d+(?:\.\d+)?)%/i);
+            return match ? Number(match[1]) : 0;
         };
 
-        const freightCharges = calculateWithTax(formData.freight_charges || 0, formData.freight_type || "fixed");
-        const pfCharges = calculateWithTax(formData.pf_charges || 0, formData.pf_type || "fixed");
+        const freightBase = Number(formData.freight_charges || 0);
+        const pfBase = Number(formData.pf_charges || 0);
+        const freightTax = freightBase * (getTaxRateFromType(formData.freight_type || "fixed") / 100);
+        const pfTax = pfBase * (getTaxRateFromType(formData.pf_type || "fixed") / 100);
+
+        const itemTax = totalTax;
+        totalTax = itemTax + freightTax + pfTax;
 
         let roundOffAmount = 0;
         if (roundOff.type === "plus") {
@@ -862,7 +868,7 @@ const salesmanOptions = useMemo(() => {
             roundOffAmount = -roundOff.amount;
         }
 
-        const totalBeforeRoundOff = subtotal + totalTax + freightCharges + pfCharges;
+        const totalBeforeRoundOff = subtotal + totalTax + freightBase + pfBase;
         const total = totalBeforeRoundOff + roundOffAmount;
 
         return {
@@ -871,8 +877,11 @@ const salesmanOptions = useMemo(() => {
             cgstTotal: Number(cgstTotal.toFixed(2)),
             sgstTotal: Number(sgstTotal.toFixed(2)),
             igstTotal: Number(igstTotal.toFixed(2)),
-            freightAmount: Number(freightCharges.toFixed(2)),
-            pfAmount: Number(pfCharges.toFixed(2)),
+            itemTax: Number(itemTax.toFixed(2)),
+            freightTax: Number(freightTax.toFixed(2)),
+            pfTax: Number(pfTax.toFixed(2)),
+            freightAmount: Number(freightBase.toFixed(2)),
+            pfAmount: Number(pfBase.toFixed(2)),
             roundOffAmount: Number(roundOffAmount.toFixed(2)),
             totalBeforeRoundOff: Number(totalBeforeRoundOff.toFixed(2)),
             total: Number(total.toFixed(2)),
@@ -885,18 +894,40 @@ const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!company?.id) return;
 
+    const normalizedCustomerId = String(formData.customer_id || "").trim();
+    const normalizedContactId = String(formData.contact_id || "").trim();
+    const normalizedSalesPersonId = String(formData.sales_person_id || "").trim();
+    const normalizedBankAccountId = String(formData.bank_account_id || "").trim();
+
+    const validCustomerId = customers.some((c: any) => String(c.id) === normalizedCustomerId)
+        ? normalizedCustomerId
+        : "";
+    const validContactId = contactPersons.some((c: any) => String(c.id) === normalizedContactId)
+        ? normalizedContactId
+        : "";
+    const validSalesPersonId = salesmen.some((s: any) => String(s.id) === normalizedSalesPersonId)
+        ? normalizedSalesPersonId
+        : "";
+    const validBankAccountId = bankAccounts.some((b: any) => String(b.id) === normalizedBankAccountId)
+        ? normalizedBankAccountId
+        : "";
+    if (!validCustomerId) {
+        alert("Please select a customer");
+        return;
+    }
+
     setIsSubmitting(true);
     try {
         // Prepare proforma invoice data
         const proformaData = {
-            customer_id: formData.customer_id,
+            customer_id: validCustomerId,
             proforma_date: formData.proforma_date + "T00:00:00Z",
             due_date: formData.due_date ? formData.due_date + "T00:00:00Z" : undefined,
             reference_no: formData.reference_no,
             reference_date: formData.reference_date ? formData.reference_date + "T00:00:00Z" : undefined,
-            sales_person_id: formData.sales_person_id || undefined,
-            contact_id: formData.contact_id, // Still using contact_person - change to contact_id?
-            bank_account_id: formData.bank_account_id || undefined,
+            sales_person_id: validSalesPersonId || undefined,
+            contact_id: validContactId || undefined,
+            bank_account_id: validBankAccountId || undefined,
             notes: formData.notes,
             terms: formData.terms,
             freight_charges: formData.freight_charges,
@@ -1337,153 +1368,155 @@ const customerOptions = useMemo(() => {
 
                         {/* SECTION 2: Proforma Items Table */}
                         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                            <div className="mb-4 flex items-center justify-between">
+                            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                 <h2 className="text-lg font-semibold text-dark dark:text-white">Proforma Items</h2>
-                                <div className="flex gap-2">
-                                    <div className="text-dark-6">
-                                        Total Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
-                                    </div>
-                                    <div className="text-dark-6">
+                                <div className="flex items-center gap-2">
+                                    <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
                                         Items: {items.length}
-                                    </div>
+                                    </span>
+                                    <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+                                        Total Qty: {items.reduce((sum, item) => sum + Number(item.quantity || 0), 0).toFixed(2)}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => addItem()}
+                                        className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-opacity-90"
+                                    >
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        Add Item
+                                    </button>
                                 </div>
                             </div>
-                            <div className="mb-4 flex justify-end">
-                                <button
-                                    type="button"
-                                    onClick={() => addItem()}
-                                    className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
-                                >
-                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                    </svg>
-                                </button>
-                            </div>{/* Items Table - Updated with Item Code */}
                             <div className="overflow-x-auto">
-                                <table className="w-full">
+                                <table className="w-full min-w-[1180px]">
                                     <thead>
                                         <tr className="border-b border-stroke dark:border-dark-3">
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Code</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Name</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit Price</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Discount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax Amount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Total Amount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">#</th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Item Name</th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Description</th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Qty</th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Unit</th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Rate</th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Discount %</th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">GST %</th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Amount</th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Action</th>
                                         </tr>
                                     </thead>
-                                    <tbody>
-                                        {items.map((item) => (
-                                            <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="text"
-                                                        value={item.item_code}
-                                                        onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}
-                                                        className="w-28 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        placeholder="Item Code"
-                                                    />
+                                    <tbody className="divide-y divide-stroke dark:divide-dark-3">
+                                        {items.map((item, index) => (
+                                            <tr key={item.id} className="hover:bg-gray-50/60 dark:hover:bg-gray-800/50">
+                                                <td className="px-3 py-3 text-sm text-dark dark:text-white">{index + 1}</td>
+                                                <td className="px-3 py-3 min-w-[260px]">
+                                                    <div className="space-y-2">
+                                                        <ProductSelectField
+                                                            value={item.product_id}
+                                                            products={products}
+                                                            onChange={(product) => {
+                                                                if (!product) return;
+
+                                                                setItems(prev =>
+                                                                    prev.map(i => {
+                                                                        if (i.id !== item.id) return i;
+
+                                                                        const unitPrice =
+                                                                            product.selling_price ??
+                                                                            product.unit_price ??
+                                                                            0;
+                                                                        const gstRate = Number(product.gst_rate) || 0;
+                                                                        const qty = i.quantity || 1;
+                                                                        const taxable = qty * unitPrice;
+                                                                        const tax = taxable * (gstRate / 100);
+
+                                                                        return {
+                                                                            ...i,
+                                                                            product_id: product.id,
+                                                                            description: product.description || product.name,
+                                                                            unit_price: unitPrice,
+                                                                            gst_rate: gstRate,
+                                                                            discount_amount: 0,
+                                                                            taxable_amount: taxable,
+                                                                            total_amount: taxable + tax,
+                                                                            ...(isIntraStateSupply(formData.place_of_supply) ? {
+                                                                                cgst_rate: gstRate / 2,
+                                                                                sgst_rate: gstRate / 2,
+                                                                                igst_rate: 0,
+                                                                            } : {
+                                                                                cgst_rate: 0,
+                                                                                sgst_rate: 0,
+                                                                                igst_rate: gstRate,
+                                                                            }),
+                                                                        };
+                                                                    })
+                                                                );
+                                                            }}
+                                                        />
+                                                        <input
+                                                            type="text"
+                                                            value={item.item_code}
+                                                            onChange={(e) => updateItem(item.id, "item_code", e.target.value)}
+                                                            className="w-full rounded border border-stroke bg-transparent px-3 py-1.5 text-xs outline-none focus:border-primary dark:border-dark-3"
+                                                            placeholder="Item Code"
+                                                        />
+                                                    </div>
                                                 </td>
-                                                <td className="px-4 py-3 min-w-[200px]">
-                                                    <ProductSelectField
-                                                        value={item.product_id}
-                                                        products={products}
-                                                        onChange={(product) => {
-                                                            if (!product) return;
-
-                                                            setItems(prev =>
-                                                                prev.map(i => {
-                                                                    if (i.id !== item.id) return i;
-
-                                                                    const unitPrice =
-                                                                        product.selling_price ??
-                                                                        product.unit_price ??
-                                                                        0;
-
-                                                                    const gstRate = Number(product.gst_rate) || 0;
-                                                                    const qty = i.quantity || 1;
-
-                                                                    const taxable = qty * unitPrice;
-                                                                    const tax = taxable * (gstRate / 100);
-
-                                                                    return {
-                                                                        ...i,
-                                                                        product_id: product.id,
-                                                                        description: product.description || product.name,
-                                                                        unit_price: unitPrice,
-                                                                        gst_rate: gstRate,
-                                                                        discount_amount: 0,
-                                                                        taxable_amount: taxable,
-                                                                        total_amount: taxable + tax,
-                                                                        ...(isIntraStateSupply(formData.place_of_supply) ? {
-                                                                            cgst_rate: gstRate / 2,
-                                                                            sgst_rate: gstRate / 2,
-                                                                            igst_rate: 0,
-                                                                        } : {
-                                                                            cgst_rate: 0,
-                                                                            sgst_rate: 0,
-                                                                            igst_rate: gstRate,
-                                                                        }),
-                                                                    };
-                                                                })
-                                                            );
-                                                        }}
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3">
+                                                <td className="px-3 py-3 min-w-[220px]">
                                                     <input
                                                         type="text"
                                                         value={item.description}
-                                                        onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                                                        className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        onChange={(e) => updateItem(item.id, "description", e.target.value)}
+                                                        className="w-full rounded border border-stroke bg-transparent px-3 py-1.5 text-sm outline-none focus:border-primary dark:border-dark-3"
                                                         placeholder="Description"
                                                     />
                                                 </td>
-                                                <td className="px-4 py-3">
+                                                <td className="px-3 py-3">
                                                     <input
                                                         type="number"
                                                         value={item.quantity}
-                                                        onChange={(e) => updateItem(item.id, 'quantity', parseFloat(e.target.value))}
-                                                        className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        onChange={(e) => updateItem(item.id, "quantity", parseFloat(e.target.value))}
+                                                        className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 text-sm outline-none focus:border-primary dark:border-dark-3"
                                                         min="1"
                                                     />
                                                 </td>
-                                                <td className="px-4 py-3">
+                                                <td className="px-3 py-3">
+                                                    <input
+                                                        type="text"
+                                                        value={item.unit}
+                                                        onChange={(e) => updateItem(item.id, "unit", e.target.value)}
+                                                        className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 text-sm outline-none focus:border-primary dark:border-dark-3"
+                                                        placeholder="Unit"
+                                                    />
+                                                </td>
+                                                <td className="px-3 py-3">
                                                     <input
                                                         type="number"
                                                         value={item.unit_price}
-                                                        onChange={(e) => updateItem(item.id, 'unit_price', parseFloat(e.target.value))}
-                                                        className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        onChange={(e) => updateItem(item.id, "unit_price", parseFloat(e.target.value))}
+                                                        className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 text-sm outline-none focus:border-primary dark:border-dark-3"
                                                         min="0"
                                                         step="0.01"
                                                     />
                                                 </td>
-                                                <td className="px-4 py-3">
-                                                    <div className="flex gap-1">
+                                                <td className="px-3 py-3">
+                                                    <div className="flex items-center gap-1">
                                                         <input
                                                             type="number"
                                                             value={item.discount_percent}
-                                                            onChange={(e) => updateItem(item.id, 'discount_percent', parseFloat(e.target.value))}
-                                                            className="w-16 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            onChange={(e) => updateItem(item.id, "discount_percent", parseFloat(e.target.value))}
+                                                            className="w-16 rounded border border-stroke bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary dark:border-dark-3"
                                                             min="0"
                                                             step="0.01"
                                                         />
-                                                        <span className="flex items-center px-1 py-1.5 text-xs">%</span>
+                                                        <span className="text-xs text-dark-6">%</span>
                                                     </div>
                                                 </td>
-                                                <td className="px-4 py-3">
-                                                    <span className="font-medium">
-                                                        ₹{(item.discount_amount || 0).toFixed(2)}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3">
+                                                <td className="px-3 py-3">
                                                     <select
                                                         value={item.gst_rate}
-                                                        onChange={(e) => updateItem(item.id, 'gst_rate', parseFloat(e.target.value))}
-                                                        className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        onChange={(e) => updateItem(item.id, "gst_rate", parseFloat(e.target.value))}
+                                                        className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary dark:border-dark-3"
                                                     >
                                                         <option value="0">0%</option>
                                                         <option value="5">5%</option>
@@ -1492,10 +1525,10 @@ const customerOptions = useMemo(() => {
                                                         <option value="28">28%</option>
                                                     </select>
                                                 </td>
-                                                <td className="px-4 py-3 font-medium">
-                                                    ₹{item.total_amount.toFixed(2)}
+                                                <td className="px-3 py-3 text-sm font-semibold text-dark dark:text-white">
+                                                    INR {(Number(item.total_amount || 0)).toFixed(2)}
                                                 </td>
-                                                <td className="px-4 py-3">
+                                                <td className="px-3 py-3">
                                                     <button
                                                         type="button"
                                                         onClick={() => removeItem(item.id)}
@@ -1537,6 +1570,7 @@ const customerOptions = useMemo(() => {
                                                     className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
+                                                    <option value="tax@0%">Tax@0%</option>
                                                     <option value="tax@5%">Tax@5%</option>
                                                     <option value="tax@12%">Tax@12%</option>
                                                     <option value="tax@18%">Tax@18%</option>
@@ -1561,6 +1595,7 @@ const customerOptions = useMemo(() => {
                                                     className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
+                                                    <option value="tax@0%">Tax@0%</option>
                                                     <option value="tax@5%">Tax@5%</option>
                                                     <option value="tax@12%">Tax@12%</option>
                                                     <option value="tax@18%">Tax@18%</option>

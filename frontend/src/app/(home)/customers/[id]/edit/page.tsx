@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { customerTypesApi, customersApi, getErrorMessage } from "@/services/api";
 import CreatableSelect from "react-select/creatable";
+import { components } from "react-select";
 
 interface ContactPerson {
   id?: string;
@@ -405,6 +406,59 @@ export default function EditCustomerPage() {
       }));
     }
     setError(null);
+  };
+
+  const removeCountryOption = (countryValue: string) => {
+    const target = countryValue.trim().toLowerCase();
+    if (!target) return;
+
+    setCountryOptions((prev) => prev.filter((option) => option.value.toLowerCase() !== target));
+    setFormData((prev) => {
+      const next = { ...prev };
+      if (prev.billing_country.trim().toLowerCase() === target) {
+        next.billing_country = "";
+        next.billing_state = "";
+      }
+      if (prev.shipping_country.trim().toLowerCase() === target) {
+        next.shipping_country = "";
+        next.shipping_state = "";
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteCountryOption = (field: "billing_country" | "shipping_country") => {
+    const selectedCountry =
+      field === "billing_country" ? formData.billing_country.trim() : formData.shipping_country.trim();
+    if (!selectedCountry) return;
+    removeCountryOption(selectedCountry);
+    setError(null);
+  };
+
+  const CountryOption = (props: any) => {
+    const optionValue = String(props.data?.value || "").trim();
+    return (
+      <components.Option {...props}>
+        <div className="flex items-center justify-between gap-2">
+          <span>{props.label}</span>
+          <button
+            type="button"
+            className="rounded px-1 text-red-500 hover:bg-red-50"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              removeCountryOption(optionValue);
+            }}
+          >
+            x
+          </button>
+        </div>
+      </components.Option>
+    );
   };
 
   const handleContactPersonChange = (index: number, field: keyof ContactPerson, value: string) => {
@@ -1381,22 +1435,28 @@ export default function EditCustomerPage() {
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                   Country
                 </label>
-                <CreatableSelect
-                  name="billing_country"
-                  value={
-                    countryOptions.find((option) => option.value === formData.billing_country) ||
-                    (formData.billing_country
-                      ? { value: formData.billing_country, label: formData.billing_country }
-                      : null)
-                  }
-                  options={countryOptions}
-                  onChange={(selected) => handleCountrySelect("billing_country", selected?.value || "")}
-                  onCreateOption={(inputValue) => handleCountrySelect("billing_country", inputValue)}
-                  formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
-                  isClearable
-                  placeholder="Select or type country"
-                  styles={countrySelectStyles}
-                />
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <CreatableSelect
+                      name="billing_country"
+                      value={
+                        countryOptions.find((option) => option.value === formData.billing_country) ||
+                        (formData.billing_country
+                          ? { value: formData.billing_country, label: formData.billing_country }
+                          : null)
+                      }
+                      options={countryOptions}
+                      onChange={(selected) => handleCountrySelect("billing_country", selected?.value || "")}
+                      onCreateOption={(inputValue) => handleCountrySelect("billing_country", inputValue)}
+                      formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
+                      isClearable
+                      placeholder="Select or type country"
+                      styles={countrySelectStyles}
+                      components={{ Option: CountryOption } as any}
+                    />
+                  </div>
+                
+                </div>
               </div>
 
               <div>
@@ -1493,22 +1553,28 @@ export default function EditCustomerPage() {
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                   Country
                 </label>
-                <CreatableSelect
-                  name="shipping_country"
-                  value={
-                    countryOptions.find((option) => option.value === formData.shipping_country) ||
-                    (formData.shipping_country
-                      ? { value: formData.shipping_country, label: formData.shipping_country }
-                      : null)
-                  }
-                  options={countryOptions}
-                  onChange={(selected) => handleCountrySelect("shipping_country", selected?.value || "")}
-                  onCreateOption={(inputValue) => handleCountrySelect("shipping_country", inputValue)}
-                  formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
-                  isClearable
-                  placeholder="Select or type country"
-                  styles={countrySelectStyles}
-                />
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <CreatableSelect
+                      name="shipping_country"
+                      value={
+                        countryOptions.find((option) => option.value === formData.shipping_country) ||
+                        (formData.shipping_country
+                          ? { value: formData.shipping_country, label: formData.shipping_country }
+                          : null)
+                      }
+                      options={countryOptions}
+                      onChange={(selected) => handleCountrySelect("shipping_country", selected?.value || "")}
+                      onCreateOption={(inputValue) => handleCountrySelect("shipping_country", inputValue)}
+                      formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
+                      isClearable
+                      placeholder="Select or type country"
+                      styles={countrySelectStyles}
+                      components={{ Option: CountryOption } as any}
+                    />
+                  </div>
+               
+                </div>
               </div>
 
               <div>

@@ -933,6 +933,7 @@ class QuotationService:
         quotation: Quotation,
         invoice_date: Optional[datetime] = None,
         due_date: Optional[datetime] = None,
+        other_charges: Optional[List[Dict[str, Any]]] = None,
     ) -> Invoice:
         """Convert an approved quotation to an invoice."""
         if quotation.status == QuotationStatus.CONVERTED:
@@ -983,6 +984,37 @@ class QuotationService:
         merged_notes = "\n".join(
             [v for v in [quotation.notes, quotation.remarks] if v]
         ) or None
+        other_charges_marker: Optional[str] = None
+        # Quotation has `reference` and `reference_no`; map them into invoice header fields.
+        invoice_supplier_ref = (quotation.reference or "").strip() or None
+        invoice_other_references = (
+            (getattr(quotation, "other_references", None) or quotation.reference_no or "").strip() or None
+        )
+
+        if isinstance(other_charges, list):
+            normalized_other_charges: List[Dict[str, Any]] = []
+            for charge in other_charges:
+                if not isinstance(charge, dict):
+                    continue
+                amount = Decimal(str(charge.get("amount") or 0))
+                if amount <= 0:
+                    continue
+                normalized_other_charges.append(
+                    {
+                        "name": str(charge.get("name") or "Other Charges").strip() or "Other Charges",
+                        "amount": float(amount),
+                        "type": str(charge.get("type") or "fixed"),
+                        "tax": float(charge.get("tax") or 0),
+                    }
+                )
+            if normalized_other_charges:
+                marker_payload = json.dumps(normalized_other_charges, separators=(",", ":"))
+                other_charges_marker = f"[OTHER_CHARGES_JSON]{marker_payload}"
+                merged_notes = (merged_notes or "") + f"\n\n{other_charges_marker}"
+                print(
+                    "[Quotation Convert] Embedded OTHER_CHARGES_JSON in invoice notes:",
+                    {"count": len(normalized_other_charges), "other_charges": normalized_other_charges},
+                )
 
         # Create invoice with compatible fields
         invoice = Invoice(
@@ -1015,6 +1047,9 @@ class QuotationService:
             status=InvoiceStatus.DRAFT,
             sales_person_id=quotation.sales_person_id,
             reference_no=quotation.reference_no or quotation.reference,
+            supplier_ref=invoice_supplier_ref,
+            # Keep user-entered "Other Reference(s)" visible in PDF; marker stays in notes.
+            other_references=invoice_other_references,
             payment_terms=quotation.payment_terms,
             freight_charges=quotation.freight_charges or Decimal("0"),
             packing_forwarding_charges=quotation.p_and_f_charges or Decimal("0"),

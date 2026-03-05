@@ -23,6 +23,21 @@ from app.auth.dependencies import get_current_active_user
 router = APIRouter(prefix="/companies/{company_id}/invoices", tags=["Invoices"])
 
 
+def _preferred_customer_phone(customer) -> Optional[str]:
+    """Prefer real phone fields; avoid using contact names as phone."""
+    for candidate in (
+        getattr(customer, "mobile", None),
+        getattr(customer, "phone", None),
+        getattr(customer, "contact", None),
+    ):
+        if not candidate:
+            continue
+        value = str(candidate).strip()
+        if value and any(ch.isdigit() for ch in value):
+            return value
+    return None
+
+
 def get_company_or_404(company_id: str, user: User, db: Session) -> Company:
     """Helper to get company or raise 404."""
     # Employee auth returns a dict; handle that here.
@@ -79,8 +94,7 @@ async def create_invoice(
         # Use getattr to safely access the attribute, fall back to tax_number or gstin
         response.customer_gstin = getattr(customer, 'gstin', None) or getattr(customer, 'tax_number', None)
         response.customer_email = customer.email
-        # Try contact, then mobile, then phone
-        response.customer_phone = getattr(customer, 'contact', None) or getattr(customer, 'mobile', None) or getattr(customer, 'phone', None)
+        response.customer_phone = _preferred_customer_phone(customer)
     
     return response
 
@@ -184,7 +198,7 @@ async def list_invoices(
             response.customer_name = invoice.customer.name
             response.customer_gstin = getattr(invoice.customer, 'gstin', None) or getattr(invoice.customer, 'tax_number', None)
             response.customer_email = invoice.customer.email
-            response.customer_phone = getattr(invoice.customer, 'contact', None) or getattr(invoice.customer, 'mobile', None) or getattr(invoice.customer, 'phone', None)
+            response.customer_phone = _preferred_customer_phone(invoice.customer)
         invoice_responses.append(response)
     
     total_invoices = invoice_service.get_total_invoices_count(company)
@@ -226,8 +240,7 @@ async def get_invoice(
         # Use getattr to safely access the attribute
         response.customer_gstin = getattr(invoice.customer, 'gstin', None) or getattr(invoice.customer, 'tax_number', None)
         response.customer_email = invoice.customer.email
-        # Try contact, then mobile, then phone
-        response.customer_phone = getattr(invoice.customer, 'contact', None) or getattr(invoice.customer, 'mobile', None) or getattr(invoice.customer, 'phone', None)
+        response.customer_phone = _preferred_customer_phone(invoice.customer)
     
     # Add godown names to warehouse allocations
     from app.database.models import Godown

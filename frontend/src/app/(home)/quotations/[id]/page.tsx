@@ -1,8 +1,8 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { useRouter, useParams } from "next/navigation";
-import { Fragment, useEffect, useState } from "react";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { Fragment, useEffect, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { addPdfPageNumbers } from "@/utils/pdfTheme";
@@ -101,7 +101,10 @@ export default function ViewQuotationPage() {
   const { company, getToken } = useAuth();
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const quotationId = params.id as string;
+  const autoDownloadPdf = searchParams.get("auto_download") === "pdf";
+  const hasAutoDownloadedPdf = useRef(false);
   
   const [loading, setLoading] = useState(true);
   const [quotation, setQuotation] = useState<QuotationData | null>(null);
@@ -958,6 +961,14 @@ export default function ViewQuotationPage() {
       setDownloadingPDF(false);
     }
   };
+
+  useEffect(() => {
+    if (!autoDownloadPdf || loading || !quotation || downloadingPDF || hasAutoDownloadedPdf.current) {
+      return;
+    }
+    hasAutoDownloadedPdf.current = true;
+    void generatePDF();
+  }, [autoDownloadPdf, loading, quotation, downloadingPDF, generatePDF]);
 
   const handleDelete = async () => {
     if (!quotation || !company?.id || !window.confirm("Are you sure you want to delete this quotation? This action cannot be undone.")) {

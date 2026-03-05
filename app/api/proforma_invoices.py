@@ -515,7 +515,10 @@ async def update_proforma_invoice(
     items_data = update_data.pop("items", None)
     items_payload = None
     if items_data is not None:
-        items_payload = [item.model_dump() for item in items_data]
+        items_payload = [
+            item.model_dump() if hasattr(item, "model_dump") else item
+            for item in items_data
+        ]
 
     invoice = service.update_proforma_invoice(invoice, update_data, items_payload)
 

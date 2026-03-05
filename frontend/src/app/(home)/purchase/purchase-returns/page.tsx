@@ -908,173 +908,66 @@ export default function PurchaseReturnsPage() {
         alert("No returns found to export.");
         return;
       }
-
-      const detailedReturns = await Promise.all(
-        allReturns.map(async (returnItem) => {
-          try {
-            return (await purchaseReturnsApi.get(company?.id ?? "", returnItem.id)) as PurchaseReturnRow;
-          } catch (error) {
-            console.error(`Failed to load return details for ${returnItem.return_number}:`, error);
-            return returnItem;
-          }
-        })
-      );
-
       const doc = new jsPDF("p", "mm", "a4");
       const money = (v: number | undefined | null) =>
         new Intl.NumberFormat("en-IN", {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }).format(Number(v || 0));
-      const val = (v: any) => (v === undefined || v === null || v === "" ? "-" : String(v));
 
-      detailedReturns.forEach((returnItem, index) => {
-        if (index > 0) doc.addPage();
+      const headers: string[] = ["S.No"];
+      if (visibleColumns.returnDate) headers.push("Return Date");
+      if (visibleColumns.purchaseNumber) headers.push("Purchase Code");
+      if (visibleColumns.returnNumber) headers.push("Return Code");
+      if (visibleColumns.status) headers.push("Return Status");
+      if (visibleColumns.referenceNo) headers.push("Reference No.");
+      if (visibleColumns.vendorName) headers.push("Vendor Name");
+      if (visibleColumns.totalAmount) headers.push("Total / Tax");
+      if (visibleColumns.paidPayment) headers.push("Paid / Due");
+      if (visibleColumns.paymentStatus) headers.push("Payment Status");
+      if (visibleColumns.createdBy) headers.push("Created by");
 
-        const pageWidth = doc.internal.pageSize.getWidth();
-        doc.setFillColor(22, 78, 99);
-        doc.rect(0, 0, pageWidth, 24, "F");
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(12);
-        doc.text(company?.name || "Company", 14, 10);
-        doc.setFontSize(11);
-        doc.text("PURCHASE RETURN", 14, 18);
-        doc.setFontSize(9);
-        doc.text(`Return No: ${val(returnItem.return_number)}`, pageWidth - 14, 10, { align: "right" });
-        doc.text(`Date: ${formatDate(returnItem.return_date)}`, pageWidth - 14, 18, { align: "right" });
-        doc.setTextColor(0, 0, 0);
+      const body = allReturns.map((r, index) => {
+        const row: string[] = [String(index + 1)];
+        const paidAmount = Number(r.paid_payment ?? r.amount_paid) || 0;
+        const totalAmount = Number(r.total_amount) || 0;
+        const paymentStatusText =
+          r.payment_status || (paidAmount <= 0 ? "Unpaid" : paidAmount >= totalAmount ? "Paid" : "Partial");
+        const taxAmount = calculateTax(r);
 
-        let y = 32;
-        const addSection = (title: string) => {
-          doc.setFillColor(241, 245, 249);
-          doc.rect(14, y - 3, 182, 7, "F");
-          doc.setFontSize(10);
-          doc.setFont("helvetica", "bold");
-          doc.text(title, 16, y + 1);
-          doc.setFont("helvetica", "normal");
-          y += 9;
-        };
-        const addLine = (label: string, value: any) => {
-          doc.setFontSize(9);
-          doc.setFont("helvetica", "bold");
-          doc.text(`${label}:`, 14, y);
-          doc.setFont("helvetica", "normal");
-          const lines = doc.splitTextToSize(val(value), 145);
-          doc.text(lines, 50, y);
-          y += Math.max(1, lines.length) * 4.6;
-        };
+        if (visibleColumns.returnDate) row.push(formatDate(r.return_date));
+        if (visibleColumns.purchaseNumber) row.push(r.purchase_number || "-");
+        if (visibleColumns.returnNumber) row.push(r.return_number || "-");
+        if (visibleColumns.status) row.push(getStatusText(r.status));
+        if (visibleColumns.referenceNo) row.push(r.reference_no || "-");
+        if (visibleColumns.vendorName) row.push(r.vendor_name || "-");
+        if (visibleColumns.totalAmount) row.push(`${money(totalAmount)}\nTax: ${money(taxAmount)}`);
+        if (visibleColumns.paidPayment) row.push(`${money(paidAmount)}\nDue: ${money(totalAmount - paidAmount)}`);
+        if (visibleColumns.paymentStatus) row.push(paymentStatusText);
+        if (visibleColumns.createdBy) row.push(r.created_by_name || r.created_by || "-");
+        return row;
+      });
 
-        addSection("Return Details");
-        addLine("Purchase Invoice", returnItem.purchase_number || "-");
-        addLine("Vendor Name", returnItem.vendor_name || "-");
-        addLine("Return Status", getStatusText(returnItem.status));
-        addLine("Reason", returnItem.reason || "-");
-        addLine("Reference No", returnItem.reference_no || "-");
-        addLine("Created by", returnItem.created_by_name || returnItem.created_by || "-");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("Purchase Returns", 14, 12);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(`Company: ${company?.name || "-"}`, 14, 18);
+      doc.text(`Generated: ${new Date().toLocaleString("en-IN")}`, 14, 23);
 
-        const paidAmount = Number(returnItem.paid_payment ?? returnItem.amount_paid) || 0;
-        const totalAmount = Number(returnItem.total_amount) || 0;
-        const itemStartY = y + 2;
-        const items = Array.isArray(returnItem.items) ? returnItem.items : [];
-        const itemRows = items.map((item, rowIndex) => {
-          const taxAmount =
-            Number(item.cgst_amount || 0) +
-            Number(item.sgst_amount || 0) +
-            Number(item.igst_amount || 0) +
-            Number(item.cess_amount || 0);
-
-          return [
-            String(rowIndex + 1),
-            val(item.product_id),
-            val(item.description),
-            Number(item.quantity || 0).toFixed(2),
-            val(item.unit),
-            Number(item.unit_price || 0).toFixed(2),
-            Number(item.discount_percent || 0).toFixed(2),
-            Number(item.discount_amount || 0).toFixed(2),
-            Number(item.taxable_amount || 0).toFixed(2),
-            Number(item.gst_rate || 0).toFixed(2),
-            taxAmount.toFixed(2),
-            Number(item.total_amount || 0).toFixed(2),
-          ];
-        });
-
-        autoTable(doc, {
-          startY: itemStartY,
-          head: [[
-            "#",
-            "Product ID",
-            "Description",
-            "Qty",
-            "Unit",
-            "Unit Price",
-            "Disc %",
-            "Disc Amt",
-            "Taxable",
-            "GST %",
-            "Tax",
-            "Amount",
-          ]],
-          body: itemRows.length ? itemRows : [["-", "-", "No items", "-", "-", "-", "-", "-", "-", "-", "-", "-"]],
-          theme: "grid",
-          styles: { fontSize: 7.3, cellPadding: 1.5, lineColor: [220, 220, 220], lineWidth: 0.1 },
-          headStyles: { fillColor: [22, 78, 99], textColor: [255, 255, 255], fontSize: 7.5 },
-          alternateRowStyles: { fillColor: [248, 250, 252] },
-          columnStyles: {
-            3: { halign: "right" },
-            5: { halign: "right" },
-            6: { halign: "right" },
-            7: { halign: "right" },
-            8: { halign: "right" },
-            9: { halign: "right" },
-            10: { halign: "right" },
-            11: { halign: "right" },
-          },
-        });
-
-        const finalY = (doc as any).lastAutoTable?.finalY ?? itemStartY;
-        let totalsY = finalY + 7;
-        if (totalsY + 46 > 286) {
-          doc.addPage();
-          totalsY = 20;
-        }
-
-        doc.setDrawColor(200, 200, 200);
-        doc.roundedRect(118, totalsY, 78, 44, 2, 2, "S");
-        doc.setFontSize(8.5);
-        doc.text("Subtotal", 121, totalsY + 5);
-        doc.text(money(returnItem.subtotal || 0), 193, totalsY + 5, { align: "right" });
-        
-        if (returnItem.cgst_amount) {
-          doc.text("CGST", 121, totalsY + 10);
-          doc.text(money(returnItem.cgst_amount), 193, totalsY + 10, { align: "right" });
-        }
-        
-        if (returnItem.sgst_amount) {
-          doc.text("SGST", 121, totalsY + 15);
-          doc.text(money(returnItem.sgst_amount), 193, totalsY + 15, { align: "right" });
-        }
-        
-        if (returnItem.igst_amount) {
-          doc.text("IGST", 121, totalsY + 20);
-          doc.text(money(returnItem.igst_amount), 193, totalsY + 20, { align: "right" });
-        }
-        
-        doc.text("Round Off", 121, totalsY + 25);
-        doc.text(money(returnItem.round_off), 193, totalsY + 25, { align: "right" });
-        
-        doc.setFont("helvetica", "bold");
-        doc.text("Grand Total", 121, totalsY + 31);
-        doc.text(money(totalAmount), 193, totalsY + 31, { align: "right" });
-        doc.setFont("helvetica", "normal");
-
-        doc.setFontSize(8.5);
-        doc.text(`Paid: ${money(paidAmount)}`, 14, totalsY + 27);
-        doc.text(`Balance: ${money(totalAmount - paidAmount)}`, 14, totalsY + 32);
+      autoTable(doc, {
+        startY: 28,
+        head: [headers],
+        body,
+        theme: "grid",
+        styles: { fontSize: 7.4, cellPadding: 1.6, valign: "top", lineWidth: 0.1, lineColor: [220, 220, 220] },
+        headStyles: { fillColor: [22, 78, 99], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.7 },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
       });
 
       addPdfPageNumbers(doc, "p");
-      doc.save("purchase-returns-detailed.pdf");
+      doc.save("purchase-returns-list.pdf");
     } catch (error) {
       console.error("PDF export failed:", error);
       alert("Failed to export PDF. Please try again.");
@@ -1187,11 +1080,33 @@ export default function PurchaseReturnsPage() {
     if (!company?.id) return;
 
     try {
-      // You can implement PDF download for individual return here
-      alert("Print functionality - Implement PDF download for returns");
+      const response = await purchaseReturnsApi.downloadPdf(company.id, returnId);
+      const blob = new Blob([response], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, "_blank");
     } catch (error) {
       console.error("Failed to print:", error);
       alert("Failed to generate print. Please try again.");
+    }
+  };
+
+  const handleDownloadReturnPdf = async (returnId: string) => {
+    if (!company?.id) return;
+
+    try {
+      const response = await purchaseReturnsApi.downloadPdf(company.id, returnId);
+      const blob = new Blob([response], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `PurchaseReturn_${returnId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to download PDF:", error);
+      alert("Failed to download PDF. Please try again.");
     }
   };
 
@@ -1834,8 +1749,7 @@ export default function PurchaseReturnsPage() {
                                 {/* PDF Download */}
                                 <button
                                   onClick={() => {
-                                    // Implement PDF download for return
-                                    alert("PDF Download - Implement if needed");
+                                    handleDownloadReturnPdf(r.id);
                                     setActiveActionMenu(null);
                                   }}
                                   className="flex w-full items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
