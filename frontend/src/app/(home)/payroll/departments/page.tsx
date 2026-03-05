@@ -1381,7 +1381,7 @@ export default function DepartmentsPage() {
             <h3 className="mb-4 text-xl font-semibold text-gray-900 dark:text-white">
               Edit Department
             </h3>
-            <form onSubmit={handleSubmit}>
+            <form data-ui="sf-form" onSubmit={handleSubmit}>
               <div className="mb-4">
                 <label className="mb-2.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Department Name <span className="text-red-500">*</span>

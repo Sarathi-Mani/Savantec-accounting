@@ -86,7 +86,7 @@ export default function NarrationTemplatesPage() {
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-50">
           <div className="w-full max-w-lg rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
             <h3 className="mb-4 text-xl font-semibold text-black dark:text-white">Add Narration Template</h3>
-            <form onSubmit={handleSubmit}>
+            <form data-ui="sf-form" onSubmit={handleSubmit}>
               <div className="mb-4">
                 <label className="mb-2 block">Voucher Type</label>
                 <select value={formData.voucher_type} onChange={(e) => setFormData({...formData, voucher_type: e.target.value})} className="w-full rounded border border-stroke px-4 py-2 dark:border-strokedark dark:bg-form-input">

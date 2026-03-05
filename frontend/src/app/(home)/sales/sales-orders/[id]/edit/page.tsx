@@ -191,7 +191,7 @@ export default function EditSalesOrderPage() {
         customer_id: "",
         sales_order_date: new Date().toISOString().split('T')[0],
         expire_date: "",
-        status: "pending" as "pending" | "approved" | "cancelled" | "completed",
+        status: "open" as "open" | "closed" | "waiting for approval" | "follow up" | "po converted",
 
         // Reference details
         reference_no: "",
@@ -292,11 +292,17 @@ export default function EditSalesOrderPage() {
 
     const mapStatusToForm = (status?: string) => {
         const normalized = (status || "").toLowerCase();
-        if (normalized === "draft") return "pending";
-        if (normalized === "confirmed") return "approved";
-        if (normalized === "fulfilled") return "completed";
-        if (normalized === "cancelled") return "cancelled";
-        return "pending";
+        if (normalized === "draft") return "open";
+        if (normalized === "confirmed") return "closed";
+        if (normalized === "fulfilled" || normalized === "completed" || normalized === "cancelled") return "closed";
+        if (
+            normalized === "open" ||
+            normalized === "closed" ||
+            normalized === "waiting for approval" ||
+            normalized === "follow up" ||
+            normalized === "po converted"
+        ) return normalized as "open" | "closed" | "waiting for approval" | "follow up" | "po converted";
+        return "open";
     };
 
     const salesOrderCodeParts = useMemo(() => {
@@ -759,6 +765,7 @@ export default function EditSalesOrderPage() {
                 reference_no: formData.reference_no || null,
                 reference_date: formData.reference_date ? formData.reference_date + "T00:00:00Z" : null,
                 payment_terms: formData.payment_terms || null,
+                status: formData.status || "open",
                 sales_person_id: formData.sales_person_id || undefined,
                 contact_person: formData.contact_person || null,
                 notes: formData.notes || null,
@@ -918,7 +925,7 @@ export default function EditSalesOrderPage() {
                     company_id: company?.id,
                     customer_id: formData.customer_id,
                     sales_order_date: formData.sales_order_date + "T00:00:00Z",
-                     items: [{
+                    items: [{
                         product_id: items[0]?.product_id,
                         description: "Test item",
                         quantity: 1,
@@ -1074,8 +1081,8 @@ export default function EditSalesOrderPage() {
 
     if (isLoadingOrder) {
         return (
-            <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-dark">
-                <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+            <div className="flex min-h-screen items-center justify-center bg-gray-50 py-20 dark:bg-gray-900">
+                <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-none dark:border-gray-700 dark:bg-gray-800">
                     <div className="flex items-center gap-3 text-sm text-dark-6 dark:text-gray-400">
                         <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                         Loading sales order...
@@ -1086,900 +1093,897 @@ export default function EditSalesOrderPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 p-4 dark:bg-gray-dark md:p-6">
-            {/* Breadcrumb */}
-            <nav className="mb-6 flex" aria-label="Breadcrumb">
-                <ol className="inline-flex items-center space-x-1 text-sm md:space-x-2">
-                    <li className="inline-flex items-center">
-                        <Link href="/" className="inline-flex items-center text-dark-6 hover:text-primary dark:text-gray-400 dark:hover:text-white">
-                            Home
-                        </Link>
-                    </li>
-                    <li>
-                        <div className="flex items-center">
-                            <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <Link href="/sales/sales-orders" className="ml-1 text-dark-6 hover:text-primary dark:text-gray-400 dark:hover:text-white md:ml-2">
-                                Sales Order List
-                            </Link>
-                        </div>
-                    </li>
-                    <li>
-                        <div className="flex items-center">
-                            <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <span className="ml-1 font-medium text-dark dark:text-white md:ml-2">Edit Sales Order</span>
-                        </div>
-                    </li>
-                    <li aria-current="page">
-                        <div className="flex items-center">
-                            <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <span className="ml-1 font-medium text-primary dark:text-primary md:ml-2">Sales Order</span>
-                        </div>
-                    </li>
-                </ol>
-            </nav>
-
-            {/* Page Header */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-dark dark:text-white">Sales Order – Add / Update Sales Order</h1>
-                <p className="text-dark-6">Update sales order with customer details and items</p>
+        <div className="w-full bg-gray-50 dark:bg-gray-900">
+            <div className="border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-700 dark:bg-gray-800 sm:px-6">
+                <div className="flex items-start gap-3">
+                    <Link
+                        href="/sales/sales-orders"
+                        className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary/90 sm:h-10 sm:w-10"
+                    >
+                        <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </Link>
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Sales Order</h1>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            Update sales order with customer details and items
+                        </p>
+                    </div>
+                </div>
             </div>
 
-            <form onSubmit={handleSubmit}>
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                    {/* Left Column - Main Form */}
-                    <div className="lg:col-span-3 space-y-6">
-                        {/* SECTION 1: Sales Order Basic Details */}
-                        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                            <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Sales Order Basic Details</h2>
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Company
-                                    </label>
-                                    <div className="rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 dark:border-dark-3 dark:bg-dark-2">
-                                        {company?.name || "Select Company"}
+            <div className="w-full p-4 sm:p-6">
+
+                <form data-ui="sf-form" onSubmit={handleSubmit}>
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                        {/* Left Column - Main Form */}
+                        <div className="lg:col-span-3 space-y-6">
+                            {/* SECTION 1: Sales Order Basic Details */}
+                            <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-none dark:border-gray-700 dark:bg-gray-800">
+                                <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Sales Order Basic Details</h2>
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Company
+                                        </label>
+                                        <div className="rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 dark:border-dark-3 dark:bg-dark-2">
+                                            {company?.name || "Select Company"}
+                                        </div>
                                     </div>
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Sales Order Code <span className="text-red-500">*</span>
-                                    </label>
-                                    <div className="flex gap-2">
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Sales Order Code <span className="text-red-500">*</span>
+                                        </label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={salesOrderCodeParts.prefix}
+                                                className="flex-1 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 outline-none dark:border-dark-3 dark:bg-dark-2"
+                                                readOnly
+                                            />
+                                            <input
+                                                type="text"
+                                                value={salesOrderCodeParts.sequence}
+                                                className="w-24 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                readOnly
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Sales Order Date <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={formData.sales_order_date}
+                                            onChange={(e) => handleFormChange('sales_order_date', e.target.value)}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Customer Name <span className="text-red-500">*</span>
+                                        </label>
+                                        <Select
+                                            options={customerOptions}
+                                            value={customerOptions.find(opt => opt.value === formData.customer_id)}
+                                            onChange={(selected) => handleFormChange('customer_id', selected?.value || "")}
+                                            placeholder={loading.customers ? "Loading customers..." : "Select Customer"}
+                                            isClearable
+                                            isSearchable
+                                            isLoading={loading.customers}
+                                            styles={{
+                                                control: (base: any, state: any) => ({
+                                                    ...base,
+                                                    minHeight: "42px",
+                                                    borderRadius: "0.5rem",
+                                                    borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
+                                                    boxShadow: state.isFocused
+                                                        ? "0 0 0 2px rgba(99,102,241,0.4)"
+                                                        : "none",
+                                                    backgroundColor: "transparent",
+                                                    "&:hover": {
+                                                        borderColor: "#6366f1",
+                                                    },
+                                                }),
+                                                menuPortal: (base: any) => ({
+                                                    ...base,
+                                                    zIndex: 9999,
+                                                }),
+                                            }}
+                                            classNamePrefix="react-select"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Reference No
+                                        </label>
                                         <input
                                             type="text"
-                                            value={salesOrderCodeParts.prefix}
-                                            className="flex-1 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 outline-none dark:border-dark-3 dark:bg-dark-2"
-                                            readOnly
-                                        />
-                                        <input
-                                            type="text"
-                                            value={salesOrderCodeParts.sequence}
-                                            className="w-24 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            readOnly
+                                            value={formData.reference_no || ""}
+                                            onChange={(e) => handleFormChange('reference_no', e.target.value)}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                         />
                                     </div>
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Sales Order Date <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={formData.sales_order_date}
-                                        onChange={(e) => handleFormChange('sales_order_date', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Customer Name <span className="text-red-500">*</span>
-                                    </label>
-                                    <Select
-                                        options={customerOptions}
-                                        value={customerOptions.find(opt => opt.value === formData.customer_id)}
-                                        onChange={(selected) => handleFormChange('customer_id', selected?.value || "")}
-                                        placeholder={loading.customers ? "Loading customers..." : "Select Customer"}
-                                        isClearable
-                                        isSearchable
-                                        isLoading={loading.customers}
-                                        styles={{
-                                            control: (base: any, state: any) => ({
-                                                ...base,
-                                                minHeight: "42px",
-                                                borderRadius: "0.5rem",
-                                                borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
-                                                boxShadow: state.isFocused
-                                                    ? "0 0 0 2px rgba(99,102,241,0.4)"
-                                                    : "none",
-                                                backgroundColor: "transparent",
-                                                "&:hover": {
-                                                    borderColor: "#6366f1",
-                                                },
-                                            }),
-                                            menuPortal: (base: any) => ({
-                                                ...base,
-                                                zIndex: 9999,
-                                            }),
-                                        }}
-                                        classNamePrefix="react-select"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Reference No
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.reference_no || ""}
-                                        onChange={(e) => handleFormChange('reference_no', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Expire Date
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={formData.expire_date}
-                                        onChange={(e) => handleFormChange('expire_date', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
-                                </div>
-                               
-                                {/* Salesman Dropdown */}
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Salesman <span className="text-red-500">*</span>
-                                    </label>
-                                    <Select
-                                        options={salesmanOptions}
-                                        value={salesmanOptions.find(opt => opt.value === formData.sales_person_id)}
-                                        onChange={(selected) => handleFormChange('sales_person_id', selected?.value || "")}
-                                        placeholder={loading.salesmen ? "Loading salesmen..." : "Select Salesman"}
-                                        isClearable
-                                        isSearchable
-                                        isLoading={loading.salesmen}
-                                        styles={{
-                                            control: (base: any, state: any) => ({
-                                                ...base,
-                                                minHeight: "42px",
-                                                borderRadius: "0.5rem",
-                                                borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
-                                                boxShadow: state.isFocused
-                                                    ? "0 0 0 2px rgba(99,102,241,0.4)"
-                                                    : "none",
-                                                backgroundColor: "transparent",
-                                                "&:hover": {
-                                                    borderColor: "#6366f1",
-                                                },
-                                            }),
-                                            menuPortal: (base: any) => ({
-                                                ...base,
-                                                zIndex: 9999,
-                                            }),
-                                        }}
-                                        classNamePrefix="react-select"
-                                    />
-                                </div>
-                                {/* Contact Person Dropdown */}
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Contact Person
-                                    </label>
-                                <Select
-                                        options={contactPersonOptions}
-                                        value={contactPersonOptions.find(
-                                            opt => opt.value === formData.contact_person || opt.name === formData.contact_person
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Expire Date
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={formData.expire_date}
+                                            onChange={(e) => handleFormChange('expire_date', e.target.value)}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Status
+                                        </label>
+                                        <select
+                                            value={formData.status}
+                                            onChange={(e) => handleFormChange('status', e.target.value)}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                        >
+                                            <option value="open">Open</option>
+                                            <option value="closed">Closed</option>
+                                            <option value="waiting for approval">Waiting for Approval</option>
+                                            <option value="follow up">Follow Up</option>
+                                            <option value="po converted">PO Converted</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Salesman Dropdown */}
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Salesman <span className="text-red-500">*</span>
+                                        </label>
+                                        <Select
+                                            options={salesmanOptions}
+                                            value={salesmanOptions.find(opt => opt.value === formData.sales_person_id)}
+                                            onChange={(selected) => handleFormChange('sales_person_id', selected?.value || "")}
+                                            placeholder={loading.salesmen ? "Loading salesmen..." : "Select Salesman"}
+                                            isClearable
+                                            isSearchable
+                                            isLoading={loading.salesmen}
+                                            styles={{
+                                                control: (base: any, state: any) => ({
+                                                    ...base,
+                                                    minHeight: "42px",
+                                                    borderRadius: "0.5rem",
+                                                    borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
+                                                    boxShadow: state.isFocused
+                                                        ? "0 0 0 2px rgba(99,102,241,0.4)"
+                                                        : "none",
+                                                    backgroundColor: "transparent",
+                                                    "&:hover": {
+                                                        borderColor: "#6366f1",
+                                                    },
+                                                }),
+                                                menuPortal: (base: any) => ({
+                                                    ...base,
+                                                    zIndex: 9999,
+                                                }),
+                                            }}
+                                            classNamePrefix="react-select"
+                                        />
+                                    </div>
+                                    {/* Contact Person Dropdown */}
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Contact Person
+                                        </label>
+                                        <Select
+                                            options={contactPersonOptions}
+                                            value={contactPersonOptions.find(
+                                                opt => opt.value === formData.contact_person || opt.name === formData.contact_person
+                                            )}
+                                            onChange={(selected) => handleFormChange('contact_person', selected?.value || "")}
+                                            placeholder={
+                                                !formData.customer_id
+                                                    ? "Select customer first"
+                                                    : loading.contactPersons
+                                                        ? "Loading contact persons..."
+                                                        : contactPersonOptions.length > 0
+                                                            ? "Select Contact Person"
+                                                            : "No contact persons found"
+                                            }
+                                            isClearable
+                                            isSearchable
+                                            isLoading={loading.contactPersons}
+                                            isDisabled={!formData.customer_id || contactPersonOptions.length === 0}
+                                            styles={{
+                                                control: (base: any, state: any) => ({
+                                                    ...base,
+                                                    minHeight: "42px",
+                                                    borderRadius: "0.5rem",
+                                                    borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
+                                                    boxShadow: state.isFocused
+                                                        ? "0 0 0 2px rgba(99,102,241,0.4)"
+                                                        : "none",
+                                                    backgroundColor: "transparent",
+                                                    "&:hover": {
+                                                        borderColor: "#6366f1",
+                                                    },
+                                                }),
+                                                menuPortal: (base: any) => ({
+                                                    ...base,
+                                                    zIndex: 9999,
+                                                }),
+                                            }}
+                                            classNamePrefix="react-select"
+                                            required={true}
+                                        />
+                                        {!formData.customer_id && (
+                                            <p className="mt-1 text-xs text-gray-500">
+                                                Please select a customer first to load contact persons
+                                            </p>
                                         )}
-                                        onChange={(selected) => handleFormChange('contact_person', selected?.value || "")}
-                                        placeholder={
-                                            !formData.customer_id
-                                                ? "Select customer first"
-                                                : loading.contactPersons
-                                                    ? "Loading contact persons..."
-                                                    : contactPersonOptions.length > 0
-                                                        ? "Select Contact Person"
-                                                        : "No contact persons found"
-                                        }
-                                        isClearable
-                                        isSearchable
-                                        isLoading={loading.contactPersons}
-                                        isDisabled={!formData.customer_id || contactPersonOptions.length === 0}
-                                        styles={{
-                                            control: (base: any, state: any) => ({
-                                                ...base,
-                                                minHeight: "42px",
-                                                borderRadius: "0.5rem",
-                                                borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
-                                                boxShadow: state.isFocused
-                                                    ? "0 0 0 2px rgba(99,102,241,0.4)"
-                                                    : "none",
-                                                backgroundColor: "transparent",
-                                                "&:hover": {
-                                                    borderColor: "#6366f1",
-                                                },
-                                            }),
-                                            menuPortal: (base: any) => ({
-                                                ...base,
-                                                zIndex: 9999,
-                                            }),
-                                        }}
-                                        classNamePrefix="react-select"
-                                        required={true}
-                                    />
-                                    {!formData.customer_id && (
-                                        <p className="mt-1 text-xs text-gray-500">
-                                            Please select a customer first to load contact persons
-                                        </p>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Reference Date
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={formData.reference_date}
-                                        onChange={(e) => handleFormChange('reference_date', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Mode / Terms of Payment
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.payment_terms}
-                                        onChange={(e) => handleFormChange('payment_terms', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
-                                </div>
-
-                            </div>
-                        </div>
-
-                        {/* SECTION 2: Sales Items Table */}
-                        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                            <div className="mb-4 flex items-center justify-between">
-                                <h2 className="text-lg font-semibold text-dark dark:text-white">Sales Items</h2>
-                                <div className="flex gap-2">
-                                    <div className="text-dark-6">
-                                        Total Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
                                     </div>
-                                    <div className="text-dark-6">
-                                        Items: {items.length}
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Reference Date
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={formData.reference_date}
+                                            onChange={(e) => handleFormChange('reference_date', e.target.value)}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                        />
                                     </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Mode / Terms of Payment
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.payment_terms}
+                                            onChange={(e) => handleFormChange('payment_terms', e.target.value)}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                        />
+                                    </div>
+
                                 </div>
                             </div>
-                            <div className="mb-4 flex justify-end">
-                                <button
-                                    type="button"
-                                    onClick={() => addItem()}
-                                    className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
-                                >
-                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                    </svg>
-                                </button>
-                            </div>{/* Items Table */}
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="border-b border-stroke dark:border-dark-3">
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Name</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Code</th>
 
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit Price</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Discount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax Amount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Total Amount</th>
-                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {items.map((item) => (
-                                            <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                                                <td className="px-4 py-3 min-w-[200px]">
-                                                    <ProductSelectField
-                                                        value={item.product_id}
-                                                        products={products}
-                                                        onChange={(product) => {
-                                                            if (!product) return;
+                            {/* SECTION 2: Sales Items Table */}
+                            <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-none dark:border-gray-700 dark:bg-gray-800">
+                                <div className="mb-4 flex items-center justify-between">
+                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Sales Items</h2>
+                                    <div className="flex gap-2">
+                                        <div className="text-dark-6">
+                                            Total Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
+                                        </div>
+                                        <div className="text-dark-6">
+                                            Items: {items.length}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="mb-4 flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => addItem()}
+                                        className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
+                                    >
+                                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                    </button>
+                                </div>{/* Items Table */}
+                                <div className="overflow-x-auto">
+                                    <table className="w-full">
+                                        <thead>
+                                            <tr className="border-b border-stroke dark:border-dark-3">
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Name</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Item Code</th>
 
-                                                            setItems(prev =>
-                                                                prev.map(i => {
-                                                                    if (i.id !== item.id) return i;
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit Price</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Discount</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax Amount</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Total Amount</th>
+                                                <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {items.map((item) => (
+                                                <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
+                                                    <td className="px-4 py-3 min-w-[200px]">
+                                                        <ProductSelectField
+                                                            value={item.product_id}
+                                                            products={products}
+                                                            onChange={(product) => {
+                                                                if (!product) return;
 
-                                                                    const unitPrice =
-                                                                        product.selling_price ??
-                                                                        product.unit_price ??
-                                                                        0;
+                                                                setItems(prev =>
+                                                                    prev.map(i => {
+                                                                        if (i.id !== item.id) return i;
 
-                                                                    const gstRate = Number(product.gst_rate) || 0;
-                                                                    const qty = i.quantity || 1;
+                                                                        const unitPrice =
+                                                                            product.selling_price ??
+                                                                            product.unit_price ??
+                                                                            0;
 
-                                                                    const taxable = qty * unitPrice;
-                                                                    const tax = taxable * (gstRate / 100);
+                                                                        const gstRate = Number(product.gst_rate) || 0;
+                                                                        const qty = i.quantity || 1;
 
-                                                                    return {
-                                                                        ...i,
-                                                                        product_id: product.id,
-                                                                        description: product.name,
-                                                                        unit_price: unitPrice,
-                                                                        gst_rate: gstRate,
-                                                                        discount_amount: 0,
-                                                                        taxable_amount: taxable,
-                                                                        total_amount: taxable + tax,
-                                                                        cgst_rate: gstRate / 2,
-                                                                        sgst_rate: gstRate / 2,
-                                                                        igst_rate: 0,
-                                                                    };
-                                                                })
-                                                            );
-                                                        }}
-                                                    />
-                                                </td>
+                                                                        const taxable = qty * unitPrice;
+                                                                        const tax = taxable * (gstRate / 100);
 
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="text"
-                                                        value={item.item_code || ''}  // Make sure to bind to item.item_code
-                                                        onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}  // Add onChange handler
-                                                        className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        placeholder="Enter item code"
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="text"
-                                                        value={item.description}
-                                                        onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                                                        className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        placeholder="Description"
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3">
+                                                                        return {
+                                                                            ...i,
+                                                                            product_id: product.id,
+                                                                            description: product.name,
+                                                                            unit_price: unitPrice,
+                                                                            gst_rate: gstRate,
+                                                                            discount_amount: 0,
+                                                                            taxable_amount: taxable,
+                                                                            total_amount: taxable + tax,
+                                                                            cgst_rate: gstRate / 2,
+                                                                            sgst_rate: gstRate / 2,
+                                                                            igst_rate: 0,
+                                                                        };
+                                                                    })
+                                                                );
+                                                            }}
+                                                        />
+                                                    </td>
+
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="text"
+                                                            value={item.item_code || ''}  // Make sure to bind to item.item_code
+                                                            onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}  // Add onChange handler
+                                                            className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            placeholder="Enter item code"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="text"
+                                                            value={item.description}
+                                                            onChange={(e) => updateItem(item.id, 'description', e.target.value)}
+                                                            className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            placeholder="Description"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="number"
+                                                            value={item.quantity}
+                                                            onChange={(e) => updateItem(item.id, 'quantity', parseFloat(e.target.value))}
+                                                            className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            min="1"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="number"
+                                                            value={item.unit_price || 0}  // Show unit_price
+                                                            onChange={(e) => {
+                                                                const value = parseFloat(e.target.value) || 0;
+                                                                updateItem(item.id, 'unit_price', value);  // Update unit_price field
+                                                            }}
+                                                            className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            min="0"
+                                                            step="0.01"
+                                                            required
+                                                        />
+                                                    </td><td className="px-4 py-3">
+                                                        <div className="flex gap-1">
+                                                            <input
+                                                                type="number"
+                                                                value={item.discount_percent}
+                                                                onChange={(e) => updateItem(item.id, 'discount_percent', parseFloat(e.target.value))}
+                                                                className="w-16 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                                min="0"
+                                                                step="0.01"
+                                                            />
+                                                            <span className="flex items-center px-1 py-1.5 text-xs">%</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="font-medium">
+                                                            ₹{(item.discount_amount || 0).toFixed(2)}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <select
+                                                            value={item.gst_rate}
+                                                            onChange={(e) => updateItem(item.id, 'gst_rate', parseFloat(e.target.value))}
+                                                            className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        >
+                                                            <option value="0">0%</option>
+                                                            <option value="5">5%</option>
+                                                            <option value="12">12%</option>
+                                                            <option value="18">18%</option>
+                                                            <option value="28">28%</option>
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-4 py-3 font-medium">
+                                                        ₹{item.total_amount.toFixed(2)}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeItem(item.id)}
+                                                            className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                        >
+                                                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                            </svg>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* SECTION 3: Charges & Adjustments */}
+                            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                                {/* Left side - Charges & Adjustments */}
+                                <div className="lg:col-span-2">
+                                    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-none dark:border-gray-700 dark:bg-gray-800">
+                                        <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Charges & Adjustments</h2>
+                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            <div className="flex items-center gap-4">
+                                                <div className="text-dark-6">
+                                                    Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
+                                                </div>
+                                                <div className="text-dark-6">
+                                                    Items: {items.length}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
+                                                <div className="flex gap-2">
                                                     <input
                                                         type="number"
-                                                        value={item.quantity}
-                                                        onChange={(e) => updateItem(item.id, 'quantity', parseFloat(e.target.value))}
-                                                        className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        min="1"
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="number"
-                                                        value={item.unit_price || 0}  // Show unit_price
-                                                        onChange={(e) => {
-                                                            const value = parseFloat(e.target.value) || 0;
-                                                            updateItem(item.id, 'unit_price', value);  // Update unit_price field
-                                                        }}
-                                                        className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        value={formData.freight_charges}
+                                                        onChange={(e) => handleFormChange('freight_charges', parseFloat(e.target.value) || 0)}
+                                                        className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                         min="0"
                                                         step="0.01"
-                                                        required
                                                     />
-                                                </td><td className="px-4 py-3">
-                                                    <div className="flex gap-1">
-                                                        <input
-                                                            type="number"
-                                                            value={item.discount_percent}
-                                                            onChange={(e) => updateItem(item.id, 'discount_percent', parseFloat(e.target.value))}
-                                                            className="w-16 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                            min="0"
-                                                            step="0.01"
-                                                        />
-                                                        <span className="flex items-center px-1 py-1.5 text-xs">%</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span className="font-medium">
-                                                        ₹{(item.discount_amount || 0).toFixed(2)}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3">
                                                     <select
-                                                        value={item.gst_rate}
-                                                        onChange={(e) => updateItem(item.id, 'gst_rate', parseFloat(e.target.value))}
-                                                        className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        value={formData.freight_type || "tax@18%"}
+                                                        onChange={(e) => handleFormChange('freight_type', e.target.value)}
+                                                        className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     >
-                                                        <option value="0">0%</option>
-                                                        <option value="5">5%</option>
-                                                        <option value="12">12%</option>
-                                                        <option value="18">18%</option>
-                                                        <option value="28">28%</option>
+                                                        <option value="fixed">Fixed</option>
+                                                        <option value="tax@0%">Tax@0%</option>
+                                                        <option value="tax@5%">Tax@5%</option>
+                                                        <option value="tax@12%">Tax@12%</option>
+                                                        <option value="tax@18%">Tax@18%</option>
+                                                        <option value="tax@28%">Tax@28%</option>
                                                     </select>
-                                                </td>
-                                                <td className="px-4 py-3 font-medium">
-                                                    ₹{item.total_amount.toFixed(2)}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeItem(item.id)}
-                                                        className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="number"
+                                                        value={formData.p_and_f_charges}
+                                                        onChange={(e) => handleFormChange('p_and_f_charges', parseFloat(e.target.value) || 0)}
+                                                        className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        min="0"
+                                                        step="0.01"
+                                                    />
+                                                    <select
+                                                        value={formData.pf_type || "tax@18%"}
+                                                        onChange={(e) => handleFormChange('pf_type', e.target.value)}
+                                                        className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     >
-                                                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                        </svg>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* SECTION 3: Charges & Adjustments */}
-                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                            {/* Left side - Charges & Adjustments */}
-                            <div className="lg:col-span-2">
-                                <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                                    <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Charges & Adjustments</h2>
-                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                        <div className="flex items-center gap-4">
-                                            <div className="text-dark-6">
-                                                Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
+                                                        <option value="fixed">Fixed</option>
+                                                        <option value="tax@0%">Tax@0%</option>
+                                                        <option value="tax@5%">Tax@5%</option>
+                                                        <option value="tax@12%">Tax@12%</option>
+                                                        <option value="tax@18%">Tax@18%</option>
+                                                        <option value="tax@28%">Tax@28%</option>
+                                                    </select>
+                                                </div>
                                             </div>
-                                            <div className="text-dark-6">
-                                                Items: {items.length}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={formData.freight_charges}
-                                                    onChange={(e) => handleFormChange('freight_charges', parseFloat(e.target.value) || 0)}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                    step="0.01"
+                                            <div className="md:col-span-2">
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Remarks</label>
+                                                <textarea
+                                                    value={formData.notes}
+                                                    onChange={(e) => handleFormChange('notes', e.target.value)}
+                                                    rows={3}
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 />
-                                                <select
-                                                    value={formData.freight_type || "tax@18%"}
-                                                    onChange={(e) => handleFormChange('freight_type', e.target.value)}
-                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="fixed">Fixed</option>
-                                                    <option value="tax@0%">Tax@0%</option>
-                                                    <option value="tax@5%">Tax@5%</option>
-                                                    <option value="tax@12%">Tax@12%</option>
-                                                    <option value="tax@18%">Tax@18%</option>
-                                                    <option value="tax@28%">Tax@28%</option>
-                                                </select>
                                             </div>
-                                        </div>
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={formData.p_and_f_charges}
-                                                    onChange={(e) => handleFormChange('p_and_f_charges', parseFloat(e.target.value) || 0)}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                    step="0.01"
-                                                />
-                                                <select
-                                                    value={formData.pf_type || "tax@18%"}
-                                                    onChange={(e) => handleFormChange('pf_type', e.target.value)}
-                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="fixed">Fixed</option>
-                                                    <option value="tax@0%">Tax@0%</option>
-                                                    <option value="tax@5%">Tax@5%</option>
-                                                    <option value="tax@12%">Tax@12%</option>
-                                                    <option value="tax@18%">Tax@18%</option>
-                                                    <option value="tax@28%">Tax@28%</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Remarks</label>
-                                            <textarea
-                                                value={formData.notes}
-                                                onChange={(e) => handleFormChange('notes', e.target.value)}
-                                                rows={3}
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <div className="flex items-center">
-                                                <input
-                                                    type="checkbox"
-                                                    id="send_message"
-                                                    checked={formData.send_message}
-                                                    onChange={(e) => handleFormChange('send_message', e.target.checked)}
-                                                    className="h-4 w-4 rounded border-stroke text-primary focus:ring-primary dark:border-dark-3"
-                                                />
-                                                <label htmlFor="send_message" className="ml-2 text-sm text-dark dark:text-white">
-                                                    Send Message to Customer
-                                                </label>
+                                            <div className="md:col-span-2">
+                                                <div className="flex items-center">
+                                                    <input
+                                                        type="checkbox"
+                                                        id="send_message"
+                                                        checked={formData.send_message}
+                                                        onChange={(e) => handleFormChange('send_message', e.target.checked)}
+                                                        className="h-4 w-4 rounded border-stroke text-primary focus:ring-primary dark:border-dark-3"
+                                                    />
+                                                    <label htmlFor="send_message" className="ml-2 text-sm text-dark dark:text-white">
+                                                        Send Message to Customer
+                                                    </label>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Right side - Total Summary */}
-                            <div className="lg:col-span-1">
-                                {/* Total Summary */}
-                                <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                                    <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Total Summary</h2>
-                                    <div className="space-y-3">
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">Subtotal</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">Freight Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.freightCharges.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">P & F Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.pAndFCharges.toLocaleString('en-IN')}</span>
-                                        </div>
-
-                                        <div className="border-t border-stroke pt-3 dark:border-dark-3">
-                                            <div className="flex justify-between mb-3">
-                                                <span className="font-semibold text-dark dark:text-white">Total before Round Off</span>
-                                                <span className="font-bold text-dark dark:text-white">₹{totals.totalBeforeRoundOff.toLocaleString('en-IN')}</span>
-                                            </div>
-
-                                            {/* Round Off Controls */}
-                                            <div className="flex justify-between items-center mb-2">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-dark-6">Round Off</span>
-                                                    <div className="flex gap-1">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                const newAmount = roundOff.amount + 1;
-                                                                handleRoundOffChange("plus", newAmount);
-                                                            }}
-                                                            className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "plus" ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-                                                        >
-                                                            +
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                const newAmount = roundOff.amount > 0 ? roundOff.amount - 1 : 0;
-                                                                handleRoundOffChange("minus", newAmount);
-                                                            }}
-                                                            className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "minus" ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-                                                        >
-                                                            -
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleRoundOffChange("none", 0)}
-                                                            className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "none" ? 'bg-gray-200 text-gray-700' : 'bg-gray-100 text-gray-600'}`}
-                                                        >
-                                                            0
-                                                        </button>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex items-center gap-2">
-                                                    <div className="relative">
-                                                        <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                                                            {roundOff.type === "plus" ? "+" : roundOff.type === "minus" ? "-" : ""}₹
-                                                        </span>
-                                                        <input
-                                                            type="number"
-                                                            value={roundOff.amount}
-                                                            onChange={(e) => {
-                                                                const amount = parseFloat(e.target.value) || 0;
-                                                                // Keep the current type, just update the amount
-                                                                setRoundOff(prev => ({
-                                                                    ...prev,
-                                                                    amount: amount
-                                                                }));
-                                                            }}
-                                                            className={`w-28 rounded border pl-8 pr-2 py-1.5 outline-none focus:border-primary dark:border-dark-3 ${roundOff.type === "plus" ? 'border-green-300 bg-green-50' :
-                                                                roundOff.type === "minus" ? 'border-red-300 bg-red-50' :
-                                                                    'border-stroke bg-transparent'
-                                                                }`}
-                                                            min="0"
-                                                            step="0.01"
-                                                            disabled={roundOff.type === "none"}
-                                                        />
-                                                    </div>
-                                                    <span className={`font-medium ${roundOff.type === "plus" ? 'text-green-600' :
-                                                        roundOff.type === "minus" ? 'text-red-600' :
-                                                            'text-gray-600'
-                                                        }`}>
-                                                        {roundOff.type === "plus" ? "+₹" : roundOff.type === "minus" ? "-₹" : "₹"}
-                                                        {roundOff.amount.toFixed(2)}
-                                                    </span>
-                                                </div>
-                                            </div>
-
-
-
-
-                                            {/* Round Off Amount Display */}
-                                            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-dark-6">Applied Round Off:</span>
-                                                    <span className={`font-medium ${roundOff.type === "plus" ? 'text-green-600' :
-                                                        roundOff.type === "minus" ? 'text-red-600' :
-                                                            'text-gray-600'
-                                                        }`}>
-                                                        {roundOff.type === "plus" ? '+₹' : roundOff.type === "minus" ? '-₹' : '₹'}
-                                                        {totals.roundOff.toFixed(2)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="border-t border-stroke pt-3 dark:border-dark-3">
+                                {/* Right side - Total Summary */}
+                                <div className="lg:col-span-1">
+                                    {/* Total Summary */}
+                                    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-none dark:border-gray-700 dark:bg-gray-800">
+                                        <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Total Summary</h2>
+                                        <div className="space-y-3">
                                             <div className="flex justify-between">
-                                                <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
-                                                <span className="text-lg font-bold text-primary">₹{totals.grandTotal.toLocaleString('en-IN')}</span>
+                                                <span className="text-dark-6">Subtotal</span>
+                                                <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-dark-6">Freight Charges</span>
+                                                <span className="font-medium text-dark dark:text-white">₹{totals.freightCharges.toLocaleString('en-IN')}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-dark-6">P & F Charges</span>
+                                                <span className="font-medium text-dark dark:text-white">₹{totals.pAndFCharges.toLocaleString('en-IN')}</span>
+                                            </div>
+
+                                            <div className="border-t border-stroke pt-3 dark:border-dark-3">
+                                                <div className="flex justify-between mb-3">
+                                                    <span className="font-semibold text-dark dark:text-white">Total before Round Off</span>
+                                                    <span className="font-bold text-dark dark:text-white">₹{totals.totalBeforeRoundOff.toLocaleString('en-IN')}</span>
+                                                </div>
+
+                                                {/* Round Off Controls */}
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-dark-6">Round Off</span>
+                                                        <div className="flex gap-1">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const newAmount = roundOff.amount + 1;
+                                                                    handleRoundOffChange("plus", newAmount);
+                                                                }}
+                                                                className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "plus" ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'}`}
+                                                            >
+                                                                +
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const newAmount = roundOff.amount > 0 ? roundOff.amount - 1 : 0;
+                                                                    handleRoundOffChange("minus", newAmount);
+                                                                }}
+                                                                className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "minus" ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'}`}
+                                                            >
+                                                                -
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRoundOffChange("none", 0)}
+                                                                className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "none" ? 'bg-gray-200 text-gray-700' : 'bg-gray-100 text-gray-600'}`}
+                                                            >
+                                                                0
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="relative">
+                                                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                                                                {roundOff.type === "plus" ? "+" : roundOff.type === "minus" ? "-" : ""}₹
+                                                            </span>
+                                                            <input
+                                                                type="number"
+                                                                value={roundOff.amount}
+                                                                onChange={(e) => {
+                                                                    const amount = parseFloat(e.target.value) || 0;
+                                                                    // Keep the current type, just update the amount
+                                                                    setRoundOff(prev => ({
+                                                                        ...prev,
+                                                                        amount: amount
+                                                                    }));
+                                                                }}
+                                                                className={`w-28 rounded border pl-8 pr-2 py-1.5 outline-none focus:border-primary dark:border-dark-3 ${roundOff.type === "plus" ? 'border-green-300 bg-green-50' :
+                                                                    roundOff.type === "minus" ? 'border-red-300 bg-red-50' :
+                                                                        'border-stroke bg-transparent'
+                                                                    }`}
+                                                                min="0"
+                                                                step="0.01"
+                                                                disabled={roundOff.type === "none"}
+                                                            />
+                                                        </div>
+                                                        <span className={`font-medium ${roundOff.type === "plus" ? 'text-green-600' :
+                                                            roundOff.type === "minus" ? 'text-red-600' :
+                                                                'text-gray-600'
+                                                            }`}>
+                                                            {roundOff.type === "plus" ? "+₹" : roundOff.type === "minus" ? "-₹" : "₹"}
+                                                            {roundOff.amount.toFixed(2)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+
+
+
+                                                {/* Round Off Amount Display */}
+                                                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-dark-6">Applied Round Off:</span>
+                                                        <span className={`font-medium ${roundOff.type === "plus" ? 'text-green-600' :
+                                                            roundOff.type === "minus" ? 'text-red-600' :
+                                                                'text-gray-600'
+                                                            }`}>
+                                                            {roundOff.type === "plus" ? '+₹' : roundOff.type === "minus" ? '-₹' : '₹'}
+                                                            {totals.roundOff.toFixed(2)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="border-t border-stroke pt-3 dark:border-dark-3">
+                                                <div className="flex justify-between">
+                                                    <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
+                                                    <span className="text-lg font-bold text-primary">₹{totals.grandTotal.toLocaleString('en-IN')}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* SECTION 4: Sales Order Terms and Conditions */}
-                        <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
-                            <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
-                                <h2 className="text-lg font-semibold text-dark dark:text-white">Sales Order Terms and Conditions</h2>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowTerms(!showTerms)}
-                                    className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
-                                >
-                                    <svg className={`h-5 w-5 transition-transform ${showTerms ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </button>
-                            </div>
-                            {showTerms && (
-                                <div className="p-6">
-                                    <textarea
-                                        value={formData.terms}
-                                        onChange={(e) => handleFormChange('terms', e.target.value)}
-                                        rows={6}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                                    />
-                                </div>
-                            )}
-                        </div>
-                        {/* SECTION 8: Other Fields (Accordion) */}
-                        <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
-                            <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
-                                <h2 className="text-lg font-semibold text-dark dark:text-white">
-                                    Other Fields
-                                </h2>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowOtherFields(!showOtherFields)}
-                                    className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
-                                >
-                                    <svg
-                                        className={`h-5 w-5 transition-transform ${showOtherFields ? "rotate-180" : ""
-                                            }`}
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
+                            {/* SECTION 4: Sales Order Terms and Conditions */}
+                            <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
+                                <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
+                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Sales Order Terms and Conditions</h2>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowTerms(!showTerms)}
+                                        className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
                                     >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={2}
-                                            d="M19 9l-7 7-7-7"
-                                        />
-                                    </svg>
-                                </button>
-                            </div>
-
-                            {showOtherFields && (
-                                <div className="p-6">
-                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Delivery Note
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.deliveryNote}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, deliveryNote: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Mode / Terms of Payment
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.payment_terms}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, payment_terms: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Supplier's Ref.
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.supplierRef}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, supplierRef: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Other Reference(s)
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.otherReferences}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, otherReferences: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Buyer's Order No.
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.buyerOrderNo}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, buyerOrderNo: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Buyer's Order Date
-                                            </label>
-                                            <input
-                                                type="date"
-                                                value={formData.buyerOrderDate}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, buyerOrderDate: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Despatch Document No.
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.despatchDocNo}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, despatchDocNo: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Delivery Note Date
-                                            </label>
-                                            <input
-                                                type="date"
-                                                value={formData.deliveryNoteDate}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, deliveryNoteDate: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Despatched Through
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.despatchedThrough}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, despatchedThrough: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Destination
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.destination}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, destination: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div className="md:col-span-2">
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Terms of Delivery
-                                            </label>
-                                            <textarea
-                                                value={formData.termsOfDelivery}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, termsOfDelivery: e.target.value })
-                                                }
-                                                rows={3}
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                    </div>
+                                        <svg className={`h-5 w-5 transition-transform ${showTerms ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </button>
                                 </div>
-                            )}
+                                {showTerms && (
+                                    <div className="p-6">
+                                        <textarea
+                                            value={formData.terms}
+                                            onChange={(e) => handleFormChange('terms', e.target.value)}
+                                            rows={6}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                            {/* SECTION 8: Other Fields (Accordion) */}
+                            <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
+                                <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
+                                    <h2 className="text-lg font-semibold text-dark dark:text-white">
+                                        Other Fields
+                                    </h2>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowOtherFields(!showOtherFields)}
+                                        className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
+                                    >
+                                        <svg
+                                            className={`h-5 w-5 transition-transform ${showOtherFields ? "rotate-180" : ""
+                                                }`}
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M19 9l-7 7-7-7"
+                                            />
+                                        </svg>
+                                    </button>
+                                </div>
 
-                        </div>
+                                {showOtherFields && (
+                                    <div className="p-6">
+                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Delivery Note
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.deliveryNote}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, deliveryNote: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
 
-                        {/* Action Buttons */}
-                        <div className="rounded-lg p-6 dark:bg-gray-dark">
-                            <div className="flex flex-wrap justify-center gap-4">
-                                <button
-                                    type="submit"
-                                    disabled={isSubmitting}
-                                    className="min-w-[180px] rounded-lg bg-green-600 px-6 py-3 font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
-                                >
-                                    {isSubmitting ? "Saving..." : "Update Sales Order"}
-                                </button>
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Mode / Terms of Payment
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.payment_terms}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, payment_terms: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
 
-                                <button
-                                    type="button"
-                                    onClick={() => router.back()}
-                                    className="min-w-[180px] rounded-lg border border-stroke bg-white px-6 py-3 font-medium text-dark transition hover:bg-gray-50 dark:border-dark-3 dark:bg-gray-dark dark:text-white"
-                                >
-                                    Cancel
-                                </button>
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Supplier's Ref.
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.supplierRef}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, supplierRef: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Other Reference(s)
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.otherReferences}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, otherReferences: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Buyer's Order No.
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.buyerOrderNo}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, buyerOrderNo: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Buyer's Order Date
+                                                </label>
+                                                <input
+                                                    type="date"
+                                                    value={formData.buyerOrderDate}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, buyerOrderDate: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Despatch Document No.
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.despatchDocNo}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, despatchDocNo: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Delivery Note Date
+                                                </label>
+                                                <input
+                                                    type="date"
+                                                    value={formData.deliveryNoteDate}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, deliveryNoteDate: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Despatched Through
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.despatchedThrough}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, despatchedThrough: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Destination
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.destination}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, destination: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div className="md:col-span-2">
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Terms of Delivery
+                                                </label>
+                                                <textarea
+                                                    value={formData.termsOfDelivery}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, termsOfDelivery: e.target.value })
+                                                    }
+                                                    rows={3}
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                        </div>
+                                    </div>
+                                )}
+
+                            </div>
+                            <hr />
+
+                            {/* Action Buttons */}
+                            <div className="rounded-lg p-4 shadow-none sm:p-6">
+                                <div className="flex flex-wrap justify-center gap-4">
+                                    <button
+                                        type="submit"
+                                        disabled={isSubmitting}
+                                        className="h-9 min-w-[140px] rounded-lg bg-primary px-6 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:min-w-[220px]"
+                                    >
+                                        {isSubmitting ? "Saving..." : "Update Sales Order"}
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => router.back()}
+                                        className="h-9 min-w-[140px] rounded-lg bg-[#E5E7EB] px-6 text-sm font-medium text-black transition-colors hover:bg-[#e9ebf0] dark:bg-dark-3 dark:text-white dark:hover:bg-dark-2 sm:h-10 sm:min-w-[220px]"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
     );
 }
+
+

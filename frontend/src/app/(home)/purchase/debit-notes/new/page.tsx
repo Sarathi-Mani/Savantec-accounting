@@ -208,7 +208,7 @@ export default function NewDebitNotePage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form data-ui="sf-form" onSubmit={handleSubmit} className="space-y-6">
         <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark p-6">
           <h3 className="text-xl font-semibold mb-4">Debit Note Information</h3>
           

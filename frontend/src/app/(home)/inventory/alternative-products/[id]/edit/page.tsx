@@ -138,7 +138,7 @@ export default function EditAlternativeProductPage() {
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="p-6 max-w-3xl">
+      <form data-ui="sf-form" onSubmit={handleSubmit} className="p-6 max-w-3xl">
         {error && (
           <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400">
             {error}

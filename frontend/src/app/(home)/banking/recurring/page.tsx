@@ -465,7 +465,7 @@ export default function RecurringTransactionsPage() {
               </div>
             )}
 
-            <form onSubmit={handleSubmit}>
+            <form data-ui="sf-form" onSubmit={handleSubmit}>
               <div className="mb-4">
                 <label className="mb-2 block text-sm font-medium text-black dark:text-white">
                   Name <span className="text-danger">*</span>

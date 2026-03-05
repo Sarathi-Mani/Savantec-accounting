@@ -584,8 +584,8 @@ const handleSubmit = async (
 
   if (!companyId) {
     return (
-      <div className="p-6">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 dark:bg-yellow-900/20 dark:border-yellow-800">
+      <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-900">
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
           <p className="text-yellow-800 dark:text-yellow-400">Please select a company first.</p>
         </div>
       </div>
@@ -594,21 +594,18 @@ const handleSubmit = async (
 
   if (loading) {
     return (
-      <div className="p-8 text-center">
-        <div className="animate-spin h-8 w-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto"></div>
-        <p className="mt-4 text-gray-500 dark:text-gray-400">Loading enquiry...</p>
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 py-20 dark:bg-gray-900">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
       </div>
     );
   }
 
   if (!enquiry) {
     return (
-      <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 dark:bg-red-900/20 dark:border-red-800">
+      <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-900">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
           <p className="text-red-800 dark:text-red-400">Enquiry not found.</p>
-          <Link href="/enquiries" className="mt-2 inline-block text-indigo-600 hover:text-indigo-800">
-            ← Back to Enquiries
-          </Link>
+          <Link href="/enquiries" className="mt-2 inline-block text-primary hover:text-primary/80">Back to Enquiries</Link>
         </div>
       </div>
     );
@@ -617,27 +614,33 @@ const handleSubmit = async (
   const showPrices = formData.status !== "ignored";
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <Link href="/enquiries" className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Enquiry</h1>
-          <p className="text-gray-500 dark:text-gray-400">Update enquiry details</p>
+    <div className="w-full bg-gray-50 dark:bg-gray-900">
+      <div className="border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-700 dark:bg-gray-800 sm:px-6">
+        <div className="flex items-start gap-3">
+          <Link
+            href="/enquiries"
+            className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary/90 sm:h-10 sm:w-10"
+          >
+            <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Enquiry</h1>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Update enquiry details</p>
+          </div>
         </div>
       </div>
 
+      <div className="w-full p-4 sm:p-6">
+
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 dark:bg-red-900/20 dark:border-red-800">
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
           <p className="text-red-800 dark:text-red-400 whitespace-pre-line">{error}</p>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form data-ui="sf-form" onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
         <div className="bg-white dark:bg-gray-dark rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Basic Information</h2>
@@ -1187,37 +1190,37 @@ const handleSubmit = async (
         )}
 
         {/* Form Actions */}
-        <div className="flex justify-end gap-4 pt-6 border-t dark:border-dark-3">
-          <Link
-            href="/enquiries"
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 dark:border-dark-3 dark:text-gray-300 dark:hover:bg-dark-3"
-          >
-            Cancel
-          </Link>
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
-          >
-            {saving ? (
-              <>
-                <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Updating...
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                Update Enquiry
-              </>
-            )}
-          </button>
+        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-none dark:border-gray-700 dark:bg-gray-800 sm:p-6">
+          <div className="mx-auto flex w-full max-w-[560px] items-center justify-center gap-4 sm:gap-8">
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex h-9 min-w-[140px] items-center justify-center gap-2 rounded-lg bg-primary px-6 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:min-w-[220px]"
+            >
+              {saving ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Updating...
+                </>
+              ) : (
+                "Update"
+              )}
+            </button>
+            <Link
+              href="/enquiries"
+              className="flex h-9 min-w-[140px] items-center justify-center rounded-lg bg-[#E5E7EB] px-6 text-sm font-medium text-black transition-colors hover:bg-[#e9ebf0] dark:bg-dark-3 dark:text-white dark:hover:bg-dark-2 sm:h-10 sm:min-w-[220px]"
+            >
+              Cancel
+            </Link>
+          </div>
         </div>
       </form>
+      </div>
     </div>
   );
 }
+
+

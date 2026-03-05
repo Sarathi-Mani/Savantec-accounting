@@ -236,7 +236,7 @@ export default function EWayBillPage() {
             )}
           </div>
 
-          <form onSubmit={handleGenerateEWayBill}>
+          <form data-ui="sf-form" onSubmit={handleGenerateEWayBill}>
             <div className="mb-6 grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">

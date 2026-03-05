@@ -3,6 +3,7 @@
 import { useAuth } from "@/context/AuthContext";
 import { productsApi, brandsApi, categoriesApi, inventoryApi, Godown, getErrorMessage } from "@/services/api";
 import { getStoredProductUnits, ProductUnitOption } from "@/utils/product-units";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -330,41 +331,47 @@ export default function EditProductPage() {
 
   if (!company) {
     return (
-      <div className="rounded-lg bg-white p-8 text-center shadow-1 dark:bg-gray-dark">
-        <p className="text-dark-6">Please select a company first</p>
+      <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-900">
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
+          <p className="text-yellow-800 dark:text-yellow-400">Please select a company first.</p>
+        </div>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 py-20 dark:bg-gray-900">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
       </div>
     );
   }
 
   return (
-    <div className="relative">
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-dark dark:text-white">Edit Item</h1>
-          <p className="text-sm text-dark-6">Dashboard &gt; Items &gt; Edit</p>
-        </div>
-        <div className="flex gap-4">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="rounded-lg border border-stroke px-6 py-3 font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
+    <div className="relative w-full bg-gray-50 dark:bg-gray-900">
+      <div className="border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-700 dark:bg-gray-800 sm:px-6">
+        <div className="flex items-start gap-3">
+          <Link
+            href="/products"
+            className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full
+                     bg-primary text-white
+                     transition hover:bg-primary/90 sm:h-10 sm:w-10"
           >
-            Close
-          </button>
+            <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Item</h1>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Update product item details</p>
+          </div>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="max-w-4xl">
+      <div className="w-full p-4 sm:p-6">
+      <form data-ui="sf-form" onSubmit={handleSubmit}>
         {error && (
-          <div className="mb-6 rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">
+          <div className="mb-4 rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">
             <p className="font-medium">Error: {error}</p>
             <p className="mt-2 text-sm">Please check all required fields and try again.</p>
           </div>
@@ -742,24 +749,29 @@ export default function EditProductPage() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-4">
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="rounded-lg border border-stroke px-6 py-3 font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
-            >
-              Close
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-primary px-6 py-3 font-medium text-white transition hover:bg-opacity-90 disabled:opacity-50"
-            >
-              {saving ? "Updating..." : "Update"}
-            </button>
+          <hr />
+
+          <div className="rounded-lg p-4 shadow-none">
+            <div className="mx-auto flex w-full max-w-[560px] items-center justify-center gap-4 sm:gap-8">
+              <button
+                type="submit"
+                disabled={saving}
+                className="h-9 w-28 rounded-lg bg-primary text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-60"
+              >
+                {saving ? "Updating..." : "Update"}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/products")}
+                className="h-9 w-28 rounded-lg bg-[#E5E7EB] text-sm font-medium text-black transition-colors hover:bg-[#e9ebf0] dark:bg-dark-3 dark:text-white dark:hover:bg-dark-2 sm:w-60"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       </form>
+      </div>
     </div>
   );
 }

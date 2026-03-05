@@ -120,7 +120,7 @@ export default function PriceLevelsPage() {
             <h3 className="mb-4 text-xl font-semibold text-black dark:text-white">
               Add Price Level
             </h3>
-            <form onSubmit={handleSubmit}>
+            <form data-ui="sf-form" onSubmit={handleSubmit}>
               <div className="mb-4">
                 <label className="mb-2.5 block text-black dark:text-white">
                   Name <span className="text-meta-1">*</span>

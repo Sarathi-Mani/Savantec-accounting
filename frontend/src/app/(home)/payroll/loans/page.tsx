@@ -369,7 +369,7 @@ export default function LoansPage() {
           <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md mx-4 p-6">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Create New Loan</h2>
 
-            <form onSubmit={handleCreateLoan} className="space-y-4">
+            <form data-ui="sf-form" onSubmit={handleCreateLoan} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Employee

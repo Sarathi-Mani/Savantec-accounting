@@ -97,7 +97,7 @@ export default function SalesReturnPaymentPage() {
           </div>
         </div>
 
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        <form data-ui="sf-form" onSubmit={onSubmit} className="mt-6 space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Amount</label>
             <input

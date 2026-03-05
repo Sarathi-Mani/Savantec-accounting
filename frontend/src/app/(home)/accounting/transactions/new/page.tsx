@@ -190,7 +190,7 @@ export default function NewJournalEntryPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <form data-ui="sf-form" onSubmit={handleSubmit}>
         <div className="mb-6 rounded-xl border border-stroke bg-white p-6 shadow-default dark:border-dark-3 dark:bg-gray-dark">
           {/* Header Info */}
           <div className="mb-6 grid gap-4 sm:grid-cols-2">

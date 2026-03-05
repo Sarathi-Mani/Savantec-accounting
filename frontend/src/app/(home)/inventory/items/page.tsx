@@ -234,7 +234,7 @@ export default function StockItemsPage() {
               </button>
             </div>
 
-            <form onSubmit={handleCreate} className="space-y-4">
+            <form data-ui="sf-form" onSubmit={handleCreate} className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-dark dark:text-white">Name *</label>
                 <input

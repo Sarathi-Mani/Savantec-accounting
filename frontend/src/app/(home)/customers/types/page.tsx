@@ -93,7 +93,7 @@ export default function CustomerTypesPage() {
       )}
 
       <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form data-ui="sf-form" onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
               Customer Type Name

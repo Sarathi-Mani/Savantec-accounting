@@ -1713,7 +1713,7 @@ export default function IssuedChequesPage() {
                     </Link>
                   </div>
                 ) : (
-                  <form onSubmit={handleSubmit}>
+                  <form data-ui="sf-form" onSubmit={handleSubmit}>
                     {modalMode === "create" && (
                       <div className="mb-4">
                         <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">

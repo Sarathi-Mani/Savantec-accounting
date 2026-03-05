@@ -1187,7 +1187,7 @@ export default function EditSalesPage() {
 
     if (loadingInvoice) {
         return (
-            <div className="flex items-center justify-center py-20">
+            <div className="flex min-h-screen items-center justify-center bg-gray-50 py-20 dark:bg-gray-900">
                 <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
             </div>
         );
@@ -1195,8 +1195,8 @@ export default function EditSalesPage() {
 
     if (invoiceError) {
         return (
-            <div className="rounded-lg bg-white p-8 text-center shadow-1 dark:bg-gray-dark">
-                <p className="text-red-600 dark:text-red-400">{invoiceError}</p>
+            <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-900">
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">{invoiceError}</div>
                 <Link href="/sales/sales-list" className="mt-4 inline-block text-primary hover:underline">
                     Back to Sales
                 </Link>
@@ -1205,1283 +1205,1264 @@ export default function EditSalesPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 p-4 dark:bg-gray-dark md:p-6">
-            {/* Breadcrumb */}
-            <nav className="mb-6 flex" aria-label="Breadcrumb">
-                <ol className="inline-flex items-center space-x-1 text-sm md:space-x-2">
-                    <li className="inline-flex items-center">
-                        <Link href="/" className="inline-flex items-center text-dark-6 hover:text-primary dark:text-gray-400 dark:hover:text-white">
-                            Home
-                        </Link>
-                    </li>
-                    <li>
-                        <div className="flex items-center">
-                            <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <Link href="/sales/sales-list" className="ml-1 text-dark-6 hover:text-primary dark:text-gray-400 dark:hover:text-white md:ml-2">
-                                Sales List
-                            </Link>
-                        </div>
-                    </li>
-                    <li>
-                        <div className="flex items-center">
-                            <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <span className="ml-1 font-medium text-dark dark:text-white md:ml-2">Edit Sales</span>
-                        </div>
-                    </li>
-                    <li aria-current="page">
-                        <div className="flex items-center">
-                            <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <span className="ml-1 font-medium text-primary dark:text-primary md:ml-2">Sales</span>
-                        </div>
-                    </li>
-                </ol>
-            </nav>
-
-            {/* Page Header */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-dark dark:text-white">Sales – Add / Update Sales</h1>
-                <p className="text-dark-6">Update sales invoice with customer details and items</p>
+        <div className="w-full bg-gray-50 dark:bg-gray-900">
+            <div className="border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-700 dark:bg-gray-800 sm:px-6">
+                <div className="flex items-start gap-3">
+                    <Link
+                        href="/sales/sales-list"
+                        className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary/90 sm:h-10 sm:w-10"
+                    >
+                        <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </Link>
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Sales</h1>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            Update sales invoice with customer details and items
+                        </p>
+                    </div>
+                </div>
             </div>
 
-            <form onSubmit={handleSubmit}>
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                    {/* Left Column - Main Form */}
-                    <div className="lg:col-span-3 space-y-6">
-                        {/* SECTION 1: Sales Basic Details */}
-                        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                            <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Sales Basic Details</h2>
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <div>
-                                    <SelectField
-                                        label="Company"
-                                        name="company_id"
-                                        value={company?.id || ""}
-                                        onChange={() => { }} // Read-only since only one company is selected
-                                        options={company ? [{ value: company.id, label: company.name }] : []}
-                                        required={true}
-                                        placeholder="Select Company"
-                                    />
-                                </div>
+            <div className="w-full p-4 sm:p-6">
 
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Sales Code <span className="text-red-500">*</span>
-                                    </label>
-                                    <div className="flex gap-2">
-                                        <input
-                                            type="text"
-                                            value={loadingInvoiceNumber ? "Loading..." : nextInvoiceNumber}
-                                            className="flex-1 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 outline-none dark:border-dark-3 dark:bg-dark-2"
-                                            readOnly
-                                            disabled={loadingInvoiceNumber}
+                <form data-ui="sf-form" onSubmit={handleSubmit}>
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                        {/* Left Column - Main Form */}
+                        <div className="lg:col-span-3 space-y-6">
+                            {/* SECTION 1: Sales Basic Details */}
+                            <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+                                <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Sales Basic Details</h2>
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div>
+                                        <SelectField
+                                            label="Company"
+                                            name="company_id"
+                                            value={company?.id || ""}
+                                            onChange={() => { }} // Read-only since only one company is selected
+                                            options={company ? [{ value: company.id, label: company.name }] : []}
+                                            required={true}
+                                            placeholder="Select Company"
                                         />
                                     </div>
-                                    {loadingInvoiceNumber && (
-                                        <p className="mt-1 text-sm text-gray-500">Loading next invoice number...</p>
-                                    )}
-                                </div>
-                                {/* Add this field after the Sales Date field */}
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Voucher Type <span className="text-red-500">*</span>
-                                    </label>
-                                    <select
-                                        value={formData.voucher_type}
-                                        onChange={(e) => handleFormChange('voucher_type', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                        required
-                                    >
-                                        <option value="sales">Sales</option>
-                                        <option value="service">Service</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Sales Date <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={formData.invoice_date}
-                                        onChange={(e) => handleFormChange('invoice_date', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <SelectField
-                                        label="Customer Name"
-                                        name="customer_id"
-                                        value={formData.customer_id}
-                                        onChange={handleFormChange}
-                                        options={customers.map(customer => ({
-                                            value: customer.id,
-                                            label: `${customer.name} ${customer.email ? `(${customer.email})` : ''} ${customer.mobile ? `(${customer.mobile})` : ''}`
-                                        }))}
-                                        required={true}
-                                        placeholder="Select Customer"
-                                    />
-                                    {/* <p className="mt-1 text-sm text-red-600">Previous Due: ₹2,500</p> */}
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Reference No
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.referenceNo || ""}
-                                        onChange={(e) => setFormData({ ...formData, referenceNo: e.target.value })}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Due Date
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={formData.due_date}
-                                        onChange={(e) => handleFormChange('due_date', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
-                                </div>
-                                <div className="md:col-span-2">
+
                                     <div>
                                         <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                            Salesman <span className="text-red-500">*</span>
+                                            Sales Code <span className="text-red-500">*</span>
                                         </label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={loadingInvoiceNumber ? "Loading..." : nextInvoiceNumber}
+                                                className="flex-1 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 outline-none dark:border-dark-3 dark:bg-dark-2"
+                                                readOnly
+                                                disabled={loadingInvoiceNumber}
+                                            />
+                                        </div>
+                                        {loadingInvoiceNumber && (
+                                            <p className="mt-1 text-sm text-gray-500">Loading next invoice number...</p>
+                                        )}
+                                    </div>
+                                    {/* Add this field after the Sales Date field */}
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Voucher Type <span className="text-red-500">*</span>
+                                        </label>
+                                        <select
+                                            value={formData.voucher_type}
+                                            onChange={(e) => handleFormChange('voucher_type', e.target.value)}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            required
+                                        >
+                                            <option value="sales">Sales</option>
+                                            <option value="service">Service</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Sales Date <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={formData.invoice_date}
+                                            onChange={(e) => handleFormChange('invoice_date', e.target.value)}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <SelectField
+                                            label="Customer Name"
+                                            name="customer_id"
+                                            value={formData.customer_id}
+                                            onChange={handleFormChange}
+                                            options={customers.map(customer => ({
+                                                value: customer.id,
+                                                label: `${customer.name} ${customer.email ? `(${customer.email})` : ''} ${customer.mobile ? `(${customer.mobile})` : ''}`
+                                            }))}
+                                            required={true}
+                                            placeholder="Select Customer"
+                                        />
+                                        {/* <p className="mt-1 text-sm text-red-600">Previous Due: ₹2,500</p> */}
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Reference No
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.referenceNo || ""}
+                                            onChange={(e) => setFormData({ ...formData, referenceNo: e.target.value })}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Due Date
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={formData.due_date}
+                                            onChange={(e) => handleFormChange('due_date', e.target.value)}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Salesman <span className="text-red-500">*</span>
+                                            </label>
 
-                                        {/* Debug info */}
-                                        <div className="mb-2 text-xs text-gray-500 dark:text-gray-400">
-                                            {loading.salesmen ? (
-                                                <span>Loading salesmen...</span>
-                                            ) : salesmen.length > 0 ? (
-                                                <span>✓ {salesmen.length} salesman available</span>
-                                            ) : (
-                                                <span className="text-yellow-600">No salesmen found</span>
+                                            {/* Debug info */}
+                                            <div className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                                                {loading.salesmen ? (
+                                                    <span>Loading salesmen...</span>
+                                                ) : salesmen.length > 0 ? (
+                                                    <span>✓ {salesmen.length} salesman available</span>
+                                                ) : (
+                                                    <span className="text-yellow-600">No salesmen found</span>
+                                                )}
+                                            </div>
+
+                                            <Select
+                                                options={salesmen
+                                                    .filter(salesman => salesman.name && salesman.name.trim())
+                                                    .map((salesman) => {
+                                                        const label = salesman.designation
+                                                            ? `${salesman.name} (${salesman.email}) ${salesman.phone ? - salesman.phone : ''}`.trim()
+                                                            : salesman.name;
+
+
+                                                        return {
+                                                            value: salesman.id,
+                                                            label: label,
+                                                            salesman: salesman
+                                                        };
+                                                    })}
+                                                value={salesmen
+                                                    .filter(salesman => salesman.name && salesman.name.trim())
+                                                    .map((salesman) => {
+                                                        const label = salesman.designation
+                                                            ? `${salesman.name} (${salesman.designation})`
+                                                            : salesman.name;
+
+                                                        return {
+                                                            value: salesman.id,
+                                                            label: label,
+                                                            salesman: salesman
+                                                        };
+                                                    })
+                                                    .find(opt => opt.value === formData.sales_person_id)}
+                                                onChange={(option) => {
+                                                    handleFormChange('sales_person_id', option?.value || "");
+                                                    if (option?.salesman) {
+                                                        console.log("Selected sales engineer:", option.salesman);
+                                                    }
+                                                }}
+                                                placeholder={loading.salesmen ? "Loading sales engineers..." : "Select Sales Engineer"}
+                                                className="react-select-container"
+                                                classNamePrefix="react-select"
+                                                isLoading={loading.salesmen}
+                                                isClearable
+                                                isSearchable
+                                                noOptionsMessage={() =>
+                                                    loading.salesmen ? "Loading..." : "No sales engineers available"
+                                                }
+                                                styles={{
+                                                    control: (base: any, state: any) => ({
+                                                        ...base,
+                                                        minHeight: "42px",
+                                                        borderRadius: "0.5rem",
+                                                        borderWidth: "1px",
+                                                        borderStyle: "solid",
+                                                        borderColor: salesmen.length > 0 ? '#10b981' : '#d1d5db',
+                                                        backgroundColor: state.isFocused ? '#f3f4f6' : base.backgroundColor,
+                                                        '&:hover': {
+                                                            borderColor: salesmen.length > 0 ? '#059669' : '#9ca3af',
+                                                        },
+                                                        boxShadow: state.isFocused
+                                                            ? "0 0 0 2px rgba(99,102,241,0.4)"
+                                                            : "none",
+                                                    }),
+                                                    menu: (base: any) => ({
+                                                        ...base,
+                                                        zIndex: 9999,
+                                                    }),
+                                                    option: (base: any, state: any) => ({
+                                                        ...base,
+                                                        backgroundColor: state.isSelected
+                                                            ? "#6366f1"
+                                                            : state.isFocused
+                                                                ? "#eef2ff"
+                                                                : "white",
+                                                        color: state.isSelected ? "white" : "#111827",
+                                                    }),
+                                                }}
+                                            />
+
+                                            {!loading.salesmen && salesmen.length === 0 && (
+                                                <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded">
+                                                    <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                                                        No sales engineers found. Please add sales engineers first in the employee management section.
+                                                    </p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => router.push("/employees")}
+                                                        className="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                                                    >
+                                                        Go to Employees →
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
-
-                                        <Select
-                                            options={salesmen
-                                                .filter(salesman => salesman.name && salesman.name.trim())
-                                                .map((salesman) => {
-                                                    const label = salesman.designation
-                                                        ? `${salesman.name} (${salesman.email}) ${salesman.phone ? - salesman.phone : ''}`.trim()
-                                                        : salesman.name;
-
-
-                                                    return {
-                                                        value: salesman.id,
-                                                        label: label,
-                                                        salesman: salesman
-                                                    };
-                                                })}
-                                            value={salesmen
-                                                .filter(salesman => salesman.name && salesman.name.trim())
-                                                .map((salesman) => {
-                                                    const label = salesman.designation
-                                                        ? `${salesman.name} (${salesman.designation})`
-                                                        : salesman.name;
-
-                                                    return {
-                                                        value: salesman.id,
-                                                        label: label,
-                                                        salesman: salesman
-                                                    };
-                                                })
-                                                .find(opt => opt.value === formData.sales_person_id)}
-                                            onChange={(option) => {
-                                                handleFormChange('sales_person_id', option?.value || "");
-                                                if (option?.salesman) {
-                                                    console.log("Selected sales engineer:", option.salesman);
-                                                }
-                                            }}
-                                            placeholder={loading.salesmen ? "Loading sales engineers..." : "Select Sales Engineer"}
-                                            className="react-select-container"
-                                            classNamePrefix="react-select"
-                                            isLoading={loading.salesmen}
-                                            isClearable
-                                            isSearchable
-                                            noOptionsMessage={() =>
-                                                loading.salesmen ? "Loading..." : "No sales engineers available"
-                                            }
-                                            styles={{
-                                                control: (base: any, state: any) => ({
-                                                    ...base,
-                                                    minHeight: "42px",
-                                                    borderRadius: "0.5rem",
-                                                    borderWidth: "1px",
-                                                    borderStyle: "solid",
-                                                    borderColor: salesmen.length > 0 ? '#10b981' : '#d1d5db',
-                                                    backgroundColor: state.isFocused ? '#f3f4f6' : base.backgroundColor,
-                                                    '&:hover': {
-                                                        borderColor: salesmen.length > 0 ? '#059669' : '#9ca3af',
-                                                    },
-                                                    boxShadow: state.isFocused
-                                                        ? "0 0 0 2px rgba(99,102,241,0.4)"
-                                                        : "none",
-                                                }),
-                                                menu: (base: any) => ({
-                                                    ...base,
-                                                    zIndex: 9999,
-                                                }),
-                                                option: (base: any, state: any) => ({
-                                                    ...base,
-                                                    backgroundColor: state.isSelected
-                                                        ? "#6366f1"
-                                                        : state.isFocused
-                                                            ? "#eef2ff"
-                                                            : "white",
-                                                    color: state.isSelected ? "white" : "#111827",
-                                                }),
-                                            }}
-                                        />
-
-                                        {!loading.salesmen && salesmen.length === 0 && (
-                                            <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded">
-                                                <p className="text-xs text-yellow-700 dark:text-yellow-300">
-                                                    No sales engineers found. Please add sales engineers first in the employee management section.
-                                                </p>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => router.push("/employees")}
-                                                    className="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                                                >
-                                                    Go to Employees →
-                                                </button>
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* SECTION 2: Shipping Address */}
-                        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                            <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Shipping Address</h2>
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <div>
-                                    <SelectField
-                                        label="Country"
-                                        name="country"
-                                        value={formData.country}
-                                        onChange={(name, value) => setFormData({ ...formData, [name]: value })}
-                                        options={[
-                                            { value: "India", label: "India" },
-                                            { value: "United States", label: "United States" },
-                                            { value: "United Kingdom", label: "United Kingdom" },
-                                            { value: "Canada", label: "Canada" },
-                                            { value: "Australia", label: "Australia" },
-                                            { value: "United Arab Emirates", label: "United Arab Emirates" },
-                                            { value: "Saudi Arabia", label: "Saudi Arabia" },
-                                            { value: "Qatar", label: "Qatar" },
-                                            { value: "Kuwait", label: "Kuwait" },
-                                            { value: "Oman", label: "Oman" },
-                                            { value: "Singapore", label: "Singapore" },
-                                            { value: "Malaysia", label: "Malaysia" },
-                                            { value: "Thailand", label: "Thailand" },
-                                            { value: "Indonesia", label: "Indonesia" },
-                                            { value: "Philippines", label: "Philippines" },
-                                            { value: "China", label: "China" },
-                                            { value: "Japan", label: "Japan" },
-                                            { value: "South Korea", label: "South Korea" },
-                                            { value: "Germany", label: "Germany" },
-                                            { value: "France", label: "France" },
-                                            { value: "Italy", label: "Italy" },
-                                            { value: "Netherlands", label: "Netherlands" },
-                                            { value: "South Africa", label: "South Africa" },
-                                            { value: "Nigeria", label: "Nigeria" },
-                                            { value: "Kenya", label: "Kenya" },
-                                            { value: "Brazil", label: "Brazil" },
-                                            { value: "Argentina", label: "Argentina" },
-                                            { value: "Sri Lanka", label: "Sri Lanka" },
-                                            { value: "Bangladesh", label: "Bangladesh" },
-                                            { value: "Nepal", label: "Nepal" }
-                                        ]}
-                                        placeholder="Select Country"
-                                    />
-                                </div>
-                                <div>
-                                    <SelectField
-                                        label="State"
-                                        name="place_of_supply"
-                                        value={formData.place_of_supply}
-                                        onChange={handleFormChange}
-                                        options={INDIAN_STATES.map(state => ({
-                                            value: state.code,
-                                            label: `${state.name} (${state.code})`
-                                        }))}
-                                        required={true}
-                                        placeholder="Select State"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">City</label>
-                                    <input
-                                        type="text"
-                                        value={formData.city}
-                                        onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Postcode</label>
-                                    <input
-                                        type="text"
-                                        value={formData.postcode}
-                                        onChange={(e) => setFormData({ ...formData, postcode: e.target.value })}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
-                                </div>
-                                <div className="md:col-span-2">
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Address</label>
-                                    <textarea
-                                        value={formData.address}
-                                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                                        rows={3}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* SECTION 3: Sales Items Table */}
-                        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                            <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                                <div>
-                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Items</h2>
-                                    <p className="mt-1 text-sm text-dark-6">
-                                        Update items for your sales invoice
-                                    </p>
-                                </div>
-                                <div className="mt-2 flex gap-2 sm:mt-0">
-                                    <button
-                                        type="button"
-                                        onClick={() => router.push("/products/new")}
-                                        className="inline-flex items-center gap-2 rounded-lg border border-blue-600 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
-                                    >
-                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                        </svg>
-                                        Add New Product
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => addItem()}
-                                        className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                                    >
-                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                        </svg>
-                                        Add Item
-                                    </button>
+                            {/* SECTION 2: Shipping Address */}
+                            <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+                                <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Shipping Address</h2>
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div>
+                                        <SelectField
+                                            label="Country"
+                                            name="country"
+                                            value={formData.country}
+                                            onChange={(name, value) => setFormData({ ...formData, [name]: value })}
+                                            options={[
+                                                { value: "India", label: "India" },
+                                                { value: "United States", label: "United States" },
+                                                { value: "United Kingdom", label: "United Kingdom" },
+                                                { value: "Canada", label: "Canada" },
+                                                { value: "Australia", label: "Australia" },
+                                                { value: "United Arab Emirates", label: "United Arab Emirates" },
+                                                { value: "Saudi Arabia", label: "Saudi Arabia" },
+                                                { value: "Qatar", label: "Qatar" },
+                                                { value: "Kuwait", label: "Kuwait" },
+                                                { value: "Oman", label: "Oman" },
+                                                { value: "Singapore", label: "Singapore" },
+                                                { value: "Malaysia", label: "Malaysia" },
+                                                { value: "Thailand", label: "Thailand" },
+                                                { value: "Indonesia", label: "Indonesia" },
+                                                { value: "Philippines", label: "Philippines" },
+                                                { value: "China", label: "China" },
+                                                { value: "Japan", label: "Japan" },
+                                                { value: "South Korea", label: "South Korea" },
+                                                { value: "Germany", label: "Germany" },
+                                                { value: "France", label: "France" },
+                                                { value: "Italy", label: "Italy" },
+                                                { value: "Netherlands", label: "Netherlands" },
+                                                { value: "South Africa", label: "South Africa" },
+                                                { value: "Nigeria", label: "Nigeria" },
+                                                { value: "Kenya", label: "Kenya" },
+                                                { value: "Brazil", label: "Brazil" },
+                                                { value: "Argentina", label: "Argentina" },
+                                                { value: "Sri Lanka", label: "Sri Lanka" },
+                                                { value: "Bangladesh", label: "Bangladesh" },
+                                                { value: "Nepal", label: "Nepal" }
+                                            ]}
+                                            placeholder="Select Country"
+                                        />
+                                    </div>
+                                    <div>
+                                        <SelectField
+                                            label="State"
+                                            name="place_of_supply"
+                                            value={formData.place_of_supply}
+                                            onChange={handleFormChange}
+                                            options={INDIAN_STATES.map(state => ({
+                                                value: state.code,
+                                                label: `${state.name} (${state.code})`
+                                            }))}
+                                            required={true}
+                                            placeholder="Select State"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">City</label>
+                                        <input
+                                            type="text"
+                                            value={formData.city}
+                                            onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Postcode</label>
+                                        <input
+                                            type="text"
+                                            value={formData.postcode}
+                                            onChange={(e) => setFormData({ ...formData, postcode: e.target.value })}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Address</label>
+                                        <textarea
+                                            value={formData.address}
+                                            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                                            rows={3}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full min-w-[1580px] border-collapse">
-                                    <thead>
-                                        <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
-                                            <th className="w-[450px] min-w-[450px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item</th>
-                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item Code</th>
-                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">HSN Code</th>
-                                            <th className="w-[200px] min-w-[200px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Description</th>
-                                            <th className="w-[80px] min-w-[80px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Qty</th>
-                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Unit Price</th>
-                                            <th className="w-[100px] min-w-[100px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount %</th>
-                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount Amt</th>
-                                            <th className="w-[80px] min-w-[80px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">GST %</th>
-                                            <th className="w-[130px] min-w-[130px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Total</th>
-                                            <th className="w-[60px] min-w-[60px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {items.map((item) => (
-                                            <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                                                <td className="w-[450px] min-w-[450px] px-3 py-3">
-                                                    <ProductSelectField
-                                                        value={item.product_id}
-                                                        manualLabel={item.description || item.item_code}
-                                                        products={products}
-                                                        onChange={(product) => {
-                                                            if (!product) return;
 
-                                                            setItems(prev =>
-                                                                prev.map(i => {
-                                                                    if (i.id !== item.id) return i;
+                            {/* SECTION 3: Sales Items Table */}
+                            <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+                                <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <h2 className="text-lg font-semibold text-dark dark:text-white">Items</h2>
+                                        <p className="mt-1 text-sm text-dark-6">
+                                            Update items for your sales invoice
+                                        </p>
+                                    </div>
+                                    <div className="mt-2 flex gap-2 sm:mt-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => router.push("/products/new")}
+                                            className="inline-flex items-center gap-2 rounded-lg border border-blue-600 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
+                                        >
+                                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                            </svg>
+                                            Add New Product
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => addItem()}
+                                            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                                        >
+                                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                            </svg>
+                                            Add Item
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[1580px] border-collapse">
+                                        <thead>
+                                            <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+                                                <th className="w-[450px] min-w-[450px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item</th>
+                                                <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item Code</th>
+                                                <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">HSN Code</th>
+                                                <th className="w-[200px] min-w-[200px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Description</th>
+                                                <th className="w-[80px] min-w-[80px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Qty</th>
+                                                <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Unit Price</th>
+                                                <th className="w-[100px] min-w-[100px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount %</th>
+                                                <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount Amt</th>
+                                                <th className="w-[80px] min-w-[80px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">GST %</th>
+                                                <th className="w-[130px] min-w-[130px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Total</th>
+                                                <th className="w-[60px] min-w-[60px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {items.map((item) => (
+                                                <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
+                                                    <td className="w-[450px] min-w-[450px] px-3 py-3">
+                                                        <ProductSelectField
+                                                            value={item.product_id}
+                                                            manualLabel={item.description || item.item_code}
+                                                            products={products}
+                                                            onChange={(product) => {
+                                                                if (!product) return;
 
-                                                                    const unitPrice =
-                                                                        product.selling_price ??
-                                                                        product.unit_price ??
-                                                                        0;
+                                                                setItems(prev =>
+                                                                    prev.map(i => {
+                                                                        if (i.id !== item.id) return i;
 
-                                                                    const gstRate = Number(product.gst_rate) || i.gst_rate || 18;
-                                                                    const qty = i.quantity || 1;
+                                                                        const unitPrice =
+                                                                            product.selling_price ??
+                                                                            product.unit_price ??
+                                                                            0;
 
-                                                                    const taxable = qty * unitPrice;
-                                                                    const tax = taxable * (gstRate / 100);
+                                                                        const gstRate = Number(product.gst_rate) || i.gst_rate || 18;
+                                                                        const qty = i.quantity || 1;
 
-                                                                    return {
-                                                                        ...i,
-                                                                        product_id: product.id,
-                                                                        item_code: i.item_code || "",
-                                                                        description: product.name,
+                                                                        const taxable = qty * unitPrice;
+                                                                        const tax = taxable * (gstRate / 100);
 
-                                                                        hsn_code: product.hsn_code || product.hsn || "",
-                                                                        unit_price: unitPrice,
-                                                                        gst_rate: gstRate,
-                                                                        discount_amount: 0,
-                                                                        taxable_amount: taxable,
-                                                                        total_amount: taxable + tax,
-                                                                        ...(isIntraStateSupply(formData.place_of_supply) ? {
-                                                                            cgst_rate: gstRate / 2,
-                                                                            sgst_rate: gstRate / 2,
-                                                                            igst_rate: 0,
-                                                                        } : {
-                                                                            cgst_rate: 0,
-                                                                            sgst_rate: 0,
-                                                                            igst_rate: gstRate,
-                                                                        }),
-                                                                    };
-                                                                })
-                                                            );
-                                                        }}
-                                                    />
-                                                </td>
+                                                                        return {
+                                                                            ...i,
+                                                                            product_id: product.id,
+                                                                            item_code: i.item_code || "",
+                                                                            description: product.name,
 
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="text"
-                                                        value={item.item_code}
-                                                        onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}
-                                                        className="w-full min-w-[120px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        placeholder="Enter item code"
-                                                    />
-                                                </td>
+                                                                            hsn_code: product.hsn_code || product.hsn || "",
+                                                                            unit_price: unitPrice,
+                                                                            gst_rate: gstRate,
+                                                                            discount_amount: 0,
+                                                                            taxable_amount: taxable,
+                                                                            total_amount: taxable + tax,
+                                                                            ...(isIntraStateSupply(formData.place_of_supply) ? {
+                                                                                cgst_rate: gstRate / 2,
+                                                                                sgst_rate: gstRate / 2,
+                                                                                igst_rate: 0,
+                                                                            } : {
+                                                                                cgst_rate: 0,
+                                                                                sgst_rate: 0,
+                                                                                igst_rate: gstRate,
+                                                                            }),
+                                                                        };
+                                                                    })
+                                                                );
+                                                            }}
+                                                        />
+                                                    </td>
 
-                                                {/* HSN Code Input (Auto-filled but editable) */}
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="text"
-                                                        value={item.hsn_code}
-                                                        onChange={(e) => updateItem(item.id, 'hsn_code', e.target.value)}
-                                                        className="w-full min-w-[100px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        placeholder="HSN"
-                                                    />
-                                                </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="text"
+                                                            value={item.item_code}
+                                                            onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}
+                                                            className="w-full min-w-[120px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            placeholder="Enter item code"
+                                                        />
+                                                    </td>
 
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="text"
-                                                        value={item.description}
-                                                        onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                                                        className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        placeholder="Description"
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="number"
-                                                        value={item.quantity}
-                                                        onChange={(e) => updateItem(item.id, 'quantity', parseFloat(e.target.value))}
-                                                        className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        min="1"
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <input
-                                                        type="number"
-                                                        value={item.unit_price}
-                                                        onChange={(e) => updateItem(item.id, 'unit_price', parseFloat(e.target.value))}
-                                                        className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        min="0"
-                                                        step="0.01"
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <div className="flex gap-1">
+                                                    {/* HSN Code Input (Auto-filled but editable) */}
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="text"
+                                                            value={item.hsn_code}
+                                                            onChange={(e) => updateItem(item.id, 'hsn_code', e.target.value)}
+                                                            className="w-full min-w-[100px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            placeholder="HSN"
+                                                        />
+                                                    </td>
+
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="text"
+                                                            value={item.description}
+                                                            onChange={(e) => updateItem(item.id, 'description', e.target.value)}
+                                                            className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            placeholder="Description"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
                                                         <input
                                                             type="number"
-                                                            value={item.discount_percent}
-                                                            onChange={(e) => updateItem(item.id, 'discount_percent', parseFloat(e.target.value))}
-                                                            className="w-16 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            value={item.quantity}
+                                                            onChange={(e) => updateItem(item.id, 'quantity', parseFloat(e.target.value))}
+                                                            className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                            min="1"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="number"
+                                                            value={item.unit_price}
+                                                            onChange={(e) => updateItem(item.id, 'unit_price', parseFloat(e.target.value))}
+                                                            className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
                                                             min="0"
                                                             step="0.01"
                                                         />
-                                                        <span className="flex items-center px-1 py-1.5 text-xs">%</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span className="font-medium">
-                                                        ₹{(item.discount_amount || 0).toFixed(2)}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <select
-                                                        value={item.gst_rate}
-                                                        onChange={(e) => updateItem(item.id, 'gst_rate', parseFloat(e.target.value))}
-                                                        className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    >
-                                                        <option value="0">0%</option>
-                                                        <option value="5">5%</option>
-                                                        <option value="12">12%</option>
-                                                        <option value="18">18%</option>
-                                                        <option value="28">28%</option>
-                                                    </select>
-                                                </td>
-                                                <td className="px-4 py-3 font-medium">
-                                                    ₹{item.total_amount.toFixed(2)}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeItem(item.id)}
-                                                        className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                                    >
-                                                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                        </svg>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* SECTION 4: Charges & Discounts */}
-                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                            {/* Left side - Charges & Discounts */}
-                            <div className="lg:col-span-2">
-                                <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                                    <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Charges & Discounts</h2>
-                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                        {/* In the Charges & Discounts section */}
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={formData.freightCharges}
-                                                    onChange={(e) => setFormData({ ...formData, freightCharges: parseFloat(e.target.value) || 0 })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                    step="0.01"
-                                                />
-                                                <select
-                                                    value={formData.freightType}
-                                                    onChange={(e) => setFormData({ ...formData, freightType: e.target.value })}
-                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="fixed">Fixed</option>
-                                                    <option value="tax@0%">Tax@0%</option>
-                                                    <option value="tax@5%">Tax@5%</option>
-                                                    <option value="tax@12%">Tax@12%</option>
-                                                    <option value="tax@18%">Tax@18%</option>
-                                                    <option value="tax@28%">Tax@28%</option>
-                                                </select>
-                                            </div>
-                                            {formData.freightType.startsWith('tax@') && formData.freightCharges > 0 && (
-                                                <div className="mt-1 text-xs text-dark-6">
-                                                    Base: ₹{formData.freightCharges.toFixed(2)} + {formData.freightType.replace('tax@', '')} tax = ₹{totals.freight.toFixed(2)}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={formData.pfCharges}
-                                                    onChange={(e) => setFormData({ ...formData, pfCharges: parseFloat(e.target.value) || 0 })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                    step="0.01"
-                                                />
-                                                <select
-                                                    value={formData.pfType}
-                                                    onChange={(e) => setFormData({ ...formData, pfType: e.target.value })}
-                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="fixed">Fixed</option>
-                                                    <option value="tax@0%">Tax@0%</option>
-                                                    <option value="tax@5%">Tax@5%</option>
-                                                    <option value="tax@12%">Tax@12%</option>
-                                                    <option value="tax@18%">Tax@18%</option>
-                                                    <option value="tax@28%">Tax@28%</option>
-                                                </select>
-                                            </div>
-                                            {formData.pfType.startsWith('tax@') && formData.pfCharges > 0 && (
-                                                <div className="mt-1 text-xs text-dark-6">
-                                                    Base: ₹{formData.pfCharges.toFixed(2)} + {formData.pfType.replace('tax@', '')} tax = ₹{totals.pf.toFixed(2)}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={formData.pfCharges}
-                                                    onChange={(e) => setFormData({ ...formData, pfCharges: parseFloat(e.target.value) })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                />
-                                                <select
-                                                    value={formData.pfType}
-                                                    onChange={(e) => setFormData({ ...formData, pfType: e.target.value })}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="fixed">Fixed</option>
-                                                    <option value="tax@18%">Tax@18%</option>
-                                                    <option value="tax@0%">Tax@0%</option>
-                                                    <option value="tax@5%">Tax@5%</option>
-                                                    <option value="tax@28%">Tax@28%</option>
-                                                    <option value="tax@12%">Tax@12%</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount Coupon Code</label>
-                                            <input
-                                                type="text"
-                                                value={formData.couponCode}
-                                                onChange={(e) => setFormData({ ...formData, couponCode: e.target.value })}
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Coupon Type</label>
-                                            <input
-                                                type="text"
-                                                value={formData.couponType}
-                                                readOnly
-                                                className="w-full rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 dark:border-dark-3 dark:bg-dark-2"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Coupon Value</label>
-                                            <input
-                                                type="number"
-                                                value={formData.couponValue}
-                                                onChange={(e) => setFormData({ ...formData, couponValue: parseFloat(e.target.value) })}
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                min="0"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount on All</label>
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={formData.discountOnAll}
-                                                    onChange={(e) => setFormData({ ...formData, discountOnAll: parseFloat(e.target.value) })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                />
-                                                <select
-                                                    value={formData.discountType}
-                                                    onChange={(e) => setFormData({ ...formData, discountType: e.target.value })}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
-                                                    <option value="percentage">%</option>
-                                                    <option value="fixed">Fixed</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Note</label>
-                                            <textarea
-                                                value={formData.note}
-                                                onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-                                                rows={3}
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-                                    </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex gap-1">
+                                                            <input
+                                                                type="number"
+                                                                value={item.discount_percent}
+                                                                onChange={(e) => updateItem(item.id, 'discount_percent', parseFloat(e.target.value))}
+                                                                className="w-16 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                                min="0"
+                                                                step="0.01"
+                                                            />
+                                                            <span className="flex items-center px-1 py-1.5 text-xs">%</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="font-medium">
+                                                            ₹{(item.discount_amount || 0).toFixed(2)}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <select
+                                                            value={item.gst_rate}
+                                                            onChange={(e) => updateItem(item.id, 'gst_rate', parseFloat(e.target.value))}
+                                                            className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        >
+                                                            <option value="0">0%</option>
+                                                            <option value="5">5%</option>
+                                                            <option value="12">12%</option>
+                                                            <option value="18">18%</option>
+                                                            <option value="28">28%</option>
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-4 py-3 font-medium">
+                                                        ₹{item.total_amount.toFixed(2)}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeItem(item.id)}
+                                                            className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                        >
+                                                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                            </svg>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
 
-                            {/* Right side - Total Summary */}
-                            <div className="lg:col-span-1">
-                                {/* SECTION 5: Total Summary */}
-                                <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                                    <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Total Summary</h2>
-                                    <div className="space-y-3">
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">Subtotal</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">Freight Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.freight.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">P & F Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">₹{totals.pf.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">Coupon Discount</span>
-                                            <span className="font-medium text-red-600">-₹{totals.couponDiscount.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">Discount on All</span>
-                                            <span className="font-medium text-red-600">-₹{totals.discountAll.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-dark-6">Round Off</span>
-
-                                            <div className="flex items-center gap-2">
-                                                {/* - Button: Makes amount negative */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const currentValue = Math.abs(formData.roundOff || 0);
-                                                        // Set to negative version of the absolute value
-                                                        setFormData(prev => ({
-                                                            ...prev,
-                                                            roundOff: -currentValue
-                                                        }));
-                                                    }}
-                                                    className="p-2 rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400"
-                                                    title="Make amount negative (subtract from total)"
-                                                >
-                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                                                    </svg>
-                                                </button>
-
-                                                {/* Input Field */}
-                                                <div className="relative">
+                            {/* SECTION 4: Charges & Discounts */}
+                            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                                {/* Left side - Charges & Discounts */}
+                                <div className="lg:col-span-2">
+                                    <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+                                        <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Charges & Discounts</h2>
+                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            {/* In the Charges & Discounts section */}
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
+                                                <div className="flex gap-2">
                                                     <input
                                                         type="number"
-                                                        value={Math.abs(formData.roundOff || 0)} // Show absolute value only
-                                                        onChange={(e) => {
-                                                            const inputValue = parseFloat(e.target.value) || 0;
-                                                            const currentSign = formData.roundOff >= 0 ? 1 : -1;
-                                                            // Apply current sign to the new input value
-                                                            setFormData(prev => ({
-                                                                ...prev,
-                                                                roundOff: currentSign * inputValue
-                                                            }));
-                                                        }}
-                                                        className="w-32 px-10 py-2 text-center border border-stroke dark:border-dark-3 rounded-lg bg-transparent outline-none focus:border-primary"
+                                                        value={formData.freightCharges}
+                                                        onChange={(e) => setFormData({ ...formData, freightCharges: parseFloat(e.target.value) || 0 })}
+                                                        className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        min="0"
                                                         step="0.01"
+                                                    />
+                                                    <select
+                                                        value={formData.freightType}
+                                                        onChange={(e) => setFormData({ ...formData, freightType: e.target.value })}
+                                                        className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    >
+                                                        <option value="fixed">Fixed</option>
+                                                        <option value="tax@0%">Tax@0%</option>
+                                                        <option value="tax@5%">Tax@5%</option>
+                                                        <option value="tax@12%">Tax@12%</option>
+                                                        <option value="tax@18%">Tax@18%</option>
+                                                        <option value="tax@28%">Tax@28%</option>
+                                                    </select>
+                                                </div>
+                                                {formData.freightType.startsWith('tax@') && formData.freightCharges > 0 && (
+                                                    <div className="mt-1 text-xs text-dark-6">
+                                                        Base: ₹{formData.freightCharges.toFixed(2)} + {formData.freightType.replace('tax@', '')} tax = ₹{totals.freight.toFixed(2)}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="number"
+                                                        value={formData.pfCharges}
+                                                        onChange={(e) => setFormData({ ...formData, pfCharges: parseFloat(e.target.value) || 0 })}
+                                                        className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        min="0"
+                                                        step="0.01"
+                                                    />
+                                                    <select
+                                                        value={formData.pfType}
+                                                        onChange={(e) => setFormData({ ...formData, pfType: e.target.value })}
+                                                        className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    >
+                                                        <option value="fixed">Fixed</option>
+                                                        <option value="tax@0%">Tax@0%</option>
+                                                        <option value="tax@5%">Tax@5%</option>
+                                                        <option value="tax@12%">Tax@12%</option>
+                                                        <option value="tax@18%">Tax@18%</option>
+                                                        <option value="tax@28%">Tax@28%</option>
+                                                    </select>
+                                                </div>
+                                                {formData.pfType.startsWith('tax@') && formData.pfCharges > 0 && (
+                                                    <div className="mt-1 text-xs text-dark-6">
+                                                        Base: ₹{formData.pfCharges.toFixed(2)} + {formData.pfType.replace('tax@', '')} tax = ₹{totals.pf.toFixed(2)}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="number"
+                                                        value={formData.pfCharges}
+                                                        onChange={(e) => setFormData({ ...formData, pfCharges: parseFloat(e.target.value) })}
+                                                        className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                         min="0"
                                                     />
-                                                    {/* Left sign indicator */}
-                                                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none">
-                                                        {formData.roundOff >= 0 ? '+' : '-'}
-                                                    </div>
-                                                    {/* Right currency symbol */}
-                                                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                                                        ₹
-                                                    </div>
-                                                </div>
-
-                                                {/* + Button: Makes amount positive */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const currentValue = Math.abs(formData.roundOff || 0);
-                                                        // Set to positive version of the absolute value
-                                                        setFormData(prev => ({
-                                                            ...prev,
-                                                            roundOff: currentValue
-                                                        }));
-                                                    }}
-                                                    className="p-2 rounded-lg bg-green-50 hover:bg-green-100 dark:bg-green-900/30 dark:hover:bg-green-900/50 text-green-600 dark:text-green-400"
-                                                    title="Make amount positive (add to total)"
-                                                >
-                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                                    </svg>
-                                                </button>
-
-                                                {/* Display with sign */}
-                                                <div className={`min-w-[100px] px-3 py-2 rounded-lg text-center ${totals.roundOff >= 0 ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                                                    <span className="font-medium">
-                                                        {totals.roundOff >= 0 ? '+₹' : '-₹'}{Math.abs(totals.roundOff).toFixed(2)}
-                                                    </span>
+                                                    <select
+                                                        value={formData.pfType}
+                                                        onChange={(e) => setFormData({ ...formData, pfType: e.target.value })}
+                                                        className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    >
+                                                        <option value="fixed">Fixed</option>
+                                                        <option value="tax@18%">Tax@18%</option>
+                                                        <option value="tax@0%">Tax@0%</option>
+                                                        <option value="tax@5%">Tax@5%</option>
+                                                        <option value="tax@28%">Tax@28%</option>
+                                                        <option value="tax@12%">Tax@12%</option>
+                                                    </select>
                                                 </div>
                                             </div>
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount Coupon Code</label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.couponCode}
+                                                    onChange={(e) => setFormData({ ...formData, couponCode: e.target.value })}
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Coupon Type</label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.couponType}
+                                                    readOnly
+                                                    className="w-full rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 dark:border-dark-3 dark:bg-dark-2"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Coupon Value</label>
+                                                <input
+                                                    type="number"
+                                                    value={formData.couponValue}
+                                                    onChange={(e) => setFormData({ ...formData, couponValue: parseFloat(e.target.value) })}
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    min="0"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount on All</label>
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="number"
+                                                        value={formData.discountOnAll}
+                                                        onChange={(e) => setFormData({ ...formData, discountOnAll: parseFloat(e.target.value) })}
+                                                        className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        min="0"
+                                                    />
+                                                    <select
+                                                        value={formData.discountType}
+                                                        onChange={(e) => setFormData({ ...formData, discountType: e.target.value })}
+                                                        className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    >
+                                                        <option value="percentage">%</option>
+                                                        <option value="fixed">Fixed</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Note</label>
+                                                <textarea
+                                                    value={formData.note}
+                                                    onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                                                    rows={3}
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="border-t border-stroke pt-3 dark:border-dark-3">
+                                    </div>
+                                </div>
+
+                                {/* Right side - Total Summary */}
+                                <div className="lg:col-span-1">
+                                    {/* SECTION 5: Total Summary */}
+                                    <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+                                        <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Total Summary</h2>
+                                        <div className="space-y-3">
                                             <div className="flex justify-between">
-                                                <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
-                                                <span className="text-lg font-bold text-primary">₹{totals.grandTotal.toLocaleString('en-IN')}</span>
+                                                <span className="text-dark-6">Subtotal</span>
+                                                <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-dark-6">Freight Charges</span>
+                                                <span className="font-medium text-dark dark:text-white">₹{totals.freight.toLocaleString('en-IN')}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-dark-6">P & F Charges</span>
+                                                <span className="font-medium text-dark dark:text-white">₹{totals.pf.toLocaleString('en-IN')}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-dark-6">Coupon Discount</span>
+                                                <span className="font-medium text-red-600">-₹{totals.couponDiscount.toLocaleString('en-IN')}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-dark-6">Discount on All</span>
+                                                <span className="font-medium text-red-600">-₹{totals.discountAll.toLocaleString('en-IN')}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-dark-6">Round Off</span>
+
+                                                <div className="flex items-center gap-2">
+                                                    {/* - Button: Makes amount negative */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const currentValue = Math.abs(formData.roundOff || 0);
+                                                            // Set to negative version of the absolute value
+                                                            setFormData(prev => ({
+                                                                ...prev,
+                                                                roundOff: -currentValue
+                                                            }));
+                                                        }}
+                                                        className="p-2 rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400"
+                                                        title="Make amount negative (subtract from total)"
+                                                    >
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                                                        </svg>
+                                                    </button>
+
+                                                    {/* Input Field */}
+                                                    <div className="relative">
+                                                        <input
+                                                            type="number"
+                                                            value={Math.abs(formData.roundOff || 0)} // Show absolute value only
+                                                            onChange={(e) => {
+                                                                const inputValue = parseFloat(e.target.value) || 0;
+                                                                const currentSign = formData.roundOff >= 0 ? 1 : -1;
+                                                                // Apply current sign to the new input value
+                                                                setFormData(prev => ({
+                                                                    ...prev,
+                                                                    roundOff: currentSign * inputValue
+                                                                }));
+                                                            }}
+                                                            className="w-32 px-10 py-2 text-center border border-stroke dark:border-dark-3 rounded-lg bg-transparent outline-none focus:border-primary"
+                                                            step="0.01"
+                                                            min="0"
+                                                        />
+                                                        {/* Left sign indicator */}
+                                                        <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none">
+                                                            {formData.roundOff >= 0 ? '+' : '-'}
+                                                        </div>
+                                                        {/* Right currency symbol */}
+                                                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
+                                                            ₹
+                                                        </div>
+                                                    </div>
+
+                                                    {/* + Button: Makes amount positive */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const currentValue = Math.abs(formData.roundOff || 0);
+                                                            // Set to positive version of the absolute value
+                                                            setFormData(prev => ({
+                                                                ...prev,
+                                                                roundOff: currentValue
+                                                            }));
+                                                        }}
+                                                        className="p-2 rounded-lg bg-green-50 hover:bg-green-100 dark:bg-green-900/30 dark:hover:bg-green-900/50 text-green-600 dark:text-green-400"
+                                                        title="Make amount positive (add to total)"
+                                                    >
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                                        </svg>
+                                                    </button>
+
+                                                    {/* Display with sign */}
+                                                    <div className={`min-w-[100px] px-3 py-2 rounded-lg text-center ${totals.roundOff >= 0 ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                                                        <span className="font-medium">
+                                                            {totals.roundOff >= 0 ? '+₹' : '-₹'}{Math.abs(totals.roundOff).toFixed(2)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="border-t border-stroke pt-3 dark:border-dark-3">
+                                                <div className="flex justify-between">
+                                                    <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
+                                                    <span className="text-lg font-bold text-primary">₹{totals.grandTotal.toLocaleString('en-IN')}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
 
 
-                        {/* SECTION 6: Previous Payments Information */}
-                        <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
-                            <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
-                                <h2 className="text-lg font-semibold text-dark dark:text-white">Previous Payments Information</h2>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPreviousPayments(!showPreviousPayments)}
-                                    className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
-                                >
-                                    <svg className={`h-5 w-5 transition-transform ${showPreviousPayments ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </button>
-                            </div>
-                            {showPreviousPayments && (
-                                <div className="p-6">
-                                    {previousPayments.length === 0 ? (
-                                        <div className="py-8 text-center">
-                                            <svg className="mx-auto mb-4 h-12 w-12 text-dark-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                            <p className="text-dark-6">Payments Pending!!</p>
-                                        </div>
-                                    ) : (
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full">
-                                                <thead>
-                                                    <tr className="border-b border-stroke dark:border-dark-3">
-                                                        <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">#</th>
-                                                        <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Date</th>
-                                                        <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Payment Type</th>
-                                                        <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Payment Note</th>
-                                                        <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Payment Amount</th>
-                                                        <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {/* Payments would be listed here */}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* SECTION 7: Invoice Terms & Conditions */}
-                        <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
-                            <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
-                                <h2 className="text-lg font-semibold text-dark dark:text-white">Invoice Terms & Conditions</h2>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowTerms(!showTerms)}
-                                    className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
-                                >
-                                    <svg className={`h-5 w-5 transition-transform ${showTerms ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </button>
-                            </div>
-                            {showTerms && (
-                                <div className="p-6">
-                                    <textarea
-                                        value={formData.terms}
-                                        onChange={(e) => setFormData({ ...formData, terms: e.target.value })}
-                                        rows={6}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                                    />
-                                </div>
-                            )}
-                        </div>
-
-                        {/* SECTION 8: Other Fields (Accordion) */}
-                        <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
-                            <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
-                                <h2 className="text-lg font-semibold text-dark dark:text-white">
-                                    Other Fields
-                                </h2>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowOtherFields(!showOtherFields)}
-                                    className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
-                                >
-                                    <svg
-                                        className={`h-5 w-5 transition-transform ${showOtherFields ? "rotate-180" : ""
-                                            }`}
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
+                            {/* SECTION 6: Previous Payments Information */}
+                            <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
+                                <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
+                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Previous Payments Information</h2>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPreviousPayments(!showPreviousPayments)}
+                                        className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
                                     >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            strokeWidth={2}
-                                            d="M19 9l-7 7-7-7"
-                                        />
-                                    </svg>
-                                </button>
-                            </div>
-
-                            {showOtherFields && (
-                                <div className="p-6">
-                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Delivery Note
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.deliveryNote}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, deliveryNote: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Mode / Terms of Payment
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.paymentTerms}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, paymentTerms: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Supplier's Ref.
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.supplierRef}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, supplierRef: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Other Reference(s)
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.otherReferences}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, otherReferences: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Buyer's Order No.
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.buyerOrderNo}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, buyerOrderNo: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Buyer's Order Date
-                                            </label>
-                                            <input
-                                                type="date"
-                                                value={formData.buyerOrderDate}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, buyerOrderDate: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Despatch Document No.
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.despatchDocNo}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, despatchDocNo: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Delivery Note Date
-                                            </label>
-                                            <input
-                                                type="date"
-                                                value={formData.deliveryNoteDate}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, deliveryNoteDate: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Despatched Through
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.despatchedThrough}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, despatchedThrough: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Destination
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.destination}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, destination: e.target.value })
-                                                }
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                        <div className="md:col-span-2">
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Terms of Delivery
-                                            </label>
-                                            <textarea
-                                                value={formData.termsOfDelivery}
-                                                onChange={(e) =>
-                                                    setFormData({ ...formData, termsOfDelivery: e.target.value })
-                                                }
-                                                rows={3}
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-
-                                    </div>
+                                        <svg className={`h-5 w-5 transition-transform ${showPreviousPayments ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </button>
                                 </div>
-                            )}
-
-                        </div>
-
-
-                        {/* SECTION 9: Payment */}
-                        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark mt-6">
-                            <h2 className="mb-6 text-lg font-semibold text-dark dark:text-white">
-                                Payment
-                            </h2>
-
-                            {/* Advance Information */}
-                            <div className="mb-6 p-4 bg-gray-50 dark:bg-dark-2 rounded-lg border border-stroke dark:border-dark-3">
-                                <h3 className="text-md font-medium text-dark dark:text-white mb-3">
-                                    Advance Information
-                                </h3>
-                                <div className="flex items-center justify-between mb-3">
-                                    <span className="text-dark-6 dark:text-gray-400">Advance :</span>
-                                    <span className="font-medium text-dark dark:text-white">
-                                        ₹{paymentData.advanceAmount.toFixed(2)}
-                                    </span>
-                                </div>
-                                <div className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        id="adjustAdvancePayment"
-                                        checked={paymentData.adjustAdvancePayment}
-                                        onChange={(e) => setPaymentData(prev => ({
-                                            ...prev,
-                                            adjustAdvancePayment: e.target.checked
-                                        }))}
-                                        className="h-4 w-4 rounded border-stroke text-primary focus:ring-primary dark:border-dark-3"
-                                    />
-                                    <label
-                                        htmlFor="adjustAdvancePayment"
-                                        className="ml-2 text-sm text-dark dark:text-white"
-                                    >
-                                        Adjust Advance Payment
-                                    </label>
-                                </div>
-                            </div>
-
-                            {/* Payment Form Fields - Single Row Layout */}
-                            <div className="bg-gray-50 dark:bg-dark-2 p-4 rounded-lg">
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                    {/* Amount Field */}
-                                    <div>
-                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                            Amount <span className="text-red-500">*</span>
-                                        </label>
-                                        <input
-                                            type="number"
-                                            value={paymentData.amount}
-                                            onChange={(e) => setPaymentData(prev => ({
-                                                ...prev,
-                                                amount: parseFloat(e.target.value) || 0
-                                            }))}
-                                            placeholder="Enter payment amount"
-                                            min="0"
-                                            step="0.01"
-                                            required
-                                            className="w-full rounded-lg border border-stroke bg-white px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3 dark:bg-gray-dark"
-                                        />
-                                    </div>
-
-                                    {/* Payment Type Dropdown */}
-                                    <div>
-                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                            Payment Type <span className="text-red-500">*</span>
-                                        </label>
-                                        <SelectField
-                                            name="paymentType"
-                                            value={paymentData.paymentType}
-                                            onChange={(name, value) => setPaymentData(prev => ({
-                                                ...prev,
-                                                [name]: value
-                                            }))}
-                                            options={[
-                                                { value: "", label: "- Select -" },
-                                                { value: "credit", label: "Credit" },
-                                                { value: "cash", label: "Cash" },
-                                                { value: "card", label: "Card" },
-                                                { value: "pay_by_advance", label: "Pay by Advance" },
-                                                { value: "bank", label: "Bank" }
-                                            ]}
-                                            placeholder="- Select -"
-                                            required={true}
-                                            label=""
-                                        />
-                                    </div>
-
-                                    {/* Account Dropdown */}
-                                    <div>
-                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                            Account <span className="text-red-500">*</span>
-                                        </label>
-                                        <SelectField
-                                            name="account"
-                                            value={paymentData.account}
-                                            onChange={(name, value) => setPaymentData(prev => ({
-                                                ...prev,
-                                                [name]: value
-                                            }))}
-                                            options={[
-                                                { value: "", label: "- Select Account -" },
-                                                { value: "icici_bank", label: "ICICI Bank" },
-                                                { value: "idfc_bank", label: "IDFC First Bank" }
-                                            ]}
-                                            placeholder="- Select Account -"
-                                            required={true}
-                                            label=""
-                                        />
-                                    </div>
-
-                                    {/* Payment Note Field */}
-                                    <div className="md:col-span-4">
-                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                            Payment Note
-                                        </label>
-                                        <textarea
-                                            value={paymentData.paymentNote}
-                                            onChange={(e) => setPaymentData(prev => ({
-                                                ...prev,
-                                                paymentNote: e.target.value
-                                            }))}
-                                            placeholder="Enter payment remarks or reference details"
-                                            rows={2}
-                                            className="w-full rounded-lg border border-stroke bg-white px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3 dark:bg-gray-dark"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Validation and Summary */}
-                                {paymentData.amount > 0 && (
-                                    <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm text-dark-6 dark:text-gray-400">
-                                                Payment Amount:
-                                            </span>
-                                            <span className="font-medium text-dark dark:text-white">
-                                                ₹{paymentData.amount.toFixed(2)}
-                                            </span>
-                                        </div>
-                                        {paymentData.paymentType === "pay_by_advance" && paymentData.advanceAmount > 0 && (
-                                            <div className="flex items-center justify-between mt-1">
-                                                <span className="text-sm text-dark-6 dark:text-gray-400">
-                                                    Available Advance:
-                                                </span>
-                                                <span className="font-medium text-green-600 dark:text-green-400">
-                                                    ₹{paymentData.advanceAmount.toFixed(2)}
-                                                </span>
+                                {showPreviousPayments && (
+                                    <div className="p-6">
+                                        {previousPayments.length === 0 ? (
+                                            <div className="py-8 text-center">
+                                                <svg className="mx-auto mb-4 h-12 w-12 text-dark-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                                <p className="text-dark-6">Payments Pending!!</p>
+                                            </div>
+                                        ) : (
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full">
+                                                    <thead>
+                                                        <tr className="border-b border-stroke dark:border-dark-3">
+                                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">#</th>
+                                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Date</th>
+                                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Payment Type</th>
+                                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Payment Note</th>
+                                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Payment Amount</th>
+                                                            <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {/* Payments would be listed here */}
+                                                    </tbody>
+                                                </table>
                                             </div>
                                         )}
                                     </div>
                                 )}
+                            </div>
 
-                                {/* Validation Error Messages */}
-                                {paymentData.amount > 0 && (!paymentData.paymentType || !paymentData.account) && (
-                                    <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                                        <p className="text-sm text-red-600 dark:text-red-400">
-                                            {!paymentData.paymentType && !paymentData.account
-                                                ? "Please select Payment Type and Account"
-                                                : !paymentData.paymentType
-                                                    ? "Please select Payment Type"
-                                                    : "Please select Account"}
-                                        </p>
+                            {/* SECTION 7: Invoice Terms & Conditions */}
+                            <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
+                                <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
+                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Invoice Terms & Conditions</h2>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowTerms(!showTerms)}
+                                        className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
+                                    >
+                                        <svg className={`h-5 w-5 transition-transform ${showTerms ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                {showTerms && (
+                                    <div className="p-6">
+                                        <textarea
+                                            value={formData.terms}
+                                            onChange={(e) => setFormData({ ...formData, terms: e.target.value })}
+                                            rows={6}
+                                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                                        />
                                     </div>
                                 )}
                             </div>
-                        </div>
 
+                            {/* SECTION 8: Other Fields (Accordion) */}
+                            <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
+                                <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
+                                    <h2 className="text-lg font-semibold text-dark dark:text-white">
+                                        Other Fields
+                                    </h2>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowOtherFields(!showOtherFields)}
+                                        className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
+                                    >
+                                        <svg
+                                            className={`h-5 w-5 transition-transform ${showOtherFields ? "rotate-180" : ""
+                                                }`}
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M19 9l-7 7-7-7"
+                                            />
+                                        </svg>
+                                    </button>
+                                </div>
 
-                        {/* Action Buttons */}
-                        <div className="rounded-lg p-6 dark:bg-gray-dark">
-                            <div className="flex flex-wrap justify-center gap-4">
-                                <button
-                                    type="submit"
-                                    disabled={isSubmitting}
-                                    className="min-w-[180px] rounded-lg bg-green-600 px-6 py-3 font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
-                                >
-                                    {isSubmitting ? "Saving..." : "Update Sales"}
-                                </button>
+                                {showOtherFields && (
+                                    <div className="p-6">
+                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 
-                                <button
-                                    type="button"
-                                    onClick={() => router.back()}
-                                    className="min-w-[180px] rounded-lg border border-stroke bg-white px-6 py-3 font-medium text-dark transition hover:bg-gray-50 dark:border-dark-3 dark:bg-gray-dark dark:text-white"
-                                >
-                                    Cancel
-                                </button>
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Delivery Note
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.deliveryNote}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, deliveryNote: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Mode / Terms of Payment
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.paymentTerms}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, paymentTerms: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Supplier's Ref.
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.supplierRef}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, supplierRef: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Other Reference(s)
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.otherReferences}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, otherReferences: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Buyer's Order No.
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.buyerOrderNo}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, buyerOrderNo: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Buyer's Order Date
+                                                </label>
+                                                <input
+                                                    type="date"
+                                                    value={formData.buyerOrderDate}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, buyerOrderDate: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Despatch Document No.
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.despatchDocNo}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, despatchDocNo: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Delivery Note Date
+                                                </label>
+                                                <input
+                                                    type="date"
+                                                    value={formData.deliveryNoteDate}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, deliveryNoteDate: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Despatched Through
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.despatchedThrough}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, despatchedThrough: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Destination
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.destination}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, destination: e.target.value })
+                                                    }
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                            <div className="md:col-span-2">
+                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                    Terms of Delivery
+                                                </label>
+                                                <textarea
+                                                    value={formData.termsOfDelivery}
+                                                    onChange={(e) =>
+                                                        setFormData({ ...formData, termsOfDelivery: e.target.value })
+                                                    }
+                                                    rows={3}
+                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                />
+                                            </div>
+
+                                        </div>
+                                    </div>
+                                )}
+
                             </div>
-                        </div>
 
+
+                            {/* SECTION 9: Payment */}
+                            <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark mt-6">
+                                <h2 className="mb-6 text-lg font-semibold text-dark dark:text-white">
+                                    Payment
+                                </h2>
+
+                                {/* Advance Information */}
+                                <div className="mb-6 p-4 bg-gray-50 dark:bg-dark-2 rounded-lg border border-stroke dark:border-dark-3">
+                                    <h3 className="text-md font-medium text-dark dark:text-white mb-3">
+                                        Advance Information
+                                    </h3>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <span className="text-dark-6 dark:text-gray-400">Advance :</span>
+                                        <span className="font-medium text-dark dark:text-white">
+                                            ₹{paymentData.advanceAmount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            id="adjustAdvancePayment"
+                                            checked={paymentData.adjustAdvancePayment}
+                                            onChange={(e) => setPaymentData(prev => ({
+                                                ...prev,
+                                                adjustAdvancePayment: e.target.checked
+                                            }))}
+                                            className="h-4 w-4 rounded border-stroke text-primary focus:ring-primary dark:border-dark-3"
+                                        />
+                                        <label
+                                            htmlFor="adjustAdvancePayment"
+                                            className="ml-2 text-sm text-dark dark:text-white"
+                                        >
+                                            Adjust Advance Payment
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Payment Form Fields - Single Row Layout */}
+                                <div className="bg-gray-50 dark:bg-dark-2 p-4 rounded-lg">
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                        {/* Amount Field */}
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Amount <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="number"
+                                                value={paymentData.amount}
+                                                onChange={(e) => setPaymentData(prev => ({
+                                                    ...prev,
+                                                    amount: parseFloat(e.target.value) || 0
+                                                }))}
+                                                placeholder="Enter payment amount"
+                                                min="0"
+                                                step="0.01"
+                                                required
+                                                className="w-full rounded-lg border border-stroke bg-white px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3 dark:bg-gray-dark"
+                                            />
+                                        </div>
+
+                                        {/* Payment Type Dropdown */}
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Payment Type <span className="text-red-500">*</span>
+                                            </label>
+                                            <SelectField
+                                                name="paymentType"
+                                                value={paymentData.paymentType}
+                                                onChange={(name, value) => setPaymentData(prev => ({
+                                                    ...prev,
+                                                    [name]: value
+                                                }))}
+                                                options={[
+                                                    { value: "", label: "- Select -" },
+                                                    { value: "credit", label: "Credit" },
+                                                    { value: "cash", label: "Cash" },
+                                                    { value: "card", label: "Card" },
+                                                    { value: "pay_by_advance", label: "Pay by Advance" },
+                                                    { value: "bank", label: "Bank" }
+                                                ]}
+                                                placeholder="- Select -"
+                                                required={true}
+                                                label=""
+                                            />
+                                        </div>
+
+                                        {/* Account Dropdown */}
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Account <span className="text-red-500">*</span>
+                                            </label>
+                                            <SelectField
+                                                name="account"
+                                                value={paymentData.account}
+                                                onChange={(name, value) => setPaymentData(prev => ({
+                                                    ...prev,
+                                                    [name]: value
+                                                }))}
+                                                options={[
+                                                    { value: "", label: "- Select Account -" },
+                                                    { value: "icici_bank", label: "ICICI Bank" },
+                                                    { value: "idfc_bank", label: "IDFC First Bank" }
+                                                ]}
+                                                placeholder="- Select Account -"
+                                                required={true}
+                                                label=""
+                                            />
+                                        </div>
+
+                                        {/* Payment Note Field */}
+                                        <div className="md:col-span-4">
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                                Payment Note
+                                            </label>
+                                            <textarea
+                                                value={paymentData.paymentNote}
+                                                onChange={(e) => setPaymentData(prev => ({
+                                                    ...prev,
+                                                    paymentNote: e.target.value
+                                                }))}
+                                                placeholder="Enter payment remarks or reference details"
+                                                rows={2}
+                                                className="w-full rounded-lg border border-stroke bg-white px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3 dark:bg-gray-dark"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Validation and Summary */}
+                                    {paymentData.amount > 0 && (
+                                        <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-dark-6 dark:text-gray-400">
+                                                    Payment Amount:
+                                                </span>
+                                                <span className="font-medium text-dark dark:text-white">
+                                                    ₹{paymentData.amount.toFixed(2)}
+                                                </span>
+                                            </div>
+                                            {paymentData.paymentType === "pay_by_advance" && paymentData.advanceAmount > 0 && (
+                                                <div className="flex items-center justify-between mt-1">
+                                                    <span className="text-sm text-dark-6 dark:text-gray-400">
+                                                        Available Advance:
+                                                    </span>
+                                                    <span className="font-medium text-green-600 dark:text-green-400">
+                                                        ₹{paymentData.advanceAmount.toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Validation Error Messages */}
+                                    {paymentData.amount > 0 && (!paymentData.paymentType || !paymentData.account) && (
+                                        <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                                            <p className="text-sm text-red-600 dark:text-red-400">
+                                                {!paymentData.paymentType && !paymentData.account
+                                                    ? "Please select Payment Type and Account"
+                                                    : !paymentData.paymentType
+                                                        ? "Please select Payment Type"
+                                                        : "Please select Account"}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <hr />
+                            {/* Action Buttons */}
+                            <div className="rounded-lg p-4 shadow-none sm:p-6">
+                                <div className="flex flex-wrap justify-center gap-4">
+                                    <button
+                                        type="submit"
+                                        disabled={isSubmitting}
+                                        className="h-9 min-w-[140px] rounded-lg bg-primary px-6 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:min-w-[220px]"
+                                    >
+                                        {isSubmitting ? "Saving..." : "Update Sales"}
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => router.back()}
+                                        className="h-9 min-w-[140px] rounded-lg bg-[#E5E7EB] px-6 text-sm font-medium text-black transition-colors hover:bg-[#e9ebf0] dark:bg-dark-3 dark:text-white dark:hover:bg-dark-2 sm:h-10 sm:min-w-[220px]"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
                     </div>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
     );
 }
+
+

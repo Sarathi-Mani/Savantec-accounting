@@ -130,30 +130,30 @@ export default function NewEmployeePage() {
     return annualCTC.toString();
   };
 
-const uploadImage = async (file: File): Promise<string> => {
-  try {
-    const formData = new FormData();
-    formData.append("file", file);
+  const uploadImage = async (file: File): Promise<string> => {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
 
-    // Use the correct endpoint
-    const response = await fetch("/api/upload", {
-      method: "POST",
-      body: formData,
-    });
+      // Use the correct endpoint
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.detail || "Upload failed");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Upload failed");
+      }
+
+      const data = await response.json();
+      return data.url; // This will be like "/uploads/abc-123.jpg"
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      // Fallback to local URL for preview
+      return URL.createObjectURL(file);
     }
-
-    const data = await response.json();
-    return data.url; // This will be like "/uploads/abc-123.jpg"
-  } catch (error: any) {
-    console.error("Upload error:", error);
-    // Fallback to local URL for preview
-    return URL.createObjectURL(file);
-  }
-};
+  };
 
   const [formData, setFormData] = useState({
     // Personal (existing)
@@ -268,16 +268,16 @@ const uploadImage = async (file: File): Promise<string> => {
     e.preventDefault();
     if (!companyId) return;
 
- if (!formData.password || formData.password.length < 6) {
-    setError("Password must be at least 6 characters long");
-    return;
-  }
+    if (!formData.password || formData.password.length < 6) {
+      setError("Password must be at least 6 characters long");
+      return;
+    }
 
-   const confirmPassword = (document.querySelector('input[name="confirm_password"]') as HTMLInputElement)?.value;
-  if (formData.password !== confirmPassword) {
-    setError("Passwords do not match");
-    return;
-  }
+    const confirmPassword = (document.querySelector('input[name="confirm_password"]') as HTMLInputElement)?.value;
+    if (formData.password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
@@ -329,9 +329,14 @@ const uploadImage = async (file: File): Promise<string> => {
       <div className="flex items-center gap-4">
         <Link
           href="/payroll/employees"
-          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+          className="flex h-10 w-10 items-center justify-center rounded-full 
+                     bg-primary text-white 
+                     hover:bg-primary/90 
+                     transition"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Add New Employee</h1>
@@ -345,7 +350,7 @@ const uploadImage = async (file: File): Promise<string> => {
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <form data-ui="sf-form" onSubmit={handleSubmit}>
         {/* Tabs */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="border-b border-gray-200 dark:border-gray-700">
@@ -371,7 +376,7 @@ const uploadImage = async (file: File): Promise<string> => {
             {/* Personal Details */}
             {activeTab === "personal" && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-               
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     First Name <span className="text-red-500">*</span>
@@ -400,47 +405,47 @@ const uploadImage = async (file: File): Promise<string> => {
                 </div>
 
 
- <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-        Password <span className="text-red-500">*</span>
-      </label>
-      <input
-        type="password"
-        name="password"
-        value={formData.password}
-        onChange={handleChange}
-        required
-        placeholder="Enter password"
-        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
-      />
-      <p className="text-xs text-gray-500 mt-1">
-        Employee will use this to login to the system
-      </p>
-    </div>
-    
-    {/* Add confirm password field - shown in first row */}
-    <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-        Confirm Password <span className="text-red-500">*</span>
-      </label>
-      <input
-        type="password"
-        name="confirm_password"
-        // Note: This is not part of formData state, just for validation
-        onChange={(e) => {
-          // You can add validation here
-          const confirmPassword = e.target.value;
-          if (confirmPassword !== formData.password) {
-            // Show validation error
-            console.log("Passwords don't match");
-          }
-        }}
-        required
-        placeholder="Confirm password"
-        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
-      />
-    </div>
-    
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Password <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    name="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    required
+                    placeholder="Enter password"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Employee will use this to login to the system
+                  </p>
+                </div>
+
+                {/* Add confirm password field - shown in first row */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Confirm Password <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    name="confirm_password"
+                    // Note: This is not part of formData state, just for validation
+                    onChange={(e) => {
+                      // You can add validation here
+                      const confirmPassword = e.target.value;
+                      if (confirmPassword !== formData.password) {
+                        // Show validation error
+                        console.log("Passwords don't match");
+                      }
+                    }}
+                    required
+                    placeholder="Confirm password"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 transition"
+                  />
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Date of Birth

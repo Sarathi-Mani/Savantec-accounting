@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { vendorsApi, getErrorMessage } from "@/services/api";
@@ -41,31 +42,31 @@ interface FormData {
   gst_registration_type: string;
   pan_number: string;
   vendor_code: string;
-  
+
   // Opening Balance
   opening_balance: string;
   opening_balance_type: "outstanding" | "advance";
   opening_balance_mode: "single" | "split";
   opening_balance_split: OpeningBalanceItem[];
-  
+
   // Additional Info
   credit_limit: string;
   credit_days: string;
   payment_terms: string;
-  
+
   // Contact Persons
   contact_persons: ContactPerson[];
-  
+
   // Bank Details
   bank_details: BankDetail[];
-  
+
   // Billing Address
   billing_address: string;
   billing_city: string;
   billing_state: string;
   billing_country: string;
   billing_zip: string;
-  
+
   // Shipping Address
   shipping_address: string;
   shipping_city: string;
@@ -194,21 +195,21 @@ export default function VendorEditPage() {
     gst_registration_type: "",
     pan_number: "",
     vendor_code: "",
-    
+
     // Opening Balance
     opening_balance: "",
     opening_balance_type: "outstanding",
     opening_balance_mode: "single",
     opening_balance_split: [],
-    
+
     // Additional Info
     credit_limit: "",
     credit_days: "",
     payment_terms: "",
-    
+
     // Contact Persons
     contact_persons: [{ name: "", email: "", phone: "" }],
-    
+
     // Bank Details
     bank_details: [{
       bank_name: "",
@@ -219,14 +220,14 @@ export default function VendorEditPage() {
       account_type: "Savings",
       is_primary: true
     }],
-    
+
     // Billing Address
     billing_address: "",
     billing_city: "",
     billing_state: "",
     billing_country: "India",
     billing_zip: "",
-    
+
     // Shipping Address
     shipping_address: "",
     shipping_city: "",
@@ -264,31 +265,31 @@ export default function VendorEditPage() {
 
         const contactPersons = (vendor.contact_persons || []).length
           ? (vendor.contact_persons || []).map((cp) => ({
-              name: cp.name || "",
-              email: cp.email || "",
-              phone: cp.phone || "",
-            }))
+            name: cp.name || "",
+            email: cp.email || "",
+            phone: cp.phone || "",
+          }))
           : [{ name: "", email: "", phone: "" }];
 
         const bankDetails = (vendor.bank_details || []).length
           ? (vendor.bank_details || []).map((b) => ({
-              bank_name: b.bank_name || "",
-              branch: b.branch || "",
-              account_number: b.account_number || "",
-              account_holder_name: b.account_holder_name || "",
-              ifsc_code: b.ifsc_code || "",
-              account_type: b.account_type || "Savings",
-              is_primary: !!b.is_primary,
-            }))
+            bank_name: b.bank_name || "",
+            branch: b.branch || "",
+            account_number: b.account_number || "",
+            account_holder_name: b.account_holder_name || "",
+            ifsc_code: b.ifsc_code || "",
+            account_type: b.account_type || "Savings",
+            is_primary: !!b.is_primary,
+          }))
           : [{
-              bank_name: "",
-              branch: "",
-              account_number: "",
-              account_holder_name: "",
-              ifsc_code: "",
-              account_type: "Savings",
-              is_primary: true,
-            }];
+            bank_name: "",
+            branch: "",
+            account_number: "",
+            account_holder_name: "",
+            ifsc_code: "",
+            account_type: "Savings",
+            is_primary: true,
+          }];
 
         setFormData({
           name: vendor.name || "",
@@ -458,7 +459,7 @@ export default function VendorEditPage() {
 
   const handleBankDetailChange = (index: number, field: keyof BankDetail, value: string | boolean) => {
     const updatedBankDetails = [...formData.bank_details];
-    
+
     if (field === "is_primary" && value === true) {
       // If setting this as primary, unset all others
       updatedBankDetails.forEach((detail, i) => {
@@ -467,12 +468,12 @@ export default function VendorEditPage() {
         }
       });
     }
-    
+
     updatedBankDetails[index] = {
       ...updatedBankDetails[index],
       [field]: value
     };
-    
+
     setFormData(prev => ({ ...prev, bank_details: updatedBankDetails }));
   };
 
@@ -512,14 +513,14 @@ export default function VendorEditPage() {
       [field]: value
     };
     setFormData(prev => ({ ...prev, opening_balance_split: updatedItems }));
-    
+
     // Calculate total amount
     if (field === 'amount') {
       const total = updatedItems.reduce((sum, item) => {
         return sum + (parseFloat(item.amount) || 0);
       }, 0);
-      setFormData(prev => ({ 
-        ...prev, 
+      setFormData(prev => ({
+        ...prev,
         opening_balance_split: updatedItems,
         opening_balance: total.toFixed(2)
       }));
@@ -541,9 +542,9 @@ export default function VendorEditPage() {
     const total = updatedItems.reduce((sum, item) => {
       return sum + (parseFloat(item.amount) || 0);
     }, 0);
-    
-    setFormData(prev => ({ 
-      ...prev, 
+
+    setFormData(prev => ({
+      ...prev,
       opening_balance_split: updatedItems,
       opening_balance: total.toFixed(2)
     }));
@@ -590,7 +591,7 @@ export default function VendorEditPage() {
         setError("Please enter a valid 15-digit GST number");
         return false;
       }
-      
+
       // If GST is provided, validate PAN matches GST (first 2-10 characters of GST should match PAN)
       if (formData.pan_number) {
         const gstPanPart = formData.tax_number.slice(2, 12); // Characters 3-12 in GST
@@ -608,7 +609,7 @@ export default function VendorEditPage() {
         setError("Please add at least one opening balance item in split mode");
         return false;
       }
-      
+
       let totalAmount = 0;
       for (const [index, item] of formData.opening_balance_split.entries()) {
         // Validate date
@@ -616,7 +617,7 @@ export default function VendorEditPage() {
           setError(`Please select a date for item ${index + 1}`);
           return false;
         }
-        
+
         // Validate voucher name
         if (!item.voucher_name.trim()) {
           setError(`Please enter a voucher name for item ${index + 1}`);
@@ -627,23 +628,23 @@ export default function VendorEditPage() {
           setError(`Please select balance type for item ${index + 1}`);
           return false;
         }
-        
+
         // Validate days
         if (item.days && isNaN(parseInt(item.days))) {
           setError(`Please enter valid days for item ${index + 1}`);
           return false;
         }
-        
+
         // Validate amount
         const amount = parseFloat(item.amount);
         if (!item.amount || isNaN(amount) || amount <= 0) {
           setError(`Please enter a valid amount for item ${index + 1}`);
           return false;
         }
-        
+
         totalAmount += amount;
       }
-      
+
       // Update the total opening balance from split items
       setFormData(prev => ({
         ...prev,
@@ -699,7 +700,7 @@ export default function VendorEditPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!company?.id || !vendorId) {
       setError("Please select a company first");
       return;
@@ -727,7 +728,7 @@ export default function VendorEditPage() {
         pan_number: formData.pan_number || "",
         vendor_code: formData.vendor_code || "",
         trade_name: "", // Add if needed
-        
+
         // Convert to strings
         opening_balance: formData.opening_balance_mode === "split"
           ? String(Math.abs(splitNetBalance))
@@ -735,14 +736,14 @@ export default function VendorEditPage() {
         credit_limit: formData.credit_limit ? String(parseFloat(formData.credit_limit)) : "0",
         credit_days: formData.credit_days ? String(parseInt(formData.credit_days)) : "0",
         payment_terms: formData.payment_terms || "",
-        
+
         opening_balance_type: formData.opening_balance_mode === "split"
           ? splitNetType
           : (formData.opening_balance_type || ""),
         opening_balance_mode: formData.opening_balance_mode || "",
-        
+
         // For opening_balance_split - also convert to strings
-        opening_balance_split: formData.opening_balance_mode === "split" ? 
+        opening_balance_split: formData.opening_balance_mode === "split" ?
           formData.opening_balance_split.map(item => ({
             date: item.date,
             voucher_name: item.voucher_name,
@@ -750,7 +751,7 @@ export default function VendorEditPage() {
             days: item.days ? String(parseInt(item.days)) : "0",
             amount: String(Math.abs(parseFloat(item.amount) || 0))
           })) : [],
-        
+
         // Contact persons
         contact_persons: formData.contact_persons
           .filter(p => p.name.trim() || p.email.trim() || p.phone.trim())
@@ -759,7 +760,7 @@ export default function VendorEditPage() {
             email: p.email || "",
             phone: p.phone || ""
           })),
-        
+
         // Bank details
         bank_details: formData.bank_details
           .filter(b => b.bank_name.trim() || b.account_number.trim())
@@ -772,26 +773,26 @@ export default function VendorEditPage() {
             account_type: b.account_type || "Savings",
             is_primary: b.is_primary || false
           })),
-        
+
         // Address fields
         billing_address: formData.billing_address || "",
         billing_city: formData.billing_city || "",
         billing_state: formData.billing_state || "",
         billing_country: formData.billing_country || "India",
         billing_zip: formData.billing_zip || "",
-        
+
         shipping_address: sameAsBilling ? formData.billing_address : (formData.shipping_address || ""),
         shipping_city: sameAsBilling ? formData.billing_city : (formData.shipping_city || ""),
         shipping_state: sameAsBilling ? formData.billing_state : (formData.shipping_state || ""),
         shipping_country: sameAsBilling ? formData.billing_country : (formData.shipping_country || "India"),
         shipping_zip: sameAsBilling ? formData.billing_zip : (formData.shipping_zip || ""),
-        
+
         // Additional fields for vendor
         customer_type: "b2b",
         contact_person: formData.contact_persons[0]?.name || "",
         phone: formData.contact || "",
       };
-      
+
       await vendorsApi.update(company.id, vendorId, apiData);
 
       router.push(`/vendors/${vendorId}`);
@@ -814,7 +815,7 @@ export default function VendorEditPage() {
 
   if (loadingVendor) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 py-20 dark:bg-gray-900">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
       </div>
     );
@@ -822,922 +823,934 @@ export default function VendorEditPage() {
 
   if (!company) {
     return (
-      <div className="rounded-lg bg-white p-8 text-center shadow-1 dark:bg-gray-dark">
-        <p className="text-dark-6">Please select a company first</p>
+      <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-900">
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
+          <p className="text-yellow-800 dark:text-yellow-400">Please select a company first.</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-dark dark:text-white">Edit Vendor</h1>
-          <p className="text-sm text-dark-6">Update vendor/supplier information</p>
+    <div className="w-full bg-gray-50 dark:bg-gray-900">
+      <div className="border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-700 dark:bg-gray-800 sm:px-6">
+        <div className="flex items-start gap-3">
+          <Link
+            href={`/vendors/${vendorId}`}
+            className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary/90 sm:h-10 sm:w-10"
+          >
+            <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Vendor</h1>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Update vendor/supplier information</p>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => router.push(`/vendors/${vendorId}`)}
-          className="inline-flex items-center gap-2 rounded-lg border border-stroke px-4 py-2 text-sm font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
-        >
-          <span>←</span> Back
-        </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {error && (
-          <div className="rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">
-            {error}
-          </div>
-        )}
+      <div className="w-full p-4 sm:p-6">
+        <form data-ui="sf-form" onSubmit={handleSubmit} className="space-y-6">
+          {error && (
+            <div className="mb-4 rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">
+              {error}
+            </div>
+          )}
 
-        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Left Column - Basic Info */}
-            <div>
-              <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Basic Information</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                    Vendor Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleChange}
-                    placeholder="Enter vendor name"
-                    required
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                  />
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
+          <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Left Column - Basic Info */}
+              <div>
+                <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Basic Information</h2>
+                <div className="space-y-4">
                   <div>
                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                      Primary Contact <span className="text-red-500">*</span>
+                      Vendor Name <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
-                      name="contact"
-                      value={formData.contact}
+                      name="name"
+                      value={formData.name}
                       onChange={handleChange}
-                      placeholder="Enter primary contact"
+                      placeholder="Enter vendor name"
                       required
                       className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                     />
                   </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                      Primary Email
-                    </label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleChange}
-                      placeholder="Enter email address"
-                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                      Mobile
-                    </label>
-                    <input
-                      type="tel"
-                      name="mobile"
-                      value={formData.mobile}
-                      onChange={handleChange}
-                      placeholder="Enter mobile number"
-                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                      Vendor Code
-                    </label>
-                    <input
-                      type="text"
-                      name="vendor_code"
-                      value={formData.vendor_code}
-                      onChange={handleChange}
-                      placeholder="Enter vendor code"
-                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column - Tax Info */}
-            <div>
-              <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Tax Information</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                    PAN Number
-                  </label>
-                  <input
-                    type="text"
-                    name="pan_number"
-                    value={formData.pan_number}
-                    onChange={handleChange}
-                    placeholder="Enter PAN number (e.g., ABCDE1234F)"
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                    maxLength={10}
-                    style={{ textTransform: 'uppercase' }}
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                    GST Number
-                  </label>
-                  <input
-                    type="text"
-                    name="tax_number"
-                    value={formData.tax_number}
-                    onChange={handleChange}
-                    placeholder="Enter 15-digit GST number"
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                    maxLength={15}
-                    style={{ textTransform: 'uppercase' }}
-                  />
-                </div>
-
-                <div className="relative">
-                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                    GST Registration Type
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={formData.gst_registration_type}
-                      onClick={() => setShowGstOptions(!showGstOptions)}
-                      onChange={(e) => {
-                        setFormData(prev => ({ ...prev, gst_registration_type: e.target.value }));
-                        setShowGstOptions(true);
-                      }}
-                      placeholder="Select GST registration type"
-                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 pr-10 outline-none focus:border-primary dark:border-dark-3"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowGstOptions(!showGstOptions)}
-                      className="absolute right-3 top-3 text-gray-500"
-                    >
-                      ▼
-                    </button>
-                    
-                    {showGstOptions && (
-                      <div className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-stroke bg-white shadow-lg dark:border-dark-3 dark:bg-gray-dark">
-                        {GST_REGISTRATION_TYPES.filter(type => 
-                          type.toLowerCase().includes(formData.gst_registration_type.toLowerCase())
-                        ).map((type) => (
-                          <div
-                            key={type}
-                            onClick={() => handleGSTTypeSelect(type)}
-                            className="cursor-pointer px-4 py-3 hover:bg-gray-100 dark:hover:bg-dark-3"
-                          >
-                            {type}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Opening Balance Section */}
-        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-          <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Opening Balance</h2>
-          
-          <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Opening Balance Mode
-                </label>
-                <div className="flex gap-4">
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="opening_balance_mode"
-                      value="single"
-                      checked={formData.opening_balance_mode === "single"}
-                      onChange={handleChange}
-                      className="mr-2"
-                    />
-                    Single Amount
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      name="opening_balance_mode"
-                      value="split"
-                      checked={formData.opening_balance_mode === "split"}
-                      onChange={handleChange}
-                      className="mr-2"
-                    />
-                    Bill-wise Split
-                  </label>
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Balance Type
-                </label>
-                <select
-                  name="opening_balance_type"
-                  value={formData.opening_balance_type}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                >
-                  <option value="outstanding">Outstanding (You Owe Vendor)</option>
-                  <option value="advance">Advance (Vendor Owes You)</option>
-                </select>
-              </div>
-            </div>
-
-            {formData.opening_balance_mode === "single" ? (
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Opening Balance Amount
-                </label>
-                <input
-                  type="number"
-                  name="opening_balance"
-                  value={formData.opening_balance}
-                  onChange={handleChange}
-                  placeholder="0.00"
-                  step="0.01"
-                  min="0"
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                />
-              </div>
-            ) : (
-              <div>
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="font-medium text-dark dark:text-white">Bill-wise Opening Balance Items</h3>
-                  <button
-                    type="button"
-                    onClick={addOpeningBalanceItem}
-                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
-                  >
-                    <span>+</span> Add Item
-                  </button>
-                </div>
-
-                {formData.opening_balance_split.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-stroke p-8 text-center dark:border-dark-3">
-                    <p className="text-dark-6">No opening balance items added</p>
-                    <button
-                      type="button"
-                      onClick={addOpeningBalanceItem}
-                      className="mt-2 inline-flex items-center gap-2 text-primary hover:underline"
-                    >
-                      <span>+</span> Add your first item
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {formData.opening_balance_split.map((item, index) => (
-                      <div
-                        key={index}
-                        className="rounded-lg border border-stroke p-4 transition hover:border-primary dark:border-dark-3"
-                      >
-                        <div className="grid items-center gap-4 md:grid-cols-12">
-                          <div className="md:col-span-11">
-                            <div className="grid gap-4 sm:grid-cols-5">
-                              <div>
-                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                  {index === 0 ? "Date" : ""}
-                                </label>
-                                <input
-                                  type="date"
-                                  value={item.date}
-                                  onChange={(e) => handleOpeningBalanceItemChange(index, "date", e.target.value)}
-                                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
-                                />
-                              </div>
-
-                              <div>
-                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                  {index === 0 ? "Voucher Name" : ""}
-                                </label>
-                                <input
-                                  type="text"
-                                  value={item.voucher_name}
-                                  onChange={(e) => handleOpeningBalanceItemChange(index, "voucher_name", e.target.value)}
-                                  placeholder="Enter voucher name"
-                                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
-                                />
-                              </div>
-
-                              <div>
-                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                  {index === 0 ? "Balance Type" : ""}
-                                </label>
-                                <select
-                                  value={item.balance_type}
-                                  onChange={(e) => handleOpeningBalanceItemChange(index, "balance_type", e.target.value)}
-                                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
-                                >
-                                  <option value="outstanding">Outstanding</option>
-                                  <option value="advance">Advance</option>
-                                </select>
-                              </div>
-
-                              <div>
-                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                  {index === 0 ? "Days" : ""}
-                                </label>
-                                <input
-                                  type="number"
-                                  value={item.days}
-                                  onChange={(e) => handleOpeningBalanceItemChange(index, "days", e.target.value)}
-                                  placeholder="Enter days"
-                                  min="0"
-                                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
-                                />
-                              </div>
-
-                              <div>
-                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                  {index === 0 ? "Amount" : ""}
-                                </label>
-                                <input
-                                  type="number"
-                                  value={item.amount}
-                                  onChange={(e) => handleOpeningBalanceItemChange(index, "amount", e.target.value)}
-                                  placeholder="0.00"
-                                  step="0.01"
-                                  min="0"
-                                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="md:col-span-1 flex items-center justify-center">
-                            <button
-                              type="button"
-                              onClick={() => removeOpeningBalanceItem(index)}
-                              className="rounded-lg bg-red-500 p-2 text-white transition hover:bg-red-600"
-                            >
-                              <span>−</span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="mt-4 rounded-lg bg-gray-50 p-4 dark:bg-dark-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-dark dark:text-white">Total Opening Balance:</span>
-                    <span className="text-lg font-semibold text-primary">
-                      ₹{calculateTotalOpeningBalance().toFixed(2)} ({getSplitNetBalance() < 0 ? "advance" : "outstanding"})
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Credit Information Section */}
-        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Left Column - Credit Info */}
-            <div>
-              <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Credit Information</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                    Credit Limit
-                  </label>
-                  <input
-                    type="number"
-                    name="credit_limit"
-                    value={formData.credit_limit}
-                    onChange={handleChange}
-                    placeholder="Enter credit limit"
-                    step="0.01"
-                    min="0"
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                    Credit Days
-                  </label>
-                  <input
-                    type="number"
-                    name="credit_days"
-                    value={formData.credit_days}
-                    onChange={handleChange}
-                    placeholder="Enter credit days"
-                    min="0"
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column - Payment Terms */}
-            <div>
-              <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Payment Terms</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                    Payment Terms
-                  </label>
-                  <textarea
-                    name="payment_terms"
-                    value={formData.payment_terms}
-                    onChange={handleChange}
-                    placeholder="Enter payment terms (e.g., Net 30, 2% 10 Net 30)"
-                    rows={3}
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Bank Details Section - NEW SECTION */}
-        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-dark dark:text-white">Bank Details</h2>
-            <button
-              type="button"
-              onClick={addBankDetail}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
-            >
-              <span>+</span> Add Bank Account
-            </button>
-          </div>
-
-          <div className="space-y-6">
-            {formData.bank_details.map((bank, index) => (
-              <div
-                key={index}
-                className="rounded-lg border border-stroke p-6 transition hover:border-primary dark:border-dark-3"
-              >
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="font-medium text-dark dark:text-white">
-                    Bank Account {index + 1} {bank.is_primary && <span className="ml-2 rounded-full bg-green-100 px-2 py-1 text-xs text-green-800 dark:bg-green-900 dark:text-green-200">Primary</span>}
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <label className="flex items-center text-sm">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Primary Contact <span className="text-red-500">*</span>
+                      </label>
                       <input
-                        type="checkbox"
-                        checked={bank.is_primary}
-                        onChange={(e) => handleBankDetailChange(index, "is_primary", e.target.checked)}
-                        className="mr-2"
+                        type="text"
+                        name="contact"
+                        value={formData.contact}
+                        onChange={handleChange}
+                        placeholder="Enter primary contact"
+                        required
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                       />
-                      Primary Account
-                    </label>
-                    {formData.bank_details.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeBankDetail(index)}
-                        className="rounded-lg bg-red-500 p-2 text-white transition hover:bg-red-600"
-                      >
-                        <span>−</span>
-                      </button>
-                    )}
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Primary Email
+                      </label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={formData.email}
+                        onChange={handleChange}
+                        placeholder="Enter email address"
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Mobile
+                      </label>
+                      <input
+                        type="tel"
+                        name="mobile"
+                        value={formData.mobile}
+                        onChange={handleChange}
+                        placeholder="Enter mobile number"
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Vendor Code
+                      </label>
+                      <input
+                        type="text"
+                        name="vendor_code"
+                        value={formData.vendor_code}
+                        onChange={handleChange}
+                        placeholder="Enter vendor code"
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                      />
+                    </div>
                   </div>
                 </div>
+              </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
+              {/* Right Column - Tax Info */}
+              <div>
+                <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Tax Information</h2>
+                <div className="space-y-4">
                   <div>
                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                      Bank Name <span className="text-red-500">*</span>
+                      PAN Number
                     </label>
                     <input
                       type="text"
-                      value={bank.bank_name}
-                      onChange={(e) => handleBankDetailChange(index, "bank_name", e.target.value)}
-                      placeholder="Enter bank name"
-                      required
+                      name="pan_number"
+                      value={formData.pan_number}
+                      onChange={handleChange}
+                      placeholder="Enter PAN number (e.g., ABCDE1234F)"
                       className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                      Branch
-                    </label>
-                    <input
-                      type="text"
-                      value={bank.branch}
-                      onChange={(e) => handleBankDetailChange(index, "branch", e.target.value)}
-                      placeholder="Enter branch name"
-                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                      Account Holder Name <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={bank.account_holder_name}
-                      onChange={(e) => handleBankDetailChange(index, "account_holder_name", e.target.value)}
-                      placeholder="Enter account holder name"
-                      required
-                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                      Account Number
-                    </label>
-                    <input
-                      type="text"
-                      value={bank.account_number}
-                      onChange={(e) => handleBankDetailChange(index, "account_number", e.target.value)}
-                      placeholder="Enter account number"
-                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                      {isIndiaCountry(formData.billing_country) ? "IFSC Code" : "IFSC / SWIFT / Bank Code"}{" "}
-                    </label>
-                    <input
-                      type="text"
-                      value={bank.ifsc_code}
-                      onChange={(e) => handleBankDetailChange(index, "ifsc_code", e.target.value)}
-                      placeholder={isIndiaCountry(formData.billing_country) ? "Enter IFSC code (e.g., SBIN0001234)" : "Enter IFSC / SWIFT / bank code"}
-                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                      maxLength={10}
                       style={{ textTransform: 'uppercase' }}
                     />
                   </div>
 
                   <div>
                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                      Account Type
+                      GST Number
                     </label>
-                    <select
-                      value={bank.account_type}
-                      onChange={(e) => handleBankDetailChange(index, "account_type", e.target.value)}
+                    <input
+                      type="text"
+                      name="tax_number"
+                      value={formData.tax_number}
+                      onChange={handleChange}
+                      placeholder="Enter 15-digit GST number"
                       className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                    >
-                      {ACCOUNT_TYPES.map(type => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                    </select>
+                      maxLength={15}
+                      style={{ textTransform: 'uppercase' }}
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                      GST Registration Type
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={formData.gst_registration_type}
+                        onClick={() => setShowGstOptions(!showGstOptions)}
+                        onChange={(e) => {
+                          setFormData(prev => ({ ...prev, gst_registration_type: e.target.value }));
+                          setShowGstOptions(true);
+                        }}
+                        placeholder="Select GST registration type"
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 pr-10 outline-none focus:border-primary dark:border-dark-3"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowGstOptions(!showGstOptions)}
+                        className="absolute right-3 top-3 text-gray-500"
+                      >
+                        ▼
+                      </button>
+
+                      {showGstOptions && (
+                        <div className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-stroke bg-white shadow-lg dark:border-dark-3 dark:bg-gray-dark">
+                          {GST_REGISTRATION_TYPES.filter(type =>
+                            type.toLowerCase().includes(formData.gst_registration_type.toLowerCase())
+                          ).map((type) => (
+                            <div
+                              key={type}
+                              onClick={() => handleGSTTypeSelect(type)}
+                              className="cursor-pointer px-4 py-3 hover:bg-gray-100 dark:hover:bg-dark-3"
+                            >
+                              {type}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Contact Persons Section */}
-        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-dark dark:text-white">Contact Persons</h2>
-            <button
-              type="button"
-              onClick={addContactPerson}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
-            >
-              <span>+</span> Add Contact Person
-            </button>
+            </div>
           </div>
 
-          <div className="space-y-4">
-            {formData.contact_persons.map((person, index) => (
-              <div
-                key={index}
-                className="rounded-lg border border-stroke p-4 transition hover:border-primary dark:border-dark-3"
+          {/* Opening Balance Section */}
+          <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+            <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Opening Balance</h2>
+
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Opening Balance Mode
+                  </label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="opening_balance_mode"
+                        value="single"
+                        checked={formData.opening_balance_mode === "single"}
+                        onChange={handleChange}
+                        className="mr-2"
+                      />
+                      Single Amount
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="opening_balance_mode"
+                        value="split"
+                        checked={formData.opening_balance_mode === "split"}
+                        onChange={handleChange}
+                        className="mr-2"
+                      />
+                      Bill-wise Split
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Balance Type
+                  </label>
+                  <select
+                    name="opening_balance_type"
+                    value={formData.opening_balance_type}
+                    onChange={handleChange}
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  >
+                    <option value="outstanding">Outstanding (You Owe Vendor)</option>
+                    <option value="advance">Advance (Vendor Owes You)</option>
+                  </select>
+                </div>
+              </div>
+
+              {formData.opening_balance_mode === "single" ? (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Opening Balance Amount
+                  </label>
+                  <input
+                    type="number"
+                    name="opening_balance"
+                    value={formData.opening_balance}
+                    onChange={handleChange}
+                    placeholder="0.00"
+                    step="0.01"
+                    min="0"
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <div className="mb-4 flex items-center justify-between">
+                    <h3 className="font-medium text-dark dark:text-white">Bill-wise Opening Balance Items</h3>
+                    <button
+                      type="button"
+                      onClick={addOpeningBalanceItem}
+                      className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
+                    >
+                      <span>+</span> Add Item
+                    </button>
+                  </div>
+
+                  {formData.opening_balance_split.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-stroke p-8 text-center dark:border-dark-3">
+                      <p className="text-dark-6">No opening balance items added</p>
+                      <button
+                        type="button"
+                        onClick={addOpeningBalanceItem}
+                        className="mt-2 inline-flex items-center gap-2 text-primary hover:underline"
+                      >
+                        <span>+</span> Add your first item
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {formData.opening_balance_split.map((item, index) => (
+                        <div
+                          key={index}
+                          className="rounded-lg border border-stroke p-4 transition hover:border-primary dark:border-dark-3"
+                        >
+                          <div className="grid items-center gap-4 md:grid-cols-12">
+                            <div className="md:col-span-11">
+                              <div className="grid gap-4 sm:grid-cols-5">
+                                <div>
+                                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                    {index === 0 ? "Date" : ""}
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={item.date}
+                                    onChange={(e) => handleOpeningBalanceItemChange(index, "date", e.target.value)}
+                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                    {index === 0 ? "Voucher Name" : ""}
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={item.voucher_name}
+                                    onChange={(e) => handleOpeningBalanceItemChange(index, "voucher_name", e.target.value)}
+                                    placeholder="Enter voucher name"
+                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                    {index === 0 ? "Balance Type" : ""}
+                                  </label>
+                                  <select
+                                    value={item.balance_type}
+                                    onChange={(e) => handleOpeningBalanceItemChange(index, "balance_type", e.target.value)}
+                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
+                                  >
+                                    <option value="outstanding">Outstanding</option>
+                                    <option value="advance">Advance</option>
+                                  </select>
+                                </div>
+
+                                <div>
+                                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                    {index === 0 ? "Days" : ""}
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={item.days}
+                                    onChange={(e) => handleOpeningBalanceItemChange(index, "days", e.target.value)}
+                                    placeholder="Enter days"
+                                    min="0"
+                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                    {index === 0 ? "Amount" : ""}
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={item.amount}
+                                    onChange={(e) => handleOpeningBalanceItemChange(index, "amount", e.target.value)}
+                                    placeholder="0.00"
+                                    step="0.01"
+                                    min="0"
+                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="md:col-span-1 flex items-center justify-center">
+                              <button
+                                type="button"
+                                onClick={() => removeOpeningBalanceItem(index)}
+                                className="rounded-lg bg-red-500 p-2 text-white transition hover:bg-red-600"
+                              >
+                                <span>−</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-4 rounded-lg bg-gray-50 p-4 dark:bg-dark-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-dark dark:text-white">Total Opening Balance:</span>
+                      <span className="text-lg font-semibold text-primary">
+                        ₹{calculateTotalOpeningBalance().toFixed(2)} ({getSplitNetBalance() < 0 ? "advance" : "outstanding"})
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Credit Information Section */}
+          <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Left Column - Credit Info */}
+              <div>
+                <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Credit Information</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                      Credit Limit
+                    </label>
+                    <input
+                      type="number"
+                      name="credit_limit"
+                      value={formData.credit_limit}
+                      onChange={handleChange}
+                      placeholder="Enter credit limit"
+                      step="0.01"
+                      min="0"
+                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                      Credit Days
+                    </label>
+                    <input
+                      type="number"
+                      name="credit_days"
+                      value={formData.credit_days}
+                      onChange={handleChange}
+                      placeholder="Enter credit days"
+                      min="0"
+                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column - Payment Terms */}
+              <div>
+                <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Payment Terms</h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                      Payment Terms
+                    </label>
+                    <textarea
+                      name="payment_terms"
+                      value={formData.payment_terms}
+                      onChange={handleChange}
+                      placeholder="Enter payment terms (e.g., Net 30, 2% 10 Net 30)"
+                      rows={3}
+                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bank Details Section - NEW SECTION */}
+          <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-dark dark:text-white">Bank Details</h2>
+              <button
+                type="button"
+                onClick={addBankDetail}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
               >
-                <div className="grid items-center gap-4 md:grid-cols-12">
-                  <div className="md:col-span-11">
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      <div>
-                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                          {index === 0 ? "Name" : ""}
-                        </label>
-                        <input
-                          type="text"
-                          value={person.name}
-                          onChange={(e) => handleContactPersonChange(index, "name", e.target.value)}
-                          placeholder="Enter contact person name"
-                          className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
-                        />
-                      </div>
+                <span>+</span> Add Bank Account
+              </button>
+            </div>
 
-                      <div>
-                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                          {index === 0 ? "Email" : ""}
-                        </label>
+            <div className="space-y-6">
+              {formData.bank_details.map((bank, index) => (
+                <div
+                  key={index}
+                  className="rounded-lg border border-stroke p-6 transition hover:border-primary dark:border-dark-3"
+                >
+                  <div className="mb-4 flex items-center justify-between">
+                    <h3 className="font-medium text-dark dark:text-white">
+                      Bank Account {index + 1} {bank.is_primary && <span className="ml-2 rounded-full bg-green-100 px-2 py-1 text-xs text-green-800 dark:bg-green-900 dark:text-green-200">Primary</span>}
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center text-sm">
                         <input
-                          type="email"
-                          value={person.email}
-                          onChange={(e) => handleContactPersonChange(index, "email", e.target.value)}
-                          placeholder="Enter email address"
-                          className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
+                          type="checkbox"
+                          checked={bank.is_primary}
+                          onChange={(e) => handleBankDetailChange(index, "is_primary", e.target.checked)}
+                          className="mr-2"
                         />
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                          {index === 0 ? "Phone" : ""}
-                        </label>
-                        <input
-                          type="tel"
-                          value={person.phone}
-                          onChange={(e) => handleContactPersonChange(index, "phone", e.target.value)}
-                          placeholder="Enter phone number"
-                          className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
-                        />
-                      </div>
+                        Primary Account
+                      </label>
+                      {formData.bank_details.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeBankDetail(index)}
+                          className="rounded-lg bg-red-500 p-2 text-white transition hover:bg-red-600"
+                        >
+                          <span>−</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <div className="md:col-span-1 flex items-center justify-center">
-                    {formData.contact_persons.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeContactPerson(index)}
-                        className="rounded-lg bg-red-500 p-2 text-white transition hover:bg-red-600"
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Bank Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={bank.bank_name}
+                        onChange={(e) => handleBankDetailChange(index, "bank_name", e.target.value)}
+                        placeholder="Enter bank name"
+                        required
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Branch
+                      </label>
+                      <input
+                        type="text"
+                        value={bank.branch}
+                        onChange={(e) => handleBankDetailChange(index, "branch", e.target.value)}
+                        placeholder="Enter branch name"
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Account Holder Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={bank.account_holder_name}
+                        onChange={(e) => handleBankDetailChange(index, "account_holder_name", e.target.value)}
+                        placeholder="Enter account holder name"
+                        required
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Account Number
+                      </label>
+                      <input
+                        type="text"
+                        value={bank.account_number}
+                        onChange={(e) => handleBankDetailChange(index, "account_number", e.target.value)}
+                        placeholder="Enter account number"
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        {isIndiaCountry(formData.billing_country) ? "IFSC Code" : "IFSC / SWIFT / Bank Code"}{" "}
+                      </label>
+                      <input
+                        type="text"
+                        value={bank.ifsc_code}
+                        onChange={(e) => handleBankDetailChange(index, "ifsc_code", e.target.value)}
+                        placeholder={isIndiaCountry(formData.billing_country) ? "Enter IFSC code (e.g., SBIN0001234)" : "Enter IFSC / SWIFT / bank code"}
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                        style={{ textTransform: 'uppercase' }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                        Account Type
+                      </label>
+                      <select
+                        value={bank.account_type}
+                        onChange={(e) => handleBankDetailChange(index, "account_type", e.target.value)}
+                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                       >
-                        <span>−</span>
-                      </button>
-                    )}
+                        {ACCOUNT_TYPES.map(type => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* Billing Address */}
-        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-          <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Billing Address</h2>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                Address
-              </label>
-              <textarea
-                name="billing_address"
-                value={formData.billing_address}
-                onChange={handleChange}
-                placeholder="Enter billing address"
-                rows={2}
-                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-              />
+          {/* Contact Persons Section */}
+          <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-dark dark:text-white">Contact Persons</h2>
+              <button
+                type="button"
+                onClick={addContactPerson}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
+              >
+                <span>+</span> Add Contact Person
+              </button>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-4">
+              {formData.contact_persons.map((person, index) => (
+                <div
+                  key={index}
+                  className="rounded-lg border border-stroke p-4 transition hover:border-primary dark:border-dark-3"
+                >
+                  <div className="grid items-center gap-4 md:grid-cols-12">
+                    <div className="md:col-span-11">
+                      <div className="grid gap-4 sm:grid-cols-3">
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                            {index === 0 ? "Name" : ""}
+                          </label>
+                          <input
+                            type="text"
+                            value={person.name}
+                            onChange={(e) => handleContactPersonChange(index, "name", e.target.value)}
+                            placeholder="Enter contact person name"
+                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                            {index === 0 ? "Email" : ""}
+                          </label>
+                          <input
+                            type="email"
+                            value={person.email}
+                            onChange={(e) => handleContactPersonChange(index, "email", e.target.value)}
+                            placeholder="Enter email address"
+                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                            {index === 0 ? "Phone" : ""}
+                          </label>
+                          <input
+                            type="tel"
+                            value={person.phone}
+                            onChange={(e) => handleContactPersonChange(index, "phone", e.target.value)}
+                            placeholder="Enter phone number"
+                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2 outline-none focus:border-primary dark:border-dark-3"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="md:col-span-1 flex items-center justify-center">
+                      {formData.contact_persons.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeContactPerson(index)}
+                          className="rounded-lg bg-red-500 p-2 text-white transition hover:bg-red-600"
+                        >
+                          <span>−</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Billing Address */}
+          <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+            <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Billing Address</h2>
+
+            <div className="space-y-4">
               <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  City
+                  Address
                 </label>
-                <input
-                  type="text"
-                  name="billing_city"
-                  value={formData.billing_city}
+                <textarea
+                  name="billing_address"
+                  value={formData.billing_address}
                   onChange={handleChange}
-                  placeholder="Enter city"
+                  placeholder="Enter billing address"
+                  rows={2}
                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                 />
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  State
-                </label>
-                {isIndiaCountry(formData.billing_country) ? (
-                  <select
-                    name="billing_state"
-                    value={formData.billing_state}
-                    onChange={handleChange}
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                  >
-                    <option value="">Select state</option>
-                    {INDIAN_STATES.map((state) => (
-                      <option key={state} value={state}>
-                        {state}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    City
+                  </label>
                   <input
                     type="text"
-                    name="billing_state"
-                    value={formData.billing_state}
+                    name="billing_city"
+                    value={formData.billing_city}
                     onChange={handleChange}
-                    placeholder="Enter state"
+                    placeholder="Enter city"
                     className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                   />
-                )}
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Country
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1">
-                    <CreatableSelect
-                      name="billing_country"
-                      value={
-                        countryOptions.find((option) => option.value === formData.billing_country) ||
-                        (formData.billing_country
-                          ? { value: formData.billing_country, label: formData.billing_country }
-                          : null)
-                      }
-                      options={countryOptions}
-                      onChange={(selected) => handleCountrySelect("billing_country", selected?.value || "")}
-                      onCreateOption={(inputValue) => handleCountrySelect("billing_country", inputValue)}
-                      formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
-                      isClearable
-                      placeholder="Select or type country"
-                      styles={countrySelectStyles}
-                      components={{ Option: CountryOption } as any}
-                    />
-                  </div>
-                
                 </div>
-              </div>
 
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Pincode
-                </label>
-                <input
-                  type="text"
-                  name="billing_zip"
-                  value={formData.billing_zip}
-                  onChange={handleChange}
-                  placeholder="Enter pincode"
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    State
+                  </label>
+                  {isIndiaCountry(formData.billing_country) ? (
+                    <select
+                      name="billing_state"
+                      value={formData.billing_state}
+                      onChange={handleChange}
+                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                    >
+                      <option value="">Select state</option>
+                      {INDIAN_STATES.map((state) => (
+                        <option key={state} value={state}>
+                          {state}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      name="billing_state"
+                      value={formData.billing_state}
+                      onChange={handleChange}
+                      placeholder="Enter state"
+                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                  )}
+                </div>
 
-        {/* Shipping Address */}
-        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-dark dark:text-white">Shipping Address</h2>
-            <button
-              type="button"
-              onClick={copyBillingToShipping}
-              className="inline-flex items-center gap-2 rounded-lg border border-stroke px-4 py-2 text-sm font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
-            >
-              Copy from Billing
-            </button>
-          </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Country
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <CreatableSelect
+                        name="billing_country"
+                        value={
+                          countryOptions.find((option) => option.value === formData.billing_country) ||
+                          (formData.billing_country
+                            ? { value: formData.billing_country, label: formData.billing_country }
+                            : null)
+                        }
+                        options={countryOptions}
+                        onChange={(selected) => handleCountrySelect("billing_country", selected?.value || "")}
+                        onCreateOption={(inputValue) => handleCountrySelect("billing_country", inputValue)}
+                        formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
+                        isClearable
+                        placeholder="Select or type country"
+                        styles={countrySelectStyles}
+                        components={{ Option: CountryOption } as any}
+                      />
+                    </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                Address
-              </label>
-              <textarea
-                name="shipping_address"
-                value={formData.shipping_address}
-                onChange={handleChange}
-                placeholder="Enter shipping address"
-                rows={2}
-                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-              />
-            </div>
+                  </div>
+                </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  City
-                </label>
-                <input
-                  type="text"
-                  name="shipping_city"
-                  value={formData.shipping_city}
-                  onChange={handleChange}
-                  placeholder="Enter city"
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  State
-                </label>
-                {isIndiaCountry(formData.shipping_country) ? (
-                  <select
-                    name="shipping_state"
-                    value={formData.shipping_state}
-                    onChange={handleChange}
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                  >
-                    <option value="">Select state</option>
-                    {INDIAN_STATES.map((state) => (
-                      <option key={state} value={state}>
-                        {state}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Pincode
+                  </label>
                   <input
                     type="text"
-                    name="shipping_state"
-                    value={formData.shipping_state}
+                    name="billing_zip"
+                    value={formData.billing_zip}
                     onChange={handleChange}
-                    placeholder="Enter state"
+                    placeholder="Enter pincode"
                     className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
                   />
-                )}
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Country
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1">
-                    <CreatableSelect
-                      name="shipping_country"
-                      value={
-                        countryOptions.find((option) => option.value === formData.shipping_country) ||
-                        (formData.shipping_country
-                          ? { value: formData.shipping_country, label: formData.shipping_country }
-                          : null)
-                      }
-                      options={countryOptions}
-                      onChange={(selected) => handleCountrySelect("shipping_country", selected?.value || "")}
-                      onCreateOption={(inputValue) => handleCountrySelect("shipping_country", inputValue)}
-                      formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
-                      isClearable
-                      placeholder="Select or type country"
-                      styles={countrySelectStyles}
-                      components={{ Option: CountryOption } as any}
-                    />
-                  </div>
-                
                 </div>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Pincode
-                </label>
-                <input
-                  type="text"
-                  name="shipping_zip"
-                  value={formData.shipping_zip}
-                  onChange={handleChange}
-                  placeholder="Enter pincode"
-                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                />
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Submit Buttons */}
-        <div className="flex justify-end gap-4">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="rounded-lg border border-stroke px-6 py-3 font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-lg bg-primary px-6 py-3 font-medium text-white transition hover:bg-opacity-90 disabled:opacity-50"
-          >
-            {loading ? "Saving..." : "Save Vendor"}
-          </button>
-        </div>
-      </form>
+          {/* Shipping Address */}
+          <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-dark dark:text-white">Shipping Address</h2>
+              <button
+                type="button"
+                onClick={copyBillingToShipping}
+                className="inline-flex items-center gap-2 rounded-lg border border-stroke px-4 py-2 text-sm font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
+              >
+                Copy from Billing
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                  Address
+                </label>
+                <textarea
+                  name="shipping_address"
+                  value={formData.shipping_address}
+                  onChange={handleChange}
+                  placeholder="Enter shipping address"
+                  rows={2}
+                  className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    City
+                  </label>
+                  <input
+                    type="text"
+                    name="shipping_city"
+                    value={formData.shipping_city}
+                    onChange={handleChange}
+                    placeholder="Enter city"
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    State
+                  </label>
+                  {isIndiaCountry(formData.shipping_country) ? (
+                    <select
+                      name="shipping_state"
+                      value={formData.shipping_state}
+                      onChange={handleChange}
+                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                    >
+                      <option value="">Select state</option>
+                      {INDIAN_STATES.map((state) => (
+                        <option key={state} value={state}>
+                          {state}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      name="shipping_state"
+                      value={formData.shipping_state}
+                      onChange={handleChange}
+                      placeholder="Enter state"
+                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                    />
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Country
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <CreatableSelect
+                        name="shipping_country"
+                        value={
+                          countryOptions.find((option) => option.value === formData.shipping_country) ||
+                          (formData.shipping_country
+                            ? { value: formData.shipping_country, label: formData.shipping_country }
+                            : null)
+                        }
+                        options={countryOptions}
+                        onChange={(selected) => handleCountrySelect("shipping_country", selected?.value || "")}
+                        onCreateOption={(inputValue) => handleCountrySelect("shipping_country", inputValue)}
+                        formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
+                        isClearable
+                        placeholder="Select or type country"
+                        styles={countrySelectStyles}
+                        components={{ Option: CountryOption } as any}
+                      />
+                    </div>
+
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Pincode
+                  </label>
+                  <input
+                    type="text"
+                    name="shipping_zip"
+                    value={formData.shipping_zip}
+                    onChange={handleChange}
+                    placeholder="Enter pincode"
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <hr />
+          {/* Submit Buttons */}
+          <div className="rounded-lg p-4 shadow-none sm:p-6">
+            <div className="mx-auto flex w-full max-w-[560px] items-center justify-center gap-4 sm:gap-8">
+              <button
+                type="submit"
+                disabled={loading}
+                className="h-9 w-28 rounded-lg bg-primary text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-60"
+              >
+                {loading ? "Updating..." : "Update"}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(`/vendors/${vendorId}`)}
+                className="h-9 w-28 rounded-lg bg-[#E5E7EB] text-sm font-medium text-black transition-colors hover:bg-[#e9ebf0] dark:bg-dark-3 dark:text-white dark:hover:bg-dark-2 sm:w-60"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
+
+
+

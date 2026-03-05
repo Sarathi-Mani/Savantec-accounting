@@ -1093,7 +1093,7 @@ export default function GodownsPage() {
             {editingId ? "Edit Godown" : "Add New Godown"}
           </h2>
           
-          <form onSubmit={handleSubmit}>
+          <form data-ui="sf-form" onSubmit={handleSubmit}>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">

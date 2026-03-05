@@ -89,7 +89,7 @@ export default function ContraVoucherPage() {
         <div className="border-b border-stroke px-6.5 py-4 dark:border-strokedark">
           <h3 className="font-medium text-black dark:text-white">Create Contra Entry</h3>
         </div>
-        <form onSubmit={handleSubmit} className="p-6.5">
+        <form data-ui="sf-form" onSubmit={handleSubmit} className="p-6.5">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div>
               <label className="mb-2.5 block text-black dark:text-white">

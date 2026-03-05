@@ -223,7 +223,7 @@ export default function ContactsPage() {
 
       {/* Filters */}
       <div className="bg-white dark:bg-gray-dark rounded-lg shadow p-4">
-        <form onSubmit={handleSearch} className="flex flex-wrap gap-4">
+        <form data-ui="sf-form" onSubmit={handleSearch} className="flex flex-wrap gap-4">
           <div className="flex-1 min-w-[200px]">
             <input
               type="text"
@@ -374,7 +374,7 @@ export default function ContactsPage() {
             <h2 className="text-lg font-semibold mb-4 dark:text-white">
               {editingContact ? "Edit Contact" : "Add Contact"}
             </h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form data-ui="sf-form" onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Customer *

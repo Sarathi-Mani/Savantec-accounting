@@ -376,7 +376,7 @@ export default function EditEmployeePage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <form data-ui="sf-form" onSubmit={handleSubmit}>
         {/* Tabs */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
           <div className="border-b border-gray-200 dark:border-gray-700">

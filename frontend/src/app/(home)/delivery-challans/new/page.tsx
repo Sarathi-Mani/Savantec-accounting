@@ -54,10 +54,13 @@ export default function NewDeliveryChallanPage() {
   };
   const searchParams = useSearchParams();
   const dcType = searchParams.get("type") || "dc_out";
+  const editId = searchParams.get("editId");
+  const isEditMode = Boolean(editId);
   const invoiceId = searchParams.get("invoice_id");
   const fromQuotation = searchParams.get("fromQuotation");
 
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [godowns, setGodowns] = useState<Godown[]>([]);
@@ -97,6 +100,7 @@ export default function NewDeliveryChallanPage() {
     contact_person: "",
     expiry_date: "",
     salesman_id: "",
+    show_prices: true,
   });
 
   const [items, setItems] = useState<DCItem[]>([
@@ -123,7 +127,7 @@ export default function NewDeliveryChallanPage() {
   const [searchResults, setSearchResults] = useState<Product[]>([]);
 
   const formatApiError = (payload: any): string => {
-    const fallback = "Failed to create delivery challan";
+    const fallback = "Failed to save delivery challan";
     if (!payload) return fallback;
 
     if (typeof payload === "string") {
@@ -190,18 +194,20 @@ export default function NewDeliveryChallanPage() {
         // Fetch sales engineers
         await fetchSalesEngineers();
         
-        // Fetch next DC number
-        await fetchNextDcNumber();
+        // Fetch next DC number only in create mode
+        if (!isEditMode) {
+          await fetchNextDcNumber();
+        }
       } catch (error) {
         console.error("Failed to fetch data:", error);
       }
     };
     fetchData();
-  }, [company?.id, dcType]);
+  }, [company?.id, dcType, isEditMode]);
 
   useEffect(() => {
     const prefillFromQuotation = async () => {
-      if (!company?.id || !fromQuotation) return;
+      if (!company?.id || !fromQuotation || isEditMode) return;
       const token = getToken();
       if (!token) return;
 
@@ -307,7 +313,108 @@ export default function NewDeliveryChallanPage() {
     };
 
     prefillFromQuotation();
-  }, [company?.id, fromQuotation]);
+  }, [company?.id, fromQuotation, isEditMode]);
+
+  useEffect(() => {
+    const fetchDeliveryChallanForEdit = async () => {
+      if (!company?.id || !editId) return;
+
+      const token = getToken();
+      if (!token) return;
+
+      setInitialLoading(true);
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api"}/companies/${company.id}/delivery-challans/${editId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch delivery challan");
+        }
+
+        const dc = await response.json();
+        const toDateInput = (value?: string) => (value ? String(value).split("T")[0] : "");
+
+        setPrefillCustomerName(dc.customer_name || "");
+        setPrefillContactName(dc.contact_person || "");
+        setPrefillSalesmanName(dc.salesman_name || "");
+
+        setFormData((prev) => ({
+          ...prev,
+          customer_id: dc.customer_id || "",
+          dc_date: toDateInput(dc.dc_date) || prev.dc_date,
+          from_godown_id: dc.from_godown_id || "",
+          to_godown_id: dc.to_godown_id || "",
+          transporter_name: dc.transporter_name || "",
+          vehicle_number: dc.vehicle_number || "",
+          reference_no: dc.reference_no || "",
+          eway_bill_number: dc.eway_bill_number || "",
+          return_reason: dc.return_reason || "",
+          notes: dc.notes || "",
+          auto_update_stock:
+            typeof dc.auto_update_stock === "boolean" ? dc.auto_update_stock : prev.auto_update_stock,
+          freightCharges: Number(dc.freight_charges ?? dc.freightCharges ?? 0),
+          pfCharges: Number(dc.packing_forwarding_charges ?? dc.pfCharges ?? 0),
+          discountOnAll: Number(dc.discount_on_all ?? dc.discountOnAll ?? 0),
+          discountType: dc.discount_type || prev.discountType,
+          roundOff: Number(dc.round_off ?? 0),
+          dc_number: dc.dc_number || prev.dc_number,
+          status: dc.custom_status || dc.status || prev.status,
+          bill_title: dc.bill_title || "",
+          bill_description: dc.bill_description || "",
+          contact_person: dc.contact_id || "",
+          expiry_date: toDateInput(dc.expiry_date),
+          salesman_id: dc.salesman_id || "",
+        }));
+
+        if (Array.isArray(dc.items) && dc.items.length > 0) {
+          const mappedItems: DCItem[] = dc.items.map((item: any, index: number) => {
+            const quantity = Number(item.quantity || 1);
+            const unitPrice = Number(item.unit_price || 0);
+            const discountPercent = Number(item.discount_percent || 0);
+            const itemTotal = quantity * unitPrice;
+            const discountAmount = Number(item.discount_amount ?? (itemTotal * discountPercent) / 100);
+            const taxableAmount = Number(item.taxable_amount ?? itemTotal - discountAmount);
+            const gstRate = Number(item.gst_rate || 0);
+            const totalAmount = Number(item.total_amount ?? taxableAmount + taxableAmount * (gstRate / 100));
+
+            return {
+              id: Date.now() + index,
+              product_id: item.product_id || "",
+              description: item.description || "",
+              hsn_code: item.hsn_code || "",
+              quantity,
+              unit: item.unit || "unit",
+              unit_price: unitPrice,
+              discount_percent: discountPercent,
+              discount_amount: discountAmount,
+              gst_rate: gstRate,
+              cgst_rate: Number(item.cgst_rate ?? gstRate / 2),
+              sgst_rate: Number(item.sgst_rate ?? gstRate / 2),
+              igst_rate: Number(item.igst_rate ?? 0),
+              taxable_amount: taxableAmount,
+              total_amount: totalAmount,
+              godown_id: item.godown_id || undefined,
+            };
+          });
+
+          setItems(mappedItems);
+        }
+      } catch (err) {
+        console.error("Failed to load delivery challan for edit:", err);
+        setError("Failed to load delivery challan details");
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+
+    fetchDeliveryChallanForEdit();
+  }, [company?.id, editId]);
 
   useEffect(() => {
     if (!formData.customer_id && prefillCustomerName && customers.length > 0) {
@@ -697,9 +804,11 @@ const fetchNextDcNumber = async () => {
     }
 
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/delivery-challans/${endpoint}`,
+      isEditMode
+        ? `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/delivery-challans/${editId}`
+        : `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/delivery-challans/${endpoint}`,
       {
-        method: "POST",
+        method: isEditMode ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
@@ -710,7 +819,14 @@ const fetchNextDcNumber = async () => {
 
       if (response.ok) {
         const data = await response.json();
-        router.push(`/delivery-challans/${data.id}`);
+        const resolvedDcId = data?.id || editId;
+        if (typeof window !== "undefined" && resolvedDcId) {
+          localStorage.setItem(
+            `delivery_challan_show_prices_${resolvedDcId}`,
+            formData.show_prices ? "true" : "false"
+          );
+        }
+        router.push(`/delivery-challans/${resolvedDcId}`);
       } else {
         const rawError = await response.text();
         let parsedError: any = null;
@@ -722,8 +838,8 @@ const fetchNextDcNumber = async () => {
         setError(formatApiError(parsedError));
       }
     } catch (err) {
-      console.error("Error creating delivery challan:", err);
-      setError("Failed to create delivery challan");
+      console.error("Error saving delivery challan:", err);
+      setError("Failed to save delivery challan");
     } finally {
       setLoading(false);
     }
@@ -744,57 +860,51 @@ const fetchNextDcNumber = async () => {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-4 dark:bg-gray-dark md:p-6">
-      {/* Breadcrumb */}
-      <nav className="mb-6 flex" aria-label="Breadcrumb">
-        <ol className="inline-flex items-center space-x-1 text-sm md:space-x-2">
-          <li className="inline-flex items-center">
-            <a href="/" className="inline-flex items-center text-dark-6 hover:text-primary dark:text-gray-400 dark:hover:text-white">
-              Home
-            </a>
-          </li>
-          <li>
-            <div className="flex items-center">
-              <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-              </svg>
-              <a href="/delivery-challans" className="ml-1 text-dark-6 hover:text-primary dark:text-gray-400 dark:hover:text-white md:ml-2">
-                Delivery Challans
-              </a>
-            </div>
-          </li>
-          <li aria-current="page">
-            <div className="flex items-center">
-              <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-              </svg>
-              <span className="ml-1 font-medium text-primary dark:text-primary md:ml-2">
-                New {dcType === "dc_out" ? "DC Out" : "DC In"}
-              </span>
-            </div>
-          </li>
-        </ol>
-      </nav>
+  if (initialLoading) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-dark dark:text-white">
-          Delivery Challan – {dcType === "dc_out" ? "DC Out (Dispatch)" : "DC In (Return)"}
-        </h1>
-        <p className="text-dark-6">
-          {dcType === "dc_out" 
-            ? "Create a delivery challan for goods dispatch" 
-            : "Create a delivery challan for goods return"}
-        </p>
+  return (
+    <div className="w-full bg-gray-50 dark:bg-gray-900">
+      <div className="border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-700 dark:bg-gray-800 sm:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <button
+              type="button"
+              onClick={() => router.push("/delivery-challans")}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-gray-600 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              <span aria-hidden="true">←</span>
+            </button>
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900 dark:text-white sm:text-2xl">
+                {isEditMode ? "Edit Delivery Challan" : `Create ${dcType === "dc_out" ? "DC Out" : "DC In"}`}
+              </h1>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {isEditMode
+                  ? "Update delivery challan details and line items"
+                  : dcType === "dc_out"
+                    ? "Create a delivery challan for goods dispatch"
+                    : "Create a delivery challan for goods return"}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
+      <div className="px-4 py-6 sm:px-6">
+        <div className="mx-auto max-w-7xl">
       {error && (
         <div className="mb-6 rounded-lg bg-red-100 p-4 text-red-700 dark:bg-red-900/30 dark:text-red-400">
           {error}
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      <form data-ui="sf-form" onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* Left Column - Main Form */}
           <div className="lg:col-span-3 space-y-6">
@@ -840,6 +950,41 @@ const fetchNextDcNumber = async () => {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div className="md:col-span-2 lg:col-span-1">
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Price Display
+                  </label>
+                  <div className="rounded-lg border border-stroke px-4 py-2.5 dark:border-dark-3">
+                    <div className="flex items-center gap-4">
+                      <label className="inline-flex cursor-pointer items-center gap-2">
+                        <input
+                          type="radio"
+                          name="dc_price_mode"
+                          checked={formData.show_prices}
+                          onChange={() => handleFormChange("show_prices", true)}
+                          className="h-4 w-4"
+                        />
+                        <span className="text-sm text-dark dark:text-white">With Price</span>
+                      </label>
+                      <label className="inline-flex cursor-pointer items-center gap-2">
+                        <input
+                          type="radio"
+                          name="dc_price_mode"
+                          checked={!formData.show_prices}
+                          onChange={() => handleFormChange("show_prices", false)}
+                          className="h-4 w-4"
+                        />
+                        <span className="text-sm text-dark dark:text-white">Without Price</span>
+                      </label>
+                    </div>
+                    <p className="mt-1 text-xs text-dark-6">
+                      {formData.show_prices
+                        ? "PDF and view will show price and amount."
+                        : "PDF and view will hide price and amount."}
+                    </p>
+                  </div>
                 </div>
 
                 {/* DC Date */}
@@ -1393,31 +1538,33 @@ const fetchNextDcNumber = async () => {
                   className="h-5 w-5 rounded border-stroke text-primary focus:ring-primary dark:border-dark-3"
                 />
                 <label htmlFor="autoUpdateStock" className="text-dark dark:text-white">
-                  Automatically update stock on creation
+                  Automatically update stock on save
                 </label>
               </div>
               <p className="mt-1 text-sm text-dark-6">
                 {dcType === "dc_out"
-                  ? "Stock will be reduced when this DC is created"
-                  : "Stock will be increased when this DC is created"}
+                  ? "Stock will be reduced when this DC is saved"
+                  : "Stock will be increased when this DC is saved"}
               </p>
             </div>
 
             {/* SECTION 5: Action Buttons */}
-            <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-              <div className="flex flex-wrap justify-center gap-4">
+            <div className="rounded-lg p-4 shadow-none sm:p-6">
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-center">
                 <button
                   type="submit"
                   disabled={loading}
-                  className="min-w-[180px] rounded-lg bg-primary px-6 py-3 font-medium text-white transition hover:bg-opacity-90 disabled:opacity-50"
+                  className="h-10 w-full rounded-lg bg-primary px-6 text-sm font-medium text-white transition hover:bg-opacity-90 disabled:opacity-50 sm:h-11 sm:min-w-[220px] sm:w-auto"
                 >
-                  {loading ? "Creating..." : `Create ${dcType === "dc_out" ? "DC Out" : "DC In"}`}
+                  {loading
+                    ? isEditMode ? "Updating..." : "Creating..."
+                    : isEditMode ? "Update Delivery Challan" : `Create ${dcType === "dc_out" ? "DC Out" : "DC In"}`}
                 </button>
 
                 <button
                   type="button"
                   onClick={() => router.back()}
-                  className="min-w-[180px] rounded-lg border border-stroke bg-white px-6 py-3 font-medium text-dark transition hover:bg-gray-50 dark:border-dark-3 dark:bg-gray-dark dark:text-white"
+                  className="h-10 w-full rounded-lg bg-[#E5E7EB] px-6 text-sm font-medium text-black transition-colors hover:bg-[#e9ebf0] dark:bg-dark-3 dark:text-white dark:hover:bg-dark-2 sm:h-11 sm:min-w-[220px] sm:w-auto"
                 >
                   Cancel
                 </button>
@@ -1426,6 +1573,9 @@ const fetchNextDcNumber = async () => {
           </div>
         </div>
       </form>
+        </div>
+      </div>
     </div>
   );
 }
+

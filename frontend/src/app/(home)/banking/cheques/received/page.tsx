@@ -1822,7 +1822,7 @@ export default function ReceivedChequesPage() {
 
             {/* Create/Edit Mode */}
             {(modalMode === "create" || modalMode === "edit") && (
-              <form onSubmit={handleSubmit}>
+              <form data-ui="sf-form" onSubmit={handleSubmit}>
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -2001,7 +2001,7 @@ export default function ReceivedChequesPage() {
               <p className="text-sm text-gray-600 dark:text-gray-300">{selectedCheque.drawer_name}</p>
             </div>
 
-            <form onSubmit={handleDeposit}>
+            <form data-ui="sf-form" onSubmit={handleDeposit}>
               <div className="mb-4">
                 <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Deposit To Bank Account <span className="text-red-500">*</span>

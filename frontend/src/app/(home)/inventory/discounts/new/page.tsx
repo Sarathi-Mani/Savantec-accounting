@@ -103,7 +103,7 @@ export default function NewDiscountRulePage() {
     <>
       <Breadcrumb pageName="Create Discount Rule" />
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form data-ui="sf-form" onSubmit={handleSubmit} className="space-y-6">
         <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark p-6">
           <h3 className="text-xl font-semibold mb-4">Discount Rule Information</h3>
           

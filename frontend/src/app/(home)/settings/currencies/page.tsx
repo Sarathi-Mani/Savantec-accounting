@@ -69,7 +69,7 @@ export default function CurrenciesPage() {
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-50">
           <div className="w-full max-w-md rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
             <h3 className="mb-4 text-xl font-semibold text-black dark:text-white">Add Currency</h3>
-            <form onSubmit={handleSubmit}>
+            <form data-ui="sf-form" onSubmit={handleSubmit}>
               <div className="mb-4">
                 <label className="mb-2 block">Code (e.g., USD) *</label>
                 <input type="text" value={formData.code} onChange={(e) => setFormData({...formData, code: e.target.value.toUpperCase()})} required maxLength={3} className="w-full rounded border border-stroke px-4 py-2 dark:border-strokedark dark:bg-form-input" />

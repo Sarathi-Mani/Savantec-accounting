@@ -217,7 +217,7 @@ export default function BankAccountsPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit}>
+          <form data-ui="sf-form" onSubmit={handleSubmit}>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">

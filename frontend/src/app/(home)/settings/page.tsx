@@ -177,7 +177,7 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              <form onSubmit={handleProfileSubmit} className="space-y-6">
+              <form data-ui="sf-form" onSubmit={handleProfileSubmit} className="space-y-6">
                 <div className="grid gap-6 sm:grid-cols-2">
                   <div className="sm:col-span-2">
                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
@@ -247,7 +247,7 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                <form onSubmit={handlePasswordSubmit} className="space-y-6">
+                <form data-ui="sf-form" onSubmit={handlePasswordSubmit} className="space-y-6">
                   <div>
                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                       Current Password

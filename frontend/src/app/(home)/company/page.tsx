@@ -190,7 +190,7 @@ export default function CompanyProfilePage() {
         </div>
       )}
 
-      <form id="company-form" onSubmit={handleSubmit}>
+      <form data-ui="sf-form" id="company-form" onSubmit={handleSubmit}>
         <div className="space-y-6">
           {/* Basic Info */}
           <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">

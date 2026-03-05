@@ -338,7 +338,7 @@ export default function CreateRolePage() {
           <div className="bg-white dark:bg-gray-dark rounded-lg shadow-1 p-6 sticky top-6">
             <h2 className="text-lg font-semibold text-dark dark:text-white mb-4">Role Information</h2>
 
-            <form onSubmit={handleSubmit}>
+            <form data-ui="sf-form" onSubmit={handleSubmit}>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

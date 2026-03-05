@@ -1410,7 +1410,7 @@ export default function ChequeBooksPage() {
             <h3 className="mb-4 text-xl font-semibold text-black dark:text-white">
               Add Cheque Book
             </h3>
-            <form onSubmit={handleSubmit}>
+            <form data-ui="sf-form" onSubmit={handleSubmit}>
               <div className="mb-4">
                 <label className="mb-2.5 block text-black dark:text-white">
                   Bank Account <span className="text-meta-1">*</span>

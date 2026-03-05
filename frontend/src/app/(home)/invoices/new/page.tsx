@@ -395,7 +395,7 @@ export default function NewInvoicePage() {
         </p>
       </div>
 
-      <form onSubmit={(e) => handleSubmit(e, false)}>
+      <form data-ui="sf-form" onSubmit={(e) => handleSubmit(e, false)}>
         {error && (
           <div className="mb-6 rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">
             {error}

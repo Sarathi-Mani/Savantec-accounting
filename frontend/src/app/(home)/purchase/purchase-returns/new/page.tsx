@@ -800,45 +800,27 @@ export default function AddPurchaseReturnPage() {
                          formData.amount_paid >= totals.grandTotal ? "Paid" : "Partial";
 
     return (
-        <div className="min-h-screen bg-gray-50 p-4 dark:bg-gray-dark md:p-6">
-            {/* Breadcrumb */}
-            <nav className="mb-6 flex" aria-label="Breadcrumb">
-                <ol className="inline-flex items-center space-x-1 text-sm md:space-x-2">
-                    <li className="inline-flex items-center">
-                        <Link href="/" className="inline-flex items-center text-dark-6 hover:text-primary dark:text-gray-400 dark:hover:text-white">
-                            Home
-                        </Link>
-                    </li>
-                    <li>
-                        <div className="flex items-center">
-                            <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <Link href="/purchase/purchase-returns" className="ml-1 text-dark-6 hover:text-primary dark:text-gray-400 dark:hover:text-white md:ml-2">
-                                Purchase Returns
-                            </Link>
-                        </div>
-                    </li>
-                    <li>
-                        <div className="flex items-center">
-                            <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <span className="ml-1 font-medium text-dark dark:text-white md:ml-2">
-                                {isEditMode ? "Edit Purchase Return" : "New Purchase Return"}
-                            </span>
-                        </div>
-                    </li>
-                </ol>
-            </nav>
-
-            {/* Page Header */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-dark dark:text-white">Purchase Return – Add / Update Purchase Return</h1>
-                <p className="text-dark-6">
-                    {isEditMode ? "Update existing purchase return details and items" : "Create new purchase return with vendor details and items"}
-                </p>
+        <div className="w-full bg-gray-50 dark:bg-gray-900">
+            <div className="border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-700 dark:bg-gray-800 sm:px-6">
+                <div className="flex items-start gap-3">
+                    <Link
+                        href="/purchase/purchase-returns"
+                        className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary/90 sm:h-10 sm:w-10"
+                    >
+                        <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </Link>
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{isEditMode ? "Edit Purchase Return" : "Create Purchase Return"}</h1>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            {isEditMode ? "Update existing purchase return details and items" : "Create new purchase return with vendor details and items"}
+                        </p>
+                    </div>
+                </div>
             </div>
+
+            <div className="w-full p-4 sm:p-6">
 
             {(prefillLoading || prefillError) && (
                 <div className="mb-6 rounded-lg border border-stroke bg-white p-4 text-sm dark:border-dark-3 dark:bg-gray-dark">
@@ -849,7 +831,7 @@ export default function AddPurchaseReturnPage() {
                 </div>
             )}
 
-            <form onSubmit={handleSubmit}>
+            <form data-ui="sf-form" onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                     {/* Left Column - Main Form */}
                     <div className="lg:col-span-3 space-y-6">
@@ -1525,12 +1507,12 @@ export default function AddPurchaseReturnPage() {
                         </div>
 
                         {/* Action Buttons */}
-                        <div className="rounded-lg p-6 dark:bg-gray-dark">
+                        <div className="rounded-lg p-4 shadow-none sm:p-6">
                             <div className="flex flex-wrap justify-center gap-4">
                                 <button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className="min-w-[180px] rounded-lg bg-green-600 px-6 py-3 font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
+                                    className="h-9 min-w-[140px] rounded-lg bg-primary px-6 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:min-w-[220px]"
                                 >
                                     {isSubmitting ? "Saving..." : isEditMode ? "Update Purchase Return" : "Save Purchase Return"}
                                 </button>
@@ -1538,7 +1520,7 @@ export default function AddPurchaseReturnPage() {
                                 <button
                                     type="button"
                                     onClick={() => router.back()}
-                                    className="min-w-[180px] rounded-lg border border-stroke bg-white px-6 py-3 font-medium text-dark transition hover:bg-gray-50 dark:border-dark-3 dark:bg-gray-dark dark:text-white"
+                                    className="h-9 min-w-[140px] rounded-lg bg-[#E5E7EB] px-6 text-sm font-medium text-black transition-colors hover:bg-[#e9ebf0] dark:bg-dark-3 dark:text-white dark:hover:bg-dark-2 sm:h-10 sm:min-w-[220px]"
                                 >
                                     Cancel
                                 </button>
@@ -1547,6 +1529,7 @@ export default function AddPurchaseReturnPage() {
                     </div>
                 </div>
             </form>
+            </div>
         </div>
     );
 }

@@ -254,7 +254,7 @@ export default function QuickEntryPage() {
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSubmit} className="p-6">
+            <form data-ui="sf-form" onSubmit={handleSubmit} className="p-6">
               {error && (
                 <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
                   {error}

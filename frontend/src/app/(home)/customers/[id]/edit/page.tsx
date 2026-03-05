@@ -794,22 +794,26 @@ export default function EditCustomerPage() {
 
   if (!company) {
     return (
-      <div className="rounded-lg bg-white p-8 text-center shadow-1 dark:bg-gray-dark">
-        <p className="text-dark-6">Please select a company first</p>
+      <div className="w-full bg-gray-50 px-4 py-6 dark:bg-gray-900 sm:px-6">
+        <div className="mx-auto max-w-7xl rounded-lg bg-white p-8 text-center shadow-1 dark:bg-gray-dark">
+          <p className="text-dark-6">Please select a company first</p>
+        </div>
       </div>
     );
   }
 
   if (!customerId) {
     return (
-      <div className="rounded-lg bg-white p-8 text-center shadow-1 dark:bg-gray-dark">
-        <p className="text-dark-6">Customer not found</p>
+      <div className="w-full bg-gray-50 px-4 py-6 dark:bg-gray-900 sm:px-6">
+        <div className="mx-auto max-w-7xl rounded-lg bg-white p-8 text-center shadow-1 dark:bg-gray-dark">
+          <p className="text-dark-6">Customer not found</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div>
+    <div className="w-full bg-gray-50 dark:bg-gray-900">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-dark dark:text-white">Edit Customer</h1>
@@ -824,7 +828,8 @@ export default function EditCustomerPage() {
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="px-4 py-6 sm:px-6">
+      <form data-ui="sf-form" onSubmit={handleSubmit} className="mx-auto max-w-7xl space-y-6">
         {error && (
           <div className="rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">
             {error}
@@ -1595,23 +1600,26 @@ export default function EditCustomerPage() {
         </div>
 
         {/* Submit Buttons */}
-        <div className="flex justify-end gap-4">
+        <div className="rounded-lg p-4 shadow-none sm:p-6">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={() => router.back()}
-            className="rounded-lg border border-stroke px-6 py-3 font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
+            className="h-10 w-full rounded-lg bg-[#E5E7EB] px-6 text-sm font-medium text-black transition-colors hover:bg-[#e9ebf0] dark:bg-dark-3 dark:text-white dark:hover:bg-dark-2 sm:h-11 sm:min-w-[220px] sm:w-auto"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="rounded-lg bg-primary px-6 py-3 font-medium text-white transition hover:bg-opacity-90 disabled:opacity-50"
+            className="h-10 w-full rounded-lg bg-primary px-6 text-sm font-medium text-white transition hover:bg-opacity-90 disabled:opacity-50 sm:h-11 sm:min-w-[220px] sm:w-auto"
           >
             {saving ? "Updating..." : "Update Customer"}
           </button>
+          </div>
         </div>
       </form>
+      </div>
     </div>
   );
 }

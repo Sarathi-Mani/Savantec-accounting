@@ -81,7 +81,7 @@ export default function ExchangeRatesPage() {
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-50">
           <div className="w-full max-w-md rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
             <h3 className="mb-4 text-xl font-semibold text-black dark:text-white">Add Exchange Rate</h3>
-            <form onSubmit={handleSubmit}>
+            <form data-ui="sf-form" onSubmit={handleSubmit}>
               <div className="mb-4">
                 <label className="mb-2 block">From Currency *</label>
                 <input type="text" value={formData.from_currency} onChange={(e) => setFormData({...formData, from_currency: e.target.value.toUpperCase()})} required placeholder="e.g., USD" className="w-full rounded border border-stroke px-4 py-2 dark:border-strokedark dark:bg-form-input" />

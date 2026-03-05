@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { vendorsApi, getErrorMessage } from "@/services/api";
@@ -705,31 +706,39 @@ export default function CreateVendorPage() {
 
   if (!company) {
     return (
-      <div className="rounded-lg bg-white p-8 text-center shadow-1 dark:bg-gray-dark">
-        <p className="text-dark-6">Please select a company first</p>
+      <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-900">
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
+          <p className="text-yellow-800 dark:text-yellow-400">Please select a company first.</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-dark dark:text-white">Create New Vendor</h1>
-          <p className="text-sm text-dark-6">Add a new vendor/supplier to your business</p>
+    <div className="w-full bg-gray-50 dark:bg-gray-900">
+      <div className="border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-700 dark:bg-gray-800 sm:px-6">
+        <div className="flex items-start gap-3">
+          <Link
+            href="/vendors"
+            className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary/90 sm:h-10 sm:w-10"
+          >
+            <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create New Vendor</h1>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Add a new vendor/supplier to your business
+            </p>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => router.push("/vendors")}
-          className="inline-flex items-center gap-2 rounded-lg border border-stroke px-4 py-2 text-sm font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
-        >
-          <span>←</span> Back
-        </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="w-full p-4 sm:p-6">
+      <form data-ui="sf-form" onSubmit={handleSubmit} className="space-y-6">
         {error && (
-          <div className="rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">
+          <div className="mb-4 rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">
             {error}
           </div>
         )}
@@ -1604,25 +1613,27 @@ export default function CreateVendorPage() {
             </div>
           </div>
         </div>
-
         {/* Submit Buttons */}
-        <div className="flex justify-end gap-4">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="rounded-lg border border-stroke px-6 py-3 font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-lg bg-primary px-6 py-3 font-medium text-white transition hover:bg-opacity-90 disabled:opacity-50"
-          >
-            {loading ? "Saving..." : "Save Vendor"}
-          </button>
+        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-none dark:border-gray-700 dark:bg-gray-800 sm:p-6">
+          <div className="mx-auto flex w-full max-w-[560px] items-center justify-center gap-4 sm:gap-8">
+            <button
+              type="submit"
+              disabled={loading}
+              className="h-9 w-28 rounded-lg bg-primary text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-60"
+            >
+              {loading ? "Saving..." : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/vendors")}
+              className="h-9 w-28 rounded-lg bg-[#E5E7EB] text-sm font-medium text-black transition-colors hover:bg-[#e9ebf0] dark:bg-dark-3 dark:text-white dark:hover:bg-dark-2 sm:w-60"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </form>
+      </div>
     </div>
   );
 }

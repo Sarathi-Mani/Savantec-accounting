@@ -140,7 +140,7 @@ export default function StockOutPage() {
       )}
 
       <div className="rounded-xl border border-stroke bg-white p-6 shadow-default dark:border-dark-3 dark:bg-gray-dark">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form data-ui="sf-form" onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
               Item *

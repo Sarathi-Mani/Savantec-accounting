@@ -82,6 +82,7 @@ export default function DeliveryChallanDetailPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [godowns, setGodowns] = useState<Godown[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [showPricesInView, setShowPricesInView] = useState(true);
 
   const getToken = () => {
     if (typeof window === "undefined") return null;
@@ -136,6 +137,21 @@ export default function DeliveryChallanDetailPage() {
     };
     fetchRefs();
   }, [company?.id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !dcId) return;
+    const saved = localStorage.getItem(`delivery_challan_show_prices_${dcId}`);
+    if (saved === "true") setShowPricesInView(true);
+    if (saved === "false") setShowPricesInView(false);
+  }, [dcId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !dcId) return;
+    localStorage.setItem(
+      `delivery_challan_show_prices_${dcId}`,
+      showPricesInView ? "true" : "false"
+    );
+  }, [dcId, showPricesInView]);
 
   const performAction = async (action: string, body: any = {}) => {
     const token = getToken();
@@ -526,17 +542,35 @@ export default function DeliveryChallanDetailPage() {
             </button>
           )}
 
+          <div className="rounded-lg border border-stroke px-3 py-2 dark:border-dark-3">
+            <div className="flex items-center gap-3">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-dark dark:text-white">
+                <input
+                  type="radio"
+                  name="dc_price_view_mode"
+                  checked={showPricesInView}
+                  onChange={() => setShowPricesInView(true)}
+                  className="h-4 w-4"
+                />
+                With Price
+              </label>
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-dark dark:text-white">
+                <input
+                  type="radio"
+                  name="dc_price_view_mode"
+                  checked={!showPricesInView}
+                  onChange={() => setShowPricesInView(false)}
+                  className="h-4 w-4"
+                />
+                Without Price
+              </label>
+            </div>
+          </div>
           <button
-            onClick={() => generateDCPdf(true)}
+            onClick={() => generateDCPdf(showPricesInView)}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
           >
-            PDF (With Price)
-          </button>
-          <button
-            onClick={() => generateDCPdf(false)}
-            className="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10"
-          >
-            PDF (Without Price)
+            Download PDF
           </button>
         </div>
       </div>
@@ -736,12 +770,20 @@ export default function DeliveryChallanDetailPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-dark dark:text-white">HSN</th>
                 <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Quantity</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-dark dark:text-white">Unit</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Unit Price</th>
+                {showPricesInView && (
+                  <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Unit Price</th>
+                )}
                 <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Discount %</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Discount Amt</th>
+                {showPricesInView && (
+                  <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Discount Amt</th>
+                )}
                 <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">GST %</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Taxable</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Total</th>
+                {showPricesInView && (
+                  <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Taxable</th>
+                )}
+                {showPricesInView && (
+                  <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Total</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -752,24 +794,32 @@ export default function DeliveryChallanDetailPage() {
                   <td className="px-4 py-3 text-dark-6">{item.hsn_code || "-"}</td>
                   <td className="px-4 py-3 text-right text-dark dark:text-white">{item.quantity}</td>
                   <td className="px-4 py-3 text-dark-6">{item.unit}</td>
-                  <td className="px-4 py-3 text-right text-dark dark:text-white">
-                    {formatMoney(item.unit_price)}
-                  </td>
+                  {showPricesInView && (
+                    <td className="px-4 py-3 text-right text-dark dark:text-white">
+                      {formatMoney(item.unit_price)}
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-right text-dark-6">
                     {item.discount_percent || 0}
                   </td>
-                  <td className="px-4 py-3 text-right text-dark dark:text-white">
-                    {formatMoney(item.discount_amount)}
-                  </td>
+                  {showPricesInView && (
+                    <td className="px-4 py-3 text-right text-dark dark:text-white">
+                      {formatMoney(item.discount_amount)}
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-right text-dark-6">
                     {item.gst_rate || 0}
                   </td>
-                  <td className="px-4 py-3 text-right text-dark dark:text-white">
-                    {formatMoney(item.taxable_amount)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-dark dark:text-white">
-                    {formatMoney(item.total_amount)}
-                  </td>
+                  {showPricesInView && (
+                    <td className="px-4 py-3 text-right text-dark dark:text-white">
+                      {formatMoney(item.taxable_amount)}
+                    </td>
+                  )}
+                  {showPricesInView && (
+                    <td className="px-4 py-3 text-right text-dark dark:text-white">
+                      {formatMoney(item.total_amount)}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -778,23 +828,25 @@ export default function DeliveryChallanDetailPage() {
       </div>
 
       {/* Item Totals */}
-      <div className="mb-6 rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-        <h3 className="mb-4 font-semibold text-dark dark:text-white">Item Totals</h3>
-        <div className="grid gap-3 text-sm sm:grid-cols-3">
-          <div className="flex items-center justify-between">
-            <span className="text-dark-6">Subtotal</span>
-            <span className="text-dark dark:text-white">{formatMoney(itemSubtotal)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-dark-6">Total Tax</span>
-            <span className="text-dark dark:text-white">{formatMoney(itemTax)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-dark-6">Grand Total</span>
-            <span className="text-dark dark:text-white">{formatMoney(itemGrandTotal)}</span>
+      {showPricesInView && (
+        <div className="mb-6 rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
+          <h3 className="mb-4 font-semibold text-dark dark:text-white">Item Totals</h3>
+          <div className="grid gap-3 text-sm sm:grid-cols-3">
+            <div className="flex items-center justify-between">
+              <span className="text-dark-6">Subtotal</span>
+              <span className="text-dark dark:text-white">{formatMoney(itemSubtotal)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-dark-6">Total Tax</span>
+              <span className="text-dark dark:text-white">{formatMoney(itemTax)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-dark-6">Grand Total</span>
+              <span className="text-dark dark:text-white">{formatMoney(itemGrandTotal)}</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Notes */}
       {dc.notes && (

@@ -3120,7 +3120,7 @@ const productOptions = useMemo(() =>
           </div>
         </div>
         
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form data-ui="sf-form" onSubmit={handleSubmit} className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="space-y-6">
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">

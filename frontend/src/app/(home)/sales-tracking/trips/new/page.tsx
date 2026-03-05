@@ -258,7 +258,7 @@ export default function NewTripPage() {
       {/* Form */}
       <div className="max-w-2xl mx-auto p-6">
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-          <form onSubmit={handleSubmit}>
+          <form data-ui="sf-form" onSubmit={handleSubmit}>
             {/* Engineer Selection */}
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">

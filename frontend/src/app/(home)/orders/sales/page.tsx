@@ -258,7 +258,7 @@ export default function SalesOrdersPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit}>
+          <form data-ui="sf-form" onSubmit={handleSubmit}>
             <div className="mb-6 grid gap-4 sm:grid-cols-3">
               <div>
                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">

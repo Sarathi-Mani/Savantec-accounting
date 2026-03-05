@@ -279,7 +279,7 @@ export default function NewVisitPlanPage() {
       {/* Form */}
       <div className="max-w-4xl mx-auto p-6">
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-          <form onSubmit={handleSubmit}>
+          <form data-ui="sf-form" onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Visit Date */}
               <div>

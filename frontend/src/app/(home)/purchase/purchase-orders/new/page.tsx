@@ -804,99 +804,27 @@ export default function AddPurchaseOrderPage() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 p-4 dark:bg-gray-dark md:p-6">
-            {/* Add Currency Modal */}
-            {showAddCurrencyModal && (
-                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-50">
-                    <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg dark:bg-gray-dark">
-                        <h3 className="mb-4 text-lg font-semibold text-dark dark:text-white">Add New Currency</h3>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                    Currency Code <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={newCurrency.code}
-                                    onChange={(e) => setNewCurrency(prev => ({ ...prev, code: e.target.value.toUpperCase() }))}
-                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    placeholder="e.g., USD, EUR, GBP"
-                                    maxLength={3}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                    Currency Name <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={newCurrency.name}
-                                    onChange={(e) => setNewCurrency(prev => ({ ...prev, name: e.target.value }))}
-                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    placeholder="e.g., US Dollar, Euro"
-                                />
-                            </div>
-
-                        </div>
-
-                        <div className="mt-6 flex justify-end gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setShowAddCurrencyModal(false)}
-                                className="rounded-lg border border-stroke px-4 py-2 text-dark hover:bg-gray-50 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleSaveCurrency}
-                                className="rounded-lg bg-primary px-4 py-2 text-white hover:bg-opacity-90"
-                            >
-                                Add Currency
-                            </button>
-                        </div>
+        <div className="w-full bg-gray-50 dark:bg-gray-900">
+            <div className="border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-700 dark:bg-gray-800 sm:px-6">
+                <div className="flex items-start gap-3">
+                    <Link
+                        href="/purchase/purchase-orders"
+                        className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-white transition hover:bg-primary/90 sm:h-10 sm:w-10"
+                    >
+                        <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </Link>
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Create Purchase Order</h1>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Create new purchase order with supplier details and items</p>
                     </div>
                 </div>
-            )}
-
-            {/* Breadcrumb */}
-            <nav className="mb-6 flex" aria-label="Breadcrumb">
-                <ol className="inline-flex items-center space-x-1 text-sm md:space-x-2">
-                    <li className="inline-flex items-center">
-                        <Link href="/" className="inline-flex items-center text-dark-6 hover:text-primary dark:text-gray-400 dark:hover:text-white">
-                            Home
-                        </Link>
-                    </li>
-                    <li>
-                        <div className="flex items-center">
-                            <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <Link href="/purchase/purchase-orders" className="ml-1 text-dark-6 hover:text-primary dark:text-gray-400 dark:hover:text-white md:ml-2">
-                                Purchase Orders
-                            </Link>
-                        </div>
-                    </li>
-                    <li>
-                        <div className="flex items-center">
-                            <svg className="h-4 w-4 text-dark-6 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                            </svg>
-                            <span className="ml-1 font-medium text-dark dark:text-white md:ml-2">Add Purchase Order</span>
-                        </div>
-                    </li>
-                </ol>
-            </nav>
-
-            {/* Page Header */}
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold text-dark dark:text-white">Purchase – Add / Update Purchase Order</h1>
-                <p className="text-dark-6">Create new purchase order with supplier details and items</p>
             </div>
 
-            <form onSubmit={handleSubmit}>
+            <div className="w-full p-4 sm:p-6">
+
+            <form data-ui="sf-form" onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                     {/* Main Form - 3 column layout */}
                     <div className="lg:col-span-3 space-y-6">
@@ -1453,12 +1381,12 @@ export default function AddPurchaseOrderPage() {
                         </div>
 
                         {/* Action Buttons */}
-                        <div className="rounded-lg p-6 dark:bg-gray-dark">
+                        <div className="rounded-lg p-4 shadow-none sm:p-6">
                             <div className="flex flex-wrap justify-center gap-4">
                                 <button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className="min-w-[180px] rounded-lg bg-green-600 px-6 py-3 font-medium text-white transition hover:bg-green-700 disabled:opacity-50"
+                                    className="h-9 min-w-[140px] rounded-lg bg-primary px-6 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:min-w-[220px]"
                                 >
                                     {isSubmitting ? "Saving..." : "Save Purchase Order"}
                                 </button>
@@ -1466,7 +1394,7 @@ export default function AddPurchaseOrderPage() {
                                 <button
                                     type="button"
                                     onClick={() => router.back()}
-                                    className="min-w-[180px] rounded-lg border border-stroke bg-white px-6 py-3 font-medium text-dark transition hover:bg-gray-50 dark:border-dark-3 dark:bg-gray-dark dark:text-white"
+                                    className="h-9 min-w-[140px] rounded-lg bg-[#E5E7EB] px-6 text-sm font-medium text-black transition-colors hover:bg-[#e9ebf0] dark:bg-dark-3 dark:text-white dark:hover:bg-dark-2 sm:h-10 sm:min-w-[220px]"
                                 >
                                     Close
                                 </button>
@@ -1475,9 +1403,11 @@ export default function AddPurchaseOrderPage() {
                     </div>
                 </div>
             </form>
+            </div>
         </div>
     );
 }
+
 
 
 

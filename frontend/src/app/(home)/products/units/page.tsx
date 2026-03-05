@@ -165,7 +165,7 @@ export default function ProductUnitsPage() {
       </div>
 
       <div className="border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-800">
-        <form onSubmit={handleAddUnit} className="flex flex-col gap-3 sm:flex-row justify-center ">
+        <form data-ui="sf-form" onSubmit={handleAddUnit} className="flex flex-col gap-3 sm:flex-row justify-center ">
           <input
             type="text"
             value={newUnit}

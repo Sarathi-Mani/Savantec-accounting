@@ -177,7 +177,7 @@ export default function NewPurchaseOrderPage() {
         <p className="text-sm text-dark-6">Create a new purchase order for your vendor</p>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      <form data-ui="sf-form" onSubmit={handleSubmit}>
         {error && (
           <div className="mb-6 rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">
             {error}

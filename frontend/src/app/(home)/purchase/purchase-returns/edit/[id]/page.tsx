@@ -14,10 +14,11 @@ export default function PurchaseReturnEditRedirectPage() {
   }, [params, router]);
 
   return (
-    <div className="p-6">
-      <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+    <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-900">
+      <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
         Redirecting to edit purchase return...
       </div>
     </div>
   );
 }
+
