@@ -21,34 +21,42 @@ class DeliveryChallanService:
     def _round_amount(self, amount: Decimal) -> Decimal:
         """Round amount to 2 decimal places."""
         return Decimal(str(amount)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    def _get_financial_year_parts(self, target_date: Optional[datetime] = None) -> tuple[int, int]:
+        """Return Indian financial year start/end years."""
+        dt = target_date or datetime.now()
+        if dt.month >= 4:
+            return dt.year, dt.year + 1
+        return dt.year - 1, dt.year
+
+    def _get_financial_year_label(self, target_date: Optional[datetime] = None) -> str:
+        start_year, end_year = self._get_financial_year_parts(target_date)
+        return f"{str(start_year)[-2:]}-{str(end_year)[-2:]}"
     
     def _get_next_dc_number(self, company: Company, dc_type: DeliveryChallanType) -> str:
         """Generate next DC number."""
         prefix = "DCO" if dc_type == DeliveryChallanType.DC_OUT else "DCI"
-        current_year = datetime.now().year
-        
-        last_dc = self.db.query(DeliveryChallan).filter(
+        fy_label = self._get_financial_year_label()
+
+        challans = self.db.query(DeliveryChallan.dc_number).filter(
             DeliveryChallan.company_id == company.id,
             DeliveryChallan.dc_type == dc_type,
-            func.extract('year', DeliveryChallan.dc_date) == current_year
-        ).order_by(DeliveryChallan.dc_number.desc()).first()
-        
-        if last_dc and last_dc.dc_number:
+        ).all()
+
+        max_number = 0
+        pattern = f"{prefix}-{fy_label}-"
+
+        for row in challans:
+            dc_number = (row[0] or "").strip()
+            if not dc_number.startswith(pattern):
+                continue
             try:
-                # Try to parse existing format
-                if '-' in last_dc.dc_number:
-                    last_num = int(last_dc.dc_number.split('-')[-1])
-                    next_num = last_num + 1
-                else:
-                    # If it's a simple number
-                    last_num = int(last_dc.dc_number)
-                    next_num = last_num + 1
+                serial = int(dc_number.split("-")[-1])
             except (ValueError, IndexError):
-                next_num = 1
-        else:
-            next_num = 1
-        
-        return f"{prefix}-{current_year}-{next_num:04d}"
+                continue
+            max_number = max(max_number, serial)
+
+        return f"{prefix}-{fy_label}-{max_number + 1}"
 
     def _get_valid_contact_id(self, company_id: str, contact_id: Optional[str]) -> Optional[str]:
         """Return contact_id only if it exists under the given company."""

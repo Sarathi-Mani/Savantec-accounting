@@ -343,15 +343,15 @@ async def get_next_dc_number(
     """
     Get the next available delivery challan number.
     
-    Generates DC numbers in format: DCO-YYYY-XXXX for DC Out and DCI-YYYY-XXXX for DC In
-    Example: DCO-2024-0001, DCO-2024-0002, DCI-2024-0001, etc.
+    Generates DC numbers in format: DCO-YY-YY-N for DC Out and DCI-YY-YY-N for DC In
+    Example: DCO-25-26-1, DCO-25-26-2, DCI-25-26-1, etc.
     """
     company = get_company_or_404(company_id, current_user, db)
     service = DeliveryChallanService(db)
     
     try:
         # Convert string to enum
-        dc_type_enum = DeliveryChallanType(dc_type.upper()) if dc_type else DeliveryChallanType.DC_OUT
+        dc_type_enum = DeliveryChallanType(dc_type.lower()) if dc_type else DeliveryChallanType.DC_OUT
         
         # Get next number using service method
         next_dc_number = service._get_next_dc_number(company, dc_type_enum)
@@ -359,15 +359,16 @@ async def get_next_dc_number(
         # Extract series and last number
         if next_dc_number:
             parts = next_dc_number.split('-')
-            if len(parts) >= 3:
+            if len(parts) >= 4:
                 prefix = parts[0]
-                current_series = f"{prefix}-{parts[1]}"
-                last_number = int(parts[2]) - 1 if parts[2].isdigit() else 0
+                current_series = f"{prefix}-{parts[1]}-{parts[2]}"
+                last_number = int(parts[3]) - 1 if parts[3].isdigit() else 0
             else:
-                current_series = next_dc_number[:-4]  # Remove last 4 digits
+                current_series = next_dc_number
                 last_number = 0
         else:
-            current_series = f"{'DCO' if dc_type_enum == DeliveryChallanType.DC_OUT else 'DCI'}-{datetime.now().year}"
+            prefix = 'DCO' if dc_type_enum == DeliveryChallanType.DC_OUT else 'DCI'
+            current_series = f"{prefix}-{service._get_financial_year_label()}"
             last_number = 0
         
         return NextDCNumberResponse(
@@ -378,14 +379,13 @@ async def get_next_dc_number(
         
     except Exception as e:
         # Fallback: Generate a simple timestamp-based number
-        timestamp = int(datetime.now().timestamp())
         fallback_prefix = "DCO" if dc_type == "dc_out" else "DCI"
-        current_year = datetime.now().year
-        fallback_number = f"{fallback_prefix}-{current_year}-{timestamp % 10000:04d}"
+        fy_label = service._get_financial_year_label()
+        fallback_number = f"{fallback_prefix}-{fy_label}-1"
         
         return NextDCNumberResponse(
             next_number=fallback_number,
-            current_series=f"{fallback_prefix}-{current_year}",
+            current_series=f"{fallback_prefix}-{fy_label}",
             last_number=0
         )
 
