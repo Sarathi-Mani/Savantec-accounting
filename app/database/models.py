@@ -3374,6 +3374,26 @@ class ProductUnit(Base):
         return f"<ProductUnit {self.unit_name}>"
 
 
+class CompanyProductUnit(Base):
+    """Company-level unit master used in product forms."""
+    __tablename__ = "company_product_units"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    value = Column(String(100), nullable=False)
+    label = Column(String(100), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_company_product_units_company", "company_id"),
+        Index("idx_company_product_units_value", "company_id", "value", unique=True),
+    )
+
+    def __repr__(self):
+        return f"<CompanyProductUnit {self.label}>"
+
+
 class PriceLevel(Base):
     """Price levels like MRP, Retail, Wholesale, Dealer."""
     __tablename__ = "price_levels"

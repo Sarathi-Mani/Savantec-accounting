@@ -24,6 +24,7 @@ from app.database.models import (
     BudgetLine,
     # Inventory enhancements
     ProductUnit,
+    CompanyProductUnit,
     PriceLevel,
     ProductPrice,
     SerialNumber,
@@ -133,6 +134,7 @@ __all__ = [
     "BudgetLine",
     # Inventory enhancements
     "ProductUnit",
+    "CompanyProductUnit",
     "PriceLevel",
     "ProductPrice",
     "SerialNumber",

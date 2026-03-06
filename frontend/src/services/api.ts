@@ -339,6 +339,22 @@ export interface ProductListResponse {
   page_size: number;
 }
 
+export interface ProductUnit {
+  id: string;
+  company_id: string;
+  value: string;
+  label: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductUnitListResponse {
+  units: ProductUnit[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 export interface InvoiceItem {
   id: string;
   invoice_id: string;
@@ -1025,6 +1041,34 @@ export const productsApi = {
 
   delete: async (companyId: string, productId: string): Promise<void> => {
     await api.delete(`/companies/${companyId}/products/${productId}`);
+  },
+};
+
+export const productUnitsApi = {
+  list: async (
+    companyId: string,
+    params?: {
+      page?: number;
+      page_size?: number;
+      search?: string;
+    }
+  ): Promise<ProductUnitListResponse> => {
+    const response = await api.get(`/companies/${companyId}/product-units`, { params });
+    return response.data;
+  },
+
+  create: async (companyId: string, label: string): Promise<ProductUnit> => {
+    const response = await api.post(`/companies/${companyId}/product-units`, { label });
+    return response.data;
+  },
+
+  update: async (companyId: string, unitId: string, label: string): Promise<ProductUnit> => {
+    const response = await api.put(`/companies/${companyId}/product-units/${unitId}`, { label });
+    return response.data;
+  },
+
+  delete: async (companyId: string, unitId: string): Promise<void> => {
+    await api.delete(`/companies/${companyId}/product-units/${unitId}`);
   },
 };
 

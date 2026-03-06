@@ -1,8 +1,15 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { productsApi, brandsApi, categoriesApi, inventoryApi, Godown, getErrorMessage } from "@/services/api";
-import { getStoredProductUnits, ProductUnitOption } from "@/utils/product-units";
+import {
+  productsApi,
+  brandsApi,
+  categoriesApi,
+  inventoryApi,
+  Godown,
+  getErrorMessage,
+  productUnitsApi,
+} from "@/services/api";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -15,6 +22,11 @@ interface Brand {
 interface Category {
   id: string;
   name: string;
+}
+
+interface UnitOption {
+  value: string;
+  label: string;
 }
 
 const getProductImageUrl = (raw?: string | null) => {
@@ -42,7 +54,7 @@ export default function EditProductPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [godowns, setGodowns] = useState<Godown[]>([]);
-  const [units, setUnits] = useState<ProductUnitOption[]>([]);
+  const [units, setUnits] = useState<UnitOption[]>([]);
   const [companySelection, setCompanySelection] = useState("company");
 
   const [mainImage, setMainImage] = useState<File | null>(null);
@@ -81,11 +93,12 @@ export default function EditProductPage() {
       try {
         setLoading(true);
 
-        const [brandsResult, categoriesResult, godownsResult, product] = await Promise.all([
+        const [brandsResult, categoriesResult, godownsResult, product, unitsResult] = await Promise.all([
           brandsApi.list(companyId, { page: 1, page_size: 100 }),
           categoriesApi.list(companyId, { page: 1, page_size: 100 }),
           inventoryApi.listGodowns(companyId),
           productsApi.get(companyId, productId),
+          productUnitsApi.list(companyId, { page: 1, page_size: 500 }),
         ]);
 
         setBrands(brandsResult.brands || brandsResult.data || []);
@@ -133,7 +146,7 @@ export default function EditProductPage() {
           )
         );
 
-        const availableUnits = getStoredProductUnits(companyId);
+        const availableUnits = unitsResult.units || [];
         const currentUnit = product.unit || "";
         const hasCurrentUnit = availableUnits.some((item) => item.value === currentUnit);
         const mergedUnits = hasCurrentUnit || !currentUnit

@@ -30,6 +30,7 @@ async def create_product(
     company_id: str,
     # Product fields as form data
     name: str = Form(...),
+    item_code: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     sku: Optional[str] = Form(None),
     barcode: Optional[str] = Form(None),
@@ -67,6 +68,7 @@ async def create_product(
     # Create ProductCreate schema from form data
     product_data = ProductCreate(
         name=name,
+        item_code=item_code,
         description=description,
         sku=sku,
         barcode=barcode,
@@ -114,6 +116,7 @@ async def update_product(
     product_id: str,
     # Product fields as form data (all optional for update)
     name: Optional[str] = Form(None),
+    item_code: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     sku: Optional[str] = Form(None),
     barcode: Optional[str] = Form(None),
@@ -159,6 +162,8 @@ async def update_product(
     update_data = {}
     if name is not None:
         update_data["name"] = name
+    if item_code is not None:
+        update_data["item_code"] = item_code
     if description is not None:
         update_data["description"] = description
     if sku is not None:

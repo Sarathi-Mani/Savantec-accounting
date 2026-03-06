@@ -8,6 +8,7 @@ from decimal import Decimal
 class ProductCreate(BaseModel):
     """Schema for creating a product/service."""
     name: str = Field(..., min_length=1, max_length=255)
+    item_code: Optional[str] = Field(None, max_length=50)
     description: Optional[str] = None
     sku: Optional[str] = Field(None, max_length=50)
     barcode: Optional[str] = Field(None, max_length=100)
@@ -65,6 +66,7 @@ class ProductCreate(BaseModel):
 class ProductUpdate(BaseModel):
     """Schema for updating a product/service."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
+    item_code: Optional[str] = Field(None, max_length=50)
     description: Optional[str] = None
     sku: Optional[str] = Field(None, max_length=50)
     barcode: Optional[str] = Field(None, max_length=100)
@@ -90,6 +92,7 @@ class ProductUpdate(BaseModel):
 class ProductResponse(BaseModel):
     id: str
     name: str
+    item_code: Optional[str] = None
     description: Optional[str] = None
     sku: Optional[str] = None
     barcode: Optional[str] = None

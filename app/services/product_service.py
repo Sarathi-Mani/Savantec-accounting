@@ -52,6 +52,7 @@ class ProductService:
             "company_id": company.id,
             "godown_id": data.godown_id if getattr(data, "godown_id", None) else None,
             "name": data.name,
+            "item_code": getattr(data, "item_code", None),
             "description": data.description,
             "sku": data.sku,
             "barcode": data.barcode,

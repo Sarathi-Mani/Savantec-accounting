@@ -1,8 +1,14 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { productsApi, brandsApi, categoriesApi, inventoryApi, Godown } from "@/services/api";
-import { getStoredProductUnits, ProductUnitOption } from "@/utils/product-units";
+import {
+  productsApi,
+  brandsApi,
+  categoriesApi,
+  inventoryApi,
+  Godown,
+  productUnitsApi,
+} from "@/services/api";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
@@ -15,6 +21,11 @@ interface Brand {
 interface Category {
   id: string;
   name: string;
+}
+
+interface UnitOption {
+  value: string;
+  label: string;
 }
 
 export default function NewProductPage() {
@@ -35,7 +46,7 @@ export default function NewProductPage() {
   const [loadingBrands, setLoadingBrands] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingGodowns, setLoadingGodowns] = useState(false);
-  const [units, setUnits] = useState<ProductUnitOption[]>([]);
+  const [units, setUnits] = useState<UnitOption[]>([]);
   const [companySelection, setCompanySelection] = useState("company");
 
   const [formData, setFormData] = useState({
@@ -81,7 +92,8 @@ export default function NewProductPage() {
       if (!company?.id) return;
 
       try {
-        const availableUnits = getStoredProductUnits(company.id);
+        const unitsResult = await productUnitsApi.list(company.id, { page: 1, page_size: 500 });
+        const availableUnits = unitsResult.units || [];
         setUnits(availableUnits);
         setFormData((prev) => ({
           ...prev,
@@ -111,24 +123,6 @@ export default function NewProductPage() {
     };
 
     fetchBrandsAndCategories();
-  }, [company?.id]);
-
-  useEffect(() => {
-    if (!company?.id || typeof window === "undefined") return;
-
-    const onStorageChange = () => {
-      const availableUnits = getStoredProductUnits(company.id);
-      setUnits(availableUnits);
-      setFormData((prev) => ({
-        ...prev,
-        unit: availableUnits.some((item) => item.value === prev.unit)
-          ? prev.unit
-          : (availableUnits[0]?.value || ""),
-      }));
-    };
-
-    window.addEventListener("storage", onStorageChange);
-    return () => window.removeEventListener("storage", onStorageChange);
   }, [company?.id]);
 
   // Auto-calculate sales price and purchase price
@@ -231,11 +225,39 @@ export default function NewProductPage() {
     setError(null);
 
     try {
+      const generateNextItemCode = async () => {
+        const token = getToken();
+        const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/products?page=1&page_size=100`;
+        const response = await fetch(apiUrl, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to generate item code");
+        }
+
+        const data = await response.json();
+        const products = Array.isArray(data) ? data : (data.products || []);
+        const maxNumber = products.reduce((max: number, product: any) => {
+          const code = String(product?.item_code || "");
+          const match = code.match(/^Item-(\d+)$/i);
+          if (!match) return max;
+          return Math.max(max, parseInt(match[1], 10) || 0);
+        }, 0);
+
+        return `Item-${String(maxNumber + 1).padStart(3, "0")}`;
+      };
+
+      const nextItemCode = await generateNextItemCode();
+
       // Create FormData instead of JSON to include files
       const formDataToSend = new FormData();
 
       // Add all product fields
       formDataToSend.append('name', formData.name.trim());
+      formDataToSend.append('item_code', nextItemCode);
       formDataToSend.append('hsn_code', formData.hsn_code || '');
       formDataToSend.append('barcode', formData.barcode || '');
       formDataToSend.append('sku', formData.sku || '');

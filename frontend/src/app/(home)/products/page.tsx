@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 
 type ProductWithMeta = Product & {
+  item_code?: string;
   brand?: { name?: string };
   category?: { name?: string };
   current_stock?: number | null;
@@ -61,6 +62,7 @@ const getBrandName = (product: ProductWithMeta) => product.brand?.name || "-";
 const getCategoryName = (product: ProductWithMeta) => product.category?.name || "-";
 const getDisplayPrice = (product: ProductWithMeta) =>
   toNumber(product.sales_price ?? product.unit_price);
+const getItemCode = (product: ProductWithMeta) => product.item_code || product.code || "-";
 const getStoreName = (product: ProductWithMeta, companyName?: string) => {
   if (!product.godown_id) return companyName || "-";
   return product.godown_name || product.godown_id;
@@ -137,6 +139,14 @@ const PrintView = ({
                 fontWeight: 'bold'
               }}>
                 S.No
+              </th>
+              <th style={{
+                padding: '12px',
+                textAlign: 'left',
+                borderRight: '1px solid #ddd',
+                fontWeight: 'bold'
+              }}>
+                Item Code
               </th>
               {visibleColumns.name && (
                 <th style={{
@@ -240,6 +250,13 @@ const PrintView = ({
                   borderRight: '1px solid #ddd'
                 }}>
                   {index + 1}
+                </td>
+                <td style={{
+                  padding: '12px',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  {getItemCode(product)}
                 </td>
                 {visibleColumns.name && (
                   <td style={{
@@ -567,9 +584,9 @@ export default function ProductsPage() {
     try {
       const allProducts = await fetchAllProductsForExport();
       
-      const headers: string[] = ["S.No"];
+      const headers: string[] = ["S.No", "Item Code"];
       const rows = allProducts.map((product, index) => {
-        const row: string[] = [(index + 1).toString()];
+        const row: string[] = [(index + 1).toString(), getItemCode(product)];
 
         if (visibleColumns.name) {
           if (!headers.includes("Product Name")) headers.push("Product Name");
@@ -621,9 +638,6 @@ export default function ProductsPage() {
 
         return row;
       });
-
-      // Add S.No to headers
-      headers.unshift("S.No");
       
       const text = [headers.join("\t"), ...rows.map(r => r.join("\t"))].join("\n");
       await navigator.clipboard.writeText(text);
@@ -645,6 +659,7 @@ export default function ProductsPage() {
       const exportData = allProducts.map((product, index) => {
         const row: Record<string, any> = {
           "S.No": index + 1,
+          "Item Code": getItemCode(product),
         };
 
         if (visibleColumns.name) {
@@ -712,9 +727,9 @@ export default function ProductsPage() {
       
       const doc = new jsPDF("landscape");
       
-      const headers: string[] = ["S.No"];
+      const headers: string[] = ["S.No", "Item Code"];
       const body = allProducts.map((product, index) => {
-        const row: string[] = [(index + 1).toString()];
+        const row: string[] = [(index + 1).toString(), getItemCode(product)];
 
         if (visibleColumns.name) {
           if (!headers.includes("Product")) headers.push("Product");
@@ -798,6 +813,7 @@ export default function ProductsPage() {
       const exportData = allProducts.map((product, index) => {
         const row: Record<string, any> = {
           "S.No": index + 1,
+          "Item Code": getItemCode(product),
         };
 
         if (visibleColumns.name) {
@@ -1206,6 +1222,9 @@ export default function ProductsPage() {
                 <th className="text-left px-3 py-3 ">
                   S.No
                 </th>
+                <th className="text-left px-3 py-3 ">
+                  Item Code
+                </th>
                 {visibleColumns.name && (
                   <th className="text-left px-3 py-3 ">
                     Product Name
@@ -1261,7 +1280,7 @@ export default function ProductsPage() {
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700 text-sm text-gray-700 dark:text-gray-300">
               {loading ? (
                 <tr>
-                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length + 2} className="px-6 py-8 text-center">
                     <div className="flex items-center justify-center">
                       <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
                     </div>
@@ -1269,7 +1288,7 @@ export default function ProductsPage() {
                 </tr>
               ) : filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length} className="px-6 py-8 text-center">
+                  <td colSpan={Object.values(visibleColumns).filter(Boolean).length + 2} className="px-6 py-8 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <Package className="w-12 h-12 text-gray-400 mb-2" />
                       <p className="text-lg font-medium text-gray-900 dark:text-white mb-1">
@@ -1302,6 +1321,9 @@ export default function ProductsPage() {
                     >
                       <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300">
                         {(currentPage - 1) * pageSize + index + 1}
+                      </td>
+                      <td className="px-3 py-4 align-top break-words text-gray-700 dark:text-gray-300 font-medium">
+                        {getItemCode(product as ProductWithMeta)}
                       </td>
                       {visibleColumns.name && (
                         <td className="px-3 py-4 align-top break-words">

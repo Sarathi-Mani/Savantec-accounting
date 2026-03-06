@@ -66,7 +66,12 @@ export const getDefaultProductUnits = (): ProductUnitOption[] => [];
 
 export const getStoredProductUnits = (companyId?: string | null): ProductUnitOption[] => {
   if (typeof window === "undefined") return [];
-  return parseStoredUnits(localStorage.getItem(toStorageKey(companyId)));
+  const companyUnits = parseStoredUnits(localStorage.getItem(toStorageKey(companyId)));
+  const defaultUnits =
+    companyId && companyId !== "default"
+      ? parseStoredUnits(localStorage.getItem(toStorageKey("default")))
+      : [];
+  return dedupeByValue([...defaultUnits, ...companyUnits]);
 };
 
 export const getProductUnits = (companyId?: string | null): ProductUnitOption[] => {

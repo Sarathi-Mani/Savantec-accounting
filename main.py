@@ -24,6 +24,7 @@ from app.api import (
     sales_tickets_router,
     sales_dashboard_router,
     alternative_products_router,
+    product_units_router,
     brands_router,
     categories_router,
 )
@@ -142,6 +143,7 @@ app.include_router(enquiries_router)
 app.include_router(sales_tickets_router)
 app.include_router(sales_dashboard_router)
 app.include_router(alternative_products_router, prefix="/api")
+app.include_router(product_units_router, prefix="/api")
 app.include_router(brands_router, prefix="/api")
 app.include_router(categories_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")

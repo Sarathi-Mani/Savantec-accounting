@@ -1,16 +1,9 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import {
-  addProductUnit,
-  getStoredProductUnits,
-  ProductUnitOption,
-  removeProductUnit,
-  updateProductUnit,
-} from "@/utils/product-units";
+import { getErrorMessage, productUnitsApi, ProductUnit } from "@/services/api";
 import { useEffect, useMemo, useState } from "react";
 import {
-  Filter,
   Pencil,
   Plus,
   RefreshCw,
@@ -25,7 +18,7 @@ const PAGE_SIZE = 10;
 export default function ProductUnitsPage() {
   const { company } = useAuth();
 
-  const [units, setUnits] = useState<ProductUnitOption[]>([]);
+  const [units, setUnits] = useState<ProductUnit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -35,16 +28,29 @@ export default function ProductUnitsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const [editingUnitValue, setEditingUnitValue] = useState<string | null>(null);
+  const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
   const [editingUnitLabel, setEditingUnitLabel] = useState("");
 
-  const companyId = company?.id || null;
+  const companyId =
+    company?.id || (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
 
-  const refreshUnits = () => {
-    setLoading(true);
-    const data = getStoredProductUnits(companyId);
-    setUnits(data);
-    setLoading(false);
+  const refreshUnits = async () => {
+    if (!companyId) {
+      setUnits([]);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await productUnitsApi.list(companyId, { page: 1, page_size: 500 });
+      setUnits(response.units || []);
+      setError("");
+    } catch (err: any) {
+      setError(getErrorMessage(err, "Failed to load units."));
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -88,60 +94,67 @@ export default function ProductUnitsPage() {
     setSuccessMessage("");
   };
 
-  const handleAddUnit = (e: React.FormEvent) => {
+  const handleAddUnit = async (e: React.FormEvent) => {
     e.preventDefault();
     resetMessages();
 
-    const result = addProductUnit(companyId, newUnit);
-    if (!result.ok) {
-      setError(result.message || "Failed to add unit.");
+    if (!companyId) {
+      setError("Company not found.");
       return;
     }
 
-    setNewUnit("");
-    refreshUnits();
-    setSuccessMessage(`Unit "${result.unit?.label}" added successfully.`);
+    try {
+      const createdUnit = await productUnitsApi.create(companyId, newUnit);
+      setNewUnit("");
+      await refreshUnits();
+      setSuccessMessage(`Unit "${createdUnit.label}" added successfully.`);
+    } catch (err: any) {
+      setError(getErrorMessage(err, "Failed to add unit."));
+    }
   };
 
-  const handleDeleteUnit = (value: string, label: string) => {
+  const handleDeleteUnit = async (id: string, label: string) => {
     resetMessages();
     const confirmed = window.confirm(`Delete unit "${label}"?`);
     if (!confirmed) return;
 
-    const result = removeProductUnit(companyId, value);
-    if (!result.ok) {
-      setError(result.message || "Failed to remove unit.");
+    if (!companyId) {
+      setError("Company not found.");
       return;
     }
 
-    refreshUnits();
-    setSuccessMessage(`Unit "${label}" removed successfully.`);
+    try {
+      await productUnitsApi.delete(companyId, id);
+      await refreshUnits();
+      setSuccessMessage(`Unit "${label}" removed successfully.`);
+    } catch (err: any) {
+      setError(getErrorMessage(err, "Failed to remove unit."));
+    }
   };
 
-  const startEdit = (unit: ProductUnitOption) => {
+  const startEdit = (unit: ProductUnit) => {
     resetMessages();
-    setEditingUnitValue(unit.value);
+    setEditingUnitId(unit.id);
     setEditingUnitLabel(unit.label);
   };
 
   const cancelEdit = () => {
-    setEditingUnitValue(null);
+    setEditingUnitId(null);
     setEditingUnitLabel("");
   };
 
-  const handleSaveEdit = () => {
-    if (!editingUnitValue) return;
+  const handleSaveEdit = async () => {
+    if (!editingUnitId || !companyId) return;
     resetMessages();
 
-    const result = updateProductUnit(companyId, editingUnitValue, editingUnitLabel);
-    if (!result.ok) {
-      setError(result.message || "Failed to update unit.");
-      return;
+    try {
+      const updatedUnit = await productUnitsApi.update(companyId, editingUnitId, editingUnitLabel);
+      await refreshUnits();
+      setSuccessMessage(`Unit "${updatedUnit.label}" updated successfully.`);
+      cancelEdit();
+    } catch (err: any) {
+      setError(getErrorMessage(err, "Failed to update unit."));
     }
-
-    refreshUnits();
-    setSuccessMessage(`Unit "${result.unit?.label}" updated successfully.`);
-    cancelEdit();
   };
 
   const handleReset = () => {
@@ -265,9 +278,9 @@ export default function ProductUnitsPage() {
                   </tr>
                 ) : (
                   paginatedUnits.map((unit, index) => {
-                    const isEditing = editingUnitValue === unit.value;
+                    const isEditing = editingUnitId === unit.id;
                     return (
-                      <tr key={unit.value} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <tr key={unit.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                         <td className="px-3 py-4">
                           {(currentPage - 1) * PAGE_SIZE + index + 1}
                         </td>
@@ -301,7 +314,7 @@ export default function ProductUnitsPage() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleDeleteUnit(unit.value, unit.label)}
+                                onClick={() => handleDeleteUnit(unit.id, unit.label)}
                                 className="inline-flex min-h-9 items-center gap-1 rounded-md border border-red-200 px-3 py-2 text-xs font-medium text-red-600 transition active:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 dark:border-red-900/40 dark:text-red-300 dark:active:bg-red-900/30"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -320,7 +333,7 @@ export default function ProductUnitsPage() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleDeleteUnit(unit.value, unit.label)}
+                                onClick={() => handleDeleteUnit(unit.id, unit.label)}
                                 className="inline-flex min-h-9 items-center gap-1 rounded-md border border-red-200 px-3 py-2 text-xs font-medium text-red-600 transition active:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 dark:border-red-900/40 dark:text-red-300 dark:active:bg-red-900/30"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
