@@ -436,6 +436,24 @@ export default function SalesOrdersPage() {
       document.removeEventListener("touchstart", handleColumnDropdownOutside);
     };
   }, []);
+
+  useEffect(() => {
+    const handleActionDropdownOutside = (event: Event) => {
+      const target = event.target as Element | null;
+      if (!target) return;
+      if (!target.closest(".action-dropdown-container")) {
+        setActiveActionMenu(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleActionDropdownOutside);
+    document.addEventListener("touchstart", handleActionDropdownOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleActionDropdownOutside);
+      document.removeEventListener("touchstart", handleActionDropdownOutside);
+    };
+  }, []);
+
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
   const [showPrintView, setShowPrintView] = useState(false);
   const [ordersToPrint, setOrdersToPrint] = useState<ExtendedSalesOrder[]>([]);
@@ -975,26 +993,36 @@ export default function SalesOrdersPage() {
   };
 
   const handleDelete = async (orderId: string, orderNumber: string) => {
-    if (window.confirm(`Are you sure you want to delete sales order "${orderNumber}"? This action cannot be undone.`)) {
-      try {
-        if (company?.id) {
-          await ordersApi.deleteSalesOrder(company.id, orderId);
-          setActiveActionMenu(null);
-          fetchOrders();
-        }
-      } catch (error) {
-        console.error("Error deleting sales order:", error);
-        alert("Failed to delete sales order");
-      }
+    if (!company?.id) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete sales order "${orderNumber}"? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setActiveActionMenu(null);
+      await ordersApi.deleteSalesOrder(company.id, orderId);
+      await fetchOrders();
+    } catch (error) {
+      console.error("Error deleting sales order:", error);
+      alert("Failed to delete sales order");
     }
   };
 
-  const handleConvertToInvoice = (orderId: string) => {
+  const handleConvertToInvoice = async (orderId: string) => {
     if (!company?.id || convertingOrderId) return;
-    setConvertingOrderId(orderId);
-    setActiveActionMenu(null);
-    router.push(`/sales/new?fromSalesOrder=${orderId}`);
-    setConvertingOrderId(null);
+
+    const confirmed = window.confirm("Create a Sales Invoice from this sales order?");
+    if (!confirmed) return;
+
+    try {
+      setConvertingOrderId(orderId);
+      setActiveActionMenu(null);
+      await router.push(`/sales/new?fromSalesOrder=${orderId}`);
+    } finally {
+      setConvertingOrderId(null);
+    }
   };
 
   const handleConvertToProforma = (orderId: string) => {
@@ -1752,9 +1780,10 @@ export default function SalesOrdersPage() {
                         <td className="px-3 py-4 text-right align-top">
                           <div className="relative action-dropdown-container inline-block">
                             <button
+                              type="button"
                               onClick={() =>
                                 setActiveActionMenu(
-                                  activeActionMenu === order.id ? null : order.id
+                                  activeActionMenu === String(order.id) ? null : String(order.id)
                                 )
                               }
                               className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:text-gray-300 dark:hover:bg-gray-700/50 transition-all duration-200"
@@ -1762,7 +1791,7 @@ export default function SalesOrdersPage() {
                               <MoreVertical className="w-4 h-4" />
                             </button>
 
-                            {activeActionMenu === order.id && (
+                            {activeActionMenu === String(order.id) && (
                               <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-xl py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                                 <Link
                                   href={`/sales/sales-orders/${order.id}`}
@@ -1773,31 +1802,30 @@ export default function SalesOrdersPage() {
                                   <span>View Details</span>
                                 </Link>
 
-                                {order.status === 'draft' && (
-                                  <>
-                                    <Link
-                                      href={`/sales/sales-orders/${order.id}/edit`}
-                                      onClick={() => setActiveActionMenu(null)}
-                                      className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                                    >
-                                      <Edit className="w-4 h-4 text-gray-400" />
-                                      <span>Edit</span>
-                                    </Link>
-                                    <button
-                                      onClick={() => handleConvertToInvoice(order.id)}
-                                      disabled={convertingOrderId === order.id}
-                                      className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                                    >
-                                      <FilePlus className="w-4 h-4 text-gray-400" />
-                                      <span>Convert to Invoice</span>
-                                    </button>
-                                  </>
-                                )}
+                                <Link
+                                  href={`/sales/sales-orders/${order.id}/edit`}
+                                  onClick={() => setActiveActionMenu(null)}
+                                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                >
+                                  <Edit className="w-4 h-4 text-gray-400" />
+                                  <span>Edit</span>
+                                </Link>
 
                                 <button
+                                  type="button"
+                                  onClick={() => handleConvertToInvoice(String(order.id))}
+                                  disabled={convertingOrderId === String(order.id)}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                  <FilePlus className="w-4 h-4" />
+                                  <span>{convertingOrderId === String(order.id) ? "Converting..." : "Convert to Invoice"}</span>
+                                </button>
+
+                                <button
+                                  type="button"
                                   onClick={() => {
                                     setActiveActionMenu(null);
-                                    handleConvertToProforma(order.id);
+                                    handleConvertToProforma(String(order.id));
                                   }}
                                   className="flex w-full items-center gap-3 px-3 py-2 text-sm text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors"
                                 >
@@ -1806,7 +1834,11 @@ export default function SalesOrdersPage() {
                                 </button>
 
                                 <button
-                                  onClick={() => handlePrintOrder(order.id)}
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveActionMenu(null);
+                                    handlePrintOrder(String(order.id));
+                                  }}
                                   className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                                 >
                                   <Printer className="w-4 h-4 text-gray-400" />
@@ -1814,9 +1846,10 @@ export default function SalesOrdersPage() {
                                 </button>
 
                                 <button
+                                  type="button"
                                   onClick={() => {
                                     setActiveActionMenu(null);
-                                    handleDownloadPDF(order.id);
+                                    handleDownloadPDF(String(order.id));
                                   }}
                                   className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                                 >
@@ -1825,15 +1858,14 @@ export default function SalesOrdersPage() {
                                 </button>
 
                                 <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
-                                {order.status === 'draft' && (
-                                  <button
-                                    onClick={() => handleDelete(order.id, order.order_number || 'N/A')}
-                                    className="flex w-full items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                    <span>Delete Order</span>
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(String(order.id), order.order_number || "N/A")}
+                                  className="flex w-full items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  <span>Delete Order</span>
+                                </button>
                               </div>
                             )}
                           </div>
@@ -1877,7 +1909,4 @@ export default function SalesOrdersPage() {
     </div>
   );
 }
-
-
-
 

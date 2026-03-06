@@ -8,8 +8,51 @@ import { customersApi, productsApi, invoicesApi, getErrorMessage } from "@/servi
 import { salesmenApi } from "@/services/api"; // Add this import
 import { employeesApi } from "@/services/api"; // Add this import
 import Select from 'react-select';
+import CreatableSelect from "react-select/creatable";
 import { useRef } from "react";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:6768/api";
+
+const DEFAULT_COUNTRIES = [
+    "India",
+    "United States",
+    "United Kingdom",
+    "Canada",
+    "Australia",
+    "United Arab Emirates",
+    "Saudi Arabia",
+    "Qatar",
+    "Kuwait",
+    "Oman",
+    "Singapore",
+    "Malaysia",
+    "Thailand",
+    "Indonesia",
+    "Philippines",
+    "China",
+    "Japan",
+    "South Korea",
+    "Germany",
+    "France",
+    "Italy",
+    "Netherlands",
+    "South Africa",
+    "Nigeria",
+    "Kenya",
+    "Brazil",
+    "Argentina",
+    "Sri Lanka",
+    "Bangladesh",
+    "Nepal",
+] as const;
+
+
+const normalizeInvoiceNumberForVoucherType = (invoiceNumber: string, _voucherType: string): string => {
+    const raw = (invoiceNumber || "").trim();
+    if (!raw) return raw;
+    // Show exactly what backend generates (no extra prefix transformation).
+    return raw;
+};
 
 // Add this component before the AddSalesPage function
 function SelectField({
@@ -93,13 +136,11 @@ function SelectField({
 
 function ProductSelectField({
     value,
-    manualLabel,
     onChange,
     products,
     placeholder = "Search product",
 }: {
     value: number | string;
-    manualLabel?: string;
     onChange: (product: any | null) => void;
     products: any[];
     placeholder?: string;
@@ -113,23 +154,13 @@ function ProductSelectField({
         product,
     }));
 
-    const selectedOption =
-        options.find(o => String(o.value) === String(value)) ||
-        (manualLabel && manualLabel.trim()
-            ? {
-                value: `manual:${manualLabel.trim()}`,
-                label: manualLabel.trim(),
-                subLabel: "Manual item",
-                product: null,
-            }
-            : null);
-
     return (
         <Select
             ref={selectRef}
             options={options}
+            className="w-full"
 
-            value={selectedOption}
+            value={options.find(o => String(o.value) === String(value)) || null}
             getOptionValue={(option) => String(option.value)}
             getOptionLabel={(option) => option.label}
 
@@ -168,10 +199,16 @@ function ProductSelectField({
             menuPosition="fixed"
 
             styles={{
+                container: (base: any) => ({
+                    ...base,
+                    width: "100%",
+                    minWidth: "100%",
+                }),
                 control: (base: any, state: any) => ({
                     ...base,
                     minHeight: "36px",
                     height: "36px",
+                    width: "100%",
                     borderRadius: "0.375rem",
                     borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
                     boxShadow: state.isFocused ? "0 0 0 1px rgba(99,102,241,0.5)" : "none",
@@ -180,6 +217,13 @@ function ProductSelectField({
                     ...base,
                     height: "36px",
                     padding: "0 8px",
+                }),
+                singleValue: (base: any) => ({
+                    ...base,
+                    maxWidth: "100%",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
                 }),
                 input: (base: any) => ({
                     ...base,
@@ -201,16 +245,23 @@ function ProductSelectField({
             }}
             classNamePrefix="react-select"
             menuPlacement="auto"
-            formatOptionLabel={(option: any) => (
-                <div>
-                    <div className="whitespace-normal break-words text-sm">{option.label}</div>
-                    {option.subLabel ? (
-                        <div className="whitespace-normal break-words text-xs text-gray-500 dark:text-gray-400">
-                            {option.subLabel}
-                        </div>
-                    ) : null}
-                </div>
-            )}
+            formatOptionLabel={(option: any, { context }: any) => {
+                // Keep selected value display clean in input;
+                // show rich multi-line details only in dropdown menu.
+                if (context === "value") {
+                    return option.label;
+                }
+                return (
+                    <div>
+                        <div className="whitespace-normal break-words text-sm">{option.label}</div>
+                        {option.subLabel ? (
+                            <div className="whitespace-normal break-words text-xs text-gray-500 dark:text-gray-400">
+                                {option.subLabel}
+                            </div>
+                        ) : null}
+                    </div>
+                );
+            }}
         />
     );
 }
@@ -235,6 +286,9 @@ export default function EditSalesPage() {
 
     const [productSearch, setProductSearch] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [countryOptions, setCountryOptions] = useState<{ value: string; label: string }[]>(
+        DEFAULT_COUNTRIES.map((country) => ({ value: country, label: country })),
+    );
 
     const [showPaymentSection, setShowPaymentSection] = useState(false);
     const [paymentData, setPaymentData] = useState({
@@ -255,6 +309,15 @@ export default function EditSalesPage() {
         products: false,
         salesmen: false,
     });
+
+    const getAuthToken = () => {
+        if (typeof window === "undefined") return null;
+        const userType = localStorage.getItem("user_type");
+        if (userType === "employee") {
+            return localStorage.getItem("employee_token");
+        }
+        return localStorage.getItem("employee_token") || localStorage.getItem("access_token");
+    };
 
     const normalizeStateCode = (value: any) => {
         const text = String(value ?? "").trim();
@@ -401,8 +464,26 @@ export default function EditSalesPage() {
         },
     ]);
 
-    // Previous payments state
+        // Previous payments state
     const [previousPayments, setPreviousPayments] = useState<any[]>([]);
+    const salesmanOptions = salesmen
+        .filter((salesman) => typeof salesman?.name === "string" && salesman.name.trim())
+        .map((salesman) => {
+            const metaParts: string[] = [];
+            if (salesman.designation) metaParts.push(String(salesman.designation));
+            if (salesman.email) metaParts.push(String(salesman.email));
+            if (salesman.phone) metaParts.push(String(salesman.phone));
+
+            const label = metaParts.length
+                ? `${salesman.name} (${metaParts.join(" | ")})`
+                : salesman.name;
+
+            return {
+                value: salesman.id,
+                label,
+                salesman,
+            };
+        });
 
     const loadInvoice = async () => {
         if (!company?.id || !invoiceId) return;
@@ -414,6 +495,11 @@ export default function EditSalesPage() {
             setInvoiceStatus(invoice.status || "");
             setNextInvoiceNumber(invoice.invoice_number || "");
 
+            const freightType = invoice.freight_type || (Number(invoice.freight_charges || 0) > 0 ? "tax@18%" : "tax@18%");
+            const pfType = invoice.pf_type || invoice.packing_forwarding_type || (Number(invoice.packing_forwarding_charges || 0) > 0 ? "tax@18%" : "tax@18%");
+            const shippingCountry = invoice.shipping_country || "India";
+            ensureCountryOption(shippingCountry);
+
             setFormData(prev => ({
                 ...prev,
                 customer_id: invoice.customer_id || "",
@@ -422,24 +508,28 @@ export default function EditSalesPage() {
                 roundOff: Number(invoice.round_off || 0),
                 invoice_type: invoice.invoice_type || "b2b",
                 voucher_type: invoice.voucher_type || "sales",
-                place_of_supply: invoice.place_of_supply || "",
+                place_of_supply: normalizeStateCode(invoice.place_of_supply || ""),
                 place_of_supply_name: invoice.place_of_supply_name || "",
                 is_reverse_charge: invoice.is_reverse_charge || false,
                 sales_person_id: invoice.sales_person_id || "",
                 contact_id: invoice.contact_id || "",
                 notes: invoice.notes || "",
                 terms: invoice.terms || prev.terms,
-                country: invoice.shipping_country || "India",
+                country: shippingCountry,
                 city: invoice.shipping_city || "",
                 postcode: invoice.shipping_zip || "",
                 address: invoice.shipping_address || "",
                 referenceNo: invoice.reference_no || "",
                 freightCharges: Number(invoice.freight_charges || 0),
+                freightType,
                 pfCharges: Number(invoice.packing_forwarding_charges || 0),
+                pfType,
                 couponCode: invoice.coupon_code || "",
+                couponType: invoice.coupon_type || prev.couponType,
                 couponValue: Number(invoice.coupon_value || 0),
                 discountOnAll: Number(invoice.discount_on_all || 0),
                 discountType: invoice.discount_type || "percentage",
+                note: invoice.note || prev.note,
                 deliveryNote: invoice.delivery_note || "",
                 paymentTerms: invoice.payment_terms || "",
                 supplierRef: invoice.supplier_ref || "",
@@ -453,7 +543,7 @@ export default function EditSalesPage() {
                 termsOfDelivery: invoice.terms_of_delivery || "",
             }));
 
-            if (invoice.items && invoice.items.length > 0) {
+            if (Array.isArray(invoice.items) && invoice.items.length > 0) {
                 setItems(
                     invoice.items.map((item: any, index: number) => ({
                         id: index + 1,
@@ -461,8 +551,8 @@ export default function EditSalesPage() {
                         product_id: item.product_id || "",
                         description: item.description || "",
                         item_code: item.item_code || "",
-                        hsn_code: item.hsn_code || "",
-                        quantity: Number(item.quantity || 0),
+                        hsn_code: item.hsn_code || item.hsn || "",
+                        quantity: Number(item.quantity || 1),
                         unit: item.unit || "unit",
                         unit_price: Number(item.unit_price || 0),
                         discount_percent: Number(item.discount_percent || 0),
@@ -476,101 +566,47 @@ export default function EditSalesPage() {
                     }))
                 );
             }
+
+            if (Array.isArray(invoice.payments)) {
+                setPreviousPayments(invoice.payments);
+            }
         } catch (error: any) {
-            setInvoiceError(`Failed to load invoice: ${error?.message || "Unknown error"}`);
+            const message = getErrorMessage(error, "Failed to load invoice");
+            setInvoiceError(message);
         } finally {
             setLoadingInvoice(false);
         }
     };
 
     // Load data on component mount
-    useEffect(() => {
-        if (company?.id) {
-            loadCustomers();
-            loadProducts();
-            loadSalesmen();
-            loadInvoice();
-        }
-    }, [company?.id, invoiceId]);
-
-    // Backfill shipping fields from selected customer on initial load
-    // when converted invoice does not yet carry shipping fields.
-    useEffect(() => {
-        if (!formData.customer_id || customers.length === 0) return;
-
-        const hasShippingData =
-            Boolean((formData.address || "").trim()) ||
-            Boolean((formData.city || "").trim()) ||
-            Boolean((formData.postcode || "").trim());
-        if (hasShippingData) return;
-
-        const selectedCustomer = customers.find(
-            (c: any) => String(c.id) === String(formData.customer_id)
-        );
-        if (!selectedCustomer) return;
-
-        const nextCountry =
-            selectedCustomer.shipping_country ||
-            selectedCustomer.billing_country ||
-            formData.country ||
-            "India";
-        const nextCity =
-            selectedCustomer.shipping_city ||
-            selectedCustomer.billing_city ||
-            "";
-        const nextPostcode =
-            selectedCustomer.shipping_zip ||
-            selectedCustomer.shipping_pincode ||
-            selectedCustomer.billing_zip ||
-            selectedCustomer.billing_pincode ||
-            "";
-        const nextAddress =
-            selectedCustomer.shipping_address ||
-            selectedCustomer.billing_address ||
-            "";
-
-        setFormData((prev) => ({
-            ...prev,
-            country: nextCountry,
-            city: nextCity,
-            postcode: nextPostcode,
-            address: nextAddress,
-        }));
-    }, [customers, formData.customer_id, formData.address, formData.city, formData.postcode, formData.country]);
-
-    useEffect(() => {
+        useEffect(() => {
         const loadNextInvoiceNumber = async (voucherType = "sales") => {
-            if (!company?.id) return;
+            if (!company?.id || invoiceId) return;
 
             try {
                 setLoadingInvoiceNumber(true);
-                const token = typeof window !== "undefined" ? localStorage.getItem("employee_token") || localStorage.getItem("access_token") : null;
+                const token = typeof window !== "undefined"
+                    ? localStorage.getItem("employee_token") || localStorage.getItem("access_token")
+                    : null;
 
-                // Backend API call
                 const response = await fetch(
-                    `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/next-invoice-number?voucher_type=${voucherType}`,
+                    `${API_BASE_URL}/companies/${company.id}/next-invoice-number?voucher_type=${voucherType}`,
                     {
                         headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json',
+                            Authorization: `Bearer ${token}`,
+                            "Content-Type": "application/json",
                         },
                     }
                 );
 
                 if (response.ok) {
                     const data = await response.json();
-                    let invoiceNumber = data.invoice_number || "";
-
-                    // TEMPORARY FIX: If backend doesn't return correct format for service
-                    if (voucherType === "service" && !invoiceNumber.includes("SER")) {
-                        // Extract number from INV-00189 format
-                        const match = invoiceNumber.match(/\d+$/);
-                        if (match) {
-                            invoiceNumber = `INV-SER-${match[0]}`;
-                        }
-                    }
-
-                    setNextInvoiceNumber(invoiceNumber);
+                    setNextInvoiceNumber(
+                        normalizeInvoiceNumberForVoucherType(
+                            data.invoice_number || "",
+                            voucherType,
+                        ),
+                    );
                 }
             } catch (error) {
                 console.error("Failed to load next invoice number:", error);
@@ -579,9 +615,7 @@ export default function EditSalesPage() {
             }
         };
 
-        if (!invoiceId) {
-            loadNextInvoiceNumber(formData.voucher_type);
-        }
+        loadNextInvoiceNumber(formData.voucher_type || "sales");
     }, [company?.id, formData.voucher_type, invoiceId]);
 
     const loadCustomers = async () => {
@@ -619,7 +653,7 @@ export default function EditSalesPage() {
             setLoading(prev => ({ ...prev, salesmen: true }));
 
             // Check if we have a token
-            const token = typeof window !== "undefined" ? localStorage.getItem("employee_token") || localStorage.getItem("access_token") : null;
+            const token = getAuthToken();
             if (!token || !company?.id) {
                 console.error("No access token or company ID found");
                 return;
@@ -627,7 +661,7 @@ export default function EditSalesPage() {
 
             // Try to fetch sales engineers from the correct endpoint
             try {
-                const salesEngineersUrl = `${process.env.NEXT_PUBLIC_API_URL}/companies/${company.id}/sales-engineers`;
+                const salesEngineersUrl = `${API_BASE_URL}/companies/${company.id}/sales-engineers`;
 
                 console.log("Fetching sales engineers from:", salesEngineersUrl);
 
@@ -778,25 +812,17 @@ export default function EditSalesPage() {
         const couponValue = formData.couponValue || 0;
         const discountOnAll = formData.discountOnAll || 0;
 
-        // Function to apply tax based on selected type
-        const calculateWithTax = (baseAmount: number, taxType: string) => {
-            if (taxType === 'fixed' || taxType === 'percentage') {
-                return baseAmount;
-            }
-
-            // Extract tax percentage from string like "tax@18%"
-            const match = taxType.match(/tax@(\d+)%/);
-            if (match) {
-                const taxRate = parseInt(match[1]);
-                return baseAmount * (1 + taxRate / 100);
-            }
-
-            return baseAmount;
+        const getTaxRateFromType = (taxType: string) => {
+            const match = String(taxType || "").match(/tax@(\d+)%/);
+            return match ? parseInt(match[1], 10) : 0;
         };
 
-        // Calculate charges with tax
-        const freightCharges = calculateWithTax(freightBase, formData.freightType);
-        const pfCharges = calculateWithTax(pfBase, formData.pfType);
+        const freightTax = freightBase * (getTaxRateFromType(formData.freightType) / 100);
+        const pfTax = pfBase * (getTaxRateFromType(formData.pfType) / 100);
+        const freightChargesWithTax = freightBase + freightTax;
+        const pfChargesWithTax = pfBase + pfTax;
+        const chargesTaxTotal = freightTax + pfTax;
+        totalTax += chargesTaxTotal;
 
         // Calculate discount on all based on type
         const discountAllAmount = formData.discountType === 'percentage'
@@ -806,7 +832,7 @@ export default function EditSalesPage() {
         // Calculate totals step by step
         const totalBeforeTax = subtotal;
         const totalAfterTax = totalBeforeTax + totalTax;
-        const totalAfterCharges = totalAfterTax + freightCharges + pfCharges;
+        const totalAfterCharges = totalAfterTax + freightBase + pfBase;
         const totalAfterCoupon = totalAfterCharges - couponValue;
         const totalAfterDiscountAll = totalAfterCoupon - discountAllAmount;
         const grandTotal = totalAfterDiscountAll + (formData.roundOff || 0);
@@ -819,8 +845,8 @@ export default function EditSalesPage() {
             igstTotal: Number(igstTotal.toFixed(2)),
             itemDiscount: Number(totalItemDiscount.toFixed(2)),
             totalBeforeCharges: Number(totalAfterTax.toFixed(2)),
-            freight: Number(freightCharges.toFixed(2)),
-            pf: Number(pfCharges.toFixed(2)),
+            freight: Number(freightChargesWithTax.toFixed(2)),
+            pf: Number(pfChargesWithTax.toFixed(2)),
             couponDiscount: Number(couponValue.toFixed(2)),
             discountAll: Number(discountAllAmount.toFixed(2)),
             roundOff: Number(formData.roundOff || 0),
@@ -829,83 +855,120 @@ export default function EditSalesPage() {
             totalAfterCharges: Number(totalAfterCharges.toFixed(2)),
             totalAfterCoupon: Number(totalAfterCoupon.toFixed(2)),
             totalAfterDiscountAll: Number(totalAfterDiscountAll.toFixed(2)),
+            chargesTax: Number(chargesTaxTotal.toFixed(2)),
         };
     };
     // Calculate totals once
     const totals = calculateTotals();
+    const freightBaseValue = Number(formData.freightCharges || 0);
+    const pfBaseValue = Number(formData.pfCharges || 0);
+    const summaryDiscountOnAllValue = Number((totals.discountAll + totals.itemDiscount).toFixed(2));
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const ensureCountryOption = (country: string) => {
+        const trimmedCountry = country.trim();
+        if (!trimmedCountry) return;
+
+        setCountryOptions((prev) => {
+            const exists = prev.some((option) => option.value.toLowerCase() === trimmedCountry.toLowerCase());
+            if (exists) return prev;
+            return [...prev, { value: trimmedCountry, label: trimmedCountry }];
+        });
+    };
+
+    const handleCountrySelect = (countryValue: string) => {
+        const trimmedCountry = countryValue.trim();
+        if (!trimmedCountry) {
+            setFormData((prev) => ({ ...prev, country: "" }));
+            return;
+        }
+        ensureCountryOption(trimmedCountry);
+        setFormData((prev) => ({ ...prev, country: trimmedCountry }));
+    };
+
+        const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!company?.id) return;
 
+        const formatApiError = (payload: any): string => {
+            if (!payload) return "Validation failed";
+            if (typeof payload === "string") return payload;
+            if (Array.isArray(payload)) {
+                return payload
+                    .map((entry) => {
+                        if (!entry) return "";
+                        if (typeof entry === "string") return entry;
+                        const loc = Array.isArray(entry.loc)
+                            ? entry.loc.filter((part: any) => part !== "body").join(" > ")
+                            : "";
+                        const msg = entry.msg || entry.message || "";
+                        return loc && msg ? `${loc}: ${msg}` : (msg || JSON.stringify(entry));
+                    })
+                    .filter(Boolean)
+                    .join(", ");
+            }
+            if (typeof payload === "object") {
+                if (typeof payload.detail === "string") return payload.detail;
+                if (Array.isArray(payload.detail)) return formatApiError(payload.detail);
+                if (payload.detail && typeof payload.detail === "object") return formatApiError([payload.detail]);
+                if (typeof payload.message === "string") return payload.message;
+            }
+            return "Validation failed";
+        };
+
         setIsSubmitting(true);
         try {
-            // Get selected customer for denormalized data
-            const selectedCustomer = customers.find(c => c.id === formData.customer_id);
+            const selectedCustomer = customers.find(c => String(c.id) === String(formData.customer_id));
 
-            // Prepare items with proper structure (only fields backend accepts)
-            const filteredItems = items.filter(item =>
-                (item.description && item.description.trim()) || item.product_id
+            const validItems = items.filter((item) =>
+                String(item.description || "").trim() &&
+                Number(item.quantity) > 0 &&
+                Number(item.unit_price) > 0
             );
-
-            if (filteredItems.length === 0) {
-                alert("Please add at least one item.");
+            if (validItems.length === 0) {
+                alert("Add at least one item with description, quantity and unit price.");
                 setIsSubmitting(false);
                 return;
             }
 
-            for (const item of filteredItems) {
-                if (!item.description || !item.description.trim()) {
-                    alert("Item description is required.");
-                    setIsSubmitting(false);
-                    return;
-                }
-                if (Number(item.quantity) <= 0) {
-                    alert("Item quantity must be greater than 0.");
-                    setIsSubmitting(false);
-                    return;
-                }
-                if (Number(item.unit_price) <= 0) {
-                    alert("Item unit price must be greater than 0.");
-                    setIsSubmitting(false);
-                    return;
-                }
+            if (invoiceStatus && invoiceStatus !== "draft") {
+                alert("Only draft invoices can be edited.");
+                setIsSubmitting(false);
+                return;
             }
 
-            const toNumber = (value: any, fallback = 0) => {
-                const num = Number(value);
-                return Number.isFinite(num) ? num : fallback;
-            };
-
-            const preparedItems = filteredItems.map(item => ({
+            const preparedItems = validItems.map(item => ({
+                hsn_code: (() => {
+                    const rawHsn = String(item.hsn_code || "").trim();
+                    return /^\d{4,8}$/.test(rawHsn) ? rawHsn : undefined;
+                })(),
                 product_id: item.product_id || undefined,
                 description: item.description || "",
-                hsn_code: item.hsn_code || "",
-                quantity: toNumber(item.quantity, 1),
+                quantity: Number(item.quantity),
                 unit: item.unit || "unit",
-                unit_price: toNumber(item.unit_price, 0),
-                discount_percent: toNumber(item.discount_percent, 0),
-                gst_rate: toNumber(item.gst_rate, 0),
-                cgst_rate: toNumber(item.cgst_rate, 0),
-                sgst_rate: toNumber(item.sgst_rate, 0),
-                igst_rate: toNumber(item.igst_rate, 0),
+                unit_price: Number(item.unit_price),
+                item_code: item.item_code || "",
+                discount_percent: Number(item.discount_percent || 0),
+                discount_amount: Number(item.discount_amount || 0),
+                gst_rate: Number(item.gst_rate || 0),
+                cgst_rate: Number(item.cgst_rate || 0),
+                sgst_rate: Number(item.sgst_rate || 0),
+                igst_rate: Number(item.igst_rate || 0),
+                taxable_amount: Number(item.taxable_amount || (item.quantity * item.unit_price - item.discount_amount)),
+                total_amount: Number((item.quantity || 0) * (item.unit_price || 0)),
             }));
 
-            // Prepare invoice data with ALL required fields
             const invoiceData = {
-                // Required fields
                 customer_id: formData.customer_id,
                 voucher_type: formData.voucher_type || "sales",
                 invoice_date: new Date(formData.invoice_date).toISOString(),
                 invoice_type: formData.invoice_type || "b2b",
-                invoice_number: nextInvoiceNumber,
-
-                // GST Details
-                place_of_supply: formData.place_of_supply || company?.state_code || "",
+                invoice_number: normalizeInvoiceNumberForVoucherType(
+                    nextInvoiceNumber,
+                    formData.voucher_type || "sales"
+                ),
+                place_of_supply: normalizeStateCode(formData.place_of_supply || company?.state_code || ""),
                 place_of_supply_name: INDIAN_STATES.find(s => s.code === formData.place_of_supply)?.name || company?.state || "",
                 is_reverse_charge: formData.is_reverse_charge || false,
-
-                // Financial data
                 round_off: Number(formData.roundOff || 0),
                 subtotal: Number(totals.subtotal || 0),
                 discount_amount: Number(totals.discountAll || 0),
@@ -914,30 +977,23 @@ export default function EditSalesPage() {
                 igst_amount: Number(totals.igstTotal || 0),
                 total_tax: Number(totals.totalTax || 0),
                 total_amount: Number(totals.grandTotal || 0),
-
-                // Dates
                 due_date: formData.due_date ? new Date(formData.due_date).toISOString() : null,
-
-                // Sales pipeline
                 sales_person_id: formData.sales_person_id || null,
                 contact_id: formData.contact_id || null,
-
-                // Shipping Address
                 shipping_address: formData.address || "",
                 shipping_city: formData.city || "",
                 shipping_state: formData.place_of_supply_name || INDIAN_STATES.find(s => s.code === formData.place_of_supply)?.name || "",
                 shipping_country: formData.country || "India",
                 shipping_zip: formData.postcode || "",
-
-                // Additional charges
                 freight_charges: Number(formData.freightCharges || 0),
+                freight_type: formData.freightType || "tax@18%",
                 packing_forwarding_charges: Number(formData.pfCharges || 0),
+                pf_type: formData.pfType || "tax@18%",
                 coupon_code: formData.couponCode || "",
+                coupon_type: formData.couponType || "",
                 coupon_value: Number(formData.couponValue || 0),
                 discount_on_all: Number(formData.discountOnAll || 0),
                 discount_type: formData.discountType || "percentage",
-
-                // References and notes
                 reference_no: formData.referenceNo || "",
                 delivery_note: formData.deliveryNote || "",
                 payment_terms: formData.paymentTerms || "",
@@ -950,15 +1006,9 @@ export default function EditSalesPage() {
                 despatched_through: formData.despatchedThrough || "",
                 destination: formData.destination || "",
                 terms_of_delivery: formData.termsOfDelivery || "",
-
-                // Notes and terms
                 notes: formData.notes || "",
                 terms: formData.terms || "",
-
-                // Items
                 items: preparedItems,
-
-                // Denormalized customer info
                 ...(selectedCustomer ? {
                     customer_name: selectedCustomer.name || "",
                     customer_gstin: selectedCustomer.gstin || selectedCustomer.tax_number || "",
@@ -966,9 +1016,8 @@ export default function EditSalesPage() {
                     customer_state: selectedCustomer.billing_state || selectedCustomer.state || "",
                     customer_state_code: selectedCustomer.billing_state_code || selectedCustomer.state_code || "",
                 } : {}),
-
-                // Payment data
                 ...(paymentData.amount > 0 ? {
+                    payment_amount: Number(paymentData.amount),
                     payment_type: paymentData.paymentType,
                     payment_account: paymentData.account,
                     payment_note: paymentData.paymentNote,
@@ -978,29 +1027,18 @@ export default function EditSalesPage() {
 
             console.log("Invoice data being sent:", JSON.stringify(invoiceData, null, 2));
 
-            // Call the API
-            if (invoiceStatus && invoiceStatus !== "draft") {
-                alert("Only draft invoices can be edited.");
-                setIsSubmitting(false);
-                return;
-            }
-
             const response = await invoicesApi.update(company.id, invoiceId, invoiceData);
 
             console.log('Sale updated successfully:', response);
             router.push(`/sales/${invoiceId}`);
-
         } catch (error: any) {
             console.error("Error updating invoice:", error);
-
-            // Log detailed error information
             if (error.response) {
                 console.error("Response error:", error.response.data);
                 console.error("Response status:", error.response.status);
             }
-
-            const message = getErrorMessage(error, "Failed to update invoice");
-            alert(message);
+            const detail = error?.response?.data?.detail ?? error?.response?.data ?? error?.message;
+            alert(`Failed to update invoice: ${formatApiError(detail)}`);
         } finally {
             setIsSubmitting(false);
         }
@@ -1017,7 +1055,7 @@ export default function EditSalesPage() {
                     if (field === 'product_id' && value) {
                         const selectedProduct = products.find(p => p.id === value);
                         if (selectedProduct) {
-                            updated.description = selectedProduct.name;
+                            updated.description = selectedProduct.description || selectedProduct.name;
                             updated.unit_price = selectedProduct.unit_price || 0;
                             updated.gst_rate = parseFloat(selectedProduct.gst_rate) || 18;
                             updated.hsn_code = selectedProduct.hsn_code || selectedProduct.hsn;
@@ -1033,7 +1071,8 @@ export default function EditSalesPage() {
 
                     updated.discount_amount = discount;
                     updated.taxable_amount = taxable;
-                    updated.total_amount = taxable + tax;
+                    // Line total is base amount only.
+                    updated.total_amount = itemTotal;
 
                     // Set CGST/SGST/IGST rates
                     if (isIntraStateSupply(formData.place_of_supply)) {
@@ -1057,14 +1096,47 @@ export default function EditSalesPage() {
 
     // Update form data handler
     const handleFormChange = (field: string, value: any) => {
-        console.log("[Sales Edit] handleFormChange", { field, value });
+        console.log("[Sales New] handleFormChange", { field, value });
         setFormData(prev => ({
             ...prev,
             [field]: value,
         }));
 
         if (field === 'voucher_type') {
-            // Keep existing invoice number on edit
+            const loadInvoiceNumberForVoucherType = async () => {
+                if (!company?.id) return;
+
+                try {
+                    setLoadingInvoiceNumber(true);
+                    const token = getAuthToken();
+
+                    const response = await fetch(
+                        `${API_BASE_URL}/companies/${company.id}/next-invoice-number?voucher_type=${value}`,
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                            },
+                        }
+                    );
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        setNextInvoiceNumber(
+                            normalizeInvoiceNumberForVoucherType(
+                                data.invoice_number || "",
+                                value
+                            )
+                        );
+                    }
+                } catch (error) {
+                    console.error("Failed to load next invoice number:", error);
+                } finally {
+                    setLoadingInvoiceNumber(false);
+                }
+            };
+
+            loadInvoiceNumberForVoucherType();
         }
 
         // When place of supply changes, update item tax calculations
@@ -1088,14 +1160,14 @@ export default function EditSalesPage() {
 
         // When customer is selected, auto-fill place of supply
         if (field === 'customer_id' && value) {
-            console.log("[Sales Edit] customer_id changed", {
+            console.log("[Sales New] customer_id changed", {
                 value,
                 valueType: typeof value,
                 customersCount: customers.length,
                 sampleCustomerIds: customers.slice(0, 5).map((c: any) => c?.id),
             });
             const selectedCustomer = customers.find(c => String(c.id) === String(value));
-            console.log("[Sales Edit] selectedCustomer for autofill", selectedCustomer);
+            console.log("[Sales New] selectedCustomer for autofill", selectedCustomer);
             if (selectedCustomer) {
                 const customerState = selectedCustomer.billing_state_code ||
                     selectedCustomer.state_code;
@@ -1107,14 +1179,14 @@ export default function EditSalesPage() {
                     postcode: selectedCustomer.shipping_zip || selectedCustomer.shipping_pincode || selectedCustomer.billing_zip || selectedCustomer.billing_pincode || "",
                     address: selectedCustomer.shipping_address || selectedCustomer.billing_address || "",
                 }));
-                console.log("[Sales Edit] shipping autofill applied", {
+                console.log("[Sales New] shipping autofill applied", {
                     country: selectedCustomer.shipping_country || selectedCustomer.billing_country || "India",
                     city: selectedCustomer.shipping_city || selectedCustomer.billing_city || "",
                     postcode: selectedCustomer.shipping_zip || selectedCustomer.shipping_pincode || selectedCustomer.billing_zip || selectedCustomer.billing_pincode || "",
                     address: selectedCustomer.shipping_address || selectedCustomer.billing_address || "",
                 });
             } else {
-                console.log("[Sales Edit] selectedCustomer not found for value", value);
+                console.log("[Sales New] selectedCustomer not found for value", value);
             }
         }
     };
@@ -1185,25 +1257,6 @@ export default function EditSalesPage() {
         setItems(items.filter(item => item.id !== id));
     };
 
-    if (loadingInvoice) {
-        return (
-            <div className="flex min-h-screen items-center justify-center bg-gray-50 py-20 dark:bg-gray-900">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-            </div>
-        );
-    }
-
-    if (invoiceError) {
-        return (
-            <div className="min-h-screen bg-gray-50 p-6 dark:bg-gray-900">
-                <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">{invoiceError}</div>
-                <Link href="/sales/sales-list" className="mt-4 inline-block text-primary hover:underline">
-                    Back to Sales
-                </Link>
-            </div>
-        );
-    }
-
     return (
         <div className="w-full bg-gray-50 dark:bg-gray-900">
             <div className="border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-700 dark:bg-gray-800 sm:px-6">
@@ -1227,7 +1280,7 @@ export default function EditSalesPage() {
 
             <div className="w-full p-4 sm:p-6">
 
-                <form data-ui="sf-form" onSubmit={handleSubmit}>
+                                <form data-ui="sf-form" onSubmit={handleSubmit}>
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                         {/* Left Column - Main Form */}
                         <div className="lg:col-span-3 space-y-6">
@@ -1346,34 +1399,10 @@ export default function EditSalesPage() {
                                             </div>
 
                                             <Select
-                                                options={salesmen
-                                                    .filter(salesman => salesman.name && salesman.name.trim())
-                                                    .map((salesman) => {
-                                                        const label = salesman.designation
-                                                            ? `${salesman.name} (${salesman.email}) ${salesman.phone ? - salesman.phone : ''}`.trim()
-                                                            : salesman.name;
-
-
-                                                        return {
-                                                            value: salesman.id,
-                                                            label: label,
-                                                            salesman: salesman
-                                                        };
-                                                    })}
-                                                value={salesmen
-                                                    .filter(salesman => salesman.name && salesman.name.trim())
-                                                    .map((salesman) => {
-                                                        const label = salesman.designation
-                                                            ? `${salesman.name} (${salesman.designation})`
-                                                            : salesman.name;
-
-                                                        return {
-                                                            value: salesman.id,
-                                                            label: label,
-                                                            salesman: salesman
-                                                        };
-                                                    })
-                                                    .find(opt => opt.value === formData.sales_person_id)}
+                                                options={salesmanOptions}
+                                                value={salesmanOptions.find(
+                                                    (opt) => String(opt.value) === String(formData.sales_person_id)
+                                                )}
                                                 onChange={(option) => {
                                                     handleFormChange('sales_person_id', option?.value || "");
                                                     if (option?.salesman) {
@@ -1442,47 +1471,96 @@ export default function EditSalesPage() {
 
                             {/* SECTION 2: Shipping Address */}
                             <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                                <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Shipping Address</h2>
+                                <div className="mb-4 flex items-center justify-between">
+                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Shipping Address</h2>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const selectedCustomer = customers.find(c => String(c.id) === String(formData.customer_id));
+                                            if (!selectedCustomer) {
+                                                alert("Please select a customer first.");
+                                                return;
+                                            }
+                                            const billingState = selectedCustomer.billing_state_code || selectedCustomer.state_code || "";
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                address: selectedCustomer.billing_address || "",
+                                                city: selectedCustomer.billing_city || "",
+                                                postcode: selectedCustomer.billing_zip || selectedCustomer.billing_pincode || "",
+                                                country: selectedCustomer.billing_country || "India",
+                                                place_of_supply: billingState || prev.place_of_supply,
+                                            }));
+                                        }}
+                                        className="inline-flex items-center gap-1.5 rounded-lg border border-blue-600 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:border-blue-500 dark:text-blue-500 dark:hover:bg-blue-900/20"
+                                    >
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                        </svg>
+                                        Copy from Billing
+                                    </button>
+                                </div>
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                     <div>
-                                        <SelectField
-                                            label="Country"
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                                            Country
+                                        </label>
+                                        <CreatableSelect
                                             name="country"
-                                            value={formData.country}
-                                            onChange={(name, value) => setFormData({ ...formData, [name]: value })}
-                                            options={[
-                                                { value: "India", label: "India" },
-                                                { value: "United States", label: "United States" },
-                                                { value: "United Kingdom", label: "United Kingdom" },
-                                                { value: "Canada", label: "Canada" },
-                                                { value: "Australia", label: "Australia" },
-                                                { value: "United Arab Emirates", label: "United Arab Emirates" },
-                                                { value: "Saudi Arabia", label: "Saudi Arabia" },
-                                                { value: "Qatar", label: "Qatar" },
-                                                { value: "Kuwait", label: "Kuwait" },
-                                                { value: "Oman", label: "Oman" },
-                                                { value: "Singapore", label: "Singapore" },
-                                                { value: "Malaysia", label: "Malaysia" },
-                                                { value: "Thailand", label: "Thailand" },
-                                                { value: "Indonesia", label: "Indonesia" },
-                                                { value: "Philippines", label: "Philippines" },
-                                                { value: "China", label: "China" },
-                                                { value: "Japan", label: "Japan" },
-                                                { value: "South Korea", label: "South Korea" },
-                                                { value: "Germany", label: "Germany" },
-                                                { value: "France", label: "France" },
-                                                { value: "Italy", label: "Italy" },
-                                                { value: "Netherlands", label: "Netherlands" },
-                                                { value: "South Africa", label: "South Africa" },
-                                                { value: "Nigeria", label: "Nigeria" },
-                                                { value: "Kenya", label: "Kenya" },
-                                                { value: "Brazil", label: "Brazil" },
-                                                { value: "Argentina", label: "Argentina" },
-                                                { value: "Sri Lanka", label: "Sri Lanka" },
-                                                { value: "Bangladesh", label: "Bangladesh" },
-                                                { value: "Nepal", label: "Nepal" }
-                                            ]}
-                                            placeholder="Select Country"
+                                            value={
+                                                countryOptions.find((option) => option.value === formData.country) ||
+                                                (formData.country
+                                                    ? { value: formData.country, label: formData.country }
+                                                    : null)
+                                            }
+                                            options={countryOptions}
+                                            onChange={(selected) => handleCountrySelect(selected?.value || "")}
+                                            onCreateOption={handleCountrySelect}
+                                            formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
+                                            isClearable
+                                            placeholder="Select or type country"
+                                            styles={{
+                                                control: (base: any, state: any) => ({
+                                                    ...base,
+                                                    minHeight: "42px",
+                                                    borderRadius: "0.5rem",
+                                                    borderWidth: "1px",
+                                                    borderStyle: "solid",
+                                                    borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
+                                                    boxShadow: state.isFocused
+                                                        ? "0 0 0 2px rgba(99,102,241,0.4)"
+                                                        : "none",
+                                                    backgroundColor: "transparent",
+                                                    "&:hover": {
+                                                        borderColor: "#6366f1",
+                                                    },
+                                                }),
+                                                valueContainer: (base: any) => ({
+                                                    ...base,
+                                                    padding: "0 12px",
+                                                }),
+                                                input: (base: any) => ({
+                                                    ...base,
+                                                    margin: 0,
+                                                    padding: 0,
+                                                }),
+                                                indicatorsContainer: (base: any) => ({
+                                                    ...base,
+                                                    height: "42px",
+                                                }),
+                                                option: (base: any, state: any) => ({
+                                                    ...base,
+                                                    backgroundColor: state.isSelected
+                                                        ? "#6366f1"
+                                                        : state.isFocused
+                                                            ? "#eef2ff"
+                                                            : "white",
+                                                    color: state.isSelected ? "white" : "#111827",
+                                                }),
+                                                menu: (base: any) => ({
+                                                    ...base,
+                                                    zIndex: 50,
+                                                }),
+                                            }}
                                         />
                                     </div>
                                     <div>
@@ -1535,7 +1613,7 @@ export default function EditSalesPage() {
                                     <div>
                                         <h2 className="text-lg font-semibold text-dark dark:text-white">Items</h2>
                                         <p className="mt-1 text-sm text-dark-6">
-                                            Update items for your sales invoice
+                                            Add items to your sales invoice
                                         </p>
                                     </div>
                                     <div className="mt-2 flex gap-2 sm:mt-0">
@@ -1562,10 +1640,10 @@ export default function EditSalesPage() {
                                     </div>
                                 </div>
                                 <div className="overflow-x-auto">
-                                    <table className="w-full min-w-[1580px] border-collapse">
+                                    <table className="w-full min-w-[2050px] border-collapse">
                                         <thead>
                                             <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
-                                                <th className="w-[450px] min-w-[450px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item</th>
+                                                <th className="w-[880px] min-w-[880px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item</th>
                                                 <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item Code</th>
                                                 <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">HSN Code</th>
                                                 <th className="w-[200px] min-w-[200px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Description</th>
@@ -1581,10 +1659,9 @@ export default function EditSalesPage() {
                                         <tbody>
                                             {items.map((item) => (
                                                 <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                                                    <td className="w-[450px] min-w-[450px] px-3 py-3">
+                                                    <td className="w-[880px] min-w-[880px] px-3 py-3">
                                                         <ProductSelectField
                                                             value={item.product_id}
-                                                            manualLabel={item.description || item.item_code}
                                                             products={products}
                                                             onChange={(product) => {
                                                                 if (!product) return;
@@ -1608,14 +1685,14 @@ export default function EditSalesPage() {
                                                                             ...i,
                                                                             product_id: product.id,
                                                                             item_code: i.item_code || "",
-                                                                            description: product.name,
+                                                                            description: product.description || product.name,
 
                                                                             hsn_code: product.hsn_code || product.hsn || "",
                                                                             unit_price: unitPrice,
                                                                             gst_rate: gstRate,
                                                                             discount_amount: 0,
                                                                             taxable_amount: taxable,
-                                                                            total_amount: taxable + tax,
+                                                                            total_amount: qty * unitPrice,
                                                                             ...(isIntraStateSupply(formData.place_of_supply) ? {
                                                                                 cgst_rate: gstRate / 2,
                                                                                 sgst_rate: gstRate / 2,
@@ -1713,7 +1790,7 @@ export default function EditSalesPage() {
                                                         </select>
                                                     </td>
                                                     <td className="px-4 py-3 font-medium">
-                                                        ₹{item.total_amount.toFixed(2)}
+                                                        ₹{((Number(item.quantity) || 0) * (Number(item.unit_price) || 0)).toFixed(2)}
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <button
@@ -1743,19 +1820,19 @@ export default function EditSalesPage() {
                                             {/* In the Charges & Discounts section */}
                                             <div>
                                                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
-                                                <div className="flex gap-2">
+                                                <div className="flex min-w-0 items-center gap-2">
                                                     <input
                                                         type="number"
                                                         value={formData.freightCharges}
                                                         onChange={(e) => setFormData({ ...formData, freightCharges: parseFloat(e.target.value) || 0 })}
-                                                        className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        className="min-w-0 w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                         min="0"
                                                         step="0.01"
                                                     />
                                                     <select
                                                         value={formData.freightType}
                                                         onChange={(e) => setFormData({ ...formData, freightType: e.target.value })}
-                                                        className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        className="w-28 shrink-0 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     >
                                                         <option value="fixed">Fixed</option>
                                                         <option value="tax@0%">Tax@0%</option>
@@ -1774,19 +1851,19 @@ export default function EditSalesPage() {
 
                                             <div>
                                                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                                <div className="flex gap-2">
+                                                <div className="flex min-w-0 items-center gap-2">
                                                     <input
                                                         type="number"
                                                         value={formData.pfCharges}
                                                         onChange={(e) => setFormData({ ...formData, pfCharges: parseFloat(e.target.value) || 0 })}
-                                                        className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        className="min-w-0 w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                         min="0"
                                                         step="0.01"
                                                     />
                                                     <select
                                                         value={formData.pfType}
                                                         onChange={(e) => setFormData({ ...formData, pfType: e.target.value })}
-                                                        className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        className="w-28 shrink-0 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     >
                                                         <option value="fixed">Fixed</option>
                                                         <option value="tax@0%">Tax@0%</option>
@@ -1801,30 +1878,6 @@ export default function EditSalesPage() {
                                                         Base: ₹{formData.pfCharges.toFixed(2)} + {formData.pfType.replace('tax@', '')} tax = ₹{totals.pf.toFixed(2)}
                                                     </div>
                                                 )}
-                                            </div>
-                                            <div>
-                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        type="number"
-                                                        value={formData.pfCharges}
-                                                        onChange={(e) => setFormData({ ...formData, pfCharges: parseFloat(e.target.value) })}
-                                                        className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        min="0"
-                                                    />
-                                                    <select
-                                                        value={formData.pfType}
-                                                        onChange={(e) => setFormData({ ...formData, pfType: e.target.value })}
-                                                        className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    >
-                                                        <option value="fixed">Fixed</option>
-                                                        <option value="tax@18%">Tax@18%</option>
-                                                        <option value="tax@0%">Tax@0%</option>
-                                                        <option value="tax@5%">Tax@5%</option>
-                                                        <option value="tax@28%">Tax@28%</option>
-                                                        <option value="tax@12%">Tax@12%</option>
-                                                    </select>
-                                                </div>
                                             </div>
                                             <div>
                                                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount Coupon Code</label>
@@ -1897,13 +1950,18 @@ export default function EditSalesPage() {
                                                 <span className="text-dark-6">Subtotal</span>
                                                 <span className="font-medium text-dark dark:text-white">₹{totals?.subtotal?.toLocaleString('en-IN') || '0.00'}</span>
                                             </div>
+
+                                            <div className="flex justify-between">
+                                                <span className="text-dark-6">Tax</span>
+                                                <span className="font-medium text-dark dark:text-white">Rs. {totals.totalTax.toLocaleString('en-IN')}</span>
+                                            </div>
                                             <div className="flex justify-between">
                                                 <span className="text-dark-6">Freight Charges</span>
-                                                <span className="font-medium text-dark dark:text-white">₹{totals.freight.toLocaleString('en-IN')}</span>
+                                                <span className="font-medium text-dark dark:text-white">₹{freightBaseValue.toLocaleString('en-IN')}</span>
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-dark-6">P & F Charges</span>
-                                                <span className="font-medium text-dark dark:text-white">₹{totals.pf.toLocaleString('en-IN')}</span>
+                                                <span className="font-medium text-dark dark:text-white">₹{pfBaseValue.toLocaleString('en-IN')}</span>
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-dark-6">Coupon Discount</span>
@@ -1911,84 +1969,81 @@ export default function EditSalesPage() {
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-dark-6">Discount on All</span>
-                                                <span className="font-medium text-red-600">-₹{totals.discountAll.toLocaleString('en-IN')}</span>
+                                                <span className="font-medium text-red-600">-₹{summaryDiscountOnAllValue.toLocaleString('en-IN')}</span>
                                             </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-dark-6">Round Off</span>
 
-                                                <div className="flex items-center gap-2">
-                                                    {/* - Button: Makes amount negative */}
+                                            <div className="rounded-lg border border-stroke/80 p-3 dark:border-dark-3/80">
+                                                <div className="mb-2 flex items-center justify-between">
+                                                    <span className="text-dark-6">Round Off</span>
+                                                    <span
+                                                        className={`rounded-md px-2 py-1 text-sm font-semibold ${totals.roundOff >= 0
+                                                            ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                            : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                            }`}
+                                                    >
+                                                        {totals.roundOff >= 0 ? '+Rs. ' : '-Rs. '}
+                                                        {Math.abs(totals.roundOff).toFixed(2)}
+                                                    </span>
+                                                </div>
+
+                                                <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2">
                                                     <button
                                                         type="button"
                                                         onClick={() => {
                                                             const currentValue = Math.abs(formData.roundOff || 0);
-                                                            // Set to negative version of the absolute value
                                                             setFormData(prev => ({
                                                                 ...prev,
                                                                 roundOff: -currentValue
                                                             }));
                                                         }}
-                                                        className="p-2 rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400"
-                                                        title="Make amount negative (subtract from total)"
+                                                        className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
+                                                        title="Subtract from total"
                                                     >
-                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                                                         </svg>
                                                     </button>
 
-                                                    {/* Input Field */}
                                                     <div className="relative">
                                                         <input
                                                             type="number"
-                                                            value={Math.abs(formData.roundOff || 0)} // Show absolute value only
+                                                            value={Math.abs(formData.roundOff || 0)}
                                                             onChange={(e) => {
                                                                 const inputValue = parseFloat(e.target.value) || 0;
                                                                 const currentSign = formData.roundOff >= 0 ? 1 : -1;
-                                                                // Apply current sign to the new input value
                                                                 setFormData(prev => ({
                                                                     ...prev,
                                                                     roundOff: currentSign * inputValue
                                                                 }));
                                                             }}
-                                                            className="w-32 px-10 py-2 text-center border border-stroke dark:border-dark-3 rounded-lg bg-transparent outline-none focus:border-primary"
+                                                            className="w-full rounded-lg border border-stroke bg-transparent px-10 py-2 text-center outline-none focus:border-primary dark:border-dark-3"
                                                             step="0.01"
                                                             min="0"
                                                         />
-                                                        {/* Left sign indicator */}
-                                                        <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none">
+                                                        <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
                                                             {formData.roundOff >= 0 ? '+' : '-'}
                                                         </div>
-                                                        {/* Right currency symbol */}
-                                                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                                                            ₹
+                                                        <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                                            Rs
                                                         </div>
                                                     </div>
 
-                                                    {/* + Button: Makes amount positive */}
                                                     <button
                                                         type="button"
                                                         onClick={() => {
                                                             const currentValue = Math.abs(formData.roundOff || 0);
-                                                            // Set to positive version of the absolute value
                                                             setFormData(prev => ({
                                                                 ...prev,
                                                                 roundOff: currentValue
                                                             }));
                                                         }}
-                                                        className="p-2 rounded-lg bg-green-50 hover:bg-green-100 dark:bg-green-900/30 dark:hover:bg-green-900/50 text-green-600 dark:text-green-400"
-                                                        title="Make amount positive (add to total)"
+                                                        className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 text-green-600 transition hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
+                                                        title="Add to total"
                                                     >
-                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                                                         </svg>
                                                     </button>
-
-                                                    {/* Display with sign */}
-                                                    <div className={`min-w-[100px] px-3 py-2 rounded-lg text-center ${totals.roundOff >= 0 ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                                                        <span className="font-medium">
-                                                            {totals.roundOff >= 0 ? '+₹' : '-₹'}{Math.abs(totals.roundOff).toFixed(2)}
-                                                        </span>
-                                                    </div>
                                                 </div>
                                             </div>
                                             <div className="border-t border-stroke pt-3 dark:border-dark-3">
@@ -2464,5 +2519,9 @@ export default function EditSalesPage() {
         </div>
     );
 }
+
+
+
+
 
 
