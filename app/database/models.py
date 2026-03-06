@@ -825,6 +825,27 @@ class CustomerTypeMaster(Base):
         return f"<CustomerTypeMaster(id={self.id}, name='{self.name}', company_id={self.company_id})>"
 
 
+class Country(Base):
+    """Country master per company for dropdown configuration."""
+    __tablename__ = "countries"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    company_id = Column(String(36), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    code = Column(String(3))  # Optional ISO code
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "name", name="uq_countries_company_name"),
+        Index("idx_countries_company_name", "company_id", "name"),
+    )
+
+    def __repr__(self):
+        return f"<Country(id={self.id}, name='{self.name}', company_id={self.company_id})>"
+
+
 class Customer(Base):
     __tablename__ = "customers"
 

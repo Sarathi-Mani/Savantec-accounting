@@ -40,6 +40,7 @@ from app.api.tds import router as tds_router
 from app.api.business_dashboard import router as business_dashboard_router
 from app.api.payroll import router as payroll_router
 from app.api.currencies import router as currencies_router
+from app.api.countries import router as countries_router
 from app.api.cost_centers import router as cost_centers_router
 from app.api.gst_reconciliation import router as gst_reconciliation_router
 from app.api.banking import router as banking_router
@@ -125,6 +126,7 @@ app.include_router(vendors_router, prefix="/api")  # KEEP ONLY ONE!
 app.include_router(business_dashboard_router, prefix="/api")
 app.include_router(payroll_router, prefix="/api")
 app.include_router(currencies_router, prefix="/api")
+app.include_router(countries_router, prefix="/api")
 # REMOVE THIS DUPLICATE: app.include_router(vendors_router, prefix="/api")
 app.include_router(cost_centers_router, prefix="/api")
 app.include_router(gst_reconciliation_router, prefix="/api")

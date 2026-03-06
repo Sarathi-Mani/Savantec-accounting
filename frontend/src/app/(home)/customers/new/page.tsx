@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { customerTypesApi, customersApi, getErrorMessage } from "@/services/api";
-import CreatableSelect from "react-select/creatable";
-import { components } from "react-select";
+import Link from "next/link";
+import { countriesApi, customerTypesApi, customersApi, getErrorMessage } from "@/services/api";
+import Select from "react-select";
 
 interface ContactPerson {
   name: string;
@@ -83,8 +83,6 @@ const GST_REGISTRATION_TYPES = [
   "Embassy/UN Body",
   "Non-Resident Taxpayer"
 ] as const;
-
-const DEFAULT_COUNTRIES = ["India", "United States", "United Arab Emirates"] as const;
 
 const INDIAN_STATES = [
   "Andhra Pradesh",
@@ -165,9 +163,7 @@ export default function CreateCustomerPage() {
   const [showOpeningBalanceSplit, setShowOpeningBalanceSplit] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
-  const [countryOptions, setCountryOptions] = useState<{ value: string; label: string }[]>(
-    DEFAULT_COUNTRIES.map((country) => ({ value: country, label: country })),
-  );
+  const [countryOptions, setCountryOptions] = useState<{ value: string; label: string }[]>([]);
   const [customerTypeOptions, setCustomerTypeOptions] = useState<string[]>([
     "b2b",
     "b2c",
@@ -222,6 +218,29 @@ export default function CreateCustomerPage() {
   });
 
   useEffect(() => {
+    const fetchCountries = async () => {
+      if (!company?.id) return;
+      try {
+        const data = await countriesApi.list(company.id, true);
+        const apiOptions = data.map((c) => ({ value: c.name, label: c.name }));
+        setCountryOptions((prev) => {
+          const merged = [...apiOptions];
+          prev.forEach((opt) => {
+            if (!merged.some((m) => m.value.toLowerCase() === opt.value.toLowerCase())) {
+              merged.push(opt);
+            }
+          });
+          return merged;
+        });
+      } catch (err) {
+        console.error("Failed to load countries:", err);
+      }
+    };
+
+    fetchCountries();
+  }, [company?.id]);
+
+  useEffect(() => {
     const loadCustomerTypes = async () => {
       if (!company?.id) return;
       try {
@@ -255,20 +274,8 @@ export default function CreateCustomerPage() {
 
   const isIndiaCountry = (country: string) => country.trim().toLowerCase() === "india";
 
-  const ensureCountryOption = (country: string) => {
-    const trimmedCountry = country.trim();
-    if (!trimmedCountry) return;
-
-    setCountryOptions((prev) => {
-      const exists = prev.some((option) => option.value.toLowerCase() === trimmedCountry.toLowerCase());
-      if (exists) return prev;
-      return [...prev, { value: trimmedCountry, label: trimmedCountry }];
-    });
-  };
-
   const handleCountrySelect = (field: "billing_country" | "shipping_country", countryValue: string) => {
     const trimmedCountry = countryValue.trim();
-    ensureCountryOption(trimmedCountry);
 
     if (field === "billing_country") {
       setFormData((prev) => ({
@@ -284,59 +291,6 @@ export default function CreateCustomerPage() {
       }));
     }
     setError(null);
-  };
-
-  const removeCountryOption = (countryValue: string) => {
-    const target = countryValue.trim().toLowerCase();
-    if (!target) return;
-
-    setCountryOptions((prev) => prev.filter((option) => option.value.toLowerCase() !== target));
-    setFormData((prev) => {
-      const next = { ...prev };
-      if (prev.billing_country.trim().toLowerCase() === target) {
-        next.billing_country = "";
-        next.billing_state = "";
-      }
-      if (prev.shipping_country.trim().toLowerCase() === target) {
-        next.shipping_country = "";
-        next.shipping_state = "";
-      }
-      return next;
-    });
-  };
-
-  const handleDeleteCountryOption = (field: "billing_country" | "shipping_country") => {
-    const selectedCountry =
-      field === "billing_country" ? formData.billing_country.trim() : formData.shipping_country.trim();
-    if (!selectedCountry) return;
-    removeCountryOption(selectedCountry);
-    setError(null);
-  };
-
-  const CountryOption = (props: any) => {
-    const optionValue = String(props.data?.value || "").trim();
-    return (
-      <components.Option {...props}>
-        <div className="flex items-center justify-between gap-2">
-          <span>{props.label}</span>
-          <button
-            type="button"
-            className="rounded px-1 text-red-500 hover:bg-red-50"
-            onMouseDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              removeCountryOption(optionValue);
-            }}
-          >
-            x
-          </button>
-        </div>
-      </components.Option>
-    );
   };
 
   const handleContactPersonChange = (index: number, field: keyof ContactPerson, value: string) => {
@@ -1357,12 +1311,17 @@ const handleSubmit = async (e: React.FormEvent) => {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Country
-                </label>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="block text-sm font-medium text-dark dark:text-white">
+                    Country
+                  </label>
+                  <Link href="/settings/countries" className="text-xs text-primary hover:underline">
+                    Manage Countries
+                  </Link>
+                </div>
                 <div className="flex items-center gap-2">
                   <div className="flex-1">
-                    <CreatableSelect
+                    <Select
                       name="billing_country"
                       value={
                         countryOptions.find((option) => option.value === formData.billing_country) ||
@@ -1372,12 +1331,9 @@ const handleSubmit = async (e: React.FormEvent) => {
                       }
                       options={countryOptions}
                       onChange={(selected) => handleCountrySelect("billing_country", selected?.value || "")}
-                      onCreateOption={(inputValue) => handleCountrySelect("billing_country", inputValue)}
-                      formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
                       isClearable
-                      placeholder="Select or type country"
+                      placeholder="Select country"
                       styles={countrySelectStyles}
-                      components={{ Option: CountryOption } as any}
                     />
                   </div>
                 
@@ -1532,12 +1488,17 @@ const handleSubmit = async (e: React.FormEvent) => {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                  Country
-                </label>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="block text-sm font-medium text-dark dark:text-white">
+                    Country
+                  </label>
+                  <Link href="/settings/countries" className="text-xs text-primary hover:underline">
+                    Manage Countries
+                  </Link>
+                </div>
                 <div className="flex items-center gap-2">
                   <div className="flex-1">
-                    <CreatableSelect
+                    <Select
                       name="shipping_country"
                       value={
                         countryOptions.find((option) => option.value === formData.shipping_country) ||
@@ -1547,12 +1508,9 @@ const handleSubmit = async (e: React.FormEvent) => {
                       }
                       options={countryOptions}
                       onChange={(selected) => handleCountrySelect("shipping_country", selected?.value || "")}
-                      onCreateOption={(inputValue) => handleCountrySelect("shipping_country", inputValue)}
-                      formatCreateLabel={(inputValue) => `Add "${inputValue}"`}
                       isClearable
-                      placeholder="Select or type country"
+                      placeholder="Select country"
                       styles={countrySelectStyles}
-                      components={{ Option: CountryOption } as any}
                     />
                   </div>
              

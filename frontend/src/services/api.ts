@@ -4694,4 +4694,51 @@ export const currenciesApi = {
   },
 };
 
+// ============== Countries Types/API ==============
+
+export interface Country {
+  id: string;
+  company_id: string;
+  name: string;
+  code?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface CountryCreateRequest {
+  name: string;
+  code?: string;
+  is_active?: boolean;
+}
+
+export interface CountryUpdateRequest {
+  name?: string;
+  code?: string;
+  is_active?: boolean;
+}
+
+export const countriesApi = {
+  list: async (companyId: string, isActive?: boolean): Promise<Country[]> => {
+    const response = await api.get(`/companies/${companyId}/countries`, {
+      params: isActive === undefined ? {} : { is_active: isActive },
+    });
+    return response.data;
+  },
+
+  create: async (companyId: string, data: CountryCreateRequest): Promise<Country> => {
+    const response = await api.post(`/companies/${companyId}/countries`, data);
+    return response.data;
+  },
+
+  update: async (companyId: string, countryId: string, data: CountryUpdateRequest): Promise<Country> => {
+    const response = await api.put(`/companies/${companyId}/countries/${countryId}`, data);
+    return response.data;
+  },
+
+  delete: async (companyId: string, countryId: string): Promise<void> => {
+    await api.delete(`/companies/${companyId}/countries/${countryId}`);
+  },
+};
+
 export default api;

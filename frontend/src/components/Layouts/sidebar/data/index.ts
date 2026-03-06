@@ -677,6 +677,7 @@ export const NAV_DATA = [
           { title: "Print Templates", url: "/settings/templates" },
           { title: "Narration Templates", url: "/settings/narration-templates" },
           { title: "Account Mappings", url: "/settings/account-mappings" },
+          { title: "Countries", url: "/settings/countries" },
         ],
       },
       {
