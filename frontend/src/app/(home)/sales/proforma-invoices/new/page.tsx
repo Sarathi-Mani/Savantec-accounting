@@ -1363,27 +1363,27 @@ const customerOptions = useMemo(() => {
                                     </button>
                                 </div>
                             </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full min-w-[1180px]">
+                            <div className="overflow-x-auto pb-2">
+                                <table className="w-full min-w-[1320px] border-collapse">
                                     <thead>
                                         <tr className="border-b border-stroke dark:border-dark-3">
-                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">#</th>
-                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Item Name</th>
-                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Description</th>
-                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Qty</th>
-                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Unit</th>
-                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Rate</th>
-                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Discount %</th>
-                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">GST %</th>
-                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Amount</th>
-                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Action</th>
+                                            <th className="w-[60px] min-w-[60px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">#</th>
+                                            <th className="w-[340px] min-w-[340px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Item Name</th>
+                                            <th className="w-[260px] min-w-[260px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Description</th>
+                                            <th className="w-[100px] min-w-[100px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Qty</th>
+                                            <th className="w-[110px] min-w-[110px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Unit</th>
+                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Rate</th>
+                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Discount %</th>
+                                            <th className="w-[110px] min-w-[110px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">GST %</th>
+                                            <th className="w-[140px] min-w-[140px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Amount</th>
+                                            <th className="w-[80px] min-w-[80px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-dark-6">Action</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-stroke dark:divide-dark-3">
                                         {items.map((item, index) => (
                                             <tr key={item.id} className="hover:bg-gray-50/60 dark:hover:bg-gray-800/50">
                                                 <td className="px-3 py-3 text-sm text-dark dark:text-white">{index + 1}</td>
-                                                <td className="px-3 py-3 min-w-[260px]">
+                                                <td className="w-[340px] min-w-[340px] px-3 py-3">
                                                     <div className="space-y-2">
                                                         <ProductSelectField
                                                             value={item.product_id}
@@ -1436,7 +1436,7 @@ const customerOptions = useMemo(() => {
                                                         />
                                                     </div>
                                                 </td>
-                                                <td className="px-3 py-3 min-w-[220px]">
+                                                <td className="w-[260px] min-w-[260px] px-3 py-3">
                                                     <input
                                                         type="text"
                                                         value={item.description}
@@ -1450,7 +1450,7 @@ const customerOptions = useMemo(() => {
                                                         type="number"
                                                         value={item.quantity}
                                                         onChange={(e) => updateItem(item.id, "quantity", parseFloat(e.target.value))}
-                                                        className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 text-sm outline-none focus:border-primary dark:border-dark-3"
+                                                        className="w-full min-w-[88px] rounded border border-stroke bg-transparent px-3 py-1.5 text-sm outline-none focus:border-primary dark:border-dark-3"
                                                         min="1"
                                                     />
                                                 </td>
@@ -1459,7 +1459,7 @@ const customerOptions = useMemo(() => {
                                                         type="text"
                                                         value={item.unit}
                                                         onChange={(e) => updateItem(item.id, "unit", e.target.value)}
-                                                        className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 text-sm outline-none focus:border-primary dark:border-dark-3"
+                                                        className="w-full min-w-[96px] rounded border border-stroke bg-transparent px-3 py-1.5 text-sm outline-none focus:border-primary dark:border-dark-3"
                                                         placeholder="Unit"
                                                     />
                                                 </td>
@@ -1468,7 +1468,7 @@ const customerOptions = useMemo(() => {
                                                         type="number"
                                                         value={item.unit_price}
                                                         onChange={(e) => updateItem(item.id, "unit_price", parseFloat(e.target.value))}
-                                                        className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 text-sm outline-none focus:border-primary dark:border-dark-3"
+                                                        className="w-full min-w-[110px] rounded border border-stroke bg-transparent px-3 py-1.5 text-sm outline-none focus:border-primary dark:border-dark-3"
                                                         min="0"
                                                         step="0.01"
                                                     />
@@ -1479,7 +1479,7 @@ const customerOptions = useMemo(() => {
                                                             type="number"
                                                             value={item.discount_percent}
                                                             onChange={(e) => updateItem(item.id, "discount_percent", parseFloat(e.target.value))}
-                                                            className="w-16 rounded border border-stroke bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary dark:border-dark-3"
+                                                            className="w-full min-w-[82px] rounded border border-stroke bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary dark:border-dark-3"
                                                             min="0"
                                                             step="0.01"
                                                         />
@@ -1529,19 +1529,19 @@ const customerOptions = useMemo(() => {
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
-                                            <div className="flex gap-2">
+                                            <div className="flex min-w-0 items-center gap-2">
                                                 <input
                                                     type="number"
                                                     value={formData.freight_charges}
                                                     onChange={(e) => handleFormChange('freight_charges', parseFloat(e.target.value) || 0)}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="min-w-0 w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                     step="0.01"
                                                 />
                                                 <select
                                                     value={formData.freight_type || "tax@18%"}
                                                     onChange={(e) => handleFormChange('freight_type', e.target.value)}
-                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="w-28 shrink-0 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
                                                     <option value="tax@0%">Tax@0%</option>
@@ -1554,19 +1554,19 @@ const customerOptions = useMemo(() => {
                                         </div>
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                            <div className="flex gap-2">
+                                            <div className="flex min-w-0 items-center gap-2">
                                                 <input
                                                     type="number"
                                                     value={formData.pf_charges}
                                                     onChange={(e) => handleFormChange('pf_charges', parseFloat(e.target.value) || 0)}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="min-w-0 w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                     step="0.01"
                                                 />
                                                 <select
                                                     value={formData.pf_type || "tax@18%"}
                                                     onChange={(e) => handleFormChange('pf_type', e.target.value)}
-                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="w-28 shrink-0 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
                                                     <option value="tax@0%">Tax@0%</option>
@@ -1612,79 +1612,73 @@ const customerOptions = useMemo(() => {
                                             <span className="text-dark-6">P & F Charges</span>
                                             <span className="font-medium text-dark dark:text-white">₹{totals.pfAmount.toLocaleString('en-IN')}</span>
                                         </div>
-                                        
-                                        {/* Round Off Controls */}
-                                        <div className="flex justify-between items-center">
-                                            <div className="flex items-center gap-2">
+                                        <div className="rounded-lg border border-stroke/80 p-3 dark:border-dark-3/80">
+                                            <div className="mb-2 flex items-center justify-between">
                                                 <span className="text-dark-6">Round Off</span>
-                                                <div className="flex gap-1">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const newAmount = roundOff.amount + 1;
-                                                            handleRoundOffChange("plus", newAmount);
-                                                        }}
-                                                        className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "plus" ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-                                                    >
-                                                        +
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const newAmount = roundOff.amount > 0 ? roundOff.amount - 1 : 0;
-                                                            handleRoundOffChange("minus", newAmount);
-                                                        }}
-                                                        className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "minus" ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'}`}
-                                                    >
-                                                        -
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleRoundOffChange("none", 0)}
-                                                        className={`w-7 h-7 rounded flex items-center justify-center ${roundOff.type === "none" ? 'bg-gray-200 text-gray-700' : 'bg-gray-100 text-gray-600'}`}
-                                                    >
-                                                        0
-                                                    </button>
-                                                </div>
+                                                <span
+                                                    className={`rounded-md px-2 py-1 text-sm font-semibold ${
+                                                        totals.roundOffAmount >= 0
+                                                            ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                            : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                    }`}
+                                                >
+                                                    {totals.roundOffAmount >= 0 ? '+Rs ' : '-Rs '}{Math.abs(totals.roundOffAmount).toFixed(2)}
+                                                </span>
                                             </div>
-                                            
-                                            <div className="flex items-center gap-2">
+
+                                            <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const currentValue = Math.abs(roundOff.amount || 0);
+                                                        handleRoundOffChange("minus", currentValue);
+                                                    }}
+                                                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
+                                                    title="Subtract from total"
+                                                >
+                                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                                                    </svg>
+                                                </button>
+
                                                 <div className="relative">
-                                                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
-                                                        {roundOff.type === "plus" ? "+" : roundOff.type === "minus" ? "-" : ""}₹
-                                                    </span>
                                                     <input
                                                         type="number"
-                                                        value={roundOff.amount}
+                                                        value={Math.abs(roundOff.amount || 0)}
                                                         onChange={(e) => {
                                                             const amount = parseFloat(e.target.value) || 0;
-                                                            setRoundOff(prev => ({
-                                                                ...prev,
-                                                                amount: amount
-                                                            }));
+                                                            const type = roundOff.type === "minus" ? "minus" : "plus";
+                                                            handleRoundOffChange(type, amount);
                                                         }}
-                                                        className={`w-28 rounded border pl-8 pr-2 py-1.5 outline-none focus:border-primary dark:border-dark-3 ${
-                                                            roundOff.type === "plus" ? 'border-green-300 bg-green-50' :
-                                                            roundOff.type === "minus" ? 'border-red-300 bg-red-50' :
-                                                            'border-stroke bg-transparent'
-                                                        }`}
+                                                        className="w-full rounded-lg border border-stroke bg-transparent px-10 py-2 text-center outline-none focus:border-primary dark:border-dark-3"
                                                         min="0"
                                                         step="0.01"
-                                                        disabled={roundOff.type === "none"}
                                                     />
+                                                    <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                                                        {roundOff.type === "minus" ? "-" : "+"}
+                                                    </div>
+                                                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                                        Rs
+                                                    </div>
                                                 </div>
-                                                <span className={`font-medium ${
-                                                    roundOff.type === "plus" ? 'text-green-600' : 
-                                                    roundOff.type === "minus" ? 'text-red-600' : 
-                                                    'text-gray-600'
-                                                }`}>
-                                                    {roundOff.type === "plus" ? "+₹" : roundOff.type === "minus" ? "-₹" : "₹"}
-                                                    {roundOff.amount.toFixed(2)}
-                                                </span>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const currentValue = Math.abs(roundOff.amount || 0);
+                                                        handleRoundOffChange("plus", currentValue);
+                                                    }}
+                                                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 text-green-600 transition hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
+                                                    title="Add to total"
+                                                >
+                                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                                    </svg>
+                                                </button>
                                             </div>
                                         </div>
 
-                                        <div className="border-t border-stroke pt-3 dark:border-dark-3">
+                                        <div className="border-t border-stroke pt-3 dark:border-dark-3"> 
                                             <div className="flex justify-between">
                                                 <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
                                                 <span className="text-lg font-bold text-primary">₹{totals.total.toLocaleString('en-IN')}</span>
@@ -1945,5 +1939,6 @@ const customerOptions = useMemo(() => {
         </div>
     );
 }
+
 
 

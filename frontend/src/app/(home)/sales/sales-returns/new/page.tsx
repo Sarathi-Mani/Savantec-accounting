@@ -146,6 +146,7 @@ function ProductSelectField({
         <Select
             ref={selectRef}
             options={options}
+            className="w-full"
             value={selectedOption}
             getOptionValue={(option) => String(option.value)}
             getOptionLabel={(option) => option.label}
@@ -174,10 +175,16 @@ function ProductSelectField({
             menuPortalTarget={typeof window !== "undefined" ? document.body : null}
             menuPosition="fixed"
             styles={{
+                container: (base: any) => ({
+                    ...base,
+                    width: "100%",
+                    minWidth: "100%",
+                }),
                 control: (base: any, state: any) => ({
                     ...base,
                     minHeight: "36px",
                     height: "36px",
+                    width: "100%",
                     borderRadius: "0.375rem",
                     borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
                     boxShadow: state.isFocused
@@ -188,6 +195,21 @@ function ProductSelectField({
                     ...base,
                     height: "36px",
                     padding: "0 8px",
+                    minWidth: 0,
+                }),
+                singleValue: (base: any) => ({
+                    ...base,
+                    maxWidth: "100%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                }),
+                placeholder: (base: any) => ({
+                    ...base,
+                    maxWidth: "100%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                 }),
                 input: (base: any) => ({
                     ...base,
@@ -207,16 +229,24 @@ function ProductSelectField({
                     zIndex: 9999,
                 }),
             }}
-            formatOptionLabel={(option: any) => (
-                <div>
-                    <div className="whitespace-normal break-words text-sm">{option.label}</div>
-                    {option.subLabel ? (
-                        <div className="whitespace-normal break-words text-xs text-gray-500 dark:text-gray-400">
-                            {option.subLabel}
-                        </div>
-                    ) : null}
-                </div>
-            )}
+            classNamePrefix="react-select"
+            menuPlacement="auto"
+            formatOptionLabel={(option: any, { context }: any) => {
+                if (context === "value") {
+                    return option.label;
+                }
+
+                return (
+                    <div>
+                        <div className="whitespace-normal break-words text-sm">{option.label}</div>
+                        {option.subLabel ? (
+                            <div className="whitespace-normal break-words text-xs text-gray-500 dark:text-gray-400">
+                                {option.subLabel}
+                            </div>
+                        ) : null}
+                    </div>
+                );
+            }}
         />
     );
 }
@@ -747,10 +777,19 @@ export default function AddSalesReturnPage() {
             totalItemDiscount += discount;
         });
 
-        const freightCharges = formData.freightCharges || 0;
-        const pfCharges = formData.pfCharges || 0;
+        const getTaxRateFromType = (taxType: string) => {
+            const match = String(taxType || "").match(/tax@(\d+(?:\.\d+)?)%/i);
+            return match ? Number(match[1]) : 0;
+        };
+
+        const freightCharges = Number(formData.freightCharges || 0);
+        const pfCharges = Number(formData.pfCharges || 0);
         const couponValue = formData.couponValue || 0;
         const discountOnAll = formData.discountOnAll || 0;
+        const freightTax = freightCharges * (getTaxRateFromType(formData.freightType || "fixed") / 100);
+        const pfTax = pfCharges * (getTaxRateFromType(formData.pfType || "fixed") / 100);
+
+        totalTax += freightTax + pfTax;
 
         const discountAllAmount = formData.discountType === 'percentage'
             ? subtotal * (discountOnAll / 100)
@@ -809,7 +848,7 @@ export default function AddSalesReturnPage() {
                 sgst_rate: Number(item.sgst_rate || 0),
                 igst_rate: Number(item.igst_rate || 0),
                 taxable_amount: Number(item.taxable_amount || (item.quantity * item.unit_price - item.discount_amount)),
-                total_amount: Number(item.total_amount || ((item.quantity * item.unit_price - item.discount_amount) * (1 + (item.gst_rate || 0) / 100))),
+                total_amount: Number(item.quantity || 0) * Number(item.unit_price || 0),
             }));
 
             const returnData = {
@@ -902,7 +941,7 @@ export default function AddSalesReturnPage() {
 
                     updated.discount_amount = discount;
                     updated.taxable_amount = taxable;
-                    updated.total_amount = taxable + tax;
+                    updated.total_amount = itemTotal;
 
                     if (isIntraStateSupply()) {
                         updated.cgst_rate = updated.gst_rate / 2;
@@ -1210,39 +1249,42 @@ export default function AddSalesReturnPage() {
 
                         {/* SECTION 2: Items Table */}
                         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                            <div className="mb-4 flex items-center justify-between">
-                                <h2 className="text-lg font-semibold text-dark dark:text-white">Return Items</h2>
-                                <div className="flex gap-2">
-                                    <div className="text-dark-6">
-                                        Total Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
+                            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <h2 className="text-lg font-semibold text-dark dark:text-white">Return Items</h2>
+                                    <p className="mt-1 text-sm text-dark-6">
+                                        Add items to your sales return
+                                    </p>
+                                </div>
+                                <div className="flex flex-col items-start gap-3 sm:items-end">
+                                    <div className="flex flex-wrap gap-3 text-sm text-dark-6">
+                                        <span>Total Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}</span>
+                                        <span>Items: {items.length}</span>
                                     </div>
-                                    <div className="text-dark-6">
-                                        Items: {items.length}
-                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => addItem()}
+                                        className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                                    >
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        Add Item
+                                    </button>
                                 </div>
                             </div>
-                            <div className="mb-4 flex justify-end">
-                                <button
-                                    type="button"
-                                    onClick={() => addItem()}
-                                    className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
-                                >
-                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                    </svg>
-                                </button>
-                            </div>{/* Items Table */}
                             <div className="overflow-x-auto">
-                                <table className="w-full min-w-[1580px] border-collapse">
+                                <table className="w-full min-w-[1810px] border-collapse">
                                     <thead>
                                         <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
-                                            <th className="w-[450px] min-w-[450px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item</th>
+                                            <th className="w-[880px] min-w-[880px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item</th>
                                             <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item Code</th>
                                             <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">HSN Code</th>
                                             <th className="w-[200px] min-w-[200px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Description</th>
                                             <th className="w-[80px] min-w-[80px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Qty</th>
                                             <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Unit Price</th>
                                             <th className="w-[100px] min-w-[100px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount %</th>
+                                            <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount Amt</th>
                                             <th className="w-[80px] min-w-[80px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">GST %</th>
                                             <th className="w-[130px] min-w-[130px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Total</th>
                                             <th className="w-[60px] min-w-[60px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Action</th>
@@ -1251,7 +1293,7 @@ export default function AddSalesReturnPage() {
                                     <tbody>
                                         {items.map((item) => (
                                             <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                                                <td className="w-[450px] min-w-[450px] px-3 py-3">
+                                                <td className="w-[880px] min-w-[880px] px-3 py-3">
                                                     <ProductSelectField
                                                         value={item.product_id}
                                                         manualLabel={item.description || item.item_code}
@@ -1276,7 +1318,7 @@ export default function AddSalesReturnPage() {
                                                                         gst_rate: gstRate,
                                                                         discount_amount: 0,
                                                                         taxable_amount: taxable,
-                                                                        total_amount: taxable + tax,
+                                                                        total_amount: qty * unitPrice,
                                                                         ...(isIntraStateSupply() ? {
                                                                             cgst_rate: gstRate / 2,
                                                                             sgst_rate: gstRate / 2,
@@ -1304,19 +1346,19 @@ export default function AddSalesReturnPage() {
                                                 <td className="px-4 py-3">
                                                     <input
                                                         type="text"
-                                                        value={item.description}
-                                                        onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                                                        className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        placeholder="Description"
+                                                        value={item.hsn_code}
+                                                        onChange={(e) => updateItem(item.id, 'hsn_code', e.target.value)}
+                                                        className="w-full min-w-[100px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        placeholder="HSN"
                                                     />
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <input
                                                         type="text"
-                                                        value={item.hsn_code}
-                                                        onChange={(e) => updateItem(item.id, 'hsn_code', e.target.value)}
-                                                        className="w-full min-w-[100px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        placeholder="HSN"
+                                                        value={item.description}
+                                                        onChange={(e) => updateItem(item.id, 'description', e.target.value)}
+                                                        className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                                                        placeholder="Description"
                                                     />
                                                 </td>
                                                 <td className="px-4 py-3">
@@ -1350,6 +1392,11 @@ export default function AddSalesReturnPage() {
                                                         />
                                                         <span className="flex items-center px-1 py-1.5 text-xs">%</span>
                                                     </div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className="font-medium">
+                                                        ₹{(item.discount_amount || 0).toFixed(2)}
+                                                    </span>
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <select
@@ -1386,27 +1433,27 @@ export default function AddSalesReturnPage() {
                         </div>
 
                         {/* SECTION 3: Charges & Discounts and Total Summary */}
-                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                             {/* Left side - Charges & Discounts */}
-                            <div>
+                            <div className="lg:col-span-2">
                                 <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                                     <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Charges & Discounts</h2>
-                                    <div className="space-y-4">
+                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
-                                            <div className="flex gap-2">
+                                            <div className="flex min-w-0 items-center gap-2">
                                                 <input
                                                     type="number"
                                                     value={formData.freightCharges}
                                                     onChange={(e) => setFormData({ ...formData, freightCharges: parseFloat(e.target.value) || 0 })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="min-w-0 w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                     step="0.01"
                                                 />
                                                 <select
                                                     value={formData.freightType}
                                                     onChange={(e) => setFormData({ ...formData, freightType: e.target.value })}
-                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="w-28 shrink-0 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
                                                     <option value="tax@0%">Tax@0%</option>
@@ -1416,23 +1463,28 @@ export default function AddSalesReturnPage() {
                                                     <option value="tax@28%">Tax@28%</option>
                                                 </select>
                                             </div>
+                                            {formData.freightType.startsWith('tax@') && formData.freightCharges > 0 && (
+                                                <div className="mt-1 text-xs text-dark-6">
+                                                    Base: ₹{formData.freightCharges.toFixed(2)} + {formData.freightType.replace('tax@', '')} tax
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                                            <div className="flex gap-2">
+                                            <div className="flex min-w-0 items-center gap-2">
                                                 <input
                                                     type="number"
                                                     value={formData.pfCharges}
                                                     onChange={(e) => setFormData({ ...formData, pfCharges: parseFloat(e.target.value) || 0 })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="min-w-0 w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                     min="0"
                                                     step="0.01"
                                                 />
                                                 <select
                                                     value={formData.pfType}
                                                     onChange={(e) => setFormData({ ...formData, pfType: e.target.value })}
-                                                    className="w-28 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    className="w-28 shrink-0 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                                 >
                                                     <option value="fixed">Fixed</option>
                                                     <option value="tax@0%">Tax@0%</option>
@@ -1442,6 +1494,11 @@ export default function AddSalesReturnPage() {
                                                     <option value="tax@28%">Tax@28%</option>
                                                 </select>
                                             </div>
+                                            {formData.pfType.startsWith('tax@') && formData.pfCharges > 0 && (
+                                                <div className="mt-1 text-xs text-dark-6">
+                                                    Base: ₹{formData.pfCharges.toFixed(2)} + {formData.pfType.replace('tax@', '')} tax
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div>
@@ -1454,40 +1511,49 @@ export default function AddSalesReturnPage() {
                                             />
                                         </div>
 
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Coupon Value</label>
-                                                <input
-                                                    type="number"
-                                                    value={formData.couponValue}
-                                                    onChange={(e) => setFormData({ ...formData, couponValue: parseFloat(e.target.value) })}
-                                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount on All</label>
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        type="number"
-                                                        value={formData.discountOnAll}
-                                                        onChange={(e) => setFormData({ ...formData, discountOnAll: parseFloat(e.target.value) })}
-                                                        className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        min="0"
-                                                    />
-                                                    <select
-                                                        value={formData.discountType}
-                                                        onChange={(e) => setFormData({ ...formData, discountType: e.target.value })}
-                                                        className="w-20 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    >
-                                                        <option value="percentage">%</option>
-                                                        <option value="fixed">Fixed</option>
-                                                    </select>
-                                                </div>
-                                            </div>
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Coupon Type</label>
+                                            <input
+                                                type="text"
+                                                value={formData.couponType}
+                                                readOnly
+                                                className="w-full rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 dark:border-dark-3 dark:bg-dark-2"
+                                            />
                                         </div>
 
                                         <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Coupon Value</label>
+                                            <input
+                                                type="number"
+                                                value={formData.couponValue}
+                                                onChange={(e) => setFormData({ ...formData, couponValue: parseFloat(e.target.value) })}
+                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                min="0"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount on All</label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="number"
+                                                    value={formData.discountOnAll}
+                                                    onChange={(e) => setFormData({ ...formData, discountOnAll: parseFloat(e.target.value) })}
+                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                    min="0"
+                                                />
+                                                <select
+                                                    value={formData.discountType}
+                                                    onChange={(e) => setFormData({ ...formData, discountType: e.target.value })}
+                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                                >
+                                                    <option value="percentage">%</option>
+                                                    <option value="fixed">Fixed</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="md:col-span-2">
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Notes</label>
                                             <textarea
                                                 value={formData.notes || ""}
@@ -1502,7 +1568,7 @@ export default function AddSalesReturnPage() {
                             </div>
 
                             {/* Right side - Total Summary */}
-                            <div>
+                            <div className="lg:col-span-1">
                                 <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                                     <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Total Summary</h2>
                                     <div className="space-y-3">
@@ -1547,9 +1613,20 @@ export default function AddSalesReturnPage() {
                                             <span className="text-dark-6">Discount on All</span>
                                             <span className="font-medium text-red-600">-₹{totals.discountAll.toLocaleString('en-IN')}</span>
                                         </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-dark-6">Round Off</span>
-                                            <div className="flex items-center gap-2">
+                                        <div className="rounded-lg border border-stroke/80 p-3 dark:border-dark-3/80">
+                                            <div className="mb-2 flex items-center justify-between">
+                                                <span className="text-dark-6">Round Off</span>
+                                                <span
+                                                    className={`rounded-md px-2 py-1 text-sm font-semibold ${totals.roundOff >= 0
+                                                        ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                        : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                        }`}
+                                                >
+                                                    {totals.roundOff >= 0 ? '+Rs. ' : '-Rs. '}
+                                                    {Math.abs(totals.roundOff).toFixed(2)}
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2">
                                                 <button
                                                     type="button"
                                                     onClick={() => {
@@ -1559,10 +1636,10 @@ export default function AddSalesReturnPage() {
                                                             roundOff: -currentValue
                                                         }));
                                                     }}
-                                                    className="p-2 rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400"
-                                                    title="Make amount negative"
+                                                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
+                                                    title="Subtract from total"
                                                 >
-                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                                                     </svg>
                                                 </button>
@@ -1578,16 +1655,16 @@ export default function AddSalesReturnPage() {
                                                                 roundOff: currentSign * inputValue
                                                             }));
                                                         }}
-                                                        className="w-32 px-10 py-2 text-center border border-stroke dark:border-dark-3 rounded-lg bg-transparent outline-none focus:border-primary"
+                                                        className="h-10 w-full rounded-lg border border-stroke bg-transparent px-10 text-center outline-none focus:border-primary dark:border-dark-3"
                                                         step="0.01"
                                                         min="0"
                                                     />
-                                                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none">
+                                                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-dark-6">
                                                         {formData.roundOff >= 0 ? '+' : '-'}
-                                                    </div>
-                                                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
+                                                    </span>
+                                                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-dark-6">
                                                         ₹
-                                                    </div>
+                                                    </span>
                                                 </div>
                                                 <button
                                                     type="button"
@@ -1598,10 +1675,10 @@ export default function AddSalesReturnPage() {
                                                             roundOff: currentValue
                                                         }));
                                                     }}
-                                                    className="p-2 rounded-lg bg-green-50 hover:bg-green-100 dark:bg-green-900/30 dark:hover:bg-green-900/50 text-green-600 dark:text-green-400"
-                                                    title="Make amount positive"
+                                                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 text-green-600 transition hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
+                                                    title="Add to total"
                                                 >
-                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                                                     </svg>
                                                 </button>
