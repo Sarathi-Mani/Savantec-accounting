@@ -90,6 +90,7 @@ class DeliveryChallanService:
         contact_person: Optional[str] = None,
         expiry_date: Optional[datetime] = None,
         salesman_id: Optional[str] = None,
+        show_prices: bool = True,
         # Charges and discounts
         subtotal: Optional[Decimal] = None,
         freight_charges: Optional[Decimal] = None,
@@ -162,6 +163,7 @@ class DeliveryChallanService:
             bill_description=bill_description,
             expiry_date=expiry_date,
             salesman_id=salesman_id,
+            show_prices=show_prices,
             sales_ticket_id=sales_ticket_id,
             contact_id=contact_id,
             invoice_id=invoice_id,
@@ -290,6 +292,7 @@ class DeliveryChallanService:
         contact_person: Optional[str] = None,
         expiry_date: Optional[datetime] = None,
         salesman_id: Optional[str] = None,
+        show_prices: bool = True,
         # Charges and discounts
         subtotal: Optional[Decimal] = None,
         freight_charges: Optional[Decimal] = None,
@@ -359,6 +362,7 @@ class DeliveryChallanService:
             bill_description=bill_description,
             expiry_date=expiry_date,
             salesman_id=salesman_id,
+            show_prices=show_prices,
             # Relationship fields
             sales_ticket_id=sales_ticket_id,
             contact_id=contact_id,
@@ -429,6 +433,191 @@ class DeliveryChallanService:
         if auto_update_stock:
             self.update_stock_for_dc(dc)
         
+        return dc
+
+    def update_delivery_challan(
+        self,
+        dc: DeliveryChallan,
+        data: Dict[str, Any],
+    ) -> DeliveryChallan:
+        """Update an existing delivery challan."""
+        if dc.status == DeliveryChallanStatus.CANCELLED:
+            raise ValueError("Cannot edit a cancelled delivery challan")
+
+        if "dc_number" in data and data.get("dc_number"):
+            new_number = str(data.get("dc_number")).strip()
+            exists = self.db.query(DeliveryChallan).filter(
+                DeliveryChallan.company_id == dc.company_id,
+                DeliveryChallan.dc_number == new_number,
+                DeliveryChallan.id != dc.id,
+            ).first()
+            if exists:
+                raise ValueError(f"Delivery challan number {new_number} already exists")
+            dc.dc_number = new_number
+
+        if "dc_date" in data and data.get("dc_date"):
+            dc_date = data.get("dc_date")
+            if isinstance(dc_date, str):
+                dc_date = datetime.fromisoformat(dc_date)
+            dc.dc_date = dc_date
+
+        if "customer_id" in data:
+            dc.customer_id = data.get("customer_id") or None
+
+        if "invoice_id" in data:
+            dc.invoice_id = data.get("invoice_id") or None
+        if "quotation_id" in data:
+            dc.quotation_id = data.get("quotation_id") or None
+        if "sales_order_id" in data:
+            dc.sales_order_id = data.get("sales_order_id") or None
+        if "sales_ticket_id" in data:
+            dc.sales_ticket_id = data.get("sales_ticket_id") or None
+
+        if "reference_no" in data:
+            dc.reference_no = data.get("reference_no") or None
+        if "transporter_name" in data:
+            dc.transporter_name = data.get("transporter_name") or None
+        if "vehicle_number" in data:
+            dc.vehicle_number = data.get("vehicle_number") or None
+        if "eway_bill_number" in data:
+            dc.eway_bill_number = data.get("eway_bill_number") or None
+        if "return_reason" in data:
+            dc.return_reason = data.get("return_reason") or None
+        if "notes" in data:
+            dc.notes = data.get("notes") or None
+        if "show_prices" in data:
+            dc.show_prices = bool(data.get("show_prices"))
+        if "bill_title" in data:
+            dc.bill_title = data.get("bill_title") or None
+        if "bill_description" in data:
+            dc.bill_description = data.get("bill_description") or None
+        if "salesman_id" in data:
+            dc.salesman_id = data.get("salesman_id") or None
+
+        if "expiry_date" in data:
+            expiry = data.get("expiry_date")
+            if isinstance(expiry, str) and expiry:
+                expiry = datetime.fromisoformat(expiry)
+            dc.expiry_date = expiry or None
+
+        if "status" in data and data.get("status"):
+            status_text = str(data.get("status")).strip().lower()
+            status_map = {
+                "draft": DeliveryChallanStatus.DRAFT,
+                "dispatched": DeliveryChallanStatus.DISPATCHED,
+                "in_transit": DeliveryChallanStatus.IN_TRANSIT,
+                "in transit": DeliveryChallanStatus.IN_TRANSIT,
+                "delivered": DeliveryChallanStatus.DELIVERED,
+                "received": DeliveryChallanStatus.RECEIVED,
+                "cancelled": DeliveryChallanStatus.CANCELLED,
+                "returned": DeliveryChallanStatus.RETURNED,
+            }
+            dc.status = status_map.get(status_text, DeliveryChallanStatus.DRAFT)
+
+        if "custom_status" in data:
+            dc.custom_status = data.get("custom_status") or dc.custom_status
+
+        if "from_godown_id" in data:
+            dc.from_godown_id = data.get("from_godown_id") or None
+        if "to_godown_id" in data:
+            dc.to_godown_id = data.get("to_godown_id") or None
+
+        if "contact_id" in data:
+            dc.contact_id = self._get_valid_contact_id(dc.company_id, data.get("contact_id"))
+        elif "contact_person" in data and data.get("contact_person"):
+            contact = self.db.query(Contact).filter(
+                Contact.company_id == dc.company_id,
+                Contact.name == data.get("contact_person")
+            ).first()
+            dc.contact_id = contact.id if contact else dc.contact_id
+
+        # Keep delivery address synced when customer changes and no explicit delivery address passed.
+        if dc.customer_id and not any(key in data for key in ["delivery_address", "delivery_to_address"]):
+            customer = self.db.query(Customer).filter(Customer.id == dc.customer_id).first()
+            if customer:
+                dc.delivery_to_address = customer.shipping_address or customer.billing_address
+                dc.delivery_to_city = customer.shipping_city or customer.billing_city
+                dc.delivery_to_state = customer.shipping_state or customer.billing_state
+                dc.delivery_to_pincode = customer.shipping_zip or customer.billing_zip
+
+        if dc.dc_type == DeliveryChallanType.DC_OUT:
+            if dc.from_godown_id:
+                godown = self.db.query(Godown).filter(Godown.id == dc.from_godown_id).first()
+                if godown:
+                    dc.dispatch_from_address = godown.address
+                    dc.dispatch_from_city = godown.city
+                    dc.dispatch_from_state = godown.state
+                    dc.dispatch_from_pincode = godown.pincode
+
+        if "items" in data and data.get("items") is not None:
+            requested_auto_update_stock = data.get("auto_update_stock")
+            if requested_auto_update_stock is None:
+                requested_auto_update_stock = True
+
+            # If stock already moved for previous items, reverse it first so edits can be saved safely.
+            if dc.stock_updated:
+                self._reverse_stock_entries(dc)
+
+            # Avoid bulk-delete session desync: remove existing rows via ORM so dc.items
+            # does not keep stale objects that later receive stock_movement_id updates.
+            existing_items = list(dc.items or [])
+            for existing_item in existing_items:
+                self.db.delete(existing_item)
+            self.db.flush()
+            self.db.expire(dc, ["items"])
+
+            for item_data in data.get("items") or []:
+                product_id = item_data.get("product_id")
+                product = None
+                if product_id:
+                    product = self.db.query(Product).filter(Product.id == product_id).first()
+
+                qty = Decimal(str(item_data.get("quantity", 0)))
+                unit_price = Decimal(str(item_data.get("unit_price", 0)))
+                discount_percent = Decimal(str(item_data.get("discount_percent", 0)))
+                gst_rate = Decimal(str(item_data.get("gst_rate", 0)))
+
+                item_total = qty * unit_price
+                discount_amount = item_total * (discount_percent / Decimal("100"))
+                taxable_amount = item_total - discount_amount
+                tax_amount = taxable_amount * (gst_rate / Decimal("100"))
+                total_amount = taxable_amount + tax_amount
+
+                dc_item = DeliveryChallanItem(
+                    id=generate_uuid(),
+                    delivery_challan_id=dc.id,
+                    product_id=product_id,
+                    invoice_item_id=item_data.get("invoice_item_id"),
+                    batch_id=item_data.get("batch_id"),
+                    description=item_data.get("description") or (product.name if product else "Item"),
+                    hsn_code=item_data.get("hsn_code") or (product.hsn_code if product else None),
+                    quantity=qty,
+                    unit=item_data.get("unit") or (product.unit if product else "unit"),
+                    unit_price=unit_price,
+                    discount_percent=discount_percent,
+                    discount_amount=Decimal(str(item_data.get("discount_amount", discount_amount))),
+                    gst_rate=gst_rate,
+                    cgst_rate=Decimal(str(item_data.get("cgst_rate", gst_rate / Decimal("2")))),
+                    sgst_rate=Decimal(str(item_data.get("sgst_rate", gst_rate / Decimal("2")))),
+                    igst_rate=Decimal(str(item_data.get("igst_rate", 0))),
+                    taxable_amount=Decimal(str(item_data.get("taxable_amount", taxable_amount))),
+                    total_amount=Decimal(str(item_data.get("total_amount", total_amount))),
+                    godown_id=item_data.get("godown_id") or dc.from_godown_id or dc.to_godown_id,
+                    serial_numbers=item_data.get("serial_numbers"),
+                    notes=item_data.get("notes"),
+                )
+                self.db.add(dc_item)
+
+            # Re-apply stock for the updated item set when requested.
+            if requested_auto_update_stock:
+                # Ensure relationship is reloaded with only newly inserted rows.
+                self.db.flush()
+                self.db.expire(dc, ["items"])
+                self.update_stock_for_dc(dc)
+
+        dc.updated_at = datetime.utcnow()
+        self.db.commit()
+        self.db.refresh(dc)
         return dc
     
     def update_stock_for_dc(self, dc: DeliveryChallan) -> List[StockEntry]:
@@ -520,6 +709,7 @@ class DeliveryChallanService:
         contact_person: Optional[str] = None,
         expiry_date: Optional[datetime] = None,
         salesman_id: Optional[str] = None,
+        show_prices: bool = True,
         # Charges and discounts
         subtotal: Optional[Decimal] = None,
         freight_charges: Optional[Decimal] = None,
@@ -586,6 +776,7 @@ class DeliveryChallanService:
             contact_person=contact_person or contact_person_name,
             expiry_date=expiry_date,
             salesman_id=salesman_id,
+            show_prices=show_prices,
             # Charges and discounts
             subtotal=subtotal,
             freight_charges=freight_charges,

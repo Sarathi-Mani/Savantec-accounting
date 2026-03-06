@@ -97,6 +97,8 @@ class VendorService:
                 opening_balance=opening_balance,
                 opening_balance_type=opening_balance_type,
                 opening_balance_mode=data.opening_balance_mode,
+                payment_type=(data.payment_type or "INR"),
+                exchange_rate=data.exchange_rate or Decimal("1.0"),
                 credit_limit=data.credit_limit or Decimal('0'),
                 credit_days=data.credit_days or 0,
                 payment_terms=data.payment_terms,

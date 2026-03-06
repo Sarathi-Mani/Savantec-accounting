@@ -7,8 +7,7 @@ import dayjs from "dayjs";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import { buildDeliveryChallanPdf } from "@/utils/deliveryChallanPdf";
 
 interface DCItem {
   id: string;
@@ -64,12 +63,49 @@ interface DeliveryChallan {
   expiry_date?: string;
   salesman_id?: string;
   stock_updated: boolean;
+  show_prices?: boolean;
   delivered_at?: string;
   received_by?: string;
   notes?: string;
   created_at?: string;
   items?: DCItem[];
 }
+
+const DELIVERY_CHALLAN_PDF_LOGO_PATH = "/images/logo/savantec_logo.png";
+let deliveryChallanLogoDataUrlCache: string | null = null;
+
+const getDeliveryChallanLogoDataUrl = async (): Promise<string | null> => {
+  if (deliveryChallanLogoDataUrlCache) return deliveryChallanLogoDataUrlCache;
+  if (typeof window === "undefined") return null;
+
+  try {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      image.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error("Canvas context unavailable"));
+          return;
+        }
+        context.drawImage(image, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      image.onerror = () => reject(new Error("Failed to load delivery challan logo"));
+      image.src = DELIVERY_CHALLAN_PDF_LOGO_PATH;
+    });
+
+    deliveryChallanLogoDataUrlCache = dataUrl;
+    return dataUrl;
+  } catch (error) {
+    console.warn("Failed to load delivery challan PDF logo:", error);
+    return null;
+  }
+};
 
 export default function DeliveryChallanDetailPage() {
   const { company } = useAuth();
@@ -109,7 +145,11 @@ export default function DeliveryChallanDetailPage() {
           }
         );
         if (response.ok) {
-          setDc(await response.json());
+          const data = (await response.json()) as DeliveryChallan;
+          setDc(data);
+          if (typeof data.show_prices === "boolean") {
+            setShowPricesInView(data.show_prices);
+          }
         }
       } catch (error) {
         console.error("Failed to fetch delivery challan:", error);
@@ -140,10 +180,14 @@ export default function DeliveryChallanDetailPage() {
 
   useEffect(() => {
     if (typeof window === "undefined" || !dcId) return;
+    if (dc && typeof dc.show_prices === "boolean") {
+      setShowPricesInView(dc.show_prices);
+      return;
+    }
     const saved = localStorage.getItem(`delivery_challan_show_prices_${dcId}`);
     if (saved === "true") setShowPricesInView(true);
     if (saved === "false") setShowPricesInView(false);
-  }, [dcId]);
+  }, [dc, dcId]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !dcId) return;
@@ -334,114 +378,19 @@ export default function DeliveryChallanDetailPage() {
     }
   };
 
-  const generateDCPdf = (showPrices: boolean) => {
-    const doc = new jsPDF("p", "mm", "a4");
-    const pageWidth = doc.internal.pageSize.getWidth();
-    let y = 15;
-
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text(company?.name || "Company", pageWidth / 2, y, { align: "center" });
-    y += 8;
-
-    doc.setFontSize(12);
-    doc.text("DELIVERY CHALLAN", pageWidth / 2, y, { align: "center" });
-    y += 10;
-
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-
-    const leftX = 14;
-    const rightX = pageWidth / 2 + 10;
-    const lineHeight = 5;
-
-    doc.text(`DC No: ${dc.dc_number}`, leftX, y);
-    doc.text(`Date: ${dayjs(dc.dc_date).format("DD MMM YYYY")}`, rightX, y);
-    y += lineHeight;
-
-    if (dc.customer_name) {
-      doc.text(`Customer: ${dc.customer_name}`, leftX, y);
-      y += lineHeight;
-    }
-    if (dc.reference_no) {
-      doc.text(`Reference No: ${dc.reference_no}`, leftX, y);
-      y += lineHeight;
-    }
-    if (dc.transporter_name) {
-      doc.text(`Transporter: ${dc.transporter_name}`, leftX, y);
-      if (dc.vehicle_number) {
-        doc.text(`Vehicle: ${dc.vehicle_number}`, rightX, y);
-      }
-      y += lineHeight;
-    }
-    if (dc.eway_bill_number) {
-      doc.text(`E-Way Bill: ${dc.eway_bill_number}`, leftX, y);
-      if (dc.lr_number) {
-        doc.text(`LR No: ${dc.lr_number}`, rightX, y);
-      }
-      y += lineHeight;
-    }
-
-    if (dc.delivery_to_address) {
-      const addrParts = [
-        dc.delivery_to_address,
-        dc.delivery_to_city,
-        dc.delivery_to_state,
-        dc.delivery_to_pincode ? `- ${dc.delivery_to_pincode}` : null,
-      ].filter(Boolean);
-      doc.text(`Delivery To: ${addrParts.join(", ")}`, leftX, y);
-      y += lineHeight;
-    }
-
-    y += 4;
-
-    const baseHead = ["#", "Description", "HSN", "Qty", "Unit"];
-    const priceHead = showPrices ? ["Rate", "Amount"] : [];
-    const head = [baseHead.concat(priceHead)];
-
-    const body = (dc.items || []).map((item, idx) => {
-      const baseRow: (string | number)[] = [
-        idx + 1,
-        item.description,
-        item.hsn_code || "-",
-        item.quantity,
-        item.unit,
-      ];
-      if (showPrices) {
-        baseRow.push(
-          Number(item.unit_price).toFixed(2),
-          Number(item.total_amount).toFixed(2)
-        );
-      }
-      return baseRow;
+  const generateDCPdf = async (showPrices: boolean) => {
+    const logoDataUrl = await getDeliveryChallanLogoDataUrl();
+    const doc = buildDeliveryChallanPdf({
+      dc: {
+        ...dc,
+      },
+      companyData: {
+        ...(company as any),
+      },
+      formatDate: (date) => (date ? dayjs(date).format("DD MMM YYYY") : "-"),
+      logoDataUrl,
+      showPrices,
     });
-
-    autoTable(doc, {
-      startY: y,
-      head,
-      body,
-      theme: "grid",
-      headStyles: { fillColor: [41, 128, 185], fontSize: 8 },
-      bodyStyles: { fontSize: 8 },
-      styles: { cellPadding: 2 },
-      columnStyles: showPrices
-        ? { 0: { halign: "center" }, 3: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right" } }
-        : { 0: { halign: "center" }, 3: { halign: "right" } },
-    });
-
-    if (showPrices) {
-      const finalY = (doc as any).lastAutoTable?.finalY || y + 40;
-      let ty = finalY + 8;
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Subtotal: ${formatMoney(itemSubtotal)}`, pageWidth - 14, ty, { align: "right" });
-      ty += 5;
-      doc.text(`Tax: ${formatMoney(itemTax)}`, pageWidth - 14, ty, { align: "right" });
-      ty += 5;
-      doc.setFont("helvetica", "bold");
-      doc.text(`Grand Total: ${formatMoney(itemGrandTotal)}`, pageWidth - 14, ty, { align: "right" });
-    }
-
     doc.save(`DC-${dc.dc_number}.pdf`);
   };
 
@@ -567,7 +516,7 @@ export default function DeliveryChallanDetailPage() {
             </div>
           </div>
           <button
-            onClick={() => generateDCPdf(showPricesInView)}
+            onClick={() => void generateDCPdf(showPricesInView)}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
           >
             Download PDF

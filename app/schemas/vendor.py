@@ -143,6 +143,8 @@ class VendorCreate(BaseModel):
     opening_balance: Optional[Decimal] = Field(0, ge=0)
     opening_balance_type: Optional[Literal["outstanding", "advance"]] = "outstanding"
     opening_balance_mode: Optional[Literal["single", "split"]] = "single"
+    payment_type: Optional[str] = Field("INR", max_length=20)
+    exchange_rate: Optional[Decimal] = Field(Decimal("1.0"), gt=0)
    
     opening_balance_split: Optional[List[OpeningBalanceItemCreate]] = None
     # Financial Information
@@ -202,6 +204,15 @@ class VendorCreate(BaseModel):
         if not v:
             raise ValueError('Primary contact is required')
         return v
+
+    @validator('payment_type', pre=True, always=True)
+    def normalize_payment_type(cls, v):
+        if v is None:
+            return "INR"
+        if isinstance(v, str):
+            cleaned = v.strip().upper()
+            return cleaned or "INR"
+        return "INR"
     
     class Config:
         json_schema_extra = {
@@ -236,6 +247,8 @@ class VendorUpdate(BaseModel):
     opening_balance: Optional[Decimal] = Field(None, ge=0)
     opening_balance_type: Optional[Literal["outstanding", "advance"]] = None
     opening_balance_mode: Optional[Literal["single", "split"]] = None
+    payment_type: Optional[str] = Field(None, max_length=20)
+    exchange_rate: Optional[Decimal] = Field(None, gt=0)
     credit_limit: Optional[Decimal] = Field(None, ge=0)
     credit_days: Optional[int] = Field(None, ge=0)
     payment_terms: Optional[str] = None
@@ -252,6 +265,15 @@ class VendorUpdate(BaseModel):
     shipping_country: Optional[str] = Field(None, max_length=100)
     shipping_zip: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
+
+    @validator('payment_type', pre=True)
+    def normalize_update_payment_type(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            cleaned = v.strip().upper()
+            return cleaned or None
+        return None
     
     class Config:
         json_schema_extra = {
@@ -278,6 +300,8 @@ class VendorResponse(BaseModel):
     opening_balance: Decimal
     opening_balance_type: Optional[str]
     opening_balance_mode: Optional[str]
+    payment_type: Optional[str]
+    exchange_rate: Optional[Decimal] = Decimal("1.0")
     credit_limit: Decimal
     credit_days: int
     payment_terms: Optional[str]

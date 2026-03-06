@@ -47,6 +47,8 @@ interface FormData {
   opening_balance_type: "outstanding" | "advance";
   opening_balance_mode: "single" | "split";
   opening_balance_split: OpeningBalanceItem[];
+  payment_type: string;
+  exchange_rate: string;
 
   // Additional Info
   credit_limit: string;
@@ -97,6 +99,15 @@ const ACCOUNT_TYPES = [
   "Recurring Deposit",
   "Fixed Deposit"
 ] as const;
+
+const DEFAULT_PAYMENT_CURRENCIES = ["INR", "EUR", "USD", "GBP", "AED"] as const;
+
+const normalizeCurrencyCode = (value: string) => value.trim().toUpperCase();
+
+const parsePositiveRate = (value: string) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+};
 
 const INDIAN_STATES = [
   "Andhra Pradesh",
@@ -177,8 +188,9 @@ export default function VendorEditPage() {
   const [error, setError] = useState<string | null>(null);
   const [sameAsBilling, setSameAsBilling] = useState(false);
   const [showGstOptions, setShowGstOptions] = useState(false);
-  const [showOpeningBalanceSplit, setShowOpeningBalanceSplit] = useState(false);
   const [countryOptions, setCountryOptions] = useState<{ value: string; label: string }[]>([]);
+  const [paymentCurrencies, setPaymentCurrencies] = useState<string[]>([...DEFAULT_PAYMENT_CURRENCIES]);
+  const [newPaymentCurrency, setNewPaymentCurrency] = useState("");
 
   const [formData, setFormData] = useState<FormData>({
     // Basic Info
@@ -196,6 +208,8 @@ export default function VendorEditPage() {
     opening_balance_type: "outstanding",
     opening_balance_mode: "single",
     opening_balance_split: [],
+    payment_type: "INR",
+    exchange_rate: "1",
 
     // Additional Info
     credit_limit: "",
@@ -262,6 +276,12 @@ export default function VendorEditPage() {
       try {
         setLoadingVendor(true);
         const vendor = await vendorsApi.get(company.id, vendorId);
+        const loadedPaymentType = normalizeCurrencyCode(vendor.payment_type || "INR");
+        const loadedExchangeRateRaw = Number(vendor.exchange_rate || 1);
+        const loadedExchangeRate =
+          loadedPaymentType === "INR"
+            ? 1
+            : (Number.isFinite(loadedExchangeRateRaw) && loadedExchangeRateRaw > 0 ? loadedExchangeRateRaw : 1);
 
         const openingSplit = (vendor.opening_balance_items || []).map((item) => {
           const rawAmount = Number(item.amount || 0);
@@ -277,7 +297,7 @@ export default function VendorEditPage() {
             voucher_name: item.voucher_name || "",
             balance_type: normalizedType,
             days: item.days != null ? String(item.days) : "0",
-            amount: String(Math.abs(rawAmount)),
+            amount: String(Math.abs(rawAmount) / loadedExchangeRate),
           };
         });
 
@@ -318,10 +338,15 @@ export default function VendorEditPage() {
           gst_registration_type: vendor.gst_registration_type || "",
           pan_number: vendor.pan_number || "",
           vendor_code: vendor.vendor_code || "",
-          opening_balance: vendor.opening_balance != null ? String(Math.abs(Number(vendor.opening_balance))) : "",
+          opening_balance:
+            vendor.opening_balance != null
+              ? String(Math.abs(Number(vendor.opening_balance)) / loadedExchangeRate)
+              : "",
           opening_balance_type: (vendor.opening_balance_type as any) || "outstanding",
           opening_balance_mode: (vendor.opening_balance_mode as any) || "single",
           opening_balance_split: openingSplit,
+          payment_type: loadedPaymentType,
+          exchange_rate: String(loadedExchangeRate),
           credit_limit: vendor.credit_limit != null ? String(vendor.credit_limit) : "",
           credit_days: vendor.credit_days != null ? String(vendor.credit_days) : "",
           payment_terms: vendor.payment_terms || "",
@@ -349,6 +374,12 @@ export default function VendorEditPage() {
           setSameAsBilling(true);
         } else {
           setSameAsBilling(false);
+        }
+
+        if (loadedPaymentType) {
+          setPaymentCurrencies((prev) => (
+            prev.includes(loadedPaymentType) ? prev : [...prev, loadedPaymentType]
+          ));
         }
       } catch (err: any) {
         setError(getErrorMessage(err, "Failed to load vendor details"));
@@ -633,6 +664,14 @@ export default function VendorEditPage() {
 
     // No validation for mobile/account number/IFSC as requested.
 
+    if (normalizeCurrencyCode(formData.payment_type) !== "INR") {
+      const rate = Number(formData.exchange_rate);
+      if (!Number.isFinite(rate) || rate <= 0) {
+        setError("Please enter a valid exchange rate greater than 0");
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -654,6 +693,35 @@ export default function VendorEditPage() {
   const handleGSTTypeSelect = (type: string) => {
     setFormData(prev => ({ ...prev, gst_registration_type: type }));
     setShowGstOptions(false);
+  };
+
+  const handlePaymentTypeChange = (value: string) => {
+    const normalized = normalizeCurrencyCode(value);
+    setFormData((prev) => ({
+      ...prev,
+      payment_type: normalized,
+      exchange_rate: normalized === "INR" ? "1" : prev.exchange_rate || "1",
+    }));
+  };
+
+  const handleExchangeRateChange = (value: string) => {
+    setFormData((prev) => ({ ...prev, exchange_rate: value }));
+  };
+
+  const handleAddPaymentCurrency = () => {
+    const normalized = normalizeCurrencyCode(newPaymentCurrency);
+    if (!normalized) {
+      setError("Enter a currency code to add.");
+      return;
+    }
+    if (paymentCurrencies.includes(normalized)) {
+      setError(`Currency ${normalized} already exists.`);
+      return;
+    }
+    setPaymentCurrencies((prev) => [...prev, normalized]);
+    setFormData((prev) => ({ ...prev, payment_type: normalized }));
+    setNewPaymentCurrency("");
+    setError(null);
   };
 
   const getSplitNetBalance = () => {
@@ -681,6 +749,12 @@ export default function VendorEditPage() {
     try {
       const splitNetBalance = getSplitNetBalance();
       const splitNetType: "outstanding" | "advance" = splitNetBalance < 0 ? "advance" : "outstanding";
+      const paymentType = normalizeCurrencyCode(formData.payment_type || "INR");
+      const exchangeRate = paymentType === "INR" ? 1 : parsePositiveRate(formData.exchange_rate);
+      const openingBalanceInInr =
+        formData.opening_balance_mode === "split"
+          ? Math.abs(splitNetBalance) * exchangeRate
+          : (parseFloat(formData.opening_balance) || 0) * exchangeRate;
 
       // Prepare data for API
       const apiData: any = {
@@ -696,11 +770,13 @@ export default function VendorEditPage() {
 
         // Convert to strings
         opening_balance: formData.opening_balance_mode === "split"
-          ? String(Math.abs(splitNetBalance))
-          : (formData.opening_balance ? String(parseFloat(formData.opening_balance)) : "0"),
+          ? String(openingBalanceInInr)
+          : String(openingBalanceInInr),
         credit_limit: formData.credit_limit ? String(parseFloat(formData.credit_limit)) : "0",
         credit_days: formData.credit_days ? String(parseInt(formData.credit_days)) : "0",
         payment_terms: formData.payment_terms || "",
+        payment_type: paymentType,
+        exchange_rate: String(exchangeRate),
 
         opening_balance_type: formData.opening_balance_mode === "split"
           ? splitNetType
@@ -714,7 +790,7 @@ export default function VendorEditPage() {
             voucher_name: item.voucher_name,
             balance_type: item.balance_type,
             days: item.days ? String(parseInt(item.days)) : "0",
-            amount: String(Math.abs(parseFloat(item.amount) || 0))
+            amount: String((Math.abs(parseFloat(item.amount) || 0)) * exchangeRate)
           })) : [],
 
         // Contact persons
@@ -782,6 +858,12 @@ export default function VendorEditPage() {
       return Math.abs(getSplitNetBalance());
     }
     return parseFloat(formData.opening_balance) || 0;
+  };
+
+  const calculateTotalOpeningBalanceInInr = () => {
+    const paymentType = normalizeCurrencyCode(formData.payment_type || "INR");
+    const exchangeRate = paymentType === "INR" ? 1 : parsePositiveRate(formData.exchange_rate);
+    return calculateTotalOpeningBalance() * exchangeRate;
   };
 
   if (loadingVendor) {
@@ -1000,7 +1082,65 @@ export default function VendorEditPage() {
             <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Opening Balance</h2>
 
             <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Payment Type / Currency
+                  </label>
+                  <select
+                    name="payment_type"
+                    value={formData.payment_type}
+                    onChange={(e) => handlePaymentTypeChange(e.target.value)}
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                  >
+                    {paymentCurrencies.map((currency) => (
+                      <option key={currency} value={currency}>
+                        {currency}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Exchange Rate ({formData.payment_type || "INR"} to INR)
+                  </label>
+                  <input
+                    type="number"
+                    name="exchange_rate"
+                    value={formData.exchange_rate}
+                    onChange={(e) => handleExchangeRateChange(e.target.value)}
+                    placeholder="1"
+                    step="0.000001"
+                    min="0.000001"
+                    disabled={normalizeCurrencyCode(formData.payment_type) === "INR"}
+                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-dark-3 dark:disabled:bg-dark-3"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                    Add Currency
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newPaymentCurrency}
+                      onChange={(e) => setNewPaymentCurrency(e.target.value.toUpperCase())}
+                      placeholder="e.g. AUD"
+                      maxLength={10}
+                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 uppercase outline-none focus:border-primary dark:border-dark-3"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddPaymentCurrency}
+                      className="rounded-lg bg-primary px-4 py-3 text-sm font-medium text-white transition hover:bg-opacity-90"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+
                 <div>
                   <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                     Opening Balance Mode
@@ -1182,16 +1322,22 @@ export default function VendorEditPage() {
                     </div>
                   )}
 
-                  <div className="mt-4 rounded-lg bg-gray-50 p-4 dark:bg-dark-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-dark dark:text-white">Total Opening Balance:</span>
-                      <span className="text-lg font-semibold text-primary">
-                        ₹{calculateTotalOpeningBalance().toFixed(2)} ({getSplitNetBalance() < 0 ? "advance" : "outstanding"})
-                      </span>
-                    </div>
+                <div className="mt-4 rounded-lg bg-gray-50 p-4 dark:bg-dark-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-dark dark:text-white">Total Opening Balance:</span>
+                    <span className="text-lg font-semibold text-primary">
+                      {calculateTotalOpeningBalance().toFixed(2)} {formData.payment_type || "INR"} ({getSplitNetBalance() < 0 ? "advance" : "outstanding"})
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-sm text-dark-6">Converted INR:</span>
+                    <span className="font-semibold text-dark dark:text-white">
+                      INR {calculateTotalOpeningBalanceInInr().toFixed(2)}
+                    </span>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
             </div>
           </div>
 

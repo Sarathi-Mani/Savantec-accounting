@@ -398,7 +398,7 @@ async def export_vendors(
         writer.writerow([
             "Name", "Contact", "Email", "Mobile", "PAN Number", 
             "GST Number", "GST Registration Type", "Vendor Code", 
-            "Opening Balance", "Opening Balance Type", "Opening Balance Mode",
+            "Opening Balance", "Opening Balance Type", "Opening Balance Mode", "Payment Type", "Exchange Rate",
             "Credit Limit", "Credit Days", "Payment Terms",
             "TDS Applicable", "TDS Rate", "Billing Address", 
             "Billing City", "Billing State", "Billing Country", 
@@ -420,6 +420,8 @@ async def export_vendors(
                 vendor.opening_balance or 0,
                 vendor.opening_balance_type or "",
                 vendor.opening_balance_mode or "",
+                vendor.payment_type or "INR",
+                vendor.exchange_rate or 1,
                 vendor.credit_limit or 0,
                 vendor.credit_days or 0,
                 vendor.payment_terms or "",

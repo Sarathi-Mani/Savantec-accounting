@@ -370,6 +370,8 @@ export default function NewDeliveryChallanPage() {
           contact_person: dc.contact_id || "",
           expiry_date: toDateInput(dc.expiry_date),
           salesman_id: dc.salesman_id || "",
+          show_prices:
+            typeof dc.show_prices === "boolean" ? dc.show_prices : prev.show_prices,
         }));
 
         if (Array.isArray(dc.items) && dc.items.length > 0) {

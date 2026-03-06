@@ -2820,6 +2820,8 @@ export interface Vendor {
   opening_balance?: number;
   opening_balance_type?: "outstanding" | "advance";
   opening_balance_mode?: "single" | "split";
+  payment_type?: string;
+  exchange_rate?: number;
 
   // Financial Info
   credit_limit?: number;
@@ -2927,6 +2929,8 @@ export interface VendorCreateRequest {
   opening_balance?: number;
   opening_balance_type?: "outstanding" | "advance";
   opening_balance_mode?: "single" | "split";
+  payment_type?: string;
+  exchange_rate?: number;
 
   // Financial Info
   credit_limit?: number;

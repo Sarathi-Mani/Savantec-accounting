@@ -79,6 +79,7 @@ class DCOutCreate(BaseModel):
     delivery_address: Optional[DeliveryAddress] = None
     notes: Optional[str] = None
     auto_update_stock: bool = True
+    show_prices: Optional[bool] = True
     reference_no: Optional[str] = None
     
     # New fields from frontend
@@ -116,6 +117,7 @@ class DCInCreate(BaseModel):
     return_reason: Optional[str] = None
     notes: Optional[str] = None
     auto_update_stock: bool = True
+    show_prices: Optional[bool] = True
     reference_no: Optional[str] = None
     # New fields from frontend
     dc_number: Optional[str] = None
@@ -137,10 +139,48 @@ class DCInCreate(BaseModel):
     grand_total: Optional[float] = None
 
 
+class DCUpdateRequest(BaseModel):
+    """Schema for updating an existing delivery challan."""
+    items: Optional[List[DCItemCreate]] = None
+    customer_id: Optional[str] = None
+    invoice_id: Optional[str] = None
+    quotation_id: Optional[str] = None
+    sales_order_id: Optional[str] = None
+    sales_ticket_id: Optional[str] = None
+    contact_id: Optional[str] = None
+    dc_number: Optional[str] = None
+    dc_date: Optional[datetime] = None
+    status: Optional[str] = None
+    custom_status: Optional[str] = None
+    reference_no: Optional[str] = None
+    from_godown_id: Optional[str] = None
+    to_godown_id: Optional[str] = None
+    transporter_name: Optional[str] = None
+    vehicle_number: Optional[str] = None
+    eway_bill_number: Optional[str] = None
+    return_reason: Optional[str] = None
+    notes: Optional[str] = None
+    auto_update_stock: Optional[bool] = None
+    show_prices: Optional[bool] = None
+    bill_title: Optional[str] = None
+    bill_description: Optional[str] = None
+    contact_person: Optional[str] = None
+    expiry_date: Optional[datetime] = None
+    salesman_id: Optional[str] = None
+    subtotal: Optional[float] = None
+    freight_charges: Optional[float] = None
+    packing_forwarding_charges: Optional[float] = None
+    discount_on_all: Optional[float] = None
+    discount_type: Optional[str] = None
+    round_off: Optional[float] = None
+    grand_total: Optional[float] = None
+
+
 class CreateFromInvoiceRequest(BaseModel):
     from_godown_id: Optional[str] = None
     items: Optional[List[DCItemCreate]] = None
     partial_dispatch: bool = False
+    show_prices: Optional[bool] = True
     # New fields
     dc_number: Optional[str] = None
     status: str = "Open"
@@ -260,6 +300,7 @@ class DCResponse(BaseModel):
     # Stock management
     stock_updated: bool
     stock_updated_at: Optional[datetime]
+    show_prices: Optional[bool] = True
     # Delivery info
     delivered_at: Optional[datetime]
     received_by: Optional[str]
@@ -390,6 +431,7 @@ async def create_dc_out(
             delivery_address=delivery_address,
             notes=data.notes,
             auto_update_stock=data.auto_update_stock,
+            show_prices=data.show_prices if data.show_prices is not None else True,
             # New fields
             dc_number=data.dc_number,
             status=data.status,
@@ -450,6 +492,7 @@ async def create_dc_in(
             return_reason=data.return_reason,
             notes=data.notes,
             auto_update_stock=data.auto_update_stock,
+            show_prices=data.show_prices if data.show_prices is not None else True,
             # New fields
             dc_number=data.dc_number,
             status=data.status,
@@ -512,6 +555,7 @@ async def create_dc_from_invoice(
             from_godown_id=data.from_godown_id,
             items=items,
             partial_dispatch=data.partial_dispatch,
+            show_prices=data.show_prices if data.show_prices is not None else True,
             # New fields
             dc_number=data.dc_number,
             status=data.status,
@@ -624,6 +668,31 @@ async def get_delivery_challan(
         raise HTTPException(status_code=404, detail="Delivery challan not found")
     
     return _dc_to_response(dc, db)
+
+
+@router.put("/companies/{company_id}/delivery-challans/{dc_id}", response_model=DCResponse)
+async def update_delivery_challan(
+    company_id: str,
+    dc_id: str,
+    data: DCUpdateRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update an existing delivery challan."""
+    get_company_or_404(company_id, current_user, db)
+    service = DeliveryChallanService(db)
+
+    dc = service.get_delivery_challan(company_id, dc_id)
+    if not dc:
+        raise HTTPException(status_code=404, detail="Delivery challan not found")
+
+    try:
+        updated = service.update_delivery_challan(dc, data.model_dump(exclude_unset=True))
+        return _dc_to_response(updated, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/companies/{company_id}/delivery-challans/{dc_id}/dispatch", response_model=DCResponse)
@@ -947,6 +1016,8 @@ def _dc_to_response(dc: DeliveryChallan, db: Session, include_items: bool = True
         if contact:
             contact_person_name = contact.name
     
+    show_prices = getattr(dc, "show_prices", True)
+
     # Build response
     response = {
         "id": dc.id,
@@ -991,6 +1062,7 @@ def _dc_to_response(dc: DeliveryChallan, db: Session, include_items: bool = True
         # Stock management
         "stock_updated": dc.stock_updated or False,
         "stock_updated_at": dc.stock_updated_at,
+        "show_prices": show_prices if show_prices is not None else True,
         # Delivery info
         "delivered_at": dc.delivered_at,
         "received_by": dc.received_by,

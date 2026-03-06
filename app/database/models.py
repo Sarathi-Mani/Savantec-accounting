@@ -2552,6 +2552,8 @@ class Vendor(Base):
     opening_balance = Column(Numeric(15, 2), default=0.00)
     opening_balance_type = Column(String(20))  # 'outstanding' or 'advance'
     opening_balance_mode = Column(String(10))  # 'single' or 'split'
+    payment_type = Column(String(20), default="INR")
+    exchange_rate = Column(Numeric(14, 6), default=Decimal("1.0"))
     
     # Financial Information
     credit_limit = Column(Numeric(15, 2), default=0.00)
@@ -2652,6 +2654,8 @@ class Vendor(Base):
             "opening_balance": float(self.opening_balance) if self.opening_balance else 0.00,
             "opening_balance_type": self.opening_balance_type,
             "opening_balance_mode": self.opening_balance_mode,
+            "payment_type": self.payment_type,
+            "exchange_rate": float(self.exchange_rate) if self.exchange_rate else 1.0,
             "credit_limit": float(self.credit_limit) if self.credit_limit else 0.00,
             "credit_days": self.credit_days,
             "payment_terms": self.payment_terms,
@@ -4881,6 +4885,7 @@ class DeliveryChallan(Base):
     # Stock tracking
     stock_updated = Column(Boolean, default=False)
     stock_updated_at = Column(DateTime)
+    show_prices = Column(Boolean, default=True)
     
     # Delivery confirmation
     delivered_at = Column(DateTime)
