@@ -96,25 +96,25 @@ export default function EnquiryAgingReportPage() {
     try {
       if (activeTab === "aging") {
         const response = await fetch(
-          `${API_BASE}/api/companies/${company?.id}/enquiries/reports/aging?${params}`,
+          `${API_BASE}/companies/${company?.id}/enquiries/reports/aging?${params}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         if (response.ok) setAgingData(await response.json());
       } else if (activeTab === "engineer") {
         const response = await fetch(
-          `${API_BASE}/api/companies/${company?.id}/enquiries/reports/by-engineer?${params}`,
+          `${API_BASE}/companies/${company?.id}/enquiries/reports/by-engineer?${params}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         if (response.ok) setEngineerData(await response.json());
       } else if (activeTab === "state") {
         const response = await fetch(
-          `${API_BASE}/api/companies/${company?.id}/enquiries/reports/by-state?${params}`,
+          `${API_BASE}/companies/${company?.id}/enquiries/reports/by-state?${params}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         if (response.ok) setStateData(await response.json());
       } else if (activeTab === "brand") {
         const response = await fetch(
-          `${API_BASE}/api/companies/${company?.id}/enquiries/reports/by-brand?${params}`,
+          `${API_BASE}/companies/${company?.id}/enquiries/reports/by-brand?${params}`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
         if (response.ok) setBrandData(await response.json());
