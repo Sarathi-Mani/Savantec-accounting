@@ -44,6 +44,7 @@ type ProductWithMeta = Product & {
   category?: { name?: string };
   current_stock?: number | null;
   unit_price?: number | string;
+  sales_price?: number | string;
   gst_rate?: number | string;
   company_id?: string;
   godown_id?: string | null;
@@ -58,6 +59,8 @@ const toNumber = (value: number | string | undefined | null, fallback = 0) => {
 
 const getBrandName = (product: ProductWithMeta) => product.brand?.name || "-";
 const getCategoryName = (product: ProductWithMeta) => product.category?.name || "-";
+const getDisplayPrice = (product: ProductWithMeta) =>
+  toNumber(product.sales_price ?? product.unit_price);
 const getStoreName = (product: ProductWithMeta, companyName?: string) => {
   if (!product.godown_id) return companyName || "-";
   return product.godown_name || product.godown_id;
@@ -314,7 +317,7 @@ const PrintView = ({
                     borderRight: '1px solid #ddd',
                     fontWeight: 'bold'
                   }}>
-                    {formatCurrency(toNumber(product.unit_price))}
+                    {formatCurrency(getDisplayPrice(product))}
                   </td>
                 )}
                 {visibleColumns.gst && (
@@ -600,7 +603,7 @@ export default function ProductsPage() {
 
         if (visibleColumns.price) {
           if (!headers.includes("Price")) headers.push("Price");
-          row.push(toNumber(product.unit_price).toFixed(2));
+          row.push(getDisplayPrice(product).toFixed(2));
         }
 
         if (visibleColumns.gst) {
@@ -671,7 +674,7 @@ export default function ProductsPage() {
         }
 
         if (visibleColumns.price) {
-          row["Price"] = toNumber(product.unit_price).toFixed(2);
+          row["Price"] = getDisplayPrice(product).toFixed(2);
         }
 
         if (visibleColumns.gst) {
@@ -745,7 +748,7 @@ export default function ProductsPage() {
 
         if (visibleColumns.price) {
           if (!headers.includes("Price")) headers.push("Price");
-          row.push(toNumber(product.unit_price).toFixed(2));
+          row.push(getDisplayPrice(product).toFixed(2));
         }
 
         if (visibleColumns.gst) {
@@ -822,7 +825,7 @@ export default function ProductsPage() {
         }
 
         if (visibleColumns.price) {
-          row["Price"] = toNumber(product.unit_price).toFixed(2);
+          row["Price"] = getDisplayPrice(product).toFixed(2);
         }
 
         if (visibleColumns.gst) {
@@ -1367,7 +1370,7 @@ export default function ProductsPage() {
                       {visibleColumns.price && (
                         <td className="px-3 py-4 align-top break-words">
                           <div className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
-                            {formatCurrency(toNumber(product.unit_price))}
+                            {formatCurrency(getDisplayPrice(product))}
                           </div>
                         </td>
                       )}
