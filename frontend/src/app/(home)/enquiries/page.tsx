@@ -170,6 +170,9 @@ export default function EnquiriesPage() {
     };
   }, []);
   const [activeActionMenu, setActiveActionMenu] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalEnquiries, setTotalEnquiries] = useState(0);
+  const pageSize = 10;
   
   // Export loading states
   const [copyLoading, setCopyLoading] = useState(false);
@@ -241,6 +244,9 @@ export default function EnquiriesPage() {
     if (forExport) {
       params.append("page", "1");
       params.append("page_size", "1000");
+    } else {
+      params.append("page", String(currentPage));
+      params.append("page_size", String(pageSize));
     }
     
     return params;
@@ -259,6 +265,7 @@ export default function EnquiriesPage() {
       setCachedExportData(null);
     }
   }, [
+    currentPage,
     statusFilter,
     salesmanFilter,
     companyFilter,
@@ -375,7 +382,14 @@ export default function EnquiriesPage() {
       if (!response.ok) throw new Error("Failed to fetch enquiries");
 
       const data = await response.json();
-      setEnquiries(data);
+      const enquiryList = Array.isArray(data) ? data : (data.enquiries || data.items || []);
+      const total = Array.isArray(data) ? data.length : Number(data.total || data.count || enquiryList.length || 0);
+      const startIndex = (currentPage - 1) * pageSize;
+      const endIndex = currentPage * pageSize;
+      const paginatedList = enquiryList.slice(startIndex, endIndex);
+
+      setEnquiries(paginatedList);
+      setTotalEnquiries(total);
     } catch (err) {
       setError("Failed to load enquiries");
       console.error(err);
@@ -490,6 +504,10 @@ export default function EnquiriesPage() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+      return;
+    }
     fetchEnquiries();
   };
 
@@ -503,7 +521,7 @@ export default function EnquiriesPage() {
     setEngineerFilter("");
     setBrandFilter("");
     setStateFilter("");
-    fetchEnquiries();
+    setCurrentPage(1);
     fetchReports();
   };
 
@@ -573,6 +591,8 @@ export default function EnquiriesPage() {
     
     return filtered;
   };
+
+  const totalPages = Math.max(1, Math.ceil(totalEnquiries / pageSize));
 
   // Export functions
   const copyToClipboard = async () => {
@@ -1505,6 +1525,35 @@ export default function EnquiriesPage() {
           </table>
         </div>
       </div>
+
+      {!loading && enquiries.length > 0 && (
+        <div className="flex flex-col gap-3 border-t border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-800 md:flex-row md:items-center md:justify-between">
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, totalEnquiries)} of {totalEnquiries}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              Previous
+            </button>
+            <div className="text-sm text-gray-700 dark:text-gray-300">
+              Page {currentPage} of {totalPages}
+            </div>
+            <button
+              type="button"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

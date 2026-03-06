@@ -17,6 +17,7 @@ interface Permission {
 
 const DEFAULT_PERMISSIONS: Permission[] = [
   // Stock/Inventory related
+  { id: "products", name: "Product (Item)", description: "Manage products and item master", category: "Stock/Inventory" },
   { id: "stock_journal", name: "Stock Journal", description: "Manage stock journal entries", category: "Stock/Inventory" },
   { id: "stock_adjustment", name: "Stock Adjustment", description: "Adjust stock quantities", category: "Stock/Inventory" },
   { id: "brand", name: "Brand", description: "Manage product brands", category: "Stock/Inventory" },

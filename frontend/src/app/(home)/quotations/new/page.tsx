@@ -777,12 +777,7 @@ export default function NewQuotationPage() {
             unit_price: target.unit_price > 0 ? target.unit_price : resolvedPrice,
             image_url: target.image_url || resolvedImage,
             gst_rate: Number(target.gst_rate || product.gst_rate || product.tax_rate || 18),
-            discount_percent: Number(
-              target.discount_percent ??
-              product.discount_percent ??
-              product.discount ??
-              0
-            ),
+            discount_percent: Number(target.discount_percent ?? 0),
           };
         }
       }
@@ -1946,7 +1941,7 @@ const productOptions = useMemo(() =>
           hsn: hsn,
           description: description,
           unit_price: product.unit_price || product.sales_price || 0,
-          discount_percent: normalizeDiscountPercent(product.discount_percent ?? product.discount ?? 0),
+          discount_percent: 0,
           gst_rate: product.tax_rate || product.gst_rate || 18,
           unit: product.unit || "unit",
           sku: product.sku || "",
@@ -2567,7 +2562,7 @@ const productOptions = useMemo(() =>
           item_code: product.item_code || product.code || "",
           description: resolveProductDescription(product) || "Item",
           unit_price: product.unit_price || product.sales_price || 0,
-          discount_percent: normalizeDiscountPercent(product.discount ?? product.discount_percent ?? 0),
+          discount_percent: Number(newItems[index]?.discount_percent ?? 0),
           quantity: 1,
           gst_rate: Number(product.tax_rate || product.gst_rate || 18)
         };
@@ -3623,9 +3618,7 @@ const productOptions = useMemo(() =>
                                     hsn: selectedProduct.hsn || selectedProduct.hsn_code || "",
                                     description: resolveProductDescription(selectedProduct) || "Item",
                                     unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
-                                    discount_percent: normalizeDiscountPercent(
-                                      selectedProduct.discount ?? selectedProduct.discount_percent ?? 0
-                                    ),
+                                    discount_percent: Number(item.discount_percent ?? 0),
                                     gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
                                     quantity: item.quantity,
                                     unit: item.unit || "unit"
@@ -3928,9 +3921,7 @@ const productOptions = useMemo(() =>
                                         hsn: selectedProduct.hsn || selectedProduct.hsn_code || "",
                                         description: resolveProductDescription(selectedProduct) || "Item",
                                         unit_price: selectedProduct.unit_price || selectedProduct.sales_price || 0,
-                                        discount_percent: normalizeDiscountPercent(
-                                          selectedProduct.discount ?? selectedProduct.discount_percent ?? 0
-                                        ),
+                                        discount_percent: Number(item.discount_percent ?? 0),
                                         gst_rate: Number(selectedProduct.tax_rate || selectedProduct.gst_rate || 18),
                                         quantity: item.quantity,
                                         unit: item.unit || "unit"
