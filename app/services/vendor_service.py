@@ -202,7 +202,7 @@ class VendorService:
         
         total = query.count()
         
-        vendors = query.order_by(Vendor.name)\
+        vendors = query.order_by(Vendor.created_at.desc(), Vendor.id.desc())\
             .offset((page - 1) * page_size)\
             .limit(page_size)\
             .all()

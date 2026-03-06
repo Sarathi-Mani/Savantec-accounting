@@ -654,7 +654,13 @@ export default function CreateVendorPage() {
         
         // Bank details
         bank_details: formData.bank_details
-          .filter(b => b.bank_name.trim() || b.account_number.trim())
+          .filter((b) => {
+            const bankName = (b.bank_name || "").trim();
+            const accountNumber = (b.account_number || "").trim();
+            const accountHolder = (b.account_holder_name || "").trim();
+            // Send only fully filled rows to avoid backend schema validation errors.
+            return Boolean(bankName && accountHolder && accountNumber.length >= 9);
+          })
           .map(b => ({
             bank_name: b.bank_name || "",
             branch: b.branch || "",
