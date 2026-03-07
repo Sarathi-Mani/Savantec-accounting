@@ -1063,6 +1063,13 @@ export default function PurchaseOrderListPage() {
     setCurrentPage(1);
   };
 
+  const displayedFilteredTotal = purchaseOrders.reduce(
+    (sum, order) => sum + Number(order.total_amount || 0),
+    0
+  );
+  const displayedTotalCurrency =
+    paymentTypeFilter || purchaseOrders[0]?.currency || "INR";
+
   if (!companyId) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
@@ -1673,8 +1680,13 @@ export default function PurchaseOrderListPage() {
 
       {!loading && purchaseOrders.length > 0 && (
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, purchaseOrders.length)} of {purchaseOrders.length}
+          <div className="space-y-1">
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, purchaseOrders.length)} of {purchaseOrders.length}
+            </div>
+            <div className="text-sm font-medium text-gray-900 dark:text-white">
+              Filtered Total Amount: {formatCurrency(displayedFilteredTotal, displayedTotalCurrency)}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
