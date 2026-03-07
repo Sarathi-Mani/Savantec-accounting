@@ -177,6 +177,10 @@ export default function SalesInvoiceViewPage() {
     }
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   if (!company) {
     return (
       <div className="rounded-lg bg-white p-8 text-center shadow-1 dark:bg-gray-dark">
@@ -205,10 +209,10 @@ export default function SalesInvoiceViewPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="sales-invoice-print space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <Link href="/sales/sales-list" className="text-sm text-dark-6 hover:text-primary">
+          <Link href="/sales/sales-list" className="text-sm text-dark-6 hover:text-primary print:hidden">
             ← Back to Sales
           </Link>
           <h1 className="mt-2 text-2xl font-bold text-dark dark:text-white">
@@ -216,12 +220,24 @@ export default function SalesInvoiceViewPage() {
           </h1>
           <p className="text-sm text-dark-6">Created on {formatDate(invoice.created_at)}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 print:hidden">
           <span
             className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${getStatusColor(invoice.status)}`}
           >
             {invoice.status.replace("_", " ")}
           </span>
+          <Link
+            href={`/sales/${invoice.id}/edit`}
+            className="rounded-lg border border-stroke bg-white px-4 py-2 text-sm font-medium text-dark transition hover:bg-gray-100 dark:border-dark-3 dark:bg-gray-dark dark:text-white dark:hover:bg-dark-3"
+          >
+            Edit
+          </Link>
+          <button
+            onClick={handlePrint}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
+          >
+            Print
+          </button>
           <button
             onClick={handleDownloadPdf}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
@@ -230,6 +246,58 @@ export default function SalesInvoiceViewPage() {
           </button>
         </div>
       </div>
+
+      <style jsx global>{`
+        @media print {
+          aside,
+          header {
+            display: none !important;
+          }
+
+          main {
+            max-width: 100% !important;
+            padding: 0 !important;
+          }
+
+          .sales-invoice-print {
+            margin: 0 !important;
+            padding: 0 !important;
+            color: #000 !important;
+            font-size: 12px !important;
+          }
+
+          .sales-invoice-print .rounded-lg {
+            background: #fff !important;
+            box-shadow: none !important;
+            border: 1px solid #d1d5db !important;
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+
+          .sales-invoice-print h1,
+          .sales-invoice-print h2,
+          .sales-invoice-print h3,
+          .sales-invoice-print p,
+          .sales-invoice-print span,
+          .sales-invoice-print td,
+          .sales-invoice-print th,
+          .sales-invoice-print div {
+            color: #000 !important;
+          }
+
+          .sales-invoice-print table {
+            font-size: 11px !important;
+          }
+
+          .sales-invoice-print h1 {
+            font-size: 20px !important;
+          }
+
+          .sales-invoice-print h2 {
+            font-size: 14px !important;
+          }
+        }
+      `}</style>
 
       {error && (
         <div className="rounded-lg bg-red-50 p-4 text-red-600 dark:bg-red-900/20 dark:text-red-400">

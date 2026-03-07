@@ -655,6 +655,7 @@ async def convert_to_invoice(
         round_off=proforma.round_off,
         sales_person_id=proforma.sales_person_id,
         contact_id=proforma.contact_id,
+        bank_account_id=proforma.bank_account_id,
         subtotal=proforma.subtotal,
         total_tax=proforma.total_tax,
         total_amount=proforma.total_amount,

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
-import { customersApi, productsApi, invoicesApi, getErrorMessage } from "@/services/api";
+import { customersApi, productsApi, invoicesApi, companiesApi, getErrorMessage } from "@/services/api";
 import { salesmenApi } from "@/services/api"; // Add this import
 import { employeesApi } from "@/services/api"; // Add this import
 import Select from 'react-select';
@@ -304,10 +304,12 @@ export default function EditSalesPage() {
     const [customers, setCustomers] = useState<any[]>([]);
     const [products, setProducts] = useState<any[]>([]);
     const [salesmen, setSalesmen] = useState<any[]>([]); // Changed from salesman to salesmen
+    const [bankAccounts, setBankAccounts] = useState<any[]>([]);
     const [loading, setLoading] = useState({
         customers: false,
         products: false,
         salesmen: false,
+        bankAccounts: false,
     });
 
     const getAuthToken = () => {
@@ -397,6 +399,7 @@ export default function EditSalesPage() {
         // Sales pipeline tracking
         sales_person_id: "",
         contact_id: "",
+        bank_account_id: "",
 
         // Additional fields
         notes: "",
@@ -513,6 +516,7 @@ export default function EditSalesPage() {
                 is_reverse_charge: invoice.is_reverse_charge || false,
                 sales_person_id: invoice.sales_person_id || "",
                 contact_id: invoice.contact_id || "",
+                bank_account_id: invoice.bank_account_id || "",
                 notes: invoice.notes || "",
                 terms: invoice.terms || prev.terms,
                 country: shippingCountry,
@@ -577,6 +581,15 @@ export default function EditSalesPage() {
             setLoadingInvoice(false);
         }
     };
+
+    useEffect(() => {
+        if (!company?.id || !invoiceId) return;
+        loadCustomers();
+        loadProducts();
+        loadSalesmen();
+        loadBankAccounts();
+        loadInvoice();
+    }, [company?.id, invoiceId]);
 
     // Load data on component mount
         useEffect(() => {
@@ -645,6 +658,20 @@ export default function EditSalesPage() {
             console.error("Failed to load products:", error);
         } finally {
             setLoading(prev => ({ ...prev, products: false }));
+        }
+    };
+
+    const loadBankAccounts = async () => {
+        if (!company?.id) return;
+        try {
+            setLoading(prev => ({ ...prev, bankAccounts: true }));
+            const accounts = await companiesApi.listBankAccounts(company.id);
+            setBankAccounts(accounts || []);
+        } catch (error) {
+            console.error("Failed to load bank accounts:", error);
+            setBankAccounts([]);
+        } finally {
+            setLoading(prev => ({ ...prev, bankAccounts: false }));
         }
     };
 
@@ -980,6 +1007,7 @@ export default function EditSalesPage() {
                 due_date: formData.due_date ? new Date(formData.due_date).toISOString() : null,
                 sales_person_id: formData.sales_person_id || null,
                 contact_id: formData.contact_id || null,
+                bank_account_id: formData.bank_account_id || null,
                 shipping_address: formData.address || "",
                 shipping_city: formData.city || "",
                 shipping_state: formData.place_of_supply_name || INDIAN_STATES.find(s => s.code === formData.place_of_supply)?.name || "",
@@ -1379,6 +1407,22 @@ export default function EditSalesPage() {
                                             value={formData.due_date}
                                             onChange={(e) => handleFormChange('due_date', e.target.value)}
                                             className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                        />
+                                    </div>
+                                    <div>
+                                        <SelectField
+                                            label="Bank Details"
+                                            name="bank_account_id"
+                                            value={formData.bank_account_id}
+                                            onChange={handleFormChange}
+                                            options={[
+                                                { value: "", label: "-None-" },
+                                                ...bankAccounts.map((account) => ({
+                                                    value: account.id,
+                                                    label: `${account.bank_name || account.name} - ${account.account_number || ""}`.trim(),
+                                                })),
+                                            ]}
+                                            placeholder={loading.bankAccounts ? "Loading bank accounts..." : "Select Bank Account"}
                                         />
                                     </div>
                                     <div className="md:col-span-2">

@@ -190,6 +190,7 @@ class InvoiceCreate(BaseModel):
     payment_amount: Optional[Decimal] = Decimal('0.00')
     payment_type: Optional[str] = None
     payment_account: Optional[str] = None
+    bank_account_id: Optional[str] = None
     payment_note: Optional[str] = None
     adjust_advance_payment: Optional[bool] = False
     
@@ -328,6 +329,7 @@ class InvoiceUpdate(BaseModel):
     # Payment info
     payment_type: Optional[str] = None
     payment_account: Optional[str] = None
+    bank_account_id: Optional[str] = None
     payment_note: Optional[str] = None
     adjust_advance_payment: Optional[bool] = None
 
@@ -412,6 +414,7 @@ class InvoiceResponse(BaseModel):
     discount_type: Optional[str] = None
     payment_type: Optional[str] = None
     payment_account: Optional[str] = None
+    bank_account_id: Optional[str] = None
     payment_note: Optional[str] = None
     adjust_advance_payment: Optional[bool] = None
     voucher_type: Optional[str] = None

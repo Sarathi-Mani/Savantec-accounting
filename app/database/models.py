@@ -1179,6 +1179,7 @@ class Invoice(Base):
     # Payment
     payment_type = Column(String(20), nullable=True)
     payment_account = Column(String(100), nullable=True)
+    bank_account_id = Column(String(36), ForeignKey("bank_accounts.id", ondelete="SET NULL"))
     payment_note = Column(Text, nullable=True)
     adjust_advance_payment = Column(Boolean, default=False)
 
@@ -1248,6 +1249,7 @@ class Invoice(Base):
     sales_ticket = relationship("SalesTicket")
     sales_person = relationship("Employee", foreign_keys=[sales_person_id])
     contact = relationship("Contact")
+    bank_account = relationship("BankAccount")
     items = relationship("InvoiceItem", back_populates="invoice", cascade="all, delete-orphan")
     payments = relationship("Payment", back_populates="invoice", cascade="all, delete-orphan")
 

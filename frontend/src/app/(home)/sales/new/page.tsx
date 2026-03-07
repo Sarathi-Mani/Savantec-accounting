@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
-import { customersApi, productsApi, invoicesApi, ordersApi, proformaInvoicesApi } from "@/services/api";
+import { customersApi, productsApi, invoicesApi, ordersApi, proformaInvoicesApi, companiesApi } from "@/services/api";
 import { salesmenApi } from "@/services/api"; // Add this import
 import { employeesApi } from "@/services/api"; // Add this import
 import Select from 'react-select';
@@ -312,10 +312,12 @@ export default function AddSalesPage() {
     const [customers, setCustomers] = useState<any[]>([]);
     const [products, setProducts] = useState<any[]>([]);
     const [salesmen, setSalesmen] = useState<any[]>([]); // Changed from salesman to salesmen
+    const [bankAccounts, setBankAccounts] = useState<any[]>([]);
     const [loading, setLoading] = useState({
         customers: false,
         products: false,
         salesmen: false,
+        bankAccounts: false,
     });
 
     const normalizeStateCode = (value: any) => {
@@ -389,6 +391,7 @@ export default function AddSalesPage() {
         // Sales pipeline tracking
         sales_person_id: "",
         contact_id: "",
+        bank_account_id: "",
 
         // Additional fields
         notes: "",
@@ -483,6 +486,7 @@ export default function AddSalesPage() {
             loadCustomers();
             loadProducts();
             loadSalesmen();
+            loadBankAccounts();
         }
     }, [company?.id]);
 
@@ -671,6 +675,7 @@ export default function AddSalesPage() {
                 place_of_supply: placeOfSupply || prev.place_of_supply,
                 sales_person_id: proforma.sales_person_id || prev.sales_person_id,
                 contact_id: proforma.contact_id || prev.contact_id,
+                bank_account_id: proforma.bank_account_id || prev.bank_account_id,
                 referenceNo: proforma.reference_no || prev.referenceNo,
                 notes: proforma.notes || prev.notes,
                 terms: proforma.terms || prev.terms,
@@ -787,6 +792,20 @@ export default function AddSalesPage() {
             console.error("Failed to load products:", error);
         } finally {
             setLoading(prev => ({ ...prev, products: false }));
+        }
+    };
+
+    const loadBankAccounts = async () => {
+        if (!company?.id) return;
+        try {
+            setLoading(prev => ({ ...prev, bankAccounts: true }));
+            const accounts = await companiesApi.listBankAccounts(company.id);
+            setBankAccounts(accounts || []);
+        } catch (error) {
+            console.error("Failed to load bank accounts:", error);
+            setBankAccounts([]);
+        } finally {
+            setLoading(prev => ({ ...prev, bankAccounts: false }));
         }
     };
 
@@ -1132,6 +1151,7 @@ export default function AddSalesPage() {
                 // Sales pipeline
                 sales_person_id: formData.sales_person_id || null,
                 contact_id: formData.contact_id || null,
+                bank_account_id: formData.bank_account_id || null,
 
                 // Shipping Address
                 shipping_address: formData.address || "",
@@ -1558,6 +1578,22 @@ export default function AddSalesPage() {
                                             value={formData.due_date}
                                             onChange={(e) => handleFormChange('due_date', e.target.value)}
                                             className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                                        />
+                                    </div>
+                                    <div>
+                                        <SelectField
+                                            label="Bank Details"
+                                            name="bank_account_id"
+                                            value={formData.bank_account_id}
+                                            onChange={handleFormChange}
+                                            options={[
+                                                { value: "", label: "-None-" },
+                                                ...bankAccounts.map((account) => ({
+                                                    value: account.id,
+                                                    label: `${account.bank_name || account.name} - ${account.account_number || ""}`.trim(),
+                                                })),
+                                            ]}
+                                            placeholder={loading.bankAccounts ? "Loading bank accounts..." : "Select Bank Account"}
                                         />
                                     </div>
                                     <div className="md:col-span-2">

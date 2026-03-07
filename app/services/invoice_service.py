@@ -238,6 +238,7 @@ class InvoiceService:
             'destination', 'terms_of_delivery', 'freight_charges',
             'packing_forwarding_charges', 'coupon_code', 'coupon_value',
             'discount_on_all', 'discount_type', 'payment_type', 'payment_account',
+            'bank_account_id',
             'payment_note', 'adjust_advance_payment'
         ]
         
@@ -313,6 +314,7 @@ class InvoiceService:
             # Payment
             payment_type=getattr(data, 'payment_type', None),
             payment_account=getattr(data, 'payment_account', None),
+            bank_account_id=getattr(data, 'bank_account_id', None),
             payment_note=getattr(data, 'payment_note', None),
             adjust_advance_payment=getattr(data, 'adjust_advance_payment', False),
         )
