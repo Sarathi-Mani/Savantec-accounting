@@ -303,6 +303,7 @@ interface PurchaseOrderResponse {
   summary: {
     total_orders: number;
     total_amount: number;
+    currency_totals?: Record<string, number>;
   };
   pagination: {
     page: number;
@@ -1063,12 +1064,11 @@ export default function PurchaseOrderListPage() {
     setCurrentPage(1);
   };
 
-  const displayedFilteredTotal = purchaseOrders.reduce(
-    (sum, order) => sum + Number(order.total_amount || 0),
-    0
-  );
   const displayedTotalCurrency =
     paymentTypeFilter || purchaseOrders[0]?.currency || "INR";
+  const currencyTotals = Object.entries(summaryData.currency_totals || {}).filter(
+    ([, amount]) => Number(amount || 0) > 0
+  );
 
   if (!companyId) {
     return (
@@ -1685,7 +1685,13 @@ export default function PurchaseOrderListPage() {
               Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, purchaseOrders.length)} of {purchaseOrders.length}
             </div>
             <div className="text-sm font-medium text-gray-900 dark:text-white">
-              Filtered Total Amount: {formatCurrency(displayedFilteredTotal, displayedTotalCurrency)}
+              {paymentTypeFilter
+                ? `Filtered Total Amount: ${formatCurrency(Number(summaryData.total_amount || 0), displayedTotalCurrency)}`
+                : currencyTotals.length > 0
+                  ? `Filtered Total Amount: ${currencyTotals
+                      .map(([currency, amount]) => `${currency} ${formatCurrency(Number(amount || 0), currency)}`)
+                      .join(" | ")}`
+                  : `Filtered Total Amount: ${formatCurrency(Number(summaryData.total_amount || 0), displayedTotalCurrency)}`}
             </div>
           </div>
           <div className="flex items-center gap-2">

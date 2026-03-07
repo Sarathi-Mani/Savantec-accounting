@@ -1102,8 +1102,17 @@ async def list_purchase_orders(
     if to_date:
         query = query.filter(func.date(PurchaseOrder.order_date) <= to_date)
     
-    # Get total count
+    # Get total count and total amount for the filtered query before pagination
     total = query.count()
+    filtered_total_amount = query.with_entities(func.sum(PurchaseOrder.total_amount)).scalar() or Decimal("0")
+    filtered_currency_totals = (
+        query.with_entities(
+            PurchaseOrder.currency,
+            func.sum(PurchaseOrder.total_amount),
+        )
+        .group_by(PurchaseOrder.currency)
+        .all()
+    )
     
     # Apply pagination
     offset = (page - 1) * page_size
@@ -1111,11 +1120,6 @@ async def list_purchase_orders(
                  .offset(offset)\
                  .limit(page_size)\
                  .all()
-    
-    # Calculate summary data
-    total_amount = db.query(func.sum(PurchaseOrder.total_amount))\
-                     .filter(PurchaseOrder.company_id == company.id)\
-                     .scalar() or Decimal("0")
     
     # Collect creator IDs for batch querying
     user_ids = []
@@ -1209,7 +1213,11 @@ async def list_purchase_orders(
         "purchases": orders_response,
         "summary": {
             "total_orders": total,
-            "total_amount": total_amount
+            "total_amount": filtered_total_amount,
+            "currency_totals": {
+                (currency or "INR"): amount or Decimal("0")
+                for currency, amount in filtered_currency_totals
+            },
         },
         "pagination": {
             "page": page,
