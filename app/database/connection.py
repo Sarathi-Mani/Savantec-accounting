@@ -43,6 +43,7 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     ensure_tracking_columns()
     ensure_enum_values()
+    ensure_vendor_mobile_length()
 
 
 def ensure_tracking_columns():
@@ -168,3 +169,29 @@ def ensure_enum_values():
             for value in values:
                 if not enum_value_exists(conn, enum_name, value):
                     conn.execute(text(f"ALTER TYPE {enum_name} ADD VALUE '{value}'"))
+
+
+def ensure_vendor_mobile_length():
+    """Ensure vendors.mobile can store formatted international numbers."""
+    dialect = engine.dialect.name
+
+    if dialect == "postgresql":
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            result = conn.execute(
+                text(
+                    """
+                    SELECT character_maximum_length
+                    FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'vendors'
+                      AND column_name = 'mobile'
+                    """
+                )
+            ).scalar()
+            if result is not None and int(result) < 30:
+                conn.execute(text("ALTER TABLE vendors ALTER COLUMN mobile TYPE VARCHAR(30)"))
+        return
+
+    if dialect == "sqlite":
+        # SQLite does not enforce VARCHAR length.
+        return

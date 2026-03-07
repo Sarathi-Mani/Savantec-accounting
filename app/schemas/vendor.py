@@ -131,7 +131,7 @@ class VendorCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     contact: str = Field(..., min_length=1, max_length=255)
     email: Optional[EmailStr] = None
-    mobile: Optional[str] = Field(None, max_length=15)
+    mobile: Optional[str] = Field(None, max_length=30)
     
     # Tax Information
     tax_number: Optional[str] = Field(None, max_length=15)  # GST number
@@ -239,7 +239,7 @@ class VendorUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     contact: Optional[str] = Field(None, min_length=1, max_length=255)
     email: Optional[EmailStr] = None
-    mobile: Optional[str] = Field(None, max_length=15)
+    mobile: Optional[str] = Field(None, max_length=30)
     tax_number: Optional[str] = Field(None, max_length=15)
     gst_registration_type: Optional[str] = Field(None, max_length=50)
     pan_number: Optional[str] = Field(None, max_length=10)
@@ -274,6 +274,15 @@ class VendorUpdate(BaseModel):
             cleaned = v.strip().upper()
             return cleaned or None
         return None
+
+    @validator('mobile', pre=True)
+    def normalize_update_mobile(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            return v or None
+        return v
     
     class Config:
         json_schema_extra = {

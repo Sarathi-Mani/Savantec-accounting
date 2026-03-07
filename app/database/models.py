@@ -856,7 +856,7 @@ class Customer(Base):
     name = Column(String(255), nullable=False)
     contact = Column(String(255), nullable=False)
     email = Column(String(255))
-    mobile = Column(String(15))
+    mobile = Column(String(30))
     
     # Tax Information
     tax_number = Column(String(15))  # GST number
