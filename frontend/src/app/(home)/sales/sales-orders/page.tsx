@@ -76,6 +76,9 @@ const PrintView = ({
   getStatusText,
   getCustomerDisplayName,
   getCustomerGSTIN,
+  getSubtotal,
+  getBilling,
+  getPending,
   getSalesPersonName,
   getExpiryDate,
   companyName,
@@ -88,6 +91,9 @@ const PrintView = ({
   getStatusText: (status: string) => string;
   getCustomerDisplayName: (order: ExtendedSalesOrder) => string;
   getCustomerGSTIN: (order: ExtendedSalesOrder) => string;
+  getSubtotal: (order: ExtendedSalesOrder) => number;
+  getBilling: (order: ExtendedSalesOrder) => number;
+  getPending: (order: ExtendedSalesOrder) => number;
   getSalesPersonName: (order: ExtendedSalesOrder) => string;
   getExpiryDate: (order: ExtendedSalesOrder) => string | null;
   companyName: string;
@@ -211,6 +217,16 @@ const PrintView = ({
                   Customer Name
                 </th>
               )}
+              {visibleColumns.subtotal && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Subtotal
+                </th>
+              )}
               {visibleColumns.total && (
                 <th style={{
                   padding: '12px',
@@ -219,6 +235,26 @@ const PrintView = ({
                   fontWeight: 'bold'
                 }}>
                   Total
+                </th>
+              )}
+              {visibleColumns.billing && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Billing
+                </th>
+              )}
+              {visibleColumns.pending && (
+                <th style={{
+                  padding: '12px',
+                  textAlign: 'left',
+                  borderRight: '1px solid #ddd',
+                  fontWeight: 'bold'
+                }}>
+                  Pending
                 </th>
               )}
               {visibleColumns.salesman && (
@@ -328,6 +364,15 @@ const PrintView = ({
                       </div>
                     </td>
                   )}
+                  {visibleColumns.subtotal && (
+                    <td style={{
+                      padding: '12px',
+                      borderRight: '1px solid #ddd',
+                      fontWeight: 'bold'
+                    }}>
+                      {formatCurrency(getSubtotal(order))}
+                    </td>
+                  )}
                   {visibleColumns.total && (
                     <td style={{
                       padding: '12px',
@@ -335,6 +380,24 @@ const PrintView = ({
                       fontWeight: 'bold'
                     }}>
                       {formatCurrency(order.total_amount)}
+                    </td>
+                  )}
+                  {visibleColumns.billing && (
+                    <td style={{
+                      padding: '12px',
+                      borderRight: '1px solid #ddd',
+                      fontWeight: 'bold'
+                    }}>
+                      {formatCurrency(getBilling(order))}
+                    </td>
+                  )}
+                  {visibleColumns.pending && (
+                    <td style={{
+                      padding: '12px',
+                      borderRight: '1px solid #ddd',
+                      fontWeight: 'bold'
+                    }}>
+                      {formatCurrency(getPending(order))}
                     </td>
                   )}
                   {visibleColumns.salesman && (
@@ -382,6 +445,9 @@ interface ExtendedSalesOrder extends Omit<SalesOrder, 'customer' | 'items'> {
   customer_id?: string;
   sales_person_id?: string;
   subtotal: number;
+  invoice_id?: string;
+  billing_amount?: number;
+  pending_amount?: number;
   status: SalesOrderStatus;
   customer?: {
     id?: string;
@@ -487,7 +553,10 @@ export default function SalesOrdersPage() {
     expiryDate: true,
     referenceNo: true,
     customerName: true,
+    subtotal: true,
     total: true,
+    billing: true,
+    pending: true,
     salesman: true,
     actions: true,
   });
@@ -685,6 +754,18 @@ export default function SalesOrdersPage() {
     return order.subtotal || order.total_amount || 0;
   };
 
+  const getBilling = (order: ExtendedSalesOrder): number => {
+    const billing = Number(order.billing_amount ?? 0);
+    if (!Number.isNaN(billing)) return billing;
+    return 0;
+  };
+
+  const getPending = (order: ExtendedSalesOrder): number => {
+    const pending = Number(order.pending_amount ?? ((order.total_amount || 0) - getBilling(order)));
+    if (Number.isNaN(pending)) return 0;
+    return pending > 0 ? pending : 0;
+  };
+
   const getDaysUntilExpiry = (expiryDate?: string | Date | null): number => {
     if (!expiryDate) return 0;
     const today = new Date();
@@ -747,6 +828,21 @@ export default function SalesOrdersPage() {
         if (visibleColumns.customerName) {
           if (!headers.includes("Customer Name")) headers.push("Customer Name");
           row.push(getCustomerDisplayName(order));
+        }
+
+        if (visibleColumns.subtotal) {
+          if (!headers.includes("Subtotal")) headers.push("Subtotal");
+          row.push(formatCurrency(getSubtotal(order)).replace('₹', 'Rs. '));
+        }
+
+        if (visibleColumns.billing) {
+          if (!headers.includes("Billing")) headers.push("Billing");
+          row.push(formatCurrency(getBilling(order)).replace('₹', 'Rs. '));
+        }
+
+        if (visibleColumns.pending) {
+          if (!headers.includes("Pending")) headers.push("Pending");
+          row.push(formatCurrency(getPending(order)).replace('₹', 'Rs. '));
         }
 
         if (visibleColumns.total) {
@@ -813,9 +909,20 @@ export default function SalesOrdersPage() {
           row["Customer GSTIN"] = getCustomerGSTIN(order);
         }
 
+        if (visibleColumns.subtotal) {
+          row["Subtotal"] = getSubtotal(order);
+        }
+
+        if (visibleColumns.billing) {
+          row["Billing"] = getBilling(order);
+        }
+
+        if (visibleColumns.pending) {
+          row["Pending"] = getPending(order);
+        }
+
         if (visibleColumns.total) {
           row["Total Amount"] = order.total_amount || 0;
-          row["Subtotal"] = getSubtotal(order);
         }
 
         if (visibleColumns.salesman) {
@@ -875,6 +982,30 @@ export default function SalesOrdersPage() {
         if (visibleColumns.customerName) {
           if (!headers.includes("Customer Name")) headers.push("Customer Name");
           row.push(getCustomerDisplayName(order));
+        }
+
+        if (visibleColumns.subtotal) {
+          if (!headers.includes("Subtotal")) headers.push("Subtotal");
+          row.push(`Rs. ${new Intl.NumberFormat("en-IN", {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(getSubtotal(order))}`);
+        }
+
+        if (visibleColumns.billing) {
+          if (!headers.includes("Billing")) headers.push("Billing");
+          row.push(`Rs. ${new Intl.NumberFormat("en-IN", {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(getBilling(order))}`);
+        }
+
+        if (visibleColumns.pending) {
+          if (!headers.includes("Pending")) headers.push("Pending");
+          row.push(`Rs. ${new Intl.NumberFormat("en-IN", {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(getPending(order))}`);
         }
 
         if (visibleColumns.total) {
@@ -948,6 +1079,18 @@ export default function SalesOrdersPage() {
 
         if (visibleColumns.customerName) {
           row["Customer Name"] = getCustomerDisplayName(order);
+        }
+
+        if (visibleColumns.subtotal) {
+          row["Subtotal"] = getSubtotal(order);
+        }
+
+        if (visibleColumns.billing) {
+          row["Billing"] = getBilling(order);
+        }
+
+        if (visibleColumns.pending) {
+          row["Pending"] = getPending(order);
         }
 
         if (visibleColumns.total) {
@@ -1272,6 +1415,9 @@ export default function SalesOrdersPage() {
           getStatusText={getStatusText}
           getCustomerDisplayName={getCustomerDisplayName}
           getCustomerGSTIN={getCustomerGSTIN}
+          getSubtotal={getSubtotal}
+          getBilling={getBilling}
+          getPending={getPending}
           getSalesPersonName={getSalesPersonName}
           getExpiryDate={getExpiryDate}
           companyName={company?.name || ''}
@@ -1438,9 +1584,12 @@ export default function SalesOrdersPage() {
                          key === 'orderDate' ? 'Order Date' : 
                          key === 'expiryDate' ? 'Expiry Date' : 
                          key === 'referenceNo' ? 'Reference No' : 
+                         key === 'subtotal' ? 'Subtotal' :
+                         key === 'billing' ? 'Billing' :
+                         key === 'pending' ? 'Pending' :
                          key === 'customerName' ? 'Customer Name' : 
                          key.charAt(0).toUpperCase() + key.slice(1)}
-                      </span>
+                       </span>
                     </label>
                   ))}
                 </div>
@@ -1639,9 +1788,24 @@ export default function SalesOrdersPage() {
                     Customer Name
                   </th>
                 )}
+                {visibleColumns.subtotal && (
+                  <th className="text-left px-3 py-3 ">
+                    Subtotal
+                  </th>
+                )}
                 {visibleColumns.total && (
                   <th className="text-left px-3 py-3 ">
                     Total
+                  </th>
+                )}
+                {visibleColumns.billing && (
+                  <th className="text-left px-3 py-3 ">
+                    Billing
+                  </th>
+                )}
+                {visibleColumns.pending && (
+                  <th className="text-left px-3 py-3 ">
+                    Pending
                   </th>
                 )}
                 {visibleColumns.salesman && (
@@ -1759,16 +1923,32 @@ export default function SalesOrdersPage() {
                           </div>
                         </td>
                       )}
+                      {visibleColumns.subtotal && (
+                        <td className="px-3 py-4 align-top break-words">
+                          <div className="font-bold text-gray-900 dark:text-white">
+                            {formatCurrency(getSubtotal(order))}
+                          </div>
+                        </td>
+                      )}
                       {visibleColumns.total && (
                         <td className="px-3 py-4 align-top break-words">
                           <div className="font-bold text-gray-900 dark:text-white">
                             {formatCurrency(order.total_amount)}
                           </div>
-                          {getSubtotal(order) > 0 && (
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              Subtotal: {formatCurrency(getSubtotal(order))}
-                            </div>
-                          )}
+                        </td>
+                      )}
+                      {visibleColumns.billing && (
+                        <td className="px-3 py-4 align-top break-words">
+                          <div className="font-bold text-gray-900 dark:text-white">
+                            {formatCurrency(getBilling(order))}
+                          </div>
+                        </td>
+                      )}
+                      {visibleColumns.pending && (
+                        <td className="px-3 py-4 align-top break-words">
+                          <div className="font-bold text-gray-900 dark:text-white">
+                            {formatCurrency(getPending(order))}
+                          </div>
                         </td>
                       )}
                       {visibleColumns.salesman && (

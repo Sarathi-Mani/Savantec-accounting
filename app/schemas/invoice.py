@@ -183,8 +183,8 @@ class InvoiceCreate(BaseModel):
     
     # 10. Sales & Contact Information
     sales_person_id: Optional[str] = None
-    # 🚨 MISSING - Add for better tracking
     contact_id: Optional[str] = None
+    sales_order_id: Optional[str] = None
     
     # 11. Payment Information (from your frontend)
     payment_amount: Optional[Decimal] = Decimal('0.00')
@@ -296,6 +296,7 @@ class InvoiceUpdate(BaseModel):
     round_off: Optional[Decimal] = None
     sales_person_id: Optional[str] = None
     contact_id: Optional[str] = None
+    sales_order_id: Optional[str] = None
 
     # Shipping
     shipping_address: Optional[str] = None
@@ -482,6 +483,7 @@ class InvoiceResponse(BaseModel):
     sales_ticket_id: Optional[str] = None
     contact_id: Optional[str] = None
     sales_person_id: Optional[str] = None
+    sales_order_id: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -55,6 +55,16 @@ def get_contact_person_name(db: Session, contact_person_id: Optional[str]) -> Op
     return contact.name if contact else None
 
 
+def get_sales_order_billing_pending(order: Any) -> tuple[Decimal, Decimal]:
+    """Return billing and pending for sales order list/view."""
+    total = Decimal(str(order.total_amount or 0))
+    billing = Decimal(str(order.invoice.total_amount or 0)) if getattr(order, "invoice", None) else Decimal("0")
+    pending = total - billing
+    if pending < Decimal("0"):
+        pending = Decimal("0")
+    return billing, pending
+
+
 # ============== Schemas ==============
 
 class OrderItemInput(BaseModel):
@@ -219,6 +229,9 @@ class SalesOrderResponse(BaseModel):
     subtotal: Decimal
     total_tax: Decimal
     total_amount: Decimal
+    invoice_id: Optional[str] = None
+    billing_amount: Decimal = Decimal("0")
+    pending_amount: Decimal = Decimal("0")
     send_message: bool
     quantity_ordered: Optional[Decimal]
     quantity_delivered: Optional[Decimal]
@@ -467,6 +480,7 @@ async def create_sales_order(
             items_response.append(item_response)
         
         # Build the response with safe defaults
+        billing_amount, pending_amount = get_sales_order_billing_pending(order)
         response = SalesOrderResponse(
             id=order.id,
             order_number=order.order_number,
@@ -488,6 +502,9 @@ async def create_sales_order(
             subtotal=order.subtotal or Decimal("0"),
             total_tax=order.total_tax or Decimal("0"),
             total_amount=order.total_amount or Decimal("0"),
+            invoice_id=order.invoice_id,
+            billing_amount=billing_amount,
+            pending_amount=pending_amount,
             send_message=order.send_message or False,
             delivery_note=order.delivery_note,
             supplier_ref=order.supplier_ref,
@@ -545,6 +562,7 @@ async def list_sales_orders(
     
     result = []
     for order in orders:
+        billing_amount, pending_amount = get_sales_order_billing_pending(order)
         # Build items list for each order
         items_response = [
             OrderItemResponse(
@@ -591,6 +609,9 @@ async def list_sales_orders(
             subtotal=order.subtotal or Decimal("0"),
             total_tax=order.total_tax or Decimal("0"),
             total_amount=order.total_amount or Decimal("0"),
+            invoice_id=order.invoice_id,
+            billing_amount=billing_amount,
+            pending_amount=pending_amount,
             send_message=order.send_message or False,
             delivery_note=order.delivery_note,
             supplier_ref=order.supplier_ref,
@@ -649,6 +670,7 @@ async def get_sales_order(
         for item in order.items
     ]
     
+    billing_amount, pending_amount = get_sales_order_billing_pending(order)
     return SalesOrderResponse(
         id=order.id,
         order_number=order.order_number,
@@ -672,6 +694,9 @@ async def get_sales_order(
         subtotal=order.subtotal or Decimal("0"),
         total_tax=order.total_tax or Decimal("0"),
         total_amount=order.total_amount or Decimal("0"),
+        invoice_id=order.invoice_id,
+        billing_amount=billing_amount,
+        pending_amount=pending_amount,
         send_message=order.send_message or False,
         delivery_note=order.delivery_note,
         supplier_ref=order.supplier_ref,
@@ -769,6 +794,7 @@ async def update_sales_order(
             for item in updated_order.items
         ]
         
+        billing_amount, pending_amount = get_sales_order_billing_pending(updated_order)
         return SalesOrderResponse(
             id=updated_order.id,
             order_number=updated_order.order_number,
@@ -790,6 +816,9 @@ async def update_sales_order(
             subtotal=updated_order.subtotal or Decimal("0"),
             total_tax=updated_order.total_tax or Decimal("0"),
             total_amount=updated_order.total_amount or Decimal("0"),
+            invoice_id=updated_order.invoice_id,
+            billing_amount=billing_amount,
+            pending_amount=pending_amount,
             send_message=updated_order.send_message or False,
             delivery_note=updated_order.delivery_note,
             supplier_ref=updated_order.supplier_ref,

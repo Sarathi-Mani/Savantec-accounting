@@ -1151,6 +1151,7 @@ export default function AddSalesPage() {
                 // Sales pipeline
                 sales_person_id: formData.sales_person_id || null,
                 contact_id: formData.contact_id || null,
+                sales_order_id: fromSalesOrderId || null,
                 bank_account_id: formData.bank_account_id || null,
 
                 // Shipping Address
