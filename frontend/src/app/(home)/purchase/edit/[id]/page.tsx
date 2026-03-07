@@ -1592,3 +1592,4 @@ export default function EditPurchasePage() {
         </div>
     );
 }
+
