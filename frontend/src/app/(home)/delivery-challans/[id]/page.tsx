@@ -342,7 +342,7 @@ export default function DeliveryChallanDetailPage() {
   
   const canCancel = !["cancelled", "delivered", "received"].includes(dc.status);
   const canEdit = dc.status !== "cancelled";
-  const editHref = `/delivery-challans/new?type=${dc.dc_type}&editId=${dc.id}`;
+  const editHref = `/delivery-challans/${dc.dc_type === "dc_in" ? "dc-in" : "dc-out"}/new?editId=${dc.id}`;
 
   const handleCreateReturn = async () => {
     const token = getToken();
@@ -396,425 +396,282 @@ export default function DeliveryChallanDetailPage() {
     doc.save(`DC-${dc.dc_number}.pdf`);
   };
 
+  const actionButtonClass =
+    "rounded-full border border-stroke bg-white px-4 py-2 text-sm font-medium text-dark transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-3 dark:bg-gray-dark dark:text-white";
+
+  const cardClass =
+    "overflow-hidden rounded-[24px] border border-stroke bg-white shadow-1 dark:border-dark-3 dark:bg-gray-dark";
+
+  const sectionHeaderClass =
+    "border-b border-stroke bg-gray-1 px-6 py-5 dark:border-dark-3 dark:bg-dark-2";
+
+  const metricCardClass =
+    "rounded-3xl border border-stroke bg-white p-5 shadow-1 dark:border-dark-3 dark:bg-gray-dark";
+
+  const detailTileClass = "rounded-2xl bg-gray-1 p-4 dark:bg-dark-2";
+
   return (
-    <div className="mx-auto max-w-5xl">
-      {/* Header */}
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-dark dark:text-white">{dc.dc_number}</h1>
-            <span
-              className={cn(
-                "inline-flex rounded-full px-2 py-0.5 text-xs font-medium",
-                getTypeColor(dc.dc_type)
-              )}
-            >
-              {dc.dc_type === "dc_out" ? "DC Out" : "DC In"}
-            </span>
-            <span
-              className={cn(
-                "inline-flex rounded-full px-3 py-1 text-xs font-medium capitalize",
-                getStatusColor(dc.status)
-              )}
-            >
-              {dc.status.replace("_", " ")}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {canEdit && (
-            <Link
-              href={editHref}
-              className="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10"
-            >
-              Edit
-            </Link>
-          )}
-          {isDraft && (
-            <button
-              onClick={handleDelete}
-              disabled={actionLoading === "delete"}
-              className="rounded-lg border border-red-500 px-4 py-2 text-sm font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-900/20"
-            >
-              {actionLoading === "delete" ? "Deleting..." : "Delete"}
-            </button>
-          )}
-
-          {canDispatch && (
-            <button
-              onClick={() => performAction("dispatch")}
-              disabled={actionLoading === "dispatch"}
-              className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600 disabled:opacity-50"
-            >
-              {actionLoading === "dispatch" ? "..." : "Mark Dispatched"}
-            </button>
-          )}
-
-          {canMarkInTransit && (
-            <button
-              onClick={() => performAction("in-transit")}
-              disabled={actionLoading === "in-transit"}
-              className="rounded-lg bg-yellow-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-yellow-600 disabled:opacity-50"
-            >
-              {actionLoading === "in-transit" ? "..." : "Mark In Transit"}
-            </button>
-          )}
-
-          {canMarkDelivered && (
-            <button
-              onClick={() => performAction("delivered", { received_by: "Customer" })}
-              disabled={actionLoading === "delivered"}
-              className="rounded-lg bg-green-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-600 disabled:opacity-50"
-            >
-              {actionLoading === "delivered" ? "..." : "Mark Delivered"}
-            </button>
-          )}
-
-          {canMarkReceived && (
-            <button
-              onClick={() => performAction("received", { received_by: "Warehouse" })}
-              disabled={actionLoading === "received"}
-              className="rounded-lg bg-green-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-600 disabled:opacity-50"
-            >
-              {actionLoading === "received" ? "..." : "Mark as Inward"}
-            </button>
-          )}
-
-          {canCreateReturn && (
-            <button
-              onClick={handleCreateReturn}
-              disabled={actionLoading === "return"}
-              className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-600 disabled:opacity-50"
-            >
-              {actionLoading === "return" ? "Creating..." : "Return"}
-            </button>
-          )}
-
-          {canCancel && (
-            <button
-              onClick={() => performAction("cancel", { reason: "Cancelled by user" })}
-              disabled={actionLoading === "cancel"}
-              className="rounded-lg border border-red-500 px-4 py-2 text-sm font-medium text-red-500 transition hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-900/20"
-            >
-              {actionLoading === "cancel" ? "..." : "Cancel"}
-            </button>
-          )}
-
-          <div className="rounded-lg border border-stroke px-3 py-2 dark:border-dark-3">
-            <div className="flex items-center gap-3">
-              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-dark dark:text-white">
-                <input
-                  type="radio"
-                  name="dc_price_view_mode"
-                  checked={showPricesInView}
-                  onChange={() => setShowPricesInView(true)}
-                  className="h-4 w-4"
-                />
-                With Price
-              </label>
-              <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-dark dark:text-white">
-                <input
-                  type="radio"
-                  name="dc_price_view_mode"
-                  checked={!showPricesInView}
-                  onChange={() => setShowPricesInView(false)}
-                  className="h-4 w-4"
-                />
-                Without Price
-              </label>
-            </div>
-          </div>
-          <button
-            onClick={() => void generateDCPdf(showPricesInView)}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
-          >
-            Download PDF
-          </button>
-        </div>
-      </div>
-
-      {/* DC Info */}
-      <div className="mb-6 grid gap-6 sm:grid-cols-2">
-        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-          <h3 className="mb-4 font-semibold text-dark dark:text-white">DC Details</h3>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-dark-6">Date:</span>
-              <span className="text-dark dark:text-white">{dayjs(dc.dc_date).format("DD MMM YYYY")}</span>
-            </div>
-            {dc.reference_no && (
-              <div className="flex justify-between">
-                <span className="text-dark-6">Reference No:</span>
-                <span className="text-dark dark:text-white">{dc.reference_no}</span>
-              </div>
-            )}
-            {dc.custom_status && (
-              <div className="flex justify-between">
-                <span className="text-dark-6">Custom Status:</span>
-                <span className="text-dark dark:text-white">{dc.custom_status}</span>
-              </div>
-            )}
-            {dc.invoice_number && (
-              <div className="flex justify-between">
-                <span className="text-dark-6">Invoice:</span>
-                <Link href={`/invoices/${dc.invoice_id}`} className="text-primary hover:underline">
-                  {dc.invoice_number}
-                </Link>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-dark-6">Stock Updated:</span>
-              <span className={dc.stock_updated ? "text-green-600" : "text-dark-6"}>
-                {dc.stock_updated ? "Yes" : "No"}
-              </span>
-            </div>
-            {dc.delivered_at && (
-              <div className="flex justify-between">
-                <span className="text-dark-6">{isDcIn ? "Received:" : "Delivered:"}</span>
-                <span className="text-dark dark:text-white">
-                  {dayjs(dc.delivered_at).format("DD MMM YYYY")}
+    <div className="mx-auto max-w-7xl space-y-6">
+      <section className="relative overflow-hidden rounded-[32px] border border-stroke bg-white p-6 shadow-1 dark:border-dark-3 dark:bg-gray-dark sm:p-8">
+        <div className="absolute inset-x-0 top-0 h-1 bg-primary" />
+        <div className="absolute right-0 top-0 h-36 w-36 rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute bottom-0 left-0 h-28 w-28 rounded-full bg-primary/5 blur-3xl" />
+        <div className="relative">
+          <div className="mb-6 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="space-y-4">
+              <Link href="/delivery-challans" className="inline-flex items-center gap-2 rounded-full border border-stroke bg-gray-1 px-4 py-2 text-sm font-medium text-dark transition hover:border-primary hover:text-primary dark:border-dark-3 dark:bg-dark-2 dark:text-white">
+                <span aria-hidden="true">&lt;</span>
+                All Delivery Challans
+              </Link>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className={cn("inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em]", getTypeColor(dc.dc_type))}>
+                  {isDcOut ? "DC Out" : "DC In"}
                 </span>
-              </div>
-            )}
-            {dc.expiry_date && (
-              <div className="flex justify-between">
-                <span className="text-dark-6">Expiry Date:</span>
-                <span className="text-dark dark:text-white">
-                  {dayjs(dc.expiry_date).format("DD MMM YYYY")}
+                <span className={cn("inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em]", getStatusColor(dc.status))}>
+                  {dc.status.replace("_", " ")}
                 </span>
+                {dc.custom_status && (
+                  <span className="inline-flex rounded-full border border-stroke bg-gray-1 px-3 py-1 text-xs font-medium text-dark dark:border-dark-3 dark:bg-dark-2 dark:text-white">
+                    {dc.custom_status}
+                  </span>
+                )}
               </div>
-            )}
-            {dc.original_dc_id && (
-              <div className="flex justify-between">
-                <span className="text-dark-6">Original DC:</span>
-                <Link href={`/delivery-challans/${dc.original_dc_id}`} className="text-primary hover:underline">
-                  View Original DC Out
-                </Link>
-              </div>
-            )}
-            {dc.return_reason && (
-              <div className="flex justify-between">
-                <span className="text-dark-6">Return Reason:</span>
-                <span className="text-dark dark:text-white">{dc.return_reason}</span>
-              </div>
-            )}
-            {dc.from_godown_id && (
-              <div className="flex justify-between">
-                <span className="text-dark-6">From Godown:</span>
-                <span className="text-dark dark:text-white">
-                  {godownMap.get(dc.from_godown_id) || dc.from_godown_id}
-                </span>
-              </div>
-            )}
-            {dc.to_godown_id && (
-              <div className="flex justify-between">
-                <span className="text-dark-6">To Godown:</span>
-                <span className="text-dark dark:text-white">
-                  {godownMap.get(dc.to_godown_id) || dc.to_godown_id}
-                </span>
-              </div>
-            )}
-            {dc.dispatch_from_address && (
               <div>
-                <span className="text-dark-6">Dispatch From:</span>
-                <p className="mt-1 text-dark dark:text-white">
-                  {dc.dispatch_from_address}
-                  {dc.dispatch_from_city && `, ${dc.dispatch_from_city}`}
-                  {dc.dispatch_from_state && `, ${dc.dispatch_from_state}`}
-                  {dc.dispatch_from_pincode && ` - ${dc.dispatch_from_pincode}`}
+                <h1 className="text-3xl font-semibold tracking-tight text-dark dark:text-white sm:text-5xl">{dc.dc_number}</h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-dark-6 sm:text-base">
+                  {isDcOut
+                    ? "Dispatch-facing delivery challan with movement, transport, and billing context in one place."
+                    : "Inward-facing delivery challan with return tracking, received goods details, and valuation context."}
                 </p>
               </div>
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-          <h3 className="mb-4 font-semibold text-dark dark:text-white">Customer</h3>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-dark-6">Name:</span>
-              <span className="text-dark dark:text-white">{dc.customer_name || "-"}</span>
             </div>
-            {dc.contact_person && (
-              <div className="flex justify-between">
-                <span className="text-dark-6">Contact Person:</span>
-                <span className="text-dark dark:text-white">{dc.contact_person}</span>
-              </div>
-            )}
-            {dc.salesman_id && (
-              <div className="flex justify-between">
-                <span className="text-dark-6">Salesman:</span>
-                <span className="text-dark dark:text-white">
-                  {employeeMap.get(dc.salesman_id) || dc.salesman_id}
-                </span>
-              </div>
-            )}
-            {dc.delivery_to_address && (
-              <div>
-                <span className="text-dark-6">Delivery Address:</span>
-                <p className="mt-1 text-dark dark:text-white">
-                  {dc.delivery_to_address}
-                  {dc.delivery_to_city && `, ${dc.delivery_to_city}`}
-                  {dc.delivery_to_state && `, ${dc.delivery_to_state}`}
-                  {dc.delivery_to_pincode && ` - ${dc.delivery_to_pincode}`}
-                </p>
-              </div>
-            )}
-            {dc.bill_title && (
-              <div className="flex justify-between">
-                <span className="text-dark-6">Bill Title:</span>
-                <span className="text-dark dark:text-white">{dc.bill_title}</span>
-              </div>
-            )}
-            {dc.bill_description && (
-              <div>
-                <span className="text-dark-6">Bill Description:</span>
-                <p className="mt-1 text-dark dark:text-white">{dc.bill_description}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
 
-      {/* Transport Details */}
-      {(dc.transporter_name || dc.vehicle_number || dc.eway_bill_number || dc.lr_number) && (
-        <div className="mb-6 rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-          <h3 className="mb-4 font-semibold text-dark dark:text-white">Transport Details</h3>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {dc.transporter_name && (
-              <div>
-                <span className="text-sm text-dark-6">Transporter:</span>
-                <p className="text-dark dark:text-white">{dc.transporter_name}</p>
+            <div className="flex flex-wrap gap-2 xl:max-w-[48%] xl:justify-end">
+              {canEdit && <Link href={editHref} className={actionButtonClass}>Edit</Link>}
+              {isDraft && (
+                <button onClick={handleDelete} disabled={actionLoading === "delete"} className={actionButtonClass}>
+                  {actionLoading === "delete" ? "Deleting..." : "Delete"}
+                </button>
+              )}
+              {canDispatch && (
+                <button onClick={() => performAction("dispatch")} disabled={actionLoading === "dispatch"} className={actionButtonClass}>
+                  {actionLoading === "dispatch" ? "..." : "Mark Dispatched"}
+                </button>
+              )}
+              {canMarkInTransit && (
+                <button onClick={() => performAction("in-transit")} disabled={actionLoading === "in-transit"} className={actionButtonClass}>
+                  {actionLoading === "in-transit" ? "..." : "Mark In Transit"}
+                </button>
+              )}
+              {canMarkDelivered && (
+                <button onClick={() => performAction("delivered", { received_by: "Customer" })} disabled={actionLoading === "delivered"} className={actionButtonClass}>
+                  {actionLoading === "delivered" ? "..." : "Mark Delivered"}
+                </button>
+              )}
+              {canMarkReceived && (
+                <button onClick={() => performAction("received", { received_by: "Warehouse" })} disabled={actionLoading === "received"} className={actionButtonClass}>
+                  {actionLoading === "received" ? "..." : "Mark as Inward"}
+                </button>
+              )}
+              {canCreateReturn && (
+                <button onClick={handleCreateReturn} disabled={actionLoading === "return"} className={actionButtonClass}>
+                  {actionLoading === "return" ? "Creating..." : "Create Return"}
+                </button>
+              )}
+              {canCancel && (
+                <button onClick={() => performAction("cancel", { reason: "Cancelled by user" })} disabled={actionLoading === "cancel"} className={actionButtonClass}>
+                  {actionLoading === "cancel" ? "..." : "Cancel"}
+                </button>
+              )}
+              <div className="rounded-full border border-stroke bg-gray-1 px-4 py-2 dark:border-dark-3 dark:bg-dark-2">
+                <div className="flex items-center gap-3">
+                  <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-dark dark:text-white">
+                    <input type="radio" name="dc_price_view_mode" checked={showPricesInView} onChange={() => setShowPricesInView(true)} className="h-4 w-4" />
+                    With Price
+                  </label>
+                  <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-dark dark:text-white">
+                    <input type="radio" name="dc_price_view_mode" checked={!showPricesInView} onChange={() => setShowPricesInView(false)} className="h-4 w-4" />
+                    Without Price
+                  </label>
+                </div>
               </div>
-            )}
-            {dc.vehicle_number && (
-              <div>
-                <span className="text-sm text-dark-6">Vehicle:</span>
-                <p className="text-dark dark:text-white">{dc.vehicle_number}</p>
-              </div>
-            )}
-            {dc.eway_bill_number && (
-              <div>
-                <span className="text-sm text-dark-6">E-Way Bill:</span>
-                <p className="text-dark dark:text-white">{dc.eway_bill_number}</p>
-              </div>
-            )}
-            {dc.lr_number && (
-              <div>
-                <span className="text-sm text-dark-6">LR Number:</span>
-                <p className="text-dark dark:text-white">{dc.lr_number}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Return Reason (for DC In) */}
-      {dc.dc_type === "dc_in" && dc.return_reason && (
-        <div className="mb-6 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
-          <h4 className="font-medium text-amber-800 dark:text-amber-400">Return Reason</h4>
-          <p className="mt-1 text-amber-700 dark:text-amber-300">{dc.return_reason}</p>
-        </div>
-      )}
-
-      {/* Line Items */}
-      <div className="mb-6 overflow-hidden rounded-lg bg-white shadow-1 dark:bg-gray-dark">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-stroke bg-gray-50 dark:border-dark-3 dark:bg-dark-2">
-                <th className="px-4 py-3 text-left text-sm font-medium text-dark dark:text-white">#</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-dark dark:text-white">Description</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-dark dark:text-white">HSN</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Quantity</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-dark dark:text-white">Unit</th>
-                {showPricesInView && (
-                  <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Unit Price</th>
-                )}
-                <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Discount %</th>
-                {showPricesInView && (
-                  <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Discount Amt</th>
-                )}
-                <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">GST %</th>
-                {showPricesInView && (
-                  <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Taxable</th>
-                )}
-                {showPricesInView && (
-                  <th className="px-4 py-3 text-right text-sm font-medium text-dark dark:text-white">Total</th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {dc.items?.map((item, index) => (
-                <tr key={item.id} className="border-b border-stroke dark:border-dark-3">
-                  <td className="px-4 py-3 text-dark-6">{index + 1}</td>
-                  <td className="px-4 py-3 text-dark dark:text-white">{item.description}</td>
-                  <td className="px-4 py-3 text-dark-6">{item.hsn_code || "-"}</td>
-                  <td className="px-4 py-3 text-right text-dark dark:text-white">{item.quantity}</td>
-                  <td className="px-4 py-3 text-dark-6">{item.unit}</td>
-                  {showPricesInView && (
-                    <td className="px-4 py-3 text-right text-dark dark:text-white">
-                      {formatMoney(item.unit_price)}
-                    </td>
-                  )}
-                  <td className="px-4 py-3 text-right text-dark-6">
-                    {item.discount_percent || 0}
-                  </td>
-                  {showPricesInView && (
-                    <td className="px-4 py-3 text-right text-dark dark:text-white">
-                      {formatMoney(item.discount_amount)}
-                    </td>
-                  )}
-                  <td className="px-4 py-3 text-right text-dark-6">
-                    {item.gst_rate || 0}
-                  </td>
-                  {showPricesInView && (
-                    <td className="px-4 py-3 text-right text-dark dark:text-white">
-                      {formatMoney(item.taxable_amount)}
-                    </td>
-                  )}
-                  {showPricesInView && (
-                    <td className="px-4 py-3 text-right text-dark dark:text-white">
-                      {formatMoney(item.total_amount)}
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Item Totals */}
-      {showPricesInView && (
-        <div className="mb-6 rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-          <h3 className="mb-4 font-semibold text-dark dark:text-white">Item Totals</h3>
-          <div className="grid gap-3 text-sm sm:grid-cols-3">
-            <div className="flex items-center justify-between">
-              <span className="text-dark-6">Subtotal</span>
-              <span className="text-dark dark:text-white">{formatMoney(itemSubtotal)}</span>
+              <button onClick={() => void generateDCPdf(showPricesInView)} className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white transition hover:bg-primary/90">
+                Download PDF
+              </button>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-dark-6">Total Tax</span>
-              <span className="text-dark dark:text-white">{formatMoney(itemTax)}</span>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className={metricCardClass}>
+              <p className="text-xs uppercase tracking-[0.22em] text-dark-6">Document Date</p>
+              <p className="mt-3 text-2xl font-semibold text-dark dark:text-white">{dayjs(dc.dc_date).format("DD MMM YYYY")}</p>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-dark-6">Grand Total</span>
-              <span className="text-dark dark:text-white">{formatMoney(itemGrandTotal)}</span>
+            <div className={metricCardClass}>
+              <p className="text-xs uppercase tracking-[0.22em] text-dark-6">Items</p>
+              <p className="mt-3 text-2xl font-semibold text-dark dark:text-white">{dc.items?.length || 0}</p>
+            </div>
+            <div className={metricCardClass}>
+              <p className="text-xs uppercase tracking-[0.22em] text-dark-6">Quantity</p>
+              <p className="mt-3 text-2xl font-semibold text-dark dark:text-white">{(dc.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0)}</p>
+            </div>
+            <div className={metricCardClass}>
+              <p className="text-xs uppercase tracking-[0.22em] text-dark-6">Total Value</p>
+              <p className="mt-3 text-2xl font-semibold text-primary">{showPricesInView ? formatMoney(itemGrandTotal) : "Hidden"}</p>
             </div>
           </div>
         </div>
-      )}
+      </section>
 
-      {/* Notes */}
-      {dc.notes && (
-        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-          <h3 className="mb-2 font-semibold text-dark dark:text-white">Notes</h3>
-          <p className="whitespace-pre-wrap text-sm text-dark-6">{dc.notes}</p>
+      <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="grid gap-6">
+          <div className={cardClass}>
+            <div className={sectionHeaderClass}>
+              <h3 className="text-lg font-semibold text-dark dark:text-white">Document Overview</h3>
+            </div>
+            <div className="grid gap-4 p-6 md:grid-cols-2">
+              <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">Reference</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{dc.reference_no || "-"}</p></div>
+              <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">Invoice</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{dc.invoice_number ? <Link href={`/invoices/${dc.invoice_id}`} className="text-primary hover:underline">{dc.invoice_number}</Link> : "-"}</p></div>
+              <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">Stock Updated</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{dc.stock_updated ? "Yes" : "No"}</p></div>
+              <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">{isDcIn ? "Received On" : "Delivered On"}</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{dc.delivered_at ? dayjs(dc.delivered_at).format("DD MMM YYYY") : "-"}</p></div>
+              <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">From Godown</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{dc.from_godown_id ? godownMap.get(dc.from_godown_id) || dc.from_godown_id : "-"}</p></div>
+              <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">To Godown</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{dc.to_godown_id ? godownMap.get(dc.to_godown_id) || dc.to_godown_id : "-"}</p></div>
+              {dc.expiry_date && <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">Expiry Date</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{dayjs(dc.expiry_date).format("DD MMM YYYY")}</p></div>}
+              {dc.original_dc_id && <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">Original DC</p><p className="mt-2 text-base font-medium text-dark dark:text-white"><Link href={`/delivery-challans/${dc.original_dc_id}`} className="text-primary hover:underline">View Original DC Out</Link></p></div>}
+              {dc.dispatch_from_address && (
+                <div className="md:col-span-2 rounded-[24px] border border-primary/20 bg-primary/5 p-5 dark:border-primary/20 dark:bg-primary/10">
+                  <p className="text-xs uppercase tracking-[0.18em] text-primary">Dispatch From</p>
+                  <p className="mt-3 text-sm leading-6 text-dark dark:text-white">
+                    {dc.dispatch_from_address}
+                    {dc.dispatch_from_city && `, ${dc.dispatch_from_city}`}
+                    {dc.dispatch_from_state && `, ${dc.dispatch_from_state}`}
+                    {dc.dispatch_from_pincode && ` - ${dc.dispatch_from_pincode}`}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className={cardClass}>
+            <div className={sectionHeaderClass}>
+              <h3 className="text-lg font-semibold text-dark dark:text-white">Items Ledger</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[980px]">
+                <thead>
+                  <tr className="border-b border-stroke bg-gray-1 dark:border-dark-3 dark:bg-dark-2">
+                    <th className="px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-dark-6">#</th>
+                    <th className="px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-dark-6">Description</th>
+                    <th className="px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-dark-6">HSN</th>
+                    <th className="px-4 py-4 text-right text-xs font-semibold uppercase tracking-[0.2em] text-dark-6">Qty</th>
+                    <th className="px-4 py-4 text-left text-xs font-semibold uppercase tracking-[0.2em] text-dark-6">Unit</th>
+                    {showPricesInView && <th className="px-4 py-4 text-right text-xs font-semibold uppercase tracking-[0.2em] text-dark-6">Unit Price</th>}
+                    <th className="px-4 py-4 text-right text-xs font-semibold uppercase tracking-[0.2em] text-dark-6">Discount %</th>
+                    {showPricesInView && <th className="px-4 py-4 text-right text-xs font-semibold uppercase tracking-[0.2em] text-dark-6">Discount Amt</th>}
+                    <th className="px-4 py-4 text-right text-xs font-semibold uppercase tracking-[0.2em] text-dark-6">GST %</th>
+                    {showPricesInView && <th className="px-4 py-4 text-right text-xs font-semibold uppercase tracking-[0.2em] text-dark-6">Taxable</th>}
+                    {showPricesInView && <th className="px-4 py-4 text-right text-xs font-semibold uppercase tracking-[0.2em] text-dark-6">Total</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dc.items?.map((item, index) => (
+                    <tr key={item.id} className="border-b border-stroke transition-colors hover:bg-gray-1 dark:border-dark-3 dark:hover:bg-dark-2">
+                      <td className="px-4 py-4 align-top text-dark-6">{index + 1}</td>
+                      <td className="px-4 py-4 align-top"><div className="max-w-[320px]"><p className="font-medium text-dark dark:text-white">{item.description}</p></div></td>
+                      <td className="px-4 py-4 align-top text-dark-6">{item.hsn_code || "-"}</td>
+                      <td className="px-4 py-4 align-top text-right font-medium text-dark dark:text-white">{item.quantity}</td>
+                      <td className="px-4 py-4 align-top text-dark-6">{item.unit}</td>
+                      {showPricesInView && <td className="px-4 py-4 align-top text-right font-medium text-dark dark:text-white">{formatMoney(item.unit_price)}</td>}
+                      <td className="px-4 py-4 align-top text-right text-dark-6">{item.discount_percent || 0}</td>
+                      {showPricesInView && <td className="px-4 py-4 align-top text-right font-medium text-dark dark:text-white">{formatMoney(item.discount_amount)}</td>}
+                      <td className="px-4 py-4 align-top text-right text-dark-6">{item.gst_rate || 0}</td>
+                      {showPricesInView && <td className="px-4 py-4 align-top text-right font-medium text-dark dark:text-white">{formatMoney(item.taxable_amount)}</td>}
+                      {showPricesInView && <td className="px-4 py-4 align-top text-right font-semibold text-primary">{formatMoney(item.total_amount)}</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      )}
+
+        <div className="grid gap-6">
+          <div className={cardClass}>
+            <div className={sectionHeaderClass}>
+              <h3 className="text-lg font-semibold text-dark dark:text-white">Customer & Billing</h3>
+            </div>
+            <div className="space-y-4 p-6">
+              <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">Customer</p><p className="mt-2 text-lg font-semibold text-dark dark:text-white">{dc.customer_name || "-"}</p></div>
+              {dc.contact_person && <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">Contact Person</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{dc.contact_person}</p></div>}
+              {dc.salesman_id && <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">Salesman</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{employeeMap.get(dc.salesman_id) || dc.salesman_id}</p></div>}
+              {dc.delivery_to_address && (
+                <div className="rounded-[24px] border border-primary/20 bg-primary/5 p-5 dark:border-primary/20 dark:bg-primary/10">
+                  <p className="text-xs uppercase tracking-[0.18em] text-primary">Delivery Address</p>
+                  <p className="mt-3 text-sm leading-6 text-dark dark:text-white">
+                    {dc.delivery_to_address}
+                    {dc.delivery_to_city && `, ${dc.delivery_to_city}`}
+                    {dc.delivery_to_state && `, ${dc.delivery_to_state}`}
+                    {dc.delivery_to_pincode && ` - ${dc.delivery_to_pincode}`}
+                  </p>
+                </div>
+              )}
+              {dc.bill_title && <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">Bill Title</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{dc.bill_title}</p></div>}
+              {dc.bill_description && <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">Bill Description</p><p className="mt-2 text-sm leading-6 text-dark-6">{dc.bill_description}</p></div>}
+            </div>
+          </div>
+
+          {(dc.transporter_name || dc.vehicle_number || dc.eway_bill_number || dc.lr_number) && (
+            <div className={cardClass}>
+              <div className={sectionHeaderClass}>
+                <h3 className="text-lg font-semibold text-dark dark:text-white">Transport Capsule</h3>
+              </div>
+              <div className="grid gap-4 p-6 sm:grid-cols-2">
+                {dc.transporter_name && <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">Transporter</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{dc.transporter_name}</p></div>}
+                {dc.vehicle_number && <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">Vehicle</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{dc.vehicle_number}</p></div>}
+                {dc.eway_bill_number && <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">E-Way Bill</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{dc.eway_bill_number}</p></div>}
+                {dc.lr_number && <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">LR Number</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{dc.lr_number}</p></div>}
+              </div>
+            </div>
+          )}
+
+          {showPricesInView && (
+            <div className={cardClass}>
+              <div className={sectionHeaderClass}>
+                <h3 className="text-lg font-semibold text-dark dark:text-white">Financial Snapshot</h3>
+              </div>
+              <div className="space-y-4 p-6">
+                <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 dark:border-primary/20 dark:bg-primary/10">
+                  <p className="text-xs uppercase tracking-[0.18em] text-primary">Grand Total</p>
+                  <p className="mt-3 text-3xl font-semibold text-dark dark:text-white">{formatMoney(itemGrandTotal)}</p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">Subtotal</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{formatMoney(itemSubtotal)}</p></div>
+                  <div className={detailTileClass}><p className="text-xs uppercase tracking-[0.18em] text-dark-6">Tax</p><p className="mt-2 text-base font-medium text-dark dark:text-white">{formatMoney(itemTax)}</p></div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {dc.dc_type === "dc_in" && dc.return_reason && (
+            <div className="overflow-hidden rounded-[24px] border border-stroke bg-white p-6 shadow-1 dark:border-dark-3 dark:bg-gray-dark">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Return Reason</p>
+              <p className="mt-3 text-sm leading-6 text-dark-6">{dc.return_reason}</p>
+            </div>
+          )}
+
+          {dc.notes && (
+            <div className={cardClass}>
+              <div className={sectionHeaderClass}>
+                <h3 className="text-lg font-semibold text-dark dark:text-white">Notes</h3>
+              </div>
+              <div className="p-6">
+                <p className="whitespace-pre-wrap text-sm leading-6 text-dark-6">{dc.notes}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
+
 

@@ -1105,7 +1105,7 @@ export default function DeliveryChallansPage() {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => router.push(`/delivery-challans/new?type=${forcedDcType || "dc_out"}`)}
+              onClick={() => router.push(`/delivery-challans/${forcedDcType === "dc_in" ? "dc-in" : "dc-out"}/new`)}
               className="px-4 py-2 transition bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2"
             >
               <Plus className="w-5 h-5" />
@@ -1384,9 +1384,9 @@ export default function DeliveryChallansPage() {
                           : "Create your first delivery challan to start managing dispatches."}
                       </p>
                       <div className="flex gap-2">
-                        <button onClick={() => router.push('/delivery-challans/new?type=dc_out')} className="text-indigo-600 hover:underline dark:text-indigo-400">Create DC Out</button>
+                        <button onClick={() => router.push('/delivery-challans/dc-out/new')} className="text-indigo-600 hover:underline dark:text-indigo-400">Create DC Out</button>
                         <span className="text-gray-400">|</span>
-                        <button onClick={() => router.push('/delivery-challans/new?type=dc_in')} className="text-indigo-600 hover:underline dark:text-indigo-400">Create DC In</button>
+                        <button onClick={() => router.push('/delivery-challans/dc-in/new')} className="text-indigo-600 hover:underline dark:text-indigo-400">Create DC In</button>
                       </div>
                     </div>
                   </td>
@@ -1487,7 +1487,7 @@ export default function DeliveryChallansPage() {
                                 <span>View Details</span>
                               </Link>
                               <Link
-                                href={`/delivery-challans/new?editId=${dc.id}&type=${dc.dc_type || "dc_out"}`}
+                                href={`/delivery-challans/${dc.dc_type === "dc_in" ? "dc-in" : "dc-out"}/new?editId=${dc.id}`}
                                 onClick={() => setActiveActionMenu(null)}
                                 className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                               >

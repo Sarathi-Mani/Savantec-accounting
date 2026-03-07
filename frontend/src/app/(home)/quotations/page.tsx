@@ -993,7 +993,7 @@ export default function QuotationsPage() {
 
   const handleConvertToDC = (quotationId: string) => {
     if (!confirm("Create a Delivery Challan from this quotation?")) return;
-    router.push(`/delivery-challans/new?type=dc_out&fromQuotation=${quotationId}`);
+    router.push(`/delivery-challans/dc-out/new?fromQuotation=${quotationId}`);
   };
 
   const handleConvertToSalesOrder = (quotationId: string) => {

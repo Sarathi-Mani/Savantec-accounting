@@ -430,7 +430,7 @@ export default function InvoiceDetailPage() {
           {/* Create DC Button */}
           {!["cancelled", "void", "refunded", "draft"].includes(invoice.status) && (
             <Link
-              href={`/delivery-challans/new?type=dc_out&invoice_id=${invoice.id}`}
+              href={`/delivery-challans/dc-out/new?invoice_id=${invoice.id}`}
               className="inline-flex items-center gap-2 rounded-lg border border-indigo-500 bg-white px-4 py-2.5 font-medium text-indigo-500 transition hover:bg-indigo-50 dark:border-indigo-400 dark:bg-gray-dark dark:text-indigo-400 dark:hover:bg-indigo-900/20"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

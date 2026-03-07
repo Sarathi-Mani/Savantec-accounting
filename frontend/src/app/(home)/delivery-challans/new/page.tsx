@@ -2,8 +2,8 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { customersApi, productsApi, inventoryApi, Customer, Product, Godown } from "@/services/api";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import Select from 'react-select';
 
 interface DCItem {
@@ -43,9 +43,125 @@ interface Salesman {
   employee_code?: string;
 }
 
+function ProductSelectField({
+  value,
+  onChange,
+  products,
+  placeholder = "Search product",
+}: {
+  value: number | string | undefined;
+  onChange: (product: Product | null) => void;
+  products: Product[];
+  placeholder?: string;
+}) {
+  const selectRef = useRef<any>(null);
+
+  const options = products.map((product) => ({
+    value: product.id,
+    label: `${product.name} ${product.sku ? `(${product.sku})` : ""}`,
+    subLabel: product.description || "",
+    product,
+  }));
+
+  return (
+    <Select
+      ref={selectRef}
+      options={options}
+      className="w-full"
+      value={options.find((option) => String(option.value) === String(value)) || null}
+      getOptionValue={(option) => String(option.value)}
+      getOptionLabel={(option) => option.label}
+      onChange={(selected: any) => onChange(selected ? selected.product : null)}
+      placeholder={placeholder}
+      isClearable
+      openMenuOnFocus
+      openMenuOnClick
+      closeMenuOnSelect
+      tabSelectsValue
+      blurInputOnSelect={false}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const menuOptions = selectRef.current?.props?.options;
+          const inputValue = selectRef.current?.select?.state?.inputValue;
+          if (menuOptions?.length && inputValue) {
+            onChange(menuOptions[0].product);
+            selectRef.current.blur();
+          }
+        }
+      }}
+      menuPortalTarget={typeof window !== "undefined" ? document.body : null}
+      menuPosition="fixed"
+      styles={{
+        container: (base: any) => ({
+          ...base,
+          width: "100%",
+          minWidth: "100%",
+        }),
+        control: (base: any, state: any) => ({
+          ...base,
+          minHeight: "36px",
+          height: "36px",
+          width: "100%",
+          borderRadius: "0.375rem",
+          borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
+          boxShadow: state.isFocused ? "0 0 0 1px rgba(99,102,241,0.5)" : "none",
+        }),
+        valueContainer: (base: any) => ({
+          ...base,
+          height: "36px",
+          padding: "0 8px",
+        }),
+        singleValue: (base: any) => ({
+          ...base,
+          maxWidth: "100%",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }),
+        input: (base: any) => ({
+          ...base,
+          margin: "0px",
+        }),
+        indicatorsContainer: (base: any) => ({
+          ...base,
+          height: "36px",
+        }),
+        menuPortal: (base: any) => ({
+          ...base,
+          zIndex: 9999,
+        }),
+        menu: (base: any) => ({
+          ...base,
+          minWidth: "620px",
+          zIndex: 9999,
+        }),
+      }}
+      classNamePrefix="react-select"
+      menuPlacement="auto"
+      formatOptionLabel={(option: any, { context }: any) => {
+        if (context === "value") {
+          return option.label;
+        }
+        return (
+          <div>
+            <div className="whitespace-normal break-words text-sm">{option.label}</div>
+            {option.subLabel ? (
+              <div className="whitespace-normal break-words text-xs text-gray-500 dark:text-gray-400">
+                {option.subLabel}
+              </div>
+            ) : null}
+          </div>
+        );
+      }}
+    />
+  );
+}
+
 export default function NewDeliveryChallanPage() {
   const { company } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const getToken = () => {
     if (typeof window === "undefined") return null;
     return (
@@ -53,7 +169,11 @@ export default function NewDeliveryChallanPage() {
     );
   };
   const searchParams = useSearchParams();
-  const dcType = searchParams.get("type") || "dc_out";
+  const dcType = pathname?.includes("/delivery-challans/dc-in/")
+    ? "dc_in"
+    : pathname?.includes("/delivery-challans/dc-out/")
+      ? "dc_out"
+      : searchParams.get("type") || "dc_out";
   const editId = searchParams.get("editId");
   const isEditMode = Boolean(editId);
   const invoiceId = searchParams.get("invoice_id");
@@ -123,8 +243,19 @@ export default function NewDeliveryChallanPage() {
   ]);
 
   const [error, setError] = useState<string | null>(null);
-  const [productSearch, setProductSearch] = useState("");
-  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const selectedCustomer = customers.find((customer) => String(customer.id) === String(formData.customer_id));
+
+  const normalizeStateCode = (value: any) => {
+    const text = String(value ?? "").trim();
+    const match = text.match(/\d{2}/);
+    return match ? match[0] : text;
+  };
+
+  const getPlaceOfSupply = (customer?: Customer) =>
+    normalizeStateCode(customer?.billing_state_code || (customer as any)?.state_code || company?.state_code || "");
+
+  const isIntraStateSupply = (stateCode?: string) =>
+    normalizeStateCode(stateCode) === normalizeStateCode(company?.state_code);
 
   const formatApiError = (payload: any): string => {
     const fallback = "Failed to save delivery challan";
@@ -442,6 +573,26 @@ export default function NewDeliveryChallanPage() {
     }
   }, [prefillSalesmanName, salesmen, formData.salesman_id]);
 
+  useEffect(() => {
+    const placeOfSupply = getPlaceOfSupply(selectedCustomer);
+    setItems((prevItems) =>
+      prevItems.map((item) => ({
+        ...item,
+        ...(isIntraStateSupply(placeOfSupply)
+          ? {
+              cgst_rate: Number(item.gst_rate || 0) / 2,
+              sgst_rate: Number(item.gst_rate || 0) / 2,
+              igst_rate: 0,
+            }
+          : {
+              cgst_rate: 0,
+              sgst_rate: 0,
+              igst_rate: Number(item.gst_rate || 0),
+            }),
+      }))
+    );
+  }, [formData.customer_id, company?.state_code]);
+
 
  // Fetch next DC number
 const fetchNextDcNumber = async () => {
@@ -590,27 +741,66 @@ const fetchNextDcNumber = async () => {
     }
   };
 
-  // Calculate totals (unchanged)
   const calculateTotals = () => {
     let subtotal = 0;
     let totalTax = 0;
+    let cgstTotal = 0;
+    let sgstTotal = 0;
+    let igstTotal = 0;
     let totalItemDiscount = 0;
 
     items.forEach(item => {
       const itemTotal = item.quantity * item.unit_price;
       const discount = item.discount_percent > 0 ? itemTotal * (item.discount_percent / 100) : 0;
       const taxable = itemTotal - discount;
-      const tax = taxable * (item.gst_rate / 100);
+      const itemCgstRate = Number(item.cgst_rate || 0);
+      const itemSgstRate = Number(item.sgst_rate || 0);
+      const itemIgstRate = Number(item.igst_rate || 0);
+      const hasExplicitSplitRates = (itemCgstRate + itemSgstRate + itemIgstRate) > 0;
+
+      let itemCgst = 0;
+      let itemSgst = 0;
+      let itemIgst = 0;
+
+      if (hasExplicitSplitRates) {
+        itemCgst = taxable * (itemCgstRate / 100);
+        itemSgst = taxable * (itemSgstRate / 100);
+        itemIgst = taxable * (itemIgstRate / 100);
+      } else {
+        const fallbackTax = taxable * (Number(item.gst_rate || 0) / 100);
+        if (isIntraStateSupply(getPlaceOfSupply(selectedCustomer))) {
+          itemCgst = fallbackTax / 2;
+          itemSgst = fallbackTax / 2;
+        } else {
+          itemIgst = fallbackTax;
+        }
+      }
+
+      const tax = itemCgst + itemSgst + itemIgst;
 
       subtotal += taxable;
       totalTax += tax;
+      cgstTotal += itemCgst;
+      sgstTotal += itemSgst;
+      igstTotal += itemIgst;
       totalItemDiscount += discount;
     });
 
-    // Calculate additional charges and discounts
-    const freightCharges = formData.freightCharges || 0;
-    const pfCharges = formData.pfCharges || 0;
+    const freightBase = formData.freightCharges || 0;
+    const pfBase = formData.pfCharges || 0;
     const discountOnAll = formData.discountOnAll || 0;
+
+    const getTaxRateFromType = (taxType: string) => {
+      const match = String(taxType || "").match(/tax@(\d+)%/);
+      return match ? parseInt(match[1], 10) : 0;
+    };
+
+    const freightTax = freightBase * (getTaxRateFromType(formData.freightType) / 100);
+    const pfTax = pfBase * (getTaxRateFromType(formData.pfType) / 100);
+    const freightChargesWithTax = freightBase + freightTax;
+    const pfChargesWithTax = pfBase + pfTax;
+    const chargesTaxTotal = freightTax + pfTax;
+    totalTax += chargesTaxTotal;
 
     const discountAllAmount = formData.discountType === 'percentage'
       ? subtotal * (discountOnAll / 100)
@@ -618,25 +808,32 @@ const fetchNextDcNumber = async () => {
 
     const totalBeforeTax = subtotal;
     const totalAfterTax = totalBeforeTax + totalTax;
-    const totalAfterCharges = totalAfterTax + freightCharges + pfCharges;
+    const totalAfterCharges = totalAfterTax + freightBase + pfBase;
     const totalAfterDiscountAll = totalAfterCharges - discountAllAmount;
     const grandTotal = totalAfterDiscountAll + (formData.roundOff || 0);
 
     return {
       subtotal: Number(totalBeforeTax.toFixed(2)),
       totalTax: Number(totalTax.toFixed(2)),
+      cgstTotal: Number(cgstTotal.toFixed(2)),
+      sgstTotal: Number(sgstTotal.toFixed(2)),
+      igstTotal: Number(igstTotal.toFixed(2)),
       itemDiscount: Number(totalItemDiscount.toFixed(2)),
-      freight: Number(freightCharges.toFixed(2)),
-      pf: Number(pfCharges.toFixed(2)),
+      freight: Number(freightChargesWithTax.toFixed(2)),
+      pf: Number(pfChargesWithTax.toFixed(2)),
       discountAll: Number(discountAllAmount.toFixed(2)),
       roundOff: Number(formData.roundOff || 0),
       grandTotal: Number(grandTotal.toFixed(2)),
       totalAfterCharges: Number(totalAfterCharges.toFixed(2)),
       totalAfterDiscountAll: Number(totalAfterDiscountAll.toFixed(2)),
+      chargesTax: Number(chargesTaxTotal.toFixed(2)),
     };
   };
 
   const totals = calculateTotals();
+  const freightBaseValue = Number(formData.freightCharges || 0);
+  const pfBaseValue = Number(formData.pfCharges || 0);
+  const summaryDiscountOnAllValue = Number((totals.discountAll + totals.itemDiscount).toFixed(2));
 
   const addItem = (prefill: Partial<DCItem> = {}) => {
     setItems(prev => [
@@ -677,7 +874,7 @@ const fetchNextDcNumber = async () => {
           if (field === 'product_id' && value) {
             const selectedProduct = products.find(p => p.id === value);
             if (selectedProduct) {
-              updated.description = selectedProduct.name;
+              updated.description = selectedProduct.description || selectedProduct.name;
               updated.unit_price = selectedProduct.unit_price || 0;
               updated.gst_rate = parseFloat(selectedProduct.gst_rate as any) || 18;
               updated.hsn_code = selectedProduct.hsn_code || "";
@@ -685,57 +882,30 @@ const fetchNextDcNumber = async () => {
             }
           }
 
-          // Recalculate item totals
           const itemTotal = updated.quantity * updated.unit_price;
           const discount = updated.discount_percent > 0 ? 
             itemTotal * (updated.discount_percent / 100) : 0;
           const taxable = itemTotal - discount;
-          const tax = taxable * (updated.gst_rate / 100);
 
           updated.discount_amount = discount;
           updated.taxable_amount = taxable;
-          updated.total_amount = taxable + tax;
+          updated.total_amount = itemTotal;
 
-          // Set CGST/SGST/IGST rates (assuming intra-state for delivery challan)
-          updated.cgst_rate = updated.gst_rate / 2;
-          updated.sgst_rate = updated.gst_rate / 2;
-          updated.igst_rate = 0;
+          if (isIntraStateSupply(getPlaceOfSupply(selectedCustomer))) {
+            updated.cgst_rate = updated.gst_rate / 2;
+            updated.sgst_rate = updated.gst_rate / 2;
+            updated.igst_rate = 0;
+          } else {
+            updated.cgst_rate = 0;
+            updated.sgst_rate = 0;
+            updated.igst_rate = updated.gst_rate;
+          }
 
           return updated;
         }
         return item;
       });
     });
-  };
-
-  const handleProductSearch = (value: string) => {
-    setProductSearch(value);
-
-    if (!value) {
-      setSearchResults([]);
-      return;
-    }
-
-    const results = products.filter(p =>
-      p.name.toLowerCase().includes(value.toLowerCase()) ||
-      (p.sku && p.sku.toLowerCase().includes(value.toLowerCase()))
-    );
-
-    setSearchResults(results);
-  };
-
-  const handleSearchSelect = (product: Product) => {
-    addItem({
-      product_id: product.id,
-      description: product.name,
-      hsn_code: product.hsn_code || "",
-      unit_price: product.unit_price || 0,
-      gst_rate: parseFloat(product.gst_rate as any) || 18,
-      unit: product.unit || "unit",
-    });
-
-    setProductSearch("");
-    setSearchResults([]);
   };
 
  const handleSubmit = async (e: React.FormEvent) => {
@@ -772,6 +942,9 @@ const fetchNextDcNumber = async () => {
         discount_percent: item.discount_percent,
         discount_amount: item.discount_amount,
         gst_rate: item.gst_rate,
+        cgst_rate: item.cgst_rate,
+        sgst_rate: item.sgst_rate,
+        igst_rate: item.igst_rate,
         taxable_amount: item.taxable_amount,
         total_amount: item.total_amount,
         godown_id: dcType === "dc_out" ? formData.from_godown_id : formData.to_godown_id,
@@ -1181,116 +1354,130 @@ const fetchNextDcNumber = async () => {
               </div>
             )}
 
-            {/* SECTION 2: Delivery Challan Items (unchanged) */}
+            {/* SECTION 2: Delivery Challan Items */}
             <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-dark dark:text-white">Delivery Challan Items</h2>
-                <div className="flex gap-2">
-                  <div className="text-dark-6">
-                    Total Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
+              <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-dark dark:text-white">Delivery Challan Items</h2>
+                  <p className="mt-1 text-sm text-dark-6">Add items with the same discount and tax behavior used in sales.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <div className="rounded-lg border border-stroke px-3 py-2 text-sm text-dark-6 dark:border-dark-3">
+                    Qty: {items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)}
                   </div>
-                  <div className="text-dark-6">
+                  <div className="rounded-lg border border-stroke px-3 py-2 text-sm text-dark-6 dark:border-dark-3">
                     Items: {items.length}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => addItem()}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Item
+                  </button>
                 </div>
               </div>
 
-              {/* Item Search */}
-              <div className="mb-4 flex gap-2">
-                <div className="relative flex-1">
-                  
-                 
-                  {searchResults.length > 0 && (
-                    <div className="absolute z-50 mt-1 w-full rounded-lg border bg-white shadow dark:bg-gray-dark">
-                      {searchResults.map(product => (
-                        <div
-                          key={product.id}
-                          onClick={() => handleSearchSelect(product)}
-                          className="cursor-pointer px-4 py-2 hover:bg-gray-100 dark:hover:bg-dark-3"
-                        >
-                          {product.name} {product.sku && `(${product.sku})`}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => addItem()}
-                  className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Items Table */}
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1000px]">
+                <table className="w-full min-w-[1800px] border-collapse">
                   <thead>
-                    <tr className="border-b border-stroke dark:border-dark-3">
-                      <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Product</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Description</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">HSN</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Quantity</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Unit Price</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Discount</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax Amount</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Tax</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Total Amount</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
+                    <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+                      <th className="w-[760px] min-w-[760px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Item</th>
+                      <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">HSN Code</th>
+                      <th className="w-[220px] min-w-[220px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Description</th>
+                      <th className="w-[100px] min-w-[100px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Qty</th>
+                      <th className="w-[100px] min-w-[100px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Unit</th>
+                      <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Unit Price</th>
+                      <th className="w-[100px] min-w-[100px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount %</th>
+                      <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount Amt</th>
+                      <th className="w-[80px] min-w-[80px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">GST %</th>
+                      <th className="w-[120px] min-w-[120px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Taxable</th>
+                      <th className="w-[130px] min-w-[130px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Line Total</th>
+                      <th className="w-[60px] min-w-[60px] px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {items.map((item) => (
                       <tr key={item.id} className="border-b border-stroke last:border-0 dark:border-dark-3">
-                        <td className="px-4 py-3">
-                          <select
-                            value={item.product_id || ""}
-                            onChange={(e) => updateItem(item.id, 'product_id', e.target.value)}
-                            className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                          >
-                            <option value="">Select Product</option>
-                            {products.map((product) => (
-                              <option key={product.id} value={product.id}>
-                                {product.name} {product.sku && `(${product.sku})`}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="px-4 py-3">
-                          <input
-                            type="text"
-                            value={item.description}
-                            onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                            className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                            placeholder="Description"
+                        <td className="w-[760px] min-w-[760px] px-3 py-3">
+                          <ProductSelectField
+                            value={item.product_id}
+                            products={products}
+                            onChange={(product) => {
+                              if (!product) return;
+                              setItems((prev) =>
+                                prev.map((currentItem) => {
+                                  if (currentItem.id !== item.id) return currentItem;
+                                  const unitPrice = product.unit_price ?? 0;
+                                  const gstRate = Number(product.gst_rate as any) || currentItem.gst_rate || 18;
+                                  const qty = currentItem.quantity || 1;
+                                  const taxable = qty * unitPrice;
+
+                                  return {
+                                    ...currentItem,
+                                    product_id: product.id,
+                                    description: product.description || product.name,
+                                    hsn_code: product.hsn_code || (product as any).hsn || "",
+                                    unit: product.unit || "unit",
+                                    unit_price: unitPrice,
+                                    gst_rate: gstRate,
+                                    discount_percent: currentItem.discount_percent || 0,
+                                    discount_amount: 0,
+                                    taxable_amount: taxable,
+                                    total_amount: qty * unitPrice,
+                                    ...(isIntraStateSupply(getPlaceOfSupply(selectedCustomer))
+                                      ? { cgst_rate: gstRate / 2, sgst_rate: gstRate / 2, igst_rate: 0 }
+                                      : { cgst_rate: 0, sgst_rate: 0, igst_rate: gstRate }),
+                                  };
+                                })
+                              );
+                            }}
                           />
                         </td>
                         <td className="px-4 py-3">
                           <input
                             type="text"
                             value={item.hsn_code}
-                            onChange={(e) => updateItem(item.id, 'hsn_code', e.target.value)}
-                            className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                            onChange={(e) => updateItem(item.id, "hsn_code", e.target.value)}
+                            className="w-full min-w-[100px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
                             placeholder="HSN"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="text"
+                            value={item.description}
+                            onChange={(e) => updateItem(item.id, "description", e.target.value)}
+                            className="w-full min-w-[180px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                            placeholder="Description"
                           />
                         </td>
                         <td className="px-4 py-3">
                           <input
                             type="number"
                             value={item.quantity}
-                            onChange={(e) => updateItem(item.id, 'quantity', parseFloat(e.target.value))}
+                            onChange={(e) => updateItem(item.id, "quantity", parseFloat(e.target.value) || 0)}
                             className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
                             min="1"
                           />
                         </td>
                         <td className="px-4 py-3">
                           <input
+                            type="text"
+                            value={item.unit}
+                            onChange={(e) => updateItem(item.id, "unit", e.target.value)}
+                            className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
+                            placeholder="Unit"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
                             type="number"
                             value={item.unit_price}
-                            onChange={(e) => updateItem(item.id, 'unit_price', parseFloat(e.target.value))}
+                            onChange={(e) => updateItem(item.id, "unit_price", parseFloat(e.target.value) || 0)}
                             className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
                             min="0"
                             step="0.01"
@@ -1301,7 +1488,7 @@ const fetchNextDcNumber = async () => {
                             <input
                               type="number"
                               value={item.discount_percent}
-                              onChange={(e) => updateItem(item.id, 'discount_percent', parseFloat(e.target.value))}
+                              onChange={(e) => updateItem(item.id, "discount_percent", parseFloat(e.target.value) || 0)}
                               className="w-16 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
                               min="0"
                               step="0.01"
@@ -1309,15 +1496,11 @@ const fetchNextDcNumber = async () => {
                             <span className="flex items-center px-1 py-1.5 text-xs">%</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3">
-                          <span className="font-medium">
-                            ₹{(item.discount_amount || 0).toFixed(2)}
-                          </span>
-                        </td>
+                        <td className="px-4 py-3"><span className="font-medium">Rs. {(item.discount_amount || 0).toFixed(2)}</span></td>
                         <td className="px-4 py-3">
                           <select
                             value={item.gst_rate}
-                            onChange={(e) => updateItem(item.id, 'gst_rate', parseFloat(e.target.value))}
+                            onChange={(e) => updateItem(item.id, "gst_rate", parseFloat(e.target.value) || 0)}
                             className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
                           >
                             <option value="0">0%</option>
@@ -1327,9 +1510,8 @@ const fetchNextDcNumber = async () => {
                             <option value="28">28%</option>
                           </select>
                         </td>
-                        <td className="px-4 py-3 font-medium">
-                          ₹{item.total_amount.toFixed(2)}
-                        </td>
+                        <td className="px-4 py-3 font-medium">Rs. {Number(item.taxable_amount || 0).toFixed(2)}</td>
+                        <td className="px-4 py-3 font-medium">Rs. {((Number(item.quantity) || 0) * (Number(item.unit_price) || 0)).toFixed(2)}</td>
                         <td className="px-4 py-3">
                           <button
                             type="button"
@@ -1351,50 +1533,65 @@ const fetchNextDcNumber = async () => {
 
             {/* SECTION 3: Charges & Discounts and Total Summary */}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-              {/* Left side - Charges & Discounts */}
               <div className="lg:col-span-2">
                 <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                   <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Charges & Discounts</h2>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
-                      <div className="flex gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
                         <input
                           type="number"
                           value={formData.freightCharges}
-                          onChange={(e) => handleFormChange('freightCharges', parseFloat(e.target.value))}
-                          className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                          onChange={(e) => handleFormChange("freightCharges", parseFloat(e.target.value) || 0)}
+                          className="min-w-0 w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                           min="0"
+                          step="0.01"
                         />
                         <select
                           value={formData.freightType}
-                          onChange={(e) => handleFormChange('freightType', e.target.value)}
-                          className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                          onChange={(e) => handleFormChange("freightType", e.target.value)}
+                          className="w-28 shrink-0 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                         >
                           <option value="fixed">Fixed</option>
-                          <option value="percentage">%</option>
+                          <option value="tax@0%">Tax@0%</option>
+                          <option value="tax@5%">Tax@5%</option>
+                          <option value="tax@12%">Tax@12%</option>
+                          <option value="tax@18%">Tax@18%</option>
+                          <option value="tax@28%">Tax@28%</option>
                         </select>
                       </div>
+                      {String(formData.freightType).startsWith("tax@") && formData.freightCharges > 0 && (
+                        <div className="mt-1 text-xs text-dark-6">Base: Rs. {formData.freightCharges.toFixed(2)} + {String(formData.freightType).replace("tax@", "")} tax = Rs. {totals.freight.toFixed(2)}</div>
+                      )}
                     </div>
                     <div>
                       <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-                      <div className="flex gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
                         <input
                           type="number"
                           value={formData.pfCharges}
-                          onChange={(e) => handleFormChange('pfCharges', parseFloat(e.target.value))}
-                          className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                          onChange={(e) => handleFormChange("pfCharges", parseFloat(e.target.value) || 0)}
+                          className="min-w-0 w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                           min="0"
+                          step="0.01"
                         />
                         <select
                           value={formData.pfType}
-                          onChange={(e) => handleFormChange('pfType', e.target.value)}
-                          className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
+                          onChange={(e) => handleFormChange("pfType", e.target.value)}
+                          className="w-28 shrink-0 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                         >
                           <option value="fixed">Fixed</option>
-                          <option value="percentage">%</option>
+                          <option value="tax@0%">Tax@0%</option>
+                          <option value="tax@5%">Tax@5%</option>
+                          <option value="tax@12%">Tax@12%</option>
+                          <option value="tax@18%">Tax@18%</option>
+                          <option value="tax@28%">Tax@28%</option>
                         </select>
                       </div>
+                      {String(formData.pfType).startsWith("tax@") && formData.pfCharges > 0 && (
+                        <div className="mt-1 text-xs text-dark-6">Base: Rs. {formData.pfCharges.toFixed(2)} + {String(formData.pfType).replace("tax@", "")} tax = Rs. {totals.pf.toFixed(2)}</div>
+                      )}
                     </div>
                     <div>
                       <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount on All</label>
@@ -1402,13 +1599,14 @@ const fetchNextDcNumber = async () => {
                         <input
                           type="number"
                           value={formData.discountOnAll}
-                          onChange={(e) => handleFormChange('discountOnAll', parseFloat(e.target.value))}
+                          onChange={(e) => handleFormChange("discountOnAll", parseFloat(e.target.value) || 0)}
                           className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                           min="0"
+                          step="0.01"
                         />
                         <select
                           value={formData.discountType}
-                          onChange={(e) => handleFormChange('discountType', e.target.value)}
+                          onChange={(e) => handleFormChange("discountType", e.target.value)}
                           className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                         >
                           <option value="percentage">%</option>
@@ -1416,21 +1614,11 @@ const fetchNextDcNumber = async () => {
                         </select>
                       </div>
                     </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Round Off</label>
-                      <input
-                        type="number"
-                        value={formData.roundOff}
-                        onChange={(e) => handleFormChange('roundOff', parseFloat(e.target.value))}
-                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                        step="0.01"
-                      />
-                    </div>
                     <div className="md:col-span-2">
                       <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Note</label>
                       <textarea
                         value={formData.notes}
-                        onChange={(e) => handleFormChange('notes', e.target.value)}
+                        onChange={(e) => handleFormChange("notes", e.target.value)}
                         rows={3}
                         className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                         placeholder="Additional notes..."
@@ -1439,50 +1627,107 @@ const fetchNextDcNumber = async () => {
                   </div>
                 </div>
               </div>
-
-              {/* Right side - Total Summary */}
               <div className="lg:col-span-1">
                 <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                   <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Total Summary</h2>
                   <div className="space-y-3">
                     <div className="flex justify-between">
                       <span className="text-dark-6">Subtotal</span>
-                      <span className="font-medium text-dark dark:text-white">
-                        ₹{totals.subtotal.toLocaleString('en-IN')}
-                      </span>
+                      <span className="font-medium text-dark dark:text-white">Rs. {totals.subtotal.toLocaleString("en-IN")}</span>
                     </div>
                     <div className="flex justify-between">
+                      <span className="text-dark-6">Tax</span>
+                      <span className="font-medium text-dark dark:text-white">Rs. {totals.totalTax.toLocaleString("en-IN")}</span>
+                    </div>
+                    {(totals.cgstTotal > 0 || totals.sgstTotal > 0 || totals.igstTotal > 0) && (
+                      <div className="rounded-lg border border-stroke/80 p-3 text-sm dark:border-dark-3/80">
+                        {totals.cgstTotal > 0 && <div className="mb-1 flex justify-between"><span className="text-dark-6">CGST</span><span className="font-medium text-dark dark:text-white">Rs. {totals.cgstTotal.toLocaleString("en-IN")}</span></div>}
+                        {totals.sgstTotal > 0 && <div className="mb-1 flex justify-between"><span className="text-dark-6">SGST</span><span className="font-medium text-dark dark:text-white">Rs. {totals.sgstTotal.toLocaleString("en-IN")}</span></div>}
+                        {totals.igstTotal > 0 && <div className="flex justify-between"><span className="text-dark-6">IGST</span><span className="font-medium text-dark dark:text-white">Rs. {totals.igstTotal.toLocaleString("en-IN")}</span></div>}
+                      </div>
+                    )}
+                    <div className="flex justify-between">
                       <span className="text-dark-6">Freight Charges</span>
-                      <span className="font-medium text-dark dark:text-white">
-                        ₹{totals.freight.toLocaleString('en-IN')}
-                      </span>
+                      <span className="font-medium text-dark dark:text-white">Rs. {freightBaseValue.toLocaleString("en-IN")}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-dark-6">P & F Charges</span>
-                      <span className="font-medium text-dark dark:text-white">
-                        ₹{totals.pf.toLocaleString('en-IN')}
-                      </span>
+                      <span className="font-medium text-dark dark:text-white">Rs. {pfBaseValue.toLocaleString("en-IN")}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-dark-6">Discount on All</span>
-                      <span className="font-medium text-red-600">
-                        -₹{totals.discountAll.toLocaleString('en-IN')}
-                      </span>
+                      <span className="font-medium text-red-600">-Rs. {summaryDiscountOnAllValue.toLocaleString("en-IN")}</span>
+                    </div>
+                    {totals.chargesTax > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-dark-6">Charges Tax</span>
+                        <span className="font-medium text-dark dark:text-white">Rs. {totals.chargesTax.toLocaleString("en-IN")}</span>
+                      </div>
+                    )}
+                    <div className="rounded-lg border border-stroke/80 p-3 dark:border-dark-3/80">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm font-medium text-dark dark:text-white">Round Off</span>
+                        <span className={`rounded-md px-2 py-1 text-sm font-semibold ${totals.roundOff >= 0 ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>
+                          {totals.roundOff >= 0 ? "+Rs. " : "-Rs. "}{Math.abs(totals.roundOff).toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentValue = Math.abs(formData.roundOff || 0);
+                            handleFormChange("roundOff", -currentValue);
+                          }}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
+                          title="Subtract from total"
+                        >
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                          </svg>
+                        </button>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            value={Math.abs(formData.roundOff || 0)}
+                            onChange={(e) => {
+                              const inputValue = parseFloat(e.target.value) || 0;
+                              const currentSign = formData.roundOff >= 0 ? 1 : -1;
+                              handleFormChange("roundOff", currentSign * inputValue);
+                            }}
+                            className="w-full rounded-lg border border-stroke bg-transparent px-10 py-2 text-center outline-none focus:border-primary dark:border-dark-3"
+                            step="0.01"
+                            min="0"
+                          />
+                          <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">{formData.roundOff >= 0 ? "+" : "-"}</div>
+                          <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">Rs</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentValue = Math.abs(formData.roundOff || 0);
+                            handleFormChange("roundOff", currentValue);
+                          }}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 text-green-600 transition hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50"
+                          title="Add to total"
+                        >
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                     {formData.roundOff !== 0 && (
                       <div className="flex justify-between">
                         <span className="text-dark-6">Round Off</span>
-                        <span className={`font-medium ${formData.roundOff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {formData.roundOff >= 0 ? '+' : ''}₹{Math.abs(formData.roundOff).toFixed(2)}
+                        <span className={`font-medium ${formData.roundOff >= 0 ? "text-green-600" : "text-red-600"}`}>
+                          {formData.roundOff >= 0 ? "+Rs. " : "-Rs. "}{Math.abs(formData.roundOff).toFixed(2)}
                         </span>
                       </div>
                     )}
                     <div className="border-t border-stroke pt-3 dark:border-dark-3">
                       <div className="flex justify-between">
                         <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
-                        <span className="text-lg font-bold text-primary">
-                          ₹{totals.grandTotal.toLocaleString('en-IN')}
-                        </span>
+                        <span className="text-lg font-bold text-primary">Rs. {totals.grandTotal.toLocaleString("en-IN")}</span>
                       </div>
                     </div>
                   </div>
@@ -1580,4 +1825,5 @@ const fetchNextDcNumber = async () => {
     </div>
   );
 }
+
 
