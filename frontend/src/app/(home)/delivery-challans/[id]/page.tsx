@@ -341,6 +341,8 @@ export default function DeliveryChallanDetailPage() {
   const canCreateReturn = isDcOut && ["dispatched", "in_transit", "delivered"].includes(dc.status);
   
   const canCancel = !["cancelled", "delivered", "received"].includes(dc.status);
+  const canEdit = dc.status !== "cancelled";
+  const editHref = `/delivery-challans/new?type=${dc.dc_type}&editId=${dc.id}`;
 
   const handleCreateReturn = async () => {
     const token = getToken();
@@ -421,6 +423,14 @@ export default function DeliveryChallanDetailPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          {canEdit && (
+            <Link
+              href={editHref}
+              className="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/10"
+            >
+              Edit
+            </Link>
+          )}
           {isDraft && (
             <button
               onClick={handleDelete}
