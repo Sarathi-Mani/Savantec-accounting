@@ -1745,6 +1745,9 @@ export interface SalesOrder {
   subtotal: number;
   tax_amount: number;
   total_amount: number;
+  invoice_id?: string;
+  billing_amount?: number;
+  pending_amount?: number;
   quantity_ordered?: number;
   quantity_delivered?: number;
   notes?: string;

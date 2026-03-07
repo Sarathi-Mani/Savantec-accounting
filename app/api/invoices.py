@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 
 from app.database.connection import get_db
-from app.database.models import User, Company, InvoiceStatus
+from app.database.models import User, Company, InvoiceStatus, SalesOrder
 from app.schemas.invoice import (
     InvoiceCreate, InvoiceUpdate, InvoiceResponse,
     InvoiceItemCreate, InvoiceItemResponse,
@@ -86,6 +86,17 @@ async def create_invoice(
     
     invoice_service = InvoiceService(db)
     invoice = invoice_service.create_invoice(company, data, customer)
+
+    # Link source sales order to the newly created invoice (latest conversion wins).
+    if getattr(data, "sales_order_id", None):
+        sales_order = db.query(SalesOrder).filter(
+            SalesOrder.id == data.sales_order_id,
+            SalesOrder.company_id == company.id
+        ).first()
+        if sales_order:
+            sales_order.invoice_id = invoice.id
+            db.commit()
+            db.refresh(invoice)
     
     # Build response with customer details
     response = InvoiceResponse.model_validate(invoice)
@@ -95,6 +106,7 @@ async def create_invoice(
         response.customer_gstin = getattr(customer, 'gstin', None) or getattr(customer, 'tax_number', None)
         response.customer_email = customer.email
         response.customer_phone = _preferred_customer_phone(customer)
+    response.sales_order_id = getattr(data, "sales_order_id", None)
     
     return response
 
