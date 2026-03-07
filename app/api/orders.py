@@ -1054,6 +1054,7 @@ async def list_purchase_orders(
     company_id: str,
     vendor_id: Optional[str] = None,
     status: Optional[str] = None,
+    currency: Optional[str] = None,
     search: Optional[str] = None,
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
@@ -1071,8 +1072,35 @@ async def list_purchase_orders(
     query = db.query(PurchaseOrder).filter(
         PurchaseOrder.company_id == company.id
     )
-    
-    # ... [your existing filter code] ...
+
+    if vendor_id:
+        query = query.filter(PurchaseOrder.vendor_id == vendor_id)
+
+    if status:
+        normalized_status = status.strip().lower()
+        try:
+            query = query.filter(PurchaseOrder.status == OrderStatus(normalized_status))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+
+    if currency:
+        query = query.filter(func.upper(PurchaseOrder.currency) == currency.strip().upper())
+
+    if search:
+        search_term = f"%{search.strip()}%"
+        query = query.outerjoin(Vendor, PurchaseOrder.vendor_id == Vendor.id).filter(
+            or_(
+                PurchaseOrder.order_number.ilike(search_term),
+                PurchaseOrder.reference_number.ilike(search_term),
+                Vendor.name.ilike(search_term),
+            )
+        )
+
+    if from_date:
+        query = query.filter(func.date(PurchaseOrder.order_date) >= from_date)
+
+    if to_date:
+        query = query.filter(func.date(PurchaseOrder.order_date) <= to_date)
     
     # Get total count
     total = query.count()

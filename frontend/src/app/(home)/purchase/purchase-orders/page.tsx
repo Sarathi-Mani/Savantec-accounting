@@ -312,6 +312,14 @@ interface PurchaseOrderResponse {
   };
 }
 
+const PURCHASE_ORDER_PAYMENT_TYPE_OPTIONS = [
+  { value: "INR", label: "INR - Indian Rupee" },
+  { value: "USD", label: "USD - US Dollar" },
+  { value: "EUR", label: "EUR - Euro" },
+  { value: "GBP", label: "GBP - British Pound" },
+  { value: "AED", label: "AED - UAE Dirham" },
+] as const;
+
 export default function PurchaseOrderListPage() {
   const { company } = useAuth();
   const router = useRouter();
@@ -328,6 +336,7 @@ export default function PurchaseOrderListPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [paymentTypeFilter, setPaymentTypeFilter] = useState("");
   
   // UI state
   const [showFilters, setShowFilters] = useState(false);
@@ -381,6 +390,7 @@ export default function PurchaseOrderListPage() {
 
     if (searchTerm) params.append("search", searchTerm);
     if (statusFilter) params.append("status", statusFilter);
+    if (paymentTypeFilter) params.append("currency", paymentTypeFilter);
     if (fromDate) params.append("from_date", fromDate);
     if (toDate) params.append("to_date", toDate);
 
@@ -472,7 +482,7 @@ export default function PurchaseOrderListPage() {
       console.error("Export fetch failed:", error);
       return [];
     }
-  }, [companyId, searchTerm, statusFilter, fromDate, toDate]);
+  }, [companyId, searchTerm, statusFilter, paymentTypeFilter, fromDate, toDate]);
 
   const getExportData = async (): Promise<PurchaseOrder[]> => {
     if (cachedExportData && cachedExportData.length > 0) return cachedExportData;
@@ -499,6 +509,12 @@ export default function PurchaseOrderListPage() {
 
     if (statusFilter) {
       filtered = filtered.filter((order) => order.status === statusFilter);
+    }
+
+    if (paymentTypeFilter) {
+      filtered = filtered.filter(
+        (order) => String(order.currency || "").toUpperCase() === paymentTypeFilter
+      );
     }
 
     if (fromDate) {
@@ -698,7 +714,7 @@ export default function PurchaseOrderListPage() {
     if (companyId) {
       fetchPurchaseOrders();
     }
-  }, [companyId, currentPage, statusFilter, fromDate, toDate]);
+  }, [companyId, currentPage, statusFilter, paymentTypeFilter, fromDate, toDate]);
 
   useEffect(() => {
     if (companyId) {
@@ -1042,8 +1058,9 @@ export default function PurchaseOrderListPage() {
     setFromDate("");
     setToDate("");
     setStatusFilter("");
+    setCachedExportData(null);
+    setPaymentTypeFilter("");
     setCurrentPage(1);
-    fetchPurchaseOrders();
   };
 
   if (!companyId) {
@@ -1317,7 +1334,7 @@ export default function PurchaseOrderListPage() {
         </div>
 
         {showFilters && (
-          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {/* Status Filter */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -1334,6 +1351,24 @@ export default function PurchaseOrderListPage() {
                 <option value="partially_fulfilled">Partially Fulfilled</option>
                 <option value="fulfilled">Fulfilled</option>
                 <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Payment Type
+              </label>
+              <select
+                value={paymentTypeFilter}
+                onChange={(e) => setPaymentTypeFilter(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              >
+                <option value="">All Payment Types</option>
+                {PURCHASE_ORDER_PAYMENT_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -1435,7 +1470,7 @@ export default function PurchaseOrderListPage() {
                         No purchase orders found
                       </p>
                       <p className="text-gray-500 dark:text-gray-400 mb-4">
-                        {statusFilter || searchTerm || fromDate || toDate ?
+                        {statusFilter || paymentTypeFilter || searchTerm || fromDate || toDate ?
                           "No purchase orders found matching your filters. Try adjusting your search criteria." :
                           "Add your first purchase order to start managing your purchases."}
                       </p>

@@ -889,7 +889,7 @@ export default function EditSalesPage() {
     const totals = calculateTotals();
     const freightBaseValue = Number(formData.freightCharges || 0);
     const pfBaseValue = Number(formData.pfCharges || 0);
-    const summaryDiscountOnAllValue = Number((totals.discountAll + totals.itemDiscount).toFixed(2));
+    const summaryDiscountOnAllValue = totals.discountAll;
 
     const ensureCountryOption = (country: string) => {
         const trimmedCountry = country.trim();
@@ -1099,8 +1099,8 @@ export default function EditSalesPage() {
 
                     updated.discount_amount = discount;
                     updated.taxable_amount = taxable;
-                    // Line total is base amount only.
-                    updated.total_amount = itemTotal;
+                    // Line total should reflect the row amount after item-level discount.
+                    updated.total_amount = taxable;
 
                     // Set CGST/SGST/IGST rates
                     if (isIntraStateSupply(formData.place_of_supply)) {
