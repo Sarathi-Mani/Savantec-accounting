@@ -2481,6 +2481,13 @@ export const purchasesApi = {
     return response.data;
   },
 
+  update: async (companyId: string, invoiceId: string, data: any): Promise<PurchaseInvoice> => {
+    const response = await api.put(`/purchases/${invoiceId}`, data, {
+      params: { company_id: companyId }
+    });
+    return response.data;
+  },
+
   approve: async (companyId: string, invoiceId: string): Promise<PurchaseInvoice> => {
     const response = await api.post(`/purchases/${invoiceId}/approve`, null, {
       params: { company_id: companyId }

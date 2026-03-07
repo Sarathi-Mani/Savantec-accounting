@@ -330,12 +330,19 @@ class PurchaseUpdate(BaseModel):
     """Schema for updating a purchase."""
     vendor_id: Optional[str] = None
     purchase_type: Optional[str] = None
+    purchase_date: Optional[datetime] = None
+    invoice_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     reference_no: Optional[str] = None
     vendor_invoice_number: Optional[str] = None
     vendor_invoice_date: Optional[datetime] = None
     payment_type: Optional[str] = None
     exchange_rate: Optional[float] = Field(None, gt=0)
+    subtotal: Optional[float] = None
+    discount_amount: Optional[float] = None
+    total_tax: Optional[float] = None
+    total_amount: Optional[float] = None
+    grand_total: Optional[float] = None
     
     # Charges
     freight_charges: Optional[float] = None
@@ -357,6 +364,12 @@ class PurchaseUpdate(BaseModel):
     notes: Optional[str] = None
     terms: Optional[str] = None
     status: Optional[str] = None
+    
+    # Nested data from edit form
+    items: Optional[List[PurchaseItemCreate]] = None
+    import_items: Optional[List[PurchaseImportItemCreate]] = None
+    expense_items: Optional[List[PurchaseExpenseItemCreate]] = None
+    payment: Optional[PurchasePaymentCreate] = None
 
 
 class PurchaseSummaryResponse(BaseModel):
@@ -642,6 +655,11 @@ async def update_purchase(
     
     # Prepare update data
     update_data = data.model_dump(exclude_unset=True)
+    if "purchase_date" in update_data and "invoice_date" not in update_data:
+        update_data["invoice_date"] = update_data["purchase_date"]
+    update_data.pop("purchase_date", None)
+    if "pf_charges" in update_data:
+        update_data["packing_forwarding_charges"] = update_data.pop("pf_charges")
     
     # Convert status to enum if provided
     if "status" in update_data:

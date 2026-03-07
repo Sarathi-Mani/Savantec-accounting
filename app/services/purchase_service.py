@@ -807,14 +807,103 @@ class PurchaseService:
         purchase = self.get_purchase(purchase_id, company_id)
         if not purchase:
             return None
-        
-        # Update fields
+
+        items = update_data.pop("items", None)
+        import_items = update_data.pop("import_items", None)
+        expense_items = update_data.pop("expense_items", None)
+        payment_data = update_data.pop("payment", None)
+
+        if "purchase_type" in update_data and update_data["purchase_type"] is not None:
+            purchase_type_value = str(update_data["purchase_type"]).lower().strip().replace("-", "_")
+            update_data["purchase_type"] = PurchaseType(purchase_type_value)
+
+        # Update scalar fields
         for key, value in update_data.items():
             if hasattr(purchase, key) and key not in ["id", "company_id", "created_at", "created_by"]:
                 setattr(purchase, key, value)
-        
+
+        current_type = purchase.purchase_type
+
+        if items is not None or current_type == PurchaseType.PURCHASE_EXPENSES:
+            self.db.query(PurchaseItem).filter(PurchaseItem.purchase_id == purchase.id).delete(synchronize_session=False)
+            if items and current_type in [PurchaseType.PURCHASE, PurchaseType.PURCHASE_IMPORT]:
+                for item_data in items:
+                    item_payload = item_data if isinstance(item_data, dict) else item_data.model_dump()
+                    purchase_item = PurchaseItem(
+                        id=generate_uuid(),
+                        purchase_id=purchase.id,
+                        product_id=item_payload.get("product_id"),
+                        description=item_payload.get("description", ""),
+                        item_code=item_payload.get("item_code", ""),
+                        hsn_code=item_payload.get("hsn_code", ""),
+                        quantity=Decimal(str(item_payload.get("quantity", 1))),
+                        unit=item_payload.get("unit", "unit"),
+                        purchase_price=Decimal(str(item_payload.get("purchase_price", 0))),
+                        discount_percent=Decimal(str(item_payload.get("discount_percent", 0))),
+                        discount_amount=Decimal(str(item_payload.get("discount_amount", 0))),
+                        gst_rate=Decimal(str(item_payload.get("gst_rate", 0))),
+                        cgst_rate=Decimal(str(item_payload.get("cgst_rate", item_payload.get("gst_rate", 0) / 2))),
+                        sgst_rate=Decimal(str(item_payload.get("sgst_rate", item_payload.get("gst_rate", 0) / 2))),
+                        igst_rate=Decimal(str(item_payload.get("igst_rate", 0))),
+                        cgst_amount=Decimal(str(item_payload.get("cgst_amount", 0))),
+                        sgst_amount=Decimal(str(item_payload.get("sgst_amount", 0))),
+                        igst_amount=Decimal(str(item_payload.get("igst_amount", 0))),
+                        tax_amount=Decimal(str(item_payload.get("tax_amount", 0))),
+                        unit_cost=Decimal(str(item_payload.get("unit_cost", item_payload.get("purchase_price", 0)))),
+                        currency=item_payload.get("currency", "INR"),
+                        total_amount=Decimal(str(item_payload.get("total_amount", 0))),
+                    )
+                    self.db.add(purchase_item)
+
+        if import_items is not None or current_type == PurchaseType.PURCHASE_EXPENSES:
+            self.db.query(PurchaseImportItem).filter(PurchaseImportItem.purchase_id == purchase.id).delete(synchronize_session=False)
+            if import_items and current_type in [PurchaseType.PURCHASE, PurchaseType.PURCHASE_IMPORT]:
+                for item_data in import_items:
+                    item_payload = item_data if isinstance(item_data, dict) else item_data.model_dump()
+                    import_item = PurchaseImportItem(
+                        id=generate_uuid(),
+                        purchase_id=purchase.id,
+                        name=item_payload.get("name", ""),
+                        quantity=Decimal(str(item_payload.get("quantity", 1))),
+                        rate=Decimal(str(item_payload.get("rate", 0))),
+                        currency=item_payload.get("currency", "INR"),
+                        per=item_payload.get("per", "unit"),
+                        discount_percent=Decimal(str(item_payload.get("discount_percent", 0))),
+                        amount=Decimal(str(item_payload.get("amount", 0))),
+                    )
+                    self.db.add(import_item)
+
+        if expense_items is not None or current_type != PurchaseType.PURCHASE_EXPENSES:
+            self.db.query(PurchaseExpenseItem).filter(PurchaseExpenseItem.purchase_id == purchase.id).delete(synchronize_session=False)
+            if expense_items and current_type == PurchaseType.PURCHASE_EXPENSES:
+                for item_data in expense_items:
+                    item_payload = item_data if isinstance(item_data, dict) else item_data.model_dump()
+                    expense_item = PurchaseExpenseItem(
+                        id=generate_uuid(),
+                        purchase_id=purchase.id,
+                        particulars=item_payload.get("particulars", ""),
+                        rate=Decimal(str(item_payload.get("rate", 0))),
+                        per=item_payload.get("per", "unit"),
+                        amount=Decimal(str(item_payload.get("amount", 0))),
+                    )
+                    self.db.add(expense_item)
+
+        if any(key in update_data for key in ["grand_total", "total_amount", "amount_paid"]):
+            grand_total = Decimal(
+                str(
+                    getattr(purchase, "grand_total", None)
+                    or getattr(purchase, "total_amount", 0)
+                    or 0
+                )
+            )
+            amount_paid = Decimal(str(getattr(purchase, "amount_paid", 0) or 0))
+            purchase.balance_due = grand_total - amount_paid
+
+        if payment_data and payment_data.get("amount", 0) > 0:
+            self._create_payment(purchase, payment_data, str(purchase.created_by or ""))
+
         purchase.updated_at = datetime.utcnow()
-        
+
         self.db.commit()
         self.db.refresh(purchase)
         return purchase

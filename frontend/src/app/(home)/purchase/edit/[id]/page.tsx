@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
-import api, { vendorsApi, productsApi, purchasesApi } from "@/services/api";
+import { vendorsApi, productsApi, purchasesApi } from "@/services/api";
 import Select from 'react-select';
 import { useRef } from "react";
 
@@ -178,7 +178,7 @@ function ProductSelectField({
     );
 }
 
-// Currency Select Component with Add New Option (unchanged)
+// Currency Select Component with Add New Option
 function CurrencySelect({
     value,
     onChange,
@@ -195,15 +195,12 @@ function CurrencySelect({
     const [isOpen, setIsOpen] = useState(false);
     const selectRef = useRef<HTMLDivElement>(null);
 
-    // FIXED: Remove the duplicate variable declaration
     const selectedCurrency = currencies.find(c => c.code === value) || currencies[0];
     
-    // Calculate INR value if item has price and currency is not INR
     const inrValue = itemPrice && selectedCurrency.code !== "INR" 
         ? itemPrice * selectedCurrency.exchangeRate 
         : itemPrice;
     
-    // Close dropdown when clicking outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (selectRef.current && !selectRef.current.contains(event.target as Node)) {
@@ -213,8 +210,6 @@ function CurrencySelect({
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-
-    // FIXED: Removed the duplicate selectedCurrency declaration here
     
     return (
         <div className="relative" ref={selectRef}>
@@ -255,7 +250,6 @@ function CurrencySelect({
                             </button>
                         ))}
                         
-                        {/* Add New Currency Option */}
                         <button
                             type="button"
                             onClick={() => {
@@ -273,7 +267,6 @@ function CurrencySelect({
                 </div>
             )}
             
-            {/* Show conversion tooltip when item has price */}
             {itemPrice && selectedCurrency.code !== "INR" && inrValue && (
                 <div className="absolute -top-8 left-0 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
                     ₹{inrValue.toFixed(2)} INR
@@ -283,7 +276,7 @@ function CurrencySelect({
     );
 }
 
-export default function AddPurchasePage() {
+export default function EditPurchasePage() {
     const router = useRouter();
     const params = useParams();
     const purchaseId = String(params?.id || "");
@@ -297,24 +290,21 @@ export default function AddPurchasePage() {
     const [productSearch, setProductSearch] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
     
-    // State for purchase type
     const [purchaseType, setPurchaseType] = useState("purchase");
     
-    // State for import items with currency
     const [importItems, setImportItems] = useState([
         {
             id: 1,
             name: "",
             quantity: 1,
             rate: 0,
-            currency: "INR", // Default currency
+            currency: "INR",
             per: "unit",
             discount_percent: 0,
             amount: 0,
         },
     ]);
     
-    // State for expense items
     const [expenseItems, setExpenseItems] = useState([
         {
             id: 1,
@@ -325,19 +315,18 @@ export default function AddPurchasePage() {
         },
     ]);
     
-    // State for currencies
- const [currencies, setCurrencies] = useState([
-    { code: "INR", name: "Indian Rupee", symbol: "₹", exchangeRate: 1 },
-    { code: "USD", name: "US Dollar", symbol: "$", exchangeRate: 83.5 },
-    { code: "EUR", name: "Euro", symbol: "€", exchangeRate: 90.2 },
-    { code: "GBP", name: "British Pound", symbol: "£", exchangeRate: 106.3 },
-    { code: "JPY", name: "Japanese Yen", symbol: "¥", exchangeRate: 0.56 },
-    { code: "CAD", name: "Canadian Dollar", symbol: "CA$", exchangeRate: 61.8 },
-    { code: "AUD", name: "Australian Dollar", symbol: "A$", exchangeRate: 54.9 },
-    { code: "CNY", name: "Chinese Yuan", symbol: "¥", exchangeRate: 11.6 },
-    { code: "SGD", name: "Singapore Dollar", symbol: "S$", exchangeRate: 62.1 },
-    { code: "AED", name: "UAE Dirham", symbol: "د.إ", exchangeRate: 22.7 },
-]);
+    const [currencies, setCurrencies] = useState([
+        { code: "INR", name: "Indian Rupee", symbol: "₹", exchangeRate: 1 },
+        { code: "USD", name: "US Dollar", symbol: "$", exchangeRate: 83.5 },
+        { code: "EUR", name: "Euro", symbol: "€", exchangeRate: 90.2 },
+        { code: "GBP", name: "British Pound", symbol: "£", exchangeRate: 106.3 },
+        { code: "JPY", name: "Japanese Yen", symbol: "¥", exchangeRate: 0.56 },
+        { code: "CAD", name: "Canadian Dollar", symbol: "CA$", exchangeRate: 61.8 },
+        { code: "AUD", name: "Australian Dollar", symbol: "A$", exchangeRate: 54.9 },
+        { code: "CNY", name: "Chinese Yuan", symbol: "¥", exchangeRate: 11.6 },
+        { code: "SGD", name: "Singapore Dollar", symbol: "S$", exchangeRate: 62.1 },
+        { code: "AED", name: "UAE Dirham", symbol: "د.إ", exchangeRate: 22.7 },
+    ]);
     
     const [showAddCurrencyModal, setShowAddCurrencyModal] = useState(false);
     const [newCurrency, setNewCurrency] = useState({
@@ -348,7 +337,6 @@ export default function AddPurchasePage() {
     });
     const [paymentExchangeRateInput, setPaymentExchangeRateInput] = useState("1");
 
-    // Payment state
     const [paymentData, setPaymentData] = useState({
         amount: 0,
         paymentType: "",
@@ -356,7 +344,6 @@ export default function AddPurchasePage() {
         paymentNote: "",
     });
 
-    // State for dropdown data
     const [suppliers, setSuppliers] = useState<any[]>([]);
     const [products, setProducts] = useState<any[]>([]);
     const [loading, setLoading] = useState({
@@ -364,10 +351,8 @@ export default function AddPurchasePage() {
         products: false,
     });
 
-    // Previous payments state
     const [previousPayments, setPreviousPayments] = useState<any[]>([]);
 
-    // Form state
     const [formData, setFormData] = useState({
         supplier_id: "",
         purchase_date: new Date().toISOString().split('T')[0],
@@ -382,8 +367,6 @@ export default function AddPurchasePage() {
 2. All items must be properly packed.
 3. Payment terms: 30 days from invoice date.
 4. Any damaged goods will be returned at supplier's expense.`,
-
-        // Charges and discounts
         freight_charges: 0,
         freight_type: "fixed",
         pf_charges: 0,
@@ -391,13 +374,9 @@ export default function AddPurchasePage() {
         discount_on_all: 0,
         discount_type: "percentage",
         round_off: 0,
-
-        // Calculated totals
         subtotal: 0,
         total_tax: 0,
         total_amount: 0,
-
-        // Additional fields
         shipping_address: "",
         billing_address: "",
         contact_person: "",
@@ -405,7 +384,6 @@ export default function AddPurchasePage() {
         contact_email: "",
     });
 
-    // Purchase items state
     const [items, setItems] = useState([
         {
             id: 1,
@@ -425,7 +403,7 @@ export default function AddPurchasePage() {
             tax_amount: 0,
             unit_cost: 0,
             total_amount: 0,
-             currency: "INR", 
+            currency: "INR", 
         },
     ]);
 
@@ -433,7 +411,6 @@ export default function AddPurchasePage() {
         company?.id ||
         (typeof window !== "undefined" ? localStorage.getItem("company_id") : null);
 
-    // Load data on component mount
     useEffect(() => {
         if (resolvedCompanyId && purchaseId) {
             loadSuppliers();
@@ -556,113 +533,69 @@ export default function AddPurchasePage() {
         }
     };
 
-  const loadSuppliers = async () => {
-    try {
-        setLoading(prev => ({ ...prev, suppliers: true }));
-        const response = await vendorsApi.list(company!.id, {
-            page_size: 100,
-            search: "",
-        });
-        
-        console.log("Full vendors API response:", response);
-        console.log("Response type:", typeof response);
-        
-        // Check different possible structures - use type assertion
-        let vendorsArray: any[] = [];
-        
-        // If response is directly an array
-        if (Array.isArray(response)) {
-            vendorsArray = response;
-        } 
-        // If response is an object with various properties
-        else if (response && typeof response === 'object') {
-            // Type cast to any to avoid TypeScript errors
-            const resp = response as any;
-            
-            // Try different possible property names
-            if (Array.isArray(resp.vendors)) {
-                vendorsArray = resp.vendors;
-            } else if (Array.isArray(resp.data)) {
-                vendorsArray = resp.data;
-            } else if (Array.isArray(resp.items)) {
-                vendorsArray = resp.items;
-            } else if (Array.isArray(resp.customers)) {
-                vendorsArray = resp.customers;
-            } else if (Array.isArray(resp.results)) {
-                vendorsArray = resp.results;
+    const loadSuppliers = async () => {
+        try {
+            setLoading(prev => ({ ...prev, suppliers: true }));
+            const response = await vendorsApi.list(company!.id, { page_size: 100, search: "" });
+            let vendorsArray: any[] = [];
+            if (Array.isArray(response)) {
+                vendorsArray = response;
+            } else if (response && typeof response === 'object') {
+                const resp = response as any;
+                if (Array.isArray(resp.vendors)) vendorsArray = resp.vendors;
+                else if (Array.isArray(resp.data)) vendorsArray = resp.data;
+                else if (Array.isArray(resp.items)) vendorsArray = resp.items;
+                else if (Array.isArray(resp.customers)) vendorsArray = resp.customers;
+                else if (Array.isArray(resp.results)) vendorsArray = resp.results;
             }
+            setSuppliers(vendorsArray);
+        } catch (error) {
+            console.error("Failed to load suppliers:", error);
+            setSuppliers([]);
+        } finally {
+            setLoading(prev => ({ ...prev, suppliers: false }));
         }
-        
-        console.log("Vendors array:", vendorsArray);
-        setSuppliers(vendorsArray);
-        
-    } catch (error) {
-        console.error("Failed to load suppliers:", error);
-        setSuppliers([]);
-    } finally {
-        setLoading(prev => ({ ...prev, suppliers: false }));
-    }
-};
-   const loadProducts = async () => {
-    try {
-        setLoading(prev => ({ ...prev, products: true }));
-        const response = await productsApi.list(company!.id, {
-            page_size: 100,
-            search: "",
-        });
-        console.log("Products API response:", response);
-        
-        // Check different possible structures
-        let productsArray: any[] = [];
-        
-        if (Array.isArray(response)) {
-            productsArray = response;
-        } else if (response && typeof response === 'object') {
-            // Type cast to any
-            const resp = response as any;
-            
-            if (Array.isArray(resp.products)) {
-                productsArray = resp.products;
-            } else if (Array.isArray(resp.data)) {
-                productsArray = resp.data;
-            } else if (Array.isArray(resp.items)) {
-                productsArray = resp.items;
-            } else if (Array.isArray(resp.results)) {
-                productsArray = resp.results;
-            }
-        }
-        
-        console.log("Products array loaded:", productsArray.length);
-        setProducts(productsArray);
-        
-    } catch (error) {
-        console.error("Failed to load products:", error);
-        setProducts([]);
-    } finally {
-        setLoading(prev => ({ ...prev, products: false }));
-    }
-};
+    };
 
-    // Add new currency
+    const loadProducts = async () => {
+        try {
+            setLoading(prev => ({ ...prev, products: true }));
+            const response = await productsApi.list(company!.id, { page_size: 100, search: "" });
+            let productsArray: any[] = [];
+            if (Array.isArray(response)) {
+                productsArray = response;
+            } else if (response && typeof response === 'object') {
+                const resp = response as any;
+                if (Array.isArray(resp.products)) productsArray = resp.products;
+                else if (Array.isArray(resp.data)) productsArray = resp.data;
+                else if (Array.isArray(resp.items)) productsArray = resp.items;
+                else if (Array.isArray(resp.results)) productsArray = resp.results;
+            }
+            setProducts(productsArray);
+        } catch (error) {
+            console.error("Failed to load products:", error);
+            setProducts([]);
+        } finally {
+            setLoading(prev => ({ ...prev, products: false }));
+        }
+    };
+
     const handleAddNewCurrency = () => {
         setShowAddCurrencyModal(true);
     };
 
     const handleSaveNewCurrency = () => {
         if (newCurrency.code && newCurrency.name && newCurrency.symbol) {
-            // Check if currency already exists
             if (currencies.some(c => c.code === newCurrency.code.toUpperCase())) {
                 alert(`Currency ${newCurrency.code.toUpperCase()} already exists!`);
                 return;
             }
-
             const currencyToAdd = {
                 code: newCurrency.code.toUpperCase(),
                 name: newCurrency.name,
                 symbol: newCurrency.symbol,
                 exchangeRate: parseFloat(newCurrency.exchangeRate.toString()) || 1,
             };
-
             setCurrencies(prev => [...prev, currencyToAdd]);
             setFormData(prev => ({
                 ...prev,
@@ -670,15 +603,7 @@ export default function AddPurchasePage() {
                 exchange_rate: currencyToAdd.exchangeRate,
             }));
             setPaymentExchangeRateInput(String(currencyToAdd.exchangeRate));
-            
-            // Reset form
-            setNewCurrency({
-                code: "",
-                name: "",
-                symbol: "",
-                exchangeRate: 1,
-            });
-            
+            setNewCurrency({ code: "", name: "", symbol: "", exchangeRate: 1 });
             setShowAddCurrencyModal(false);
             alert(`Currency ${currencyToAdd.code} added successfully!`);
         } else {
@@ -691,12 +616,10 @@ export default function AddPurchasePage() {
             handleFormChange(field, value);
             return;
         }
-
         if (value === "add_new") {
             setShowAddCurrencyModal(true);
             return;
         }
-
         const normalizedValue = String(value || "").trim().toUpperCase();
         const selectedCurrency = currencies.find((c) => c.code.toUpperCase() === normalizedValue);
         const selectedRate = selectedCurrency?.exchangeRate || 1;
@@ -708,94 +631,72 @@ export default function AddPurchasePage() {
         setPaymentExchangeRateInput(String(selectedRate));
     };
 
-    // Calculate totals based on purchase type
-const calculateTotals = () => {
-    let subtotal = 0;
-    let itemTaxTotal = 0;
-    let totalItemDiscount = 0;
+    const calculateTotals = () => {
+        let subtotal = 0;
+        let itemTaxTotal = 0;
+        let totalItemDiscount = 0;
 
-    // Calculate from regular items with currency conversion
-    items.forEach(item => {
-        // Get currency exchange rate
-        const currency = currencies.find(c => c.code === item.currency) || currencies[0];
-        const exchangeRate = currency.exchangeRate || 1;
-        
-        // Convert to INR if needed
-        const priceInINR = item.purchase_price * exchangeRate;
-        const itemTotal = item.quantity * priceInINR;
-        const discount = item.discount_percent > 0 ?
-            itemTotal * (item.discount_percent / 100) : 0;
-        const taxable = itemTotal - discount;
-        const tax = taxable * (item.gst_rate / 100);
-
-        subtotal += taxable;
-        itemTaxTotal += tax;
-        totalItemDiscount += discount;
-        
-        // Log conversion for debugging
-        if (item.currency !== "INR") {
-            console.log(`Item ${item.description}: ${item.currency} ${item.purchase_price} = ₹${priceInINR.toFixed(2)}`);
-        }
-    });
-
-    // Add totals from purchase type specific items with currency conversion
-    if (purchaseType === "purchase" || purchaseType === "purchase-import") {
-        importItems.forEach(item => {
+        items.forEach(item => {
             const currency = currencies.find(c => c.code === item.currency) || currencies[0];
             const exchangeRate = currency.exchangeRate || 1;
-            const priceInINR = item.rate * exchangeRate;
+            const priceInINR = item.purchase_price * exchangeRate;
             const itemTotal = item.quantity * priceInINR;
-            const discount = item.discount_percent > 0 ?
-                itemTotal * (item.discount_percent / 100) : 0;
-            subtotal += itemTotal - discount;
+            const discount = item.discount_percent > 0 ? itemTotal * (item.discount_percent / 100) : 0;
+            const taxable = itemTotal - discount;
+            const tax = taxable * (item.gst_rate / 100);
+            subtotal += taxable;
+            itemTaxTotal += tax;
             totalItemDiscount += discount;
         });
-    } else if (purchaseType === "purchase-expenses") {
-        expenseItems.forEach(item => {
-            subtotal += item.amount; // Assuming expense items are already in INR
-        });
-    }
 
-    // Calculate additional charges and discounts (all in INR)
-    const freightCharges = Number(formData.freight_charges || 0);
-    const pfCharges = Number(formData.pf_charges || 0);
-    const discountOnAll = formData.discount_on_all || 0;
-    const getTaxRateFromType = (type?: string) => {
-        if (!String(type || "").startsWith("tax")) return 0;
-        return Number(String(type).replace("tax", "")) || 0;
+        if (purchaseType === "purchase" || purchaseType === "purchase-import") {
+            importItems.forEach(item => {
+                const currency = currencies.find(c => c.code === item.currency) || currencies[0];
+                const exchangeRate = currency.exchangeRate || 1;
+                const priceInINR = item.rate * exchangeRate;
+                const itemTotal = item.quantity * priceInINR;
+                const discount = item.discount_percent > 0 ? itemTotal * (item.discount_percent / 100) : 0;
+                subtotal += itemTotal - discount;
+                totalItemDiscount += discount;
+            });
+        } else if (purchaseType === "purchase-expenses") {
+            expenseItems.forEach(item => { subtotal += item.amount; });
+        }
+
+        const freightCharges = Number(formData.freight_charges || 0);
+        const pfCharges = Number(formData.pf_charges || 0);
+        const discountOnAll = formData.discount_on_all || 0;
+        const getTaxRateFromType = (type?: string) => {
+            if (!String(type || "").startsWith("tax")) return 0;
+            return Number(String(type).replace("tax", "")) || 0;
+        };
+        const freightTax = freightCharges * (getTaxRateFromType(formData.freight_type) / 100);
+        const pfTax = pfCharges * (getTaxRateFromType(formData.pf_type) / 100);
+        const totalTax = itemTaxTotal + freightTax + pfTax;
+        const discountAllAmount = formData.discount_type === 'percentage'
+            ? subtotal * (discountOnAll / 100)
+            : discountOnAll;
+        const totalBeforeTax = subtotal;
+        const totalAfterCharges = totalBeforeTax + freightCharges + pfCharges;
+        const totalAfterTax = totalAfterCharges + totalTax;
+        const grandTotal = totalAfterTax - discountAllAmount + (formData.round_off || 0);
+
+        return {
+            subtotal: Number(totalBeforeTax.toFixed(2)),
+            totalTax: Number(totalTax.toFixed(2)),
+            itemTax: Number(itemTaxTotal.toFixed(2)),
+            freightTax: Number(freightTax.toFixed(2)),
+            pfTax: Number(pfTax.toFixed(2)),
+            itemDiscount: Number(totalItemDiscount.toFixed(2)),
+            freight: Number(freightCharges.toFixed(2)),
+            pf: Number(pfCharges.toFixed(2)),
+            discountAll: Number(discountAllAmount.toFixed(2)),
+            roundOff: Number(formData.round_off || 0),
+            grandTotal: Number(grandTotal.toFixed(2)),
+            totalAfterCharges: Number(totalAfterCharges.toFixed(2)),
+            totalAfterDiscountAll: Number((totalAfterTax - discountAllAmount).toFixed(2)),
+        };
     };
-    const freightTax = freightCharges * (getTaxRateFromType(formData.freight_type) / 100);
-    const pfTax = pfCharges * (getTaxRateFromType(formData.pf_type) / 100);
-    const totalTax = itemTaxTotal + freightTax + pfTax;
-
-    // Calculate discount on all based on type
-    const discountAllAmount = formData.discount_type === 'percentage'
-        ? subtotal * (discountOnAll / 100)
-        : discountOnAll;
-
-    // Calculate totals step by step
-    const totalBeforeTax = subtotal;
-    const totalAfterCharges = totalBeforeTax + freightCharges + pfCharges;
-    const totalAfterTax = totalAfterCharges + totalTax;
-    const totalAfterDiscountAll = totalAfterTax - discountAllAmount;
-    const grandTotal = totalAfterTax - discountAllAmount + (formData.round_off || 0);
-
-    return {
-        subtotal: Number(totalBeforeTax.toFixed(2)),
-        totalTax: Number(totalTax.toFixed(2)),
-        itemTax: Number(itemTaxTotal.toFixed(2)),
-        freightTax: Number(freightTax.toFixed(2)),
-        pfTax: Number(pfTax.toFixed(2)),
-        itemDiscount: Number(totalItemDiscount.toFixed(2)),
-        freight: Number(freightCharges.toFixed(2)),
-        pf: Number(pfCharges.toFixed(2)),
-        discountAll: Number(discountAllAmount.toFixed(2)),
-        roundOff: Number(formData.round_off || 0),
-        grandTotal: Number(grandTotal.toFixed(2)),
-        totalAfterCharges: Number(totalAfterCharges.toFixed(2)),
-        totalAfterDiscountAll: Number(totalAfterDiscountAll.toFixed(2)),
-    };
-};
 
     const totals = calculateTotals();
     const selectedPaymentCurrency =
@@ -806,101 +707,61 @@ const calculateTotals = () => {
     const paymentExchangeRate = Number(formData.exchange_rate) > 0 ? Number(formData.exchange_rate) : 1;
     const selectedCurrencyTotal = totals.grandTotal;
     const inrFromSelectedCurrency =
-        paymentCurrencyCode === "INR"
-            ? selectedCurrencyTotal
-            : selectedCurrencyTotal * paymentExchangeRate;
+        paymentCurrencyCode === "INR" ? selectedCurrencyTotal : selectedCurrencyTotal * paymentExchangeRate;
     const paymentAmountInInr =
         paymentCurrencyCode === "INR"
             ? Number(paymentData.amount || 0)
             : Number(paymentData.amount || 0) * paymentExchangeRate;
 
-    // Functions for import items
     const updateImportItem = (id: number, field: string, value: any) => {
-        setImportItems(prevItems => {
-            return prevItems.map(item => {
-                if (item.id === id) {
-                    const updated = { ...item, [field]: value };
-                    
-                    // Calculate amount when rate, quantity, or discount changes
-                    if (field === 'rate' || field === 'quantity' || field === 'discount_percent') {
-                        const total = updated.quantity * updated.rate;
-                        const discount = total * (updated.discount_percent / 100);
-                        updated.amount = total - discount;
-                    }
-                    
-                    return updated;
+        setImportItems(prevItems => prevItems.map(item => {
+            if (item.id === id) {
+                const updated = { ...item, [field]: value };
+                if (field === 'rate' || field === 'quantity' || field === 'discount_percent') {
+                    const total = updated.quantity * updated.rate;
+                    const discount = total * (updated.discount_percent / 100);
+                    updated.amount = total - discount;
                 }
-                return item;
-            });
-        });
+                return updated;
+            }
+            return item;
+        }));
     };
 
     const addImportItem = () => {
-        setImportItems(prev => [
-            ...prev,
-            {
-                id: Date.now(),
-                name: "",
-                quantity: 1,
-                rate: 0,
-                currency: "INR",
-                per: "unit",
-                discount_percent: 0,
-                amount: 0,
-            },
-        ]);
+        setImportItems(prev => [...prev, { id: Date.now(), name: "", quantity: 1, rate: 0, currency: "INR", per: "unit", discount_percent: 0, amount: 0 }]);
     };
 
     const removeImportItem = (id: number) => {
         setImportItems(importItems.filter(item => item.id !== id));
     };
 
-    // Functions for expense items
     const updateExpenseItem = (id: number, field: string, value: any) => {
-        setExpenseItems(prevItems => {
-            return prevItems.map(item => {
-                if (item.id === id) {
-                    const updated = { ...item, [field]: value };
-                    
-                    // Calculate amount when rate changes
-                    if (field === 'rate') {
-                        updated.amount = updated.rate; // Assuming rate = amount for expenses
-                    }
-                    
-                    return updated;
-                }
-                return item;
-            });
-        });
+        setExpenseItems(prevItems => prevItems.map(item => {
+            if (item.id === id) {
+                const updated = { ...item, [field]: value };
+                if (field === 'rate') { updated.amount = updated.rate; }
+                return updated;
+            }
+            return item;
+        }));
     };
 
     const addExpenseItem = () => {
-        setExpenseItems(prev => [
-            ...prev,
-            {
-                id: Date.now(),
-                particulars: "",
-                rate: 0,
-                per: "unit",
-                amount: 0,
-            },
-        ]);
+        setExpenseItems(prev => [...prev, { id: Date.now(), particulars: "", rate: 0, per: "unit", amount: 0 }]);
     };
 
     const removeExpenseItem = (id: number) => {
         setExpenseItems(expenseItems.filter(item => item.id !== id));
     };
 
-    // Handle import item currency change
     const handleImportItemCurrencyChange = (id: number, currencyCode: string) => {
-        setImportItems(prevItems => 
-            prevItems.map(item => 
-                item.id === id ? { ...item, currency: currencyCode } : item
-            )
-        );
+        setImportItems(prevItems => prevItems.map(item => item.id === id ? { ...item, currency: currencyCode } : item));
     };
 
-    // Handle submit
+    // ============================================================
+    // FIX: Use purchasesApi.update instead of raw api.put
+    // ============================================================
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!company?.id || !purchaseId) return;
@@ -908,29 +769,24 @@ const calculateTotals = () => {
         setIsSubmitting(true);
         
         try {
-            console.log("🚀 ========== STARTING PURCHASE SUBMISSION ==========");
-            console.log("📋 Purchase Type Selected:", purchaseType);
+            console.log("🚀 ========== STARTING PURCHASE UPDATE ==========");
+            console.log("📋 Purchase Type:", purchaseType);
+            console.log("🔑 Purchase ID:", purchaseId);
             console.log("🏢 Company ID:", company.id);
-            console.log("👥 Supplier ID:", formData.supplier_id);
-            
-            // Validate supplier
+
             if (!formData.supplier_id) {
                 alert("Please select a supplier");
                 setIsSubmitting(false);
                 return;
             }
 
-            // Validate items based on purchase type
             if (purchaseType === "purchase-expenses") {
-                // For expense purchases, only expense items are allowed
                 if (expenseItems.length === 0) {
                     alert("Please add at least one expense item");
                     setIsSubmitting(false);
                     return;
                 }
-                // Don't validate regular items for expense purchases
             } else if (purchaseType === "purchase" || purchaseType === "purchase-import") {
-                // For regular and import purchases, validate regular items
                 if (items.length === 0) {
                     alert("Please add at least one item");
                     setIsSubmitting(false);
@@ -938,44 +794,37 @@ const calculateTotals = () => {
                 }
             }
 
-            console.log("🔄 Purchase type (as is):", purchaseType);
-
-            // Prepare data based on purchase type
             let purchaseData: any = {
                 vendor_id: formData.supplier_id,
                 vendor_invoice_number: formData.vendor_invoice_number || "",
                 vendor_invoice_date: formData.vendor_invoice_date || undefined,
+                // FIX: send both purchase_date and invoice_date so backend accepts either
                 purchase_date: formData.purchase_date,
+                invoice_date: formData.purchase_date,
                 due_date: formData.due_date || undefined,
+                reference_no: formData.reference_no || "",
                 payment_type: formData.payment_type || "",
                 exchange_rate: Number(formData.exchange_rate || 1),
                 notes: formData.notes || "",
                 terms: formData.terms || "",
                 purchase_type: purchaseType,
-                
-                // Financial data
                 round_off: Number(formData.round_off || 0),
                 subtotal: Number(totals.subtotal || 0),
                 discount_amount: Number(totals.discountAll || 0),
                 total_tax: Number(totals.totalTax || 0),
                 total_amount: Number(totals.grandTotal || 0),
-
-                // Charges
+                grand_total: Number(totals.grandTotal || 0),
                 freight_charges: Number(formData.freight_charges || 0),
                 freight_type: formData.freight_type || "fixed",
-                packing_forwarding_charges: Number(formData.pf_charges || 0),
+                pf_charges: Number(formData.pf_charges || 0),
                 pf_type: formData.pf_type || "fixed",
                 discount_on_all: Number(formData.discount_on_all || 0),
                 discount_type: formData.discount_type || "percentage",
-
-                // Contact info
                 contact_person: formData.contact_person || "",
                 contact_phone: formData.contact_phone || "",
                 contact_email: formData.contact_email || "",
                 shipping_address: formData.shipping_address || "",
                 billing_address: formData.billing_address || "",
-
-                // Payment as nested object
                 ...(paymentData.amount > 0 ? {
                     payment: {
                         amount: Number(paymentData.amount),
@@ -986,160 +835,74 @@ const calculateTotals = () => {
                 } : {}),
             };
 
-            // Include regular items ONLY for purchase and purchase-import types
-         if (purchaseType === "purchase" || purchaseType === "purchase-import") {
-   const preparedItems = items.map((item, index) => {
-    const currency = currencies.find(c => c.code === item.currency) || currencies[0];
-    const exchangeRate = currency.exchangeRate || 1;
-    
-    const itemData: any = {
-        product_id: item.product_id || undefined,
-        description: item.description || `Item ${index + 1}`,
-        hsn_code: item.hsn_code || "",
-        quantity: Number(item.quantity) || 1,
-        unit: item.unit || "unit",
-        purchase_price: Number(item.purchase_price) || 0.01,
-        item_code: item.item_code || "",
-        discount_percent: Number(item.discount_percent || 0),
-        discount_amount: Number(item.discount_amount || 0),
-        gst_rate: Number(item.gst_rate || 0),
-        tax_amount: Number(item.tax_amount || 0),
-        unit_cost: Number(item.unit_cost || item.purchase_price || 0.01),
-        total_amount: Number(item.total_amount || 0),
-          };
-    
-    // Add currency only for purchase-import type
-    if (purchaseType === "purchase-import") {
-        itemData.currency = item.currency || "INR";
-        itemData.exchange_rate = exchangeRate; // Send exchange rate used
-    }
-
-      console.log(`📦 Regular Item ${index + 1}:`, {
-        product_id: itemData.product_id,
-        description: itemData.description.substring(0, 50),
-        quantity: itemData.quantity,
-        price: itemData.purchase_price,
-        currency: itemData.currency || "INR",
-        exchange_rate: itemData.exchange_rate || 1,
-        // REMOVE: price_inr: itemData.purchase_price_inr,
-        total: itemData.total_amount,
-        // REMOVE: total_inr: itemData.total_amount_inr
-    });
-
-
-    return itemData;
-});
-    
-    purchaseData.items = preparedItems;
-    console.log(`📊 Total regular items: ${preparedItems.length}`);
-}
- else if (purchaseType === "purchase-expenses") {
-                console.log("💰 Expense purchase - NOT including regular items");
-            }
-
-            // Add import items for purchase and purchase-import types with currency
-            if ((purchaseType === "purchase" || purchaseType === "purchase-import") && importItems.length > 0) {
-                const preparedImportItems = importItems.map((item, index) => {
-                    const importItemData = {
-                        name: item.name || `Import Item ${index + 1}`,
+            if (purchaseType === "purchase" || purchaseType === "purchase-import") {
+                const preparedItems = items.map((item, index) => {
+                    const currency = currencies.find(c => c.code === item.currency) || currencies[0];
+                    const exchangeRate = currency.exchangeRate || 1;
+                    const itemData: any = {
+                        product_id: item.product_id || undefined,
+                        description: item.description || `Item ${index + 1}`,
+                        hsn_code: item.hsn_code || "",
                         quantity: Number(item.quantity) || 1,
-                        rate: Number(item.rate) || 0,
-                        currency: item.currency || "INR", // Include currency
-                        per: item.per || "unit",
+                        unit: item.unit || "unit",
+                        purchase_price: Number(item.purchase_price) || 0.01,
+                        item_code: item.item_code || "",
                         discount_percent: Number(item.discount_percent || 0),
-                        amount: Number(item.amount) || 0,
+                        discount_amount: Number(item.discount_amount || 0),
+                        gst_rate: Number(item.gst_rate || 0),
+                        tax_amount: Number(item.tax_amount || 0),
+                        unit_cost: Number(item.unit_cost || item.purchase_price || 0.01),
+                        total_amount: Number(item.total_amount || 0),
                     };
-
-                    console.log(`📦 Import Item ${index + 1}:`, {
-                        name: importItemData.name,
-                        quantity: importItemData.quantity,
-                        rate: importItemData.rate,
-                        currency: importItemData.currency,
-                        amount: importItemData.amount
-                    });
-
-                    return importItemData;
+                    if (purchaseType === "purchase-import") {
+                        itemData.currency = item.currency || "INR";
+                        itemData.exchange_rate = exchangeRate;
+                    }
+                    return itemData;
                 });
-                
-                purchaseData.import_items = preparedImportItems;
-                console.log(`📊 Total import items: ${preparedImportItems.length}`);
+                purchaseData.items = preparedItems;
             }
-            
-            // Add expense items ONLY for expense purchases
+
+            if (purchaseType === "purchase" || purchaseType === "purchase-import") {
+                purchaseData.import_items = importItems.map((item, index) => ({
+                    name: item.name || `Import Item ${index + 1}`,
+                    quantity: Number(item.quantity) || 1,
+                    rate: Number(item.rate) || 0,
+                    currency: item.currency || "INR",
+                    per: item.per || "unit",
+                    discount_percent: Number(item.discount_percent || 0),
+                    amount: Number(item.amount) || 0,
+                }));
+            }
+
             if (purchaseType === "purchase-expenses" && expenseItems.length > 0) {
-                const preparedExpenseItems = expenseItems.map((item, index) => {
-                    const expenseItemData = {
-                        particulars: item.particulars || `Expense ${index + 1}`,
-                        rate: Number(item.rate) || 0,
-                        per: item.per || "unit",
-                        amount: Number(item.amount) || 0,
-                    };
-
-                    console.log(`💰 Expense Item ${index + 1}:`, {
-                        particulars: expenseItemData.particulars,
-                        rate: expenseItemData.rate,
-                        amount: expenseItemData.amount
-                    });
-
-                    return expenseItemData;
-                });
-                
-                purchaseData.expense_items = preparedExpenseItems;
-                console.log(`📊 Total expense items: ${preparedExpenseItems.length}`);
+                purchaseData.expense_items = expenseItems.map((item, index) => ({
+                    particulars: item.particulars || `Expense ${index + 1}`,
+                    rate: Number(item.rate) || 0,
+                    per: item.per || "unit",
+                    amount: Number(item.amount) || 0,
+                }));
             }
 
-            // Remove empty arrays to avoid validation errors
-            if (!purchaseData.items || purchaseData.items.length === 0) {
-                delete purchaseData.items;
-            }
-            if (!purchaseData.import_items || purchaseData.import_items.length === 0) {
-                delete purchaseData.import_items;
-            }
-            if (!purchaseData.expense_items || purchaseData.expense_items.length === 0) {
-                delete purchaseData.expense_items;
-            }
+            console.log("📤 Payload:", JSON.stringify(purchaseData, null, 2));
 
-            // Log final payload
-            console.log("📤 FINAL PAYLOAD TO BE SENT:");
-            console.log("Purchase Type:", purchaseData.purchase_type);
-            console.log("Vendor ID:", purchaseData.vendor_id);
-            console.log("Items:", purchaseData.items ? purchaseData.items.length : 0);
-            console.log("Import items:", purchaseData.import_items ? purchaseData.import_items.length : 0);
-            console.log("Expense items:", purchaseData.expense_items ? purchaseData.expense_items.length : 0);
-            
-            // Log the full payload for debugging
-            console.log("📄 Full payload:", JSON.stringify(purchaseData, null, 2));
+            const response = await purchasesApi.update(company.id, purchaseId, purchaseData);
 
-            // Call the API
-            console.log("⏳ Calling API...");
-            const response = await api.put(`/purchases/${purchaseId}`, purchaseData, {
-                params: { company_id: company.id },
-            });
-            
-            console.log('✅ Purchase updated successfully! Response:', response);
+            console.log('✅ Purchase updated successfully!', response);
             const respData = (response as any)?.data ?? response as any;
-            const purchaseNumber =
-                respData.purchase_number ||
-                respData.data?.purchase_number ||
-                nextPurchaseNumber ||
-                "";
+            const purchaseNumber = respData.purchase_number || respData.data?.purchase_number || nextPurchaseNumber || "";
             alert(`Purchase ${purchaseNumber} updated successfully!`);
             router.push(`/purchase/purchase-list`);
 
         } catch (error: any) {
-            console.error("❌ ========== PURCHASE UPDATE FAILED ==========");
-            console.error("Error object:", error);
+            console.error("❌ PURCHASE UPDATE FAILED:", error);
             
             if (error.response) {
                 console.error("Status:", error.response.status);
                 console.error("Data:", error.response.data);
-                
-                // Extract detailed error message
                 let errorMessage = "Failed to update purchase: ";
-                
                 if (error.response.data && typeof error.response.data === 'object') {
                     if (error.response.data.detail) {
-                        // Handle array of errors
                         if (Array.isArray(error.response.data.detail)) {
                             errorMessage = error.response.data.detail.map((err: any) => 
                                 `${err.loc ? err.loc.join('.') + ': ' : ''}${err.msg}`
@@ -1151,55 +914,29 @@ const calculateTotals = () => {
                         errorMessage += JSON.stringify(error.response.data);
                     }
                 }
-                
                 alert(errorMessage);
-                
             } else if (error.request) {
                 alert("No response from server. Please check your network connection.");
             } else {
                 alert(`Error: ${error.message}`);
             }
-            
         } finally {
             setIsSubmitting(false);
-            console.log("🏁 Submission process completed");
         }
     };
 
- const handleProductSelect = (itemId: number, product: any) => {
-    console.log("Handling product select for item:", itemId, "Product:", product);
-    
-    setItems(prevItems => 
-        prevItems.map(item => {
+    const handleProductSelect = (itemId: number, product: any) => {
+        setItems(prevItems => prevItems.map(item => {
             if (item.id === itemId) {
-                // Extract product data with fallbacks
                 const purchasePrice = product.unit_price || product.purchase_price || product.price || 0;
                 const gstRate = parseFloat(product.gst_rate) || parseFloat(product.gst) || 18;
                 const hsnCode = product.hsn_code || product.hsn || product.hsn_no || "";
                 const quantity = item.quantity || 1;
-                
-                // Preserve existing currency or use product's currency
                 const productCurrency = item.currency || product.currency || "INR";
-                
-                // Calculate totals in original currency first
                 const itemTotal = quantity * purchasePrice;
-                const discount = item.discount_percent > 0 ? 
-                    itemTotal * (item.discount_percent / 100) : 0;
+                const discount = item.discount_percent > 0 ? itemTotal * (item.discount_percent / 100) : 0;
                 const taxable = itemTotal - discount;
                 const tax = taxable * (gstRate / 100);
-                
-                console.log("Auto-filling item with:", {
-                    purchasePrice,
-                    gstRate,
-                    hsnCode,
-                    quantity,
-                    itemTotal,
-                    discount,
-                    tax,
-                    total: taxable + tax,
-                    currency: productCurrency
-                });
-                
                 return {
                     ...item,
                     product_id: product.id,
@@ -1217,191 +954,46 @@ const calculateTotals = () => {
                 };
             }
             return item;
-        })
-    );
-};
+        }));
+    };
 
-const updateItem = (id: number, field: string, value: any) => {
-    setItems(prevItems => {
-        return prevItems.map(item => {
+    const updateItem = (id: number, field: string, value: any) => {
+        setItems(prevItems => prevItems.map(item => {
             if (item.id === id) {
                 const updated = { ...item, [field]: value };
-
-                // Recalculate item totals whenever relevant fields change
                 const itemTotal = updated.quantity * updated.purchase_price;
-                const discount = updated.discount_percent > 0 ?
-                    itemTotal * (updated.discount_percent / 100) : 0;
+                const discount = updated.discount_percent > 0 ? itemTotal * (updated.discount_percent / 100) : 0;
                 const taxable = itemTotal - discount;
                 const tax = taxable * (updated.gst_rate / 100);
-
                 updated.discount_amount = discount;
                 updated.tax_amount = tax;
                 updated.unit_cost = updated.purchase_price;
                 updated.total_amount = taxable + tax;
-
-                // Update CGST/SGST rates based on GST rate
                 updated.cgst_rate = updated.gst_rate / 2;
                 updated.sgst_rate = updated.gst_rate / 2;
-
-                // REMOVED: Don't set currency to INR here
-                // if (!updated.currency) {
-                //     updated.currency = "INR";
-                // }
-
-                console.log("Updated item calculation:", {
-                    id,
-                    field,
-                    value,
-                    itemTotal,
-                    discount,
-                    tax,
-                    total: updated.total_amount,
-                    currency: updated.currency // This will now show the actual currency
-                });
-
                 return updated;
             }
             return item;
-        });
-    });
-};
-
-
-
-// Add this useEffect after your other useEffects
-useEffect(() => {
-    if (purchaseType === "purchase-import") {
-        setItems(prevItems => 
-            prevItems.map(item => ({
-                ...item,
-                currency: item.currency || "INR" // Initialize only if not set
-            }))
-        );
-    } else {
-        // For other purchase types, remove currency from items using type assertion
-        setItems(prevItems => 
-            prevItems.map(item => {
-                // Create a new object without the currency property
-                const { currency, ...rest } = item;
-                // Type assertion to handle the missing currency property
-                return rest as any;
-            })
-        );
-    }
-}, [purchaseType]);
-
-
-
-// Update form data handler
-    const handleFormChange = (field: string, value: any) => {
-        setFormData(prev => ({
-            ...prev,
-            [field]: value,
         }));
     };
 
-    const handleProductSearch = (value: string) => {
-        setProductSearch(value);
-
-        if (!value) {
-            setSearchResults([]);
-            return;
+    useEffect(() => {
+        if (purchaseType === "purchase-import") {
+            setItems(prevItems => prevItems.map(item => ({ ...item, currency: item.currency || "INR" })));
+        } else {
+            setItems(prevItems => prevItems.map(item => {
+                const { currency, ...rest } = item;
+                return rest as any;
+            }));
         }
+    }, [purchaseType]);
 
-        const results = products.filter(p =>
-            p.name?.toLowerCase().includes(value.toLowerCase()) ||
-            p.sku?.toLowerCase().includes(value.toLowerCase()) ||
-            p.item_code?.toLowerCase().includes(value.toLowerCase())
-        );
-
-        setSearchResults(results);
+    const handleFormChange = (field: string, value: any) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
     };
 
-  const handleSearchSelect = (product: any) => {
-    console.log("Search select product:", product);
-    
-    const purchasePrice = product.cost_price || product.purchase_price || product.price || 0;
-    const gstRate = parseFloat(product.gst_rate) || parseFloat(product.gst) || 18;
-    const hsnCode = product.hsn_code || product.hsn || product.hsn_no || "";
-    const itemCode = product.item_code || product.sku || product.code || "";
-    const productCurrency = product.currency || "INR"; // Get currency from product
-    
-    const newItem = {
-        id: Date.now(),
-        product_id: product.id,
-        description: product.name || product.description || "",
-        item_code: itemCode,
-        hsn_code: hsnCode,
-        quantity: 1,
-        unit: "unit",
-        purchase_price: purchasePrice,
-        discount_percent: 0,
-        discount_amount: 0,
-        gst_rate: gstRate,
-        cgst_rate: gstRate / 2,
-        sgst_rate: gstRate / 2,
-        igst_rate: 0,
-        tax_amount: 0,
-        unit_cost: purchasePrice,
-        total_amount: purchasePrice,
-        currency: productCurrency, // Use product's currency
-    };
-    
-    // Calculate initial totals
-    const itemTotal = newItem.quantity * newItem.purchase_price;
-    const discount = newItem.discount_percent > 0 ?
-        itemTotal * (newItem.discount_percent / 100) : 0;
-    const taxable = itemTotal - discount;
-    const tax = taxable * (newItem.gst_rate / 100);
-    
-    newItem.discount_amount = discount;
-    newItem.tax_amount = tax;
-    newItem.total_amount = taxable + tax;
-
-    console.log("Adding new item:", newItem);
-    setItems(prev => [...prev, newItem]);
-    setProductSearch("");
-    setSearchResults([]);
-};
-  const addItem = (prefill: any = {}) => {
-    const newItem: any = {
-        id: Date.now(),
-        product_id: "",
-        description: "",
-        item_code: "",
-        hsn_code: "",
-        quantity: 1,
-        unit: "unit",
-        purchase_price: 0,
-        discount_percent: 0,
-        discount_amount: 0,
-        gst_rate: 18,
-        cgst_rate: 9,
-        sgst_rate: 9,
-        igst_rate: 0,
-        tax_amount: 0,
-        unit_cost: 0,
-        total_amount: 0,
-        ...prefill,
-    };
-    
-    // Only add currency field for purchase-import type
-    if (purchaseType === "purchase-import") {
-        newItem.currency = prefill.currency || "INR";
-    }
-    
-    console.log("Adding new item:", newItem);
-    setItems(prev => [...prev, newItem]);
-};
-    const removeItem = (id: number) => {
-        setItems(items.filter(item => item.id !== id));
-    };
-
-    // Auto-fill supplier details when supplier is selected
     const handleSupplierChange = (field: string, value: any) => {
         handleFormChange(field, value);
-        
-        // Auto-fill supplier contact details if available
         if (value) {
             const selectedSupplier = suppliers.find(s => s.id === value);
             if (selectedSupplier) {
@@ -1417,26 +1009,52 @@ useEffect(() => {
         }
     };
 
-    // Format supplier option label with email and phone
     const formatSupplierOptionLabel = (option: any) => {
         const supplier = suppliers.find(s => s.id === option.value);
         if (!supplier) return option.label;
-        
         const name = supplier.vendor_name || supplier.name || supplier.customer_name || `Vendor #${supplier.id}`;
-        
         return (
             <div className="py-1">
                 <div className="font-medium">{name}</div>
                 {(supplier.email || supplier.mobile || supplier.phone) && (
                     <div className="text-xs text-gray-500">
-                        {supplier.email && <div> {supplier.email}</div>}
-                        {(supplier.mobile || supplier.phone) && (
-                            <div> {supplier.mobile || supplier.phone}</div>
-                        )}
+                        {supplier.email && <div>{supplier.email}</div>}
+                        {(supplier.mobile || supplier.phone) && <div>{supplier.mobile || supplier.phone}</div>}
                     </div>
                 )}
             </div>
         );
+    };
+
+    const addItem = (prefill: any = {}) => {
+        const newItem: any = {
+            id: Date.now(),
+            product_id: "",
+            description: "",
+            item_code: "",
+            hsn_code: "",
+            quantity: 1,
+            unit: "unit",
+            purchase_price: 0,
+            discount_percent: 0,
+            discount_amount: 0,
+            gst_rate: 18,
+            cgst_rate: 9,
+            sgst_rate: 9,
+            igst_rate: 0,
+            tax_amount: 0,
+            unit_cost: 0,
+            total_amount: 0,
+            ...prefill,
+        };
+        if (purchaseType === "purchase-import") {
+            newItem.currency = prefill.currency || "INR";
+        }
+        setItems(prev => [...prev, newItem]);
+    };
+
+    const removeItem = (id: number) => {
+        setItems(items.filter(item => item.id !== id));
     };
 
     if (isPageLoading) {
@@ -1479,92 +1097,34 @@ useEffect(() => {
                     <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg dark:bg-gray-dark">
                         <div className="mb-4 flex items-center justify-between">
                             <h3 className="text-lg font-semibold text-dark dark:text-white">Add New Currency</h3>
-                            <button
-                                type="button"
-                                onClick={() => setShowAddCurrencyModal(false)}
-                                className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
-                            >
+                            <button type="button" onClick={() => setShowAddCurrencyModal(false)} className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3">
                                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                 </svg>
                             </button>
                         </div>
-                        
                         <div className="space-y-4">
                             <div>
-                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                    Currency Code <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={newCurrency.code}
-                                    onChange={(e) => setNewCurrency(prev => ({ ...prev, code: e.target.value.toUpperCase() }))}
-                                    placeholder="e.g., USD, EUR, GBP"
-                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    maxLength={3}
-                                />
-                                <p className="mt-1 text-xs text-dark-6">3-letter currency code (ISO 4217)</p>
+                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Currency Code <span className="text-red-500">*</span></label>
+                                <input type="text" value={newCurrency.code} onChange={(e) => setNewCurrency(prev => ({ ...prev, code: e.target.value.toUpperCase() }))} placeholder="e.g., USD, EUR, GBP" className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3" maxLength={3} />
                             </div>
-                            
                             <div>
-                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                    Currency Name <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={newCurrency.name}
-                                    onChange={(e) => setNewCurrency(prev => ({ ...prev, name: e.target.value }))}
-                                    placeholder="e.g., US Dollar, Euro, British Pound"
-                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                />
+                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Currency Name <span className="text-red-500">*</span></label>
+                                <input type="text" value={newCurrency.name} onChange={(e) => setNewCurrency(prev => ({ ...prev, name: e.target.value }))} placeholder="e.g., US Dollar" className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3" />
                             </div>
-                            
                             <div>
-                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                    Currency Symbol <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={newCurrency.symbol}
-                                    onChange={(e) => setNewCurrency(prev => ({ ...prev, symbol: e.target.value }))}
-                                    placeholder="e.g., $, €, £"
-                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    maxLength={5}
-                                />
+                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Currency Symbol <span className="text-red-500">*</span></label>
+                                <input type="text" value={newCurrency.symbol} onChange={(e) => setNewCurrency(prev => ({ ...prev, symbol: e.target.value }))} placeholder="e.g., $, €, £" className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3" maxLength={5} />
                             </div>
-                            
                             <div>
-                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                    Exchange Rate (to INR)
-                                </label>
-                                <input
-                                    type="number"
-                                    value={newCurrency.exchangeRate}
-                                    onChange={(e) => setNewCurrency(prev => ({ ...prev, exchangeRate: parseFloat(e.target.value) || 1 }))}
-                                    placeholder="1.0"
-                                    step="0.0001"
-                                    min="0.0001"
-                                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                />
+                                <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Exchange Rate (to INR)</label>
+                                <input type="number" value={newCurrency.exchangeRate} onChange={(e) => setNewCurrency(prev => ({ ...prev, exchangeRate: parseFloat(e.target.value) || 1 }))} step="0.0001" min="0.0001" className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3" />
                                 <p className="mt-1 text-xs text-dark-6">1 {newCurrency.code || "XXX"} = {newCurrency.exchangeRate} INR</p>
                             </div>
                         </div>
-                        
                         <div className="mt-6 flex justify-end gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setShowAddCurrencyModal(false)}
-                                className="rounded-lg border border-stroke px-4 py-2.5 text-dark hover:bg-gray-50 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleSaveNewCurrency}
-                                className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90"
-                            >
-                                Add Currency
-                            </button>
+                            <button type="button" onClick={() => setShowAddCurrencyModal(false)} className="rounded-lg border border-stroke px-4 py-2.5 text-dark hover:bg-gray-50 dark:border-dark-3 dark:text-white dark:hover:bg-dark-3">Cancel</button>
+                            <button type="button" onClick={handleSaveNewCurrency} className="rounded-lg bg-primary px-4 py-2.5 text-white hover:bg-opacity-90">Add Currency</button>
                         </div>
                     </div>
                 </div>
@@ -1572,13 +1132,11 @@ useEffect(() => {
 
             <form data-ui="sf-form" onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                    {/* Main Form - 3 column layout */}
                     <div className="lg:col-span-3 space-y-6">
                         {/* SECTION 1: Purchase Basic Details */}
                         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                             <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Purchase Basic Details</h2>
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                {/* Add Purchase Type Dropdown */}
                                 <div>
                                     <SelectField
                                         label="Purchase Type"
@@ -1594,7 +1152,6 @@ useEffect(() => {
                                         placeholder="Select Purchase Type"
                                     />
                                 </div>
-                                
                                 <div>
                                     <SelectField
                                         label="Company"
@@ -1606,26 +1163,18 @@ useEffect(() => {
                                         placeholder="Select Company"
                                     />
                                 </div>
-                                
                                 <div>
                                     <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                                         Purchase Number <span className="text-red-500">*</span>
                                     </label>
-                                    <div className="flex gap-2">
-                                        <input
-                                            type="text"
-                                            value={loadingPurchaseNumber ? "Loading..." : nextPurchaseNumber}
-                                            className="flex-1 rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 outline-none dark:border-dark-3 dark:bg-dark-2"
-                                            readOnly
-                                            disabled={loadingPurchaseNumber}
-                                        />
-                                    </div>
-                                    {loadingPurchaseNumber && (
-                                        <p className="mt-1 text-sm text-gray-500">Generating purchase number...</p>
-                                    )}
+                                    <input
+                                        type="text"
+                                        value={loadingPurchaseNumber ? "Loading..." : nextPurchaseNumber}
+                                        className="flex-1 w-full rounded-lg border border-stroke bg-gray-50 px-4 py-2.5 outline-none dark:border-dark-3 dark:bg-dark-2"
+                                        readOnly
+                                        disabled={loadingPurchaseNumber}
+                                    />
                                 </div>
-                                
-                                {/* Supplier/Vendor Field with Email and Phone */}
                                 <div>
                                     <SelectField
                                         label="Supplier/Vendor"
@@ -1640,13 +1189,7 @@ useEffect(() => {
                                         placeholder="Select Supplier"
                                         formatOptionLabel={formatSupplierOptionLabel}
                                     />
-                                    {suppliers.length > 0 && (
-                                        <p className="mt-1 text-xs text-gray-500">
-                                            Showing {suppliers.length} suppliers
-                                        </p>
-                                    )}
                                 </div>
-                                
                                 <div>
                                     <SelectField
                                         label="Payment Type / Currency"
@@ -1666,9 +1209,7 @@ useEffect(() => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Exchange Rate
-                                    </label>
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Exchange Rate</label>
                                     <input
                                         type="number"
                                         value={paymentExchangeRateInput}
@@ -1691,67 +1232,30 @@ useEffect(() => {
                                         className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
                                     />
                                 </div>
-                                
                                 <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Purchase Date <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={formData.purchase_date}
-                                        onChange={(e) => handleFormChange('purchase_date', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                        required
-                                    />
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Purchase Date <span className="text-red-500">*</span></label>
+                                    <input type="date" value={formData.purchase_date} onChange={(e) => handleFormChange('purchase_date', e.target.value)} className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3" required />
                                 </div>
                                 <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Due Date
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={formData.due_date}
-                                        onChange={(e) => handleFormChange('due_date', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Due Date</label>
+                                    <input type="date" value={formData.due_date} onChange={(e) => handleFormChange('due_date', e.target.value)} className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3" />
                                 </div>
                                 <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Reference No
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.reference_no || ""}
-                                        onChange={(e) => setFormData({ ...formData, reference_no: e.target.value })}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Reference No</label>
+                                    <input type="text" value={formData.reference_no || ""} onChange={(e) => setFormData({ ...formData, reference_no: e.target.value })} className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3" />
                                 </div>
                                 <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Vendor Invoice No.
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.vendor_invoice_number || ""}
-                                        onChange={(e) => setFormData({ ...formData, vendor_invoice_number: e.target.value })}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Vendor Invoice No.</label>
+                                    <input type="text" value={formData.vendor_invoice_number || ""} onChange={(e) => setFormData({ ...formData, vendor_invoice_number: e.target.value })} className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3" />
                                 </div>
                                 <div>
-                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                        Vendor Invoice Date
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={formData.vendor_invoice_date}
-                                        onChange={(e) => handleFormChange('vendor_invoice_date', e.target.value)}
-                                        className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                    />
+                                    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Vendor Invoice Date</label>
+                                    <input type="date" value={formData.vendor_invoice_date} onChange={(e) => handleFormChange('vendor_invoice_date', e.target.value)} className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3" />
                                 </div>
                             </div>
                         </div>
 
-                        {/* SECTION 2: Regular Purchase Items (VISIBLE for purchase and purchase-import) */}
+                        {/* SECTION 2: Purchase Items */}
                         {purchaseType !== "purchase-expenses" && (
                             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
                                 <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1760,26 +1264,18 @@ useEffect(() => {
                                         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Add items to your purchase invoice</p>
                                     </div>
                                     <div className="flex gap-3">
-                                        <div className="text-sm text-gray-600 dark:text-gray-400">
-                                            Total Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}
-                                        </div>
-                                        <div className="text-sm text-gray-600 dark:text-gray-400">
-                                            Items: {items.length}
-                                        </div>
+                                        <div className="text-sm text-gray-600 dark:text-gray-400">Total Quantity: {items.reduce((sum, item) => sum + item.quantity, 0)}</div>
+                                        <div className="text-sm text-gray-600 dark:text-gray-400">Items: {items.length}</div>
                                     </div>
                                 </div>
-                            <div className="mb-4 flex justify-end">
-                                <button
-                                    type="button"
-                                    onClick={() => addItem()}
-                                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                                >
-                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                    </svg>
-                                    Add Item
-                                </button>
-                            </div>{/* Items Table - Different columns based on purchase type */}
+                                <div className="mb-4 flex justify-end">
+                                    <button type="button" onClick={() => addItem()} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        Add Item
+                                    </button>
+                                </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full border-collapse min-w-[1400px]">
                                         <thead>
@@ -1789,16 +1285,16 @@ useEffect(() => {
                                                 <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">HSN</th>
                                                 <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Description</th>
                                                 <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Quantity</th>
-                                              <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">
-    <div className="flex items-center gap-1">
-        <span>Purchase Price</span>
-        {purchaseType === "purchase-import" && (
-            <span className="text-[10px] text-gray-500 dark:text-gray-400">(with currency)</span>
-        )}
-    </div>
-</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount</th>
-                                            <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Tax Amount</th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">
+                                                    <div className="flex items-center gap-1">
+                                                        <span>Purchase Price</span>
+                                                        {purchaseType === "purchase-import" && (
+                                                            <span className="text-[10px] text-gray-500 dark:text-gray-400">(with currency)</span>
+                                                        )}
+                                                    </div>
+                                                </th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Discount</th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Tax Amount</th>
                                                 <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Tax %</th>
                                                 <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Total Amount</th>
                                                 <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Action</th>
@@ -1811,110 +1307,55 @@ useEffect(() => {
                                                         <ProductSelectField
                                                             value={item.product_id}
                                                             products={products}
-                                                            onChange={(product) => {
-                                                                console.log("Product selected in dropdown:", product);
-                                                                if (product) {
-                                                                    handleProductSelect(item.id, product);
-                                                                }
-                                                            }}
+                                                            onChange={(product) => { if (product) handleProductSelect(item.id, product); }}
                                                             placeholder="Select Product"
-                                                            onProductSelect={(product) => {
-                                                                console.log("onProductSelect triggered:", product);
-                                                                handleProductSelect(item.id, product);
-                                                            }}
+                                                            onProductSelect={(product) => handleProductSelect(item.id, product)}
                                                         />
                                                     </td>
                                                     <td className="px-4 py-3">
-                                                        <input
-                                                            type="text"
-                                                            value={item.item_code}
-                                                            onChange={(e) => updateItem(item.id, 'item_code', e.target.value)}
-                                                            className="w-full min-w-[120px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                            placeholder="Item code"
-                                                        />
+                                                        <input type="text" value={item.item_code} onChange={(e) => updateItem(item.id, 'item_code', e.target.value)} className="w-full min-w-[120px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3" placeholder="Item code" />
                                                     </td>
                                                     <td className="px-4 py-3">
-                                                        <input
-                                                            type="text"
-                                                            value={item.hsn_code}
-                                                            onChange={(e) => updateItem(item.id, 'hsn_code', e.target.value)}
-                                                            className="w-full min-w-[100px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                            placeholder="HSN"
-                                                        />
+                                                        <input type="text" value={item.hsn_code} onChange={(e) => updateItem(item.id, 'hsn_code', e.target.value)} className="w-full min-w-[100px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3" placeholder="HSN" />
                                                     </td>
                                                     <td className="px-4 py-3">
-                                                        <input
-                                                            type="text"
-                                                            value={item.description}
-                                                            onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                                                            className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                            placeholder="Description"
-                                                        />
+                                                        <input type="text" value={item.description} onChange={(e) => updateItem(item.id, 'description', e.target.value)} className="w-full min-w-[150px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3" placeholder="Description" />
                                                     </td>
                                                     <td className="px-4 py-3">
-                                                        <input
-                                                            type="number"
-                                                            value={item.quantity}
-                                                            onChange={(e) => updateItem(item.id, 'quantity', parseFloat(e.target.value))}
-                                                            className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                            min="1"
-                                                        />
+                                                        <input type="number" value={item.quantity} onChange={(e) => updateItem(item.id, 'quantity', parseFloat(e.target.value))} className="w-20 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3" min="1" />
                                                     </td>
                                                     <td className="px-4 py-3">
-    <div className="flex gap-2">
-        <div className="flex-1">
-            <input
-                type="number"
-                value={item.purchase_price}
-                onChange={(e) => updateItem(item.id, 'purchase_price', parseFloat(e.target.value))}
-                className="w-full rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                min="0"
-                step="0.01"
-            />
-            {/* Show INR conversion below */}
-            {item.currency !== "INR" && (
-                <div className="text-xs text-gray-500 mt-1">
-                    ₹{(item.purchase_price * (currencies.find(c => c.code === item.currency)?.exchangeRate || 1)).toFixed(2)} INR
-                </div>
-            )}
-        </div>
-        {purchaseType === "purchase-import" && (
-            <CurrencySelect
-                value={item.currency || "INR"}
-                onChange={(currency) => {
-                    updateItem(item.id, 'currency', currency);
-                }}
-                currencies={currencies}
-                onAddNewCurrency={handleAddNewCurrency}
-                itemPrice={item.purchase_price} // Pass price for conversion display
-            />
-        )}
-    </div>
-</td>
+                                                        <div className="flex gap-2">
+                                                            <div className="flex-1">
+                                                                <input type="number" value={item.purchase_price} onChange={(e) => updateItem(item.id, 'purchase_price', parseFloat(e.target.value))} className="w-full rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3" min="0" step="0.01" />
+                                                                {item.currency !== "INR" && (
+                                                                    <div className="text-xs text-gray-500 mt-1">
+                                                                        ₹{(item.purchase_price * (currencies.find(c => c.code === item.currency)?.exchangeRate || 1)).toFixed(2)} INR
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            {purchaseType === "purchase-import" && (
+                                                                <CurrencySelect
+                                                                    value={item.currency || "INR"}
+                                                                    onChange={(currency) => updateItem(item.id, 'currency', currency)}
+                                                                    currencies={currencies}
+                                                                    onAddNewCurrency={handleAddNewCurrency}
+                                                                    itemPrice={item.purchase_price}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                    </td>
                                                     <td className="px-4 py-3">
                                                         <div className="flex gap-1">
-                                                            <input
-                                                                type="number"
-                                                                value={item.discount_percent}
-                                                                onChange={(e) => updateItem(item.id, 'discount_percent', parseFloat(e.target.value))}
-                                                                className="w-16 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                                min="0"
-                                                                step="0.01"
-                                                            />
+                                                            <input type="number" value={item.discount_percent} onChange={(e) => updateItem(item.id, 'discount_percent', parseFloat(e.target.value))} className="w-16 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3" min="0" step="0.01" />
                                                             <span className="flex items-center px-1 py-1.5 text-xs">%</span>
                                                         </div>
                                                     </td>
                                                     <td className="px-4 py-3">
-                                                        <span className="font-medium">
-                                                            ₹{(item.tax_amount || 0).toFixed(2)}
-                                                        </span>
+                                                        <span className="font-medium">₹{(item.tax_amount || 0).toFixed(2)}</span>
                                                     </td>
                                                     <td className="px-4 py-3">
-                                                        <select
-                                                            value={item.gst_rate}
-                                                            onChange={(e) => updateItem(item.id, 'gst_rate', parseFloat(e.target.value))}
-                                                            className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3"
-                                                        >
+                                                        <select value={item.gst_rate} onChange={(e) => updateItem(item.id, 'gst_rate', parseFloat(e.target.value))} className="w-20 rounded border border-stroke bg-transparent px-2 py-1.5 outline-none focus:border-primary dark:border-dark-3">
                                                             <option value="0">0%</option>
                                                             <option value="5">5%</option>
                                                             <option value="12">12%</option>
@@ -1922,30 +1363,19 @@ useEffect(() => {
                                                             <option value="28">28%</option>
                                                         </select>
                                                     </td>
-                                                  <td className="px-4 py-3 font-medium">
-    <div>
-        {/* Show in original currency if not INR */}
-        {item.currency !== "INR" && (
-            <div className="text-sm text-gray-600">
-                {currencies.find(c => c.code === item.currency)?.symbol || ""}
-                {item.total_amount.toFixed(2)} {item.currency}
-            </div>
-        )}
-        {/* Always show INR value */}
-        <div>
-            ₹{(
-                item.total_amount * 
-                (currencies.find(c => c.code === item.currency)?.exchangeRate || 1)
-            ).toFixed(2)}
-        </div>
-    </div>
-</td>
+                                                    <td className="px-4 py-3 font-medium">
+                                                        <div>
+                                                            {item.currency !== "INR" && (
+                                                                <div className="text-sm text-gray-600">
+                                                                    {currencies.find(c => c.code === item.currency)?.symbol || ""}
+                                                                    {item.total_amount.toFixed(2)} {item.currency}
+                                                                </div>
+                                                            )}
+                                                            <div>₹{(item.total_amount * (currencies.find(c => c.code === item.currency)?.exchangeRate || 1)).toFixed(2)}</div>
+                                                        </div>
+                                                    </td>
                                                     <td className="px-4 py-3">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => removeItem(item.id)}
-                                                            className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                                        >
+                                                        <button type="button" onClick={() => removeItem(item.id)} className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
                                                             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                                             </svg>
@@ -1959,80 +1389,94 @@ useEffect(() => {
                             </div>
                         )}
 
-                        {/* The rest of your form remains the same... */}
-                   
+                        {/* SECTION 3: Expense Items (only for purchase-expenses) */}
+                        {purchaseType === "purchase-expenses" && (
+                            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4 md:p-6">
+                                <div className="mb-4 flex items-center justify-between">
+                                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Expense Items</h2>
+                                    <button type="button" onClick={addExpenseItem} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                        Add Expense
+                                    </button>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full border-collapse">
+                                        <thead>
+                                            <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Particulars</th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Rate</th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Per</th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Amount</th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-900 dark:text-white">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                            {expenseItems.map((item) => (
+                                                <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                                    <td className="px-4 py-3">
+                                                        <input type="text" value={item.particulars} onChange={(e) => updateExpenseItem(item.id, 'particulars', e.target.value)} className="w-full min-w-[200px] rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3" placeholder="Expense description" />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input type="number" value={item.rate} onChange={(e) => updateExpenseItem(item.id, 'rate', parseFloat(e.target.value) || 0)} className="w-32 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3" min="0" step="0.01" />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input type="text" value={item.per} onChange={(e) => updateExpenseItem(item.id, 'per', e.target.value)} className="w-24 rounded border border-stroke bg-transparent px-3 py-1.5 outline-none focus:border-primary dark:border-dark-3" placeholder="unit" />
+                                                    </td>
+                                                    <td className="px-4 py-3 font-medium">₹{(item.amount || 0).toFixed(2)}</td>
+                                                    <td className="px-4 py-3">
+                                                        <button type="button" onClick={() => removeExpenseItem(item.id)} className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">
+                                                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                            </svg>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
 
-                        {/* The rest of your form remains the same... */}
                         {/* SECTION 4: Charges & Summary */}
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                            {/* Left side - Charges & Discounts */}
                             <div className="lg:col-span-2">
                                 <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                                     <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Charges & Discounts</h2>
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                       {/* Freight Charges */}
-<div>
-    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
-    <div className="flex gap-2">
-        <input
-            type="number"
-            value={formData.freight_charges}
-            onChange={(e) => setFormData({ ...formData, freight_charges: parseFloat(e.target.value) })}
-            className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-            min="0"
-        />
-        <select
-            value={formData.freight_type}
-            onChange={(e) => setFormData({ ...formData, freight_type: e.target.value })}
-            className="w-32 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-        >
-            <option value="fixed">Fixed</option>
-            <option value="tax18">TAX @ 18%</option>
-            <option value="tax5">TAX @ 5%</option>
-            <option value="tax28">TAX @ 28%</option>
-            <option value="tax12">TAX @ 12%</option>
-        </select>
-    </div>
-</div>
-                                   {/* P & F Charges */}
-<div>
-    <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
-    <div className="flex gap-2">
-        <input
-            type="number"
-            value={formData.pf_charges}
-            onChange={(e) => setFormData({ ...formData, pf_charges: parseFloat(e.target.value) })}
-            className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-            min="0"
-        />
-        <select
-            value={formData.pf_type}
-            onChange={(e) => setFormData({ ...formData, pf_type: e.target.value })}
-            className="w-32 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-        >
-            <option value="fixed">Fixed</option>
-            <option value="tax18">TAX @ 18%</option>
-            <option value="tax5">TAX @ 5%</option>
-            <option value="tax28">TAX @ 28%</option>
-            <option value="tax12">TAX @ 12%</option>
-        </select>
-    </div>
-</div>
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Freight Charges</label>
+                                            <div className="flex gap-2">
+                                                <input type="number" value={formData.freight_charges} onChange={(e) => setFormData({ ...formData, freight_charges: parseFloat(e.target.value) })} className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3" min="0" />
+                                                <select value={formData.freight_type} onChange={(e) => setFormData({ ...formData, freight_type: e.target.value })} className="w-32 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3">
+                                                    <option value="fixed">Fixed</option>
+                                                    <option value="tax18">TAX @ 18%</option>
+                                                    <option value="tax5">TAX @ 5%</option>
+                                                    <option value="tax28">TAX @ 28%</option>
+                                                    <option value="tax12">TAX @ 12%</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">P & F Charges</label>
+                                            <div className="flex gap-2">
+                                                <input type="number" value={formData.pf_charges} onChange={(e) => setFormData({ ...formData, pf_charges: parseFloat(e.target.value) })} className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3" min="0" />
+                                                <select value={formData.pf_type} onChange={(e) => setFormData({ ...formData, pf_type: e.target.value })} className="w-32 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3">
+                                                    <option value="fixed">Fixed</option>
+                                                    <option value="tax18">TAX @ 18%</option>
+                                                    <option value="tax5">TAX @ 5%</option>
+                                                    <option value="tax28">TAX @ 28%</option>
+                                                    <option value="tax12">TAX @ 12%</option>
+                                                </select>
+                                            </div>
+                                        </div>
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Discount on All</label>
                                             <div className="flex gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={formData.discount_on_all}
-                                                    onChange={(e) => setFormData({ ...formData, discount_on_all: parseFloat(e.target.value) })}
-                                                    className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                    min="0"
-                                                />
-                                                <select
-                                                    value={formData.discount_type}
-                                                    onChange={(e) => setFormData({ ...formData, discount_type: e.target.value })}
-                                                    className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                                >
+                                                <input type="number" value={formData.discount_on_all} onChange={(e) => setFormData({ ...formData, discount_on_all: parseFloat(e.target.value) })} className="flex-1 rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3" min="0" />
+                                                <select value={formData.discount_type} onChange={(e) => setFormData({ ...formData, discount_type: e.target.value })} className="w-24 rounded-lg border border-stroke bg-transparent px-2 py-2.5 outline-none focus:border-primary dark:border-dark-3">
                                                     <option value="percentage">%</option>
                                                     <option value="fixed">Fixed</option>
                                                 </select>
@@ -2042,131 +1486,44 @@ useEffect(() => {
                                             <div className="w-full">
                                                 <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Round Off</label>
                                                 <div className="flex items-center gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const currentValue = Math.abs(formData.round_off || 0);
-                                                            setFormData(prev => ({
-                                                                ...prev,
-                                                                round_off: -currentValue
-                                                            }));
-                                                        }}
-                                                        className="p-2 rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400"
-                                                        title="Make amount negative"
-                                                    >
-                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                                                        </svg>
+                                                    <button type="button" onClick={() => { const v = Math.abs(formData.round_off || 0); setFormData(p => ({ ...p, round_off: -v })); }} className="p-2 rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-900/30 text-red-600">
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg>
                                                     </button>
                                                     <div className="relative">
-                                                        <input
-                                                            type="number"
-                                                            value={Math.abs(formData.round_off || 0)}
-                                                            onChange={(e) => {
-                                                                const inputValue = parseFloat(e.target.value) || 0;
-                                                                const currentSign = formData.round_off >= 0 ? 1 : -1;
-                                                                setFormData(prev => ({
-                                                                    ...prev,
-                                                                    round_off: currentSign * inputValue
-                                                                }));
-                                                            }}
-                                                            className="w-32 px-10 py-2 text-center border border-stroke dark:border-dark-3 rounded-lg bg-transparent outline-none focus:border-primary"
-                                                            step="0.01"
-                                                            min="0"
-                                                        />
-                                                        <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none">
-                                                            {formData.round_off >= 0 ? '+' : '-'}
-                                                        </div>
-                                                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
-                                                            ₹
-                                                        </div>
+                                                        <input type="number" value={Math.abs(formData.round_off || 0)} onChange={(e) => { const v = parseFloat(e.target.value) || 0; const sign = formData.round_off >= 0 ? 1 : -1; setFormData(p => ({ ...p, round_off: sign * v })); }} className="w-32 px-10 py-2 text-center border border-stroke dark:border-dark-3 rounded-lg bg-transparent outline-none focus:border-primary" step="0.01" min="0" />
+                                                        <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none">{formData.round_off >= 0 ? '+' : '-'}</div>
+                                                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">₹</div>
                                                     </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const currentValue = Math.abs(formData.round_off || 0);
-                                                            setFormData(prev => ({
-                                                                ...prev,
-                                                                round_off: currentValue
-                                                            }));
-                                                        }}
-                                                        className="p-2 rounded-lg bg-green-50 hover:bg-green-100 dark:bg-green-900/30 dark:hover:bg-green-900/50 text-green-600 dark:text-green-400"
-                                                        title="Make amount positive"
-                                                    >
-                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                                        </svg>
+                                                    <button type="button" onClick={() => { const v = Math.abs(formData.round_off || 0); setFormData(p => ({ ...p, round_off: v })); }} className="p-2 rounded-lg bg-green-50 hover:bg-green-100 dark:bg-green-900/30 text-green-600">
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                                                     </button>
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="md:col-span-2">
                                             <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Notes</label>
-                                            <textarea
-                                                value={formData.notes}
-                                                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                                                rows={3}
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3"
-                                            />
+                                            <textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} rows={3} className="w-full rounded-lg border border-stroke bg-transparent px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3" />
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Right side - Total Summary */}
                             <div className="lg:col-span-1">
                                 <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
                                     <h2 className="mb-4 text-lg font-semibold text-dark dark:text-white">Total Summary</h2>
                                     <div className="space-y-3">
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">Subtotal</span>
-                                            <span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{(totals?.subtotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">Freight Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{totals.freight.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">P & F Charges</span>
-                                            <span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{totals.pf.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">Tax</span>
-                                            <span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{totals.totalTax.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">Discount on All</span>
-                                            <span className="font-medium text-red-600">-{paymentCurrencySymbol}{totals.discountAll.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-dark-6">Round Off</span>
-                                            <span className={`font-medium ${totals.roundOff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                {totals.roundOff >= 0 ? "+" : "-"}{paymentCurrencySymbol}{Math.abs(totals.roundOff).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </span>
-                                        </div>
+                                        <div className="flex justify-between"><span className="text-dark-6">Subtotal</span><span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{(totals?.subtotal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                                        <div className="flex justify-between"><span className="text-dark-6">Freight Charges</span><span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{totals.freight.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                                        <div className="flex justify-between"><span className="text-dark-6">P & F Charges</span><span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{totals.pf.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                                        <div className="flex justify-between"><span className="text-dark-6">Tax</span><span className="font-medium text-dark dark:text-white">{paymentCurrencySymbol}{totals.totalTax.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                                        <div className="flex justify-between"><span className="text-dark-6">Discount on All</span><span className="font-medium text-red-600">-{paymentCurrencySymbol}{totals.discountAll.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                                        <div className="flex justify-between"><span className="text-dark-6">Round Off</span><span className={`font-medium ${totals.roundOff >= 0 ? 'text-green-600' : 'text-red-600'}`}>{totals.roundOff >= 0 ? "+" : "-"}{paymentCurrencySymbol}{Math.abs(totals.roundOff).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
                                         <div className="border-t border-stroke pt-3 dark:border-dark-3">
-                                            <div className="flex justify-between">
-                                                <span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span>
-                                                <span className="text-lg font-bold text-primary">{paymentCurrencySymbol}{totals.grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                            </div>
-                                            <div className="mt-2 flex justify-between text-sm">
-                                                <span className="text-dark-6">Total in {paymentCurrencyCode}</span>
-                                                <span className="font-medium text-dark dark:text-white">
-                                                    {paymentCurrencySymbol}{selectedCurrencyTotal.toLocaleString("en-IN", {
-                                                        minimumFractionDigits: 2,
-                                                        maximumFractionDigits: 2,
-                                                    })}
-                                                </span>
-                                            </div>
+                                            <div className="flex justify-between"><span className="text-lg font-semibold text-dark dark:text-white">Grand Total</span><span className="text-lg font-bold text-primary">{paymentCurrencySymbol}{totals.grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
                                             {paymentCurrencyCode !== "INR" && (
                                                 <div className="mt-1 flex justify-between text-xs">
-                                                    <span className="text-dark-6">INR Equivalent (Total {paymentCurrencyCode} × {paymentExchangeRate})</span>
-                                                    <span className="font-medium text-dark dark:text-white">
-                                                        Rs. {inrFromSelectedCurrency.toLocaleString("en-IN", {
-                                                            minimumFractionDigits: 2,
-                                                            maximumFractionDigits: 2,
-                                                        })}
-                                                    </span>
+                                                    <span className="text-dark-6">INR Equivalent</span>
+                                                    <span className="font-medium text-dark dark:text-white">Rs. {inrFromSelectedCurrency.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                                 </div>
                                             )}
                                         </div>
@@ -2175,188 +1532,36 @@ useEffect(() => {
                             </div>
                         </div>
 
-                       
-                        {/* SECTION 5: Previous Payments Information */}
-                        <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
-                            <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
-                                <h2 className="text-lg font-semibold text-dark dark:text-white">Previous Payments Information</h2>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowPreviousPayments(!showPreviousPayments)}
-                                    className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
-                                >
-                                    <svg className={`h-5 w-5 transition-transform ${showPreviousPayments ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                </button>
-                            </div>
-                            {showPreviousPayments && (
-                                <div className="p-6">
-                                    {previousPayments.length === 0 ? (
-                                        <div className="py-8 text-center">
-                                            <svg className="mx-auto mb-4 h-12 w-12 text-dark-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                            <p className="text-dark-6">No previous payments found</p>
-                                        </div>
-                                    ) : (
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full">
-                                                <thead>
-                                                    <tr className="border-b border-stroke dark:border-dark-3">
-                                                        <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">#</th>
-                                                        <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Date</th>
-                                                        <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Payment Type</th>
-                                                        <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Payment Note</th>
-                                                        <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Payment Amount</th>
-                                                        <th className="px-4 py-3 text-left text-sm font-medium text-dark-6">Action</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {/* Payments would be listed here */}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* SECTION 6: Make Payment */}
+                        {/* SECTION 5: Make Payment */}
                         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark">
-                            <h2 className="mb-6 text-lg font-semibold text-dark dark:text-white">
-                                Make Payment
-                            </h2>
-
+                            <h2 className="mb-6 text-lg font-semibold text-dark dark:text-white">Make Payment</h2>
                             <div className="bg-gray-50 dark:bg-dark-2 p-4 rounded-lg">
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                    {/* Amount Field */}
                                     <div>
-                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                            Amount
-                                        </label>
-                                        <input
-                                            type="number"
-                                            value={paymentData.amount}
-                                            onChange={(e) => setPaymentData(prev => ({
-                                                ...prev,
-                                                amount: parseFloat(e.target.value) || 0
-                                            }))}
-                                            placeholder="Enter payment amount"
-                                            min="0"
-                                            step="0.01"
-                                            className="w-full rounded-lg border border-stroke bg-white px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3 dark:bg-gray-dark"
-                                        />
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Amount</label>
+                                        <input type="number" value={paymentData.amount} onChange={(e) => setPaymentData(prev => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))} placeholder="Enter payment amount" min="0" step="0.01" className="w-full rounded-lg border border-stroke bg-white px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3 dark:bg-gray-dark" />
                                     </div>
-
-                                    {/* Payment Type Dropdown */}
                                     <div>
-                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                            Payment Type
-                                        </label>
-                                        <SelectField
-                                            label=""
-                                            name="paymentType"
-                                            value={paymentData.paymentType}
-                                            onChange={(name, value) => setPaymentData(prev => ({
-                                                ...prev,
-                                                [name]: value
-                                            }))}
-                                            options={[
-                                                { value: "", label: "- Select -" },
-                                                { value: "credit", label: "Credit" },
-                                                { value: "cash", label: "Cash" },
-                                                { value: "card", label: "Card" },
-                                                { value: "bank_transfer", label: "Bank Transfer" },
-                                                { value: "cheque", label: "Cheque" }
-                                            ]}
-                                            placeholder="- Select -"
-                                            required={false}
-                                        />
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Payment Type</label>
+                                        <SelectField label="" name="paymentType" value={paymentData.paymentType} onChange={(name, value) => setPaymentData(prev => ({ ...prev, [name]: value }))} options={[{ value: "", label: "- Select -" }, { value: "credit", label: "Credit" }, { value: "cash", label: "Cash" }, { value: "card", label: "Card" }, { value: "bank_transfer", label: "Bank Transfer" }, { value: "cheque", label: "Cheque" }]} placeholder="- Select -" />
                                     </div>
-
-                                    {/* Account Dropdown */}
                                     <div>
-                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                            Account
-                                        </label>
-                                        <SelectField
-                                            label=""
-                                            name="account"
-                                            value={paymentData.account}
-                                            onChange={(name, value) => setPaymentData(prev => ({
-                                                ...prev,
-                                                [name]: value
-                                            }))}
-                                            options={[
-                                                { value: "", label: "- Select Account -" },
-                                                { value: "icici_bank", label: "ICICI Bank" },
-                                                { value: "idfc_bank", label: "IDFC First Bank" }
-                                            ]}
-                                            placeholder="- Select Account -"
-                                            required={false}
-                                        />
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Account</label>
+                                        <SelectField label="" name="account" value={paymentData.account} onChange={(name, value) => setPaymentData(prev => ({ ...prev, [name]: value }))} options={[{ value: "", label: "- Select Account -" }, { value: "icici_bank", label: "ICICI Bank" }, { value: "idfc_bank", label: "IDFC First Bank" }]} placeholder="- Select Account -" />
                                     </div>
-
-                                    {/* Payment Note Field */}
                                     <div className="md:col-span-4">
-                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                            Payment Note
-                                        </label>
-                                        <textarea
-                                            value={paymentData.paymentNote}
-                                            onChange={(e) => setPaymentData(prev => ({
-                                                ...prev,
-                                                paymentNote: e.target.value
-                                            }))}
-                                            placeholder="Enter payment remarks or reference details"
-                                            rows={2}
-                                            className="w-full rounded-lg border border-stroke bg-white px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3 dark:bg-gray-dark"
-                                        />
+                                        <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Payment Note</label>
+                                        <textarea value={paymentData.paymentNote} onChange={(e) => setPaymentData(prev => ({ ...prev, paymentNote: e.target.value }))} placeholder="Enter payment remarks or reference details" rows={2} className="w-full rounded-lg border border-stroke bg-white px-4 py-2.5 outline-none focus:border-primary dark:border-dark-3 dark:bg-gray-dark" />
                                     </div>
                                 </div>
-
-                                {/* Payment Summary */}
-                                {paymentData.amount > 0 && (
-                                    <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm text-dark-6 dark:text-gray-400">
-                                                Payment Amount:
-                                            </span>
-                                            <span className="font-medium text-dark dark:text-white">
-                                                {paymentCurrencySymbol}{Number(paymentData.amount).toLocaleString("en-IN", {
-                                                    minimumFractionDigits: 2,
-                                                    maximumFractionDigits: 2,
-                                                })} {paymentCurrencyCode}
-                                            </span>
-                                        </div>
-                                        {paymentCurrencyCode !== "INR" && (
-                                            <div className="mt-1 flex items-center justify-between">
-                                                <span className="text-xs text-dark-6 dark:text-gray-400">
-                                                    INR Equivalent:
-                                                </span>
-                                                <span className="text-sm font-medium text-dark dark:text-white">
-                                                    Rs. {paymentAmountInInr.toLocaleString("en-IN", {
-                                                        minimumFractionDigits: 2,
-                                                        maximumFractionDigits: 2,
-                                                    })}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
                             </div>
                         </div>
 
-                        {/* SECTION 7: Other Fields (Accordion) */}
+                        {/* SECTION 6: Terms & Conditions */}
                         <div className="rounded-lg bg-white shadow-1 dark:bg-gray-dark">
                             <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-dark-3">
                                 <h2 className="text-lg font-semibold text-dark dark:text-white">Terms & Conditions</h2>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowOtherFields(!showOtherFields)}
-                                    className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3"
-                                >
+                                <button type="button" onClick={() => setShowOtherFields(!showOtherFields)} className="rounded p-1 hover:bg-gray-100 dark:hover:bg-dark-3">
                                     <svg className={`h-5 w-5 transition-transform ${showOtherFields ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                     </svg>
@@ -2364,19 +1569,7 @@ useEffect(() => {
                             </div>
                             {showOtherFields && (
                                 <div className="p-6">
-                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                        <div className="md:col-span-2">
-                                            <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
-                                                Terms & Conditions
-                                            </label>
-                                            <textarea
-                                                value={formData.terms}
-                                                onChange={(e) => setFormData({ ...formData, terms: e.target.value })}
-                                                rows={6}
-                                                className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
-                                            />
-                                        </div>
-                                    </div>
+                                    <textarea value={formData.terms} onChange={(e) => setFormData({ ...formData, terms: e.target.value })} rows={6} className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3" />
                                 </div>
                             )}
                         </div>
@@ -2384,19 +1577,10 @@ useEffect(() => {
                         {/* Action Buttons */}
                         <div className="rounded-lg p-4 shadow-none sm:p-6">
                             <div className="flex flex-wrap justify-center gap-4">
-                                <button
-                                    type="submit"
-                                    disabled={isSubmitting}
-                                    className="h-9 min-w-[140px] rounded-lg bg-primary px-6 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:min-w-[220px]"
-                                >
+                                <button type="submit" disabled={isSubmitting} className="h-9 min-w-[140px] rounded-lg bg-primary px-6 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:min-w-[220px]">
                                     {isSubmitting ? "Updating..." : "Update Purchase"}
                                 </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => router.back()}
-                                    className="h-9 min-w-[140px] rounded-lg bg-[#E5E7EB] px-6 text-sm font-medium text-black transition-colors hover:bg-[#e9ebf0] dark:bg-dark-3 dark:text-white dark:hover:bg-dark-2 sm:h-10 sm:min-w-[220px]"
-                                >
+                                <button type="button" onClick={() => router.back()} className="h-9 min-w-[140px] rounded-lg bg-[#E5E7EB] px-6 text-sm font-medium text-black transition-colors hover:bg-[#e9ebf0] dark:bg-dark-3 dark:text-white dark:hover:bg-dark-2 sm:h-10 sm:min-w-[220px]">
                                     Close
                                 </button>
                             </div>
@@ -2408,11 +1592,3 @@ useEffect(() => {
         </div>
     );
 }
-
-
-
-
-
-
-
-
