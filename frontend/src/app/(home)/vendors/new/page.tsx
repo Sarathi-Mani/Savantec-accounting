@@ -328,8 +328,12 @@ export default function CreateVendorPage() {
 
   const handleBankDetailChange = (index: number, field: keyof BankDetail, value: string | boolean) => {
     const updatedBankDetails = [...formData.bank_details];
+    const normalizedValue =
+      typeof value === "string" && field === "ifsc_code"
+        ? value.replace(/\s+/g, "").toUpperCase()
+        : value;
     
-    if (field === "is_primary" && value === true) {
+    if (field === "is_primary" && normalizedValue === true) {
       // If setting this as primary, unset all others
       updatedBankDetails.forEach((detail, i) => {
         if (i !== index) {
@@ -340,7 +344,7 @@ export default function CreateVendorPage() {
     
     updatedBankDetails[index] = {
       ...updatedBankDetails[index],
-      [field]: value
+      [field]: normalizedValue
     };
     
     setFormData(prev => ({ ...prev, bank_details: updatedBankDetails }));
@@ -529,13 +533,43 @@ export default function CreateVendorPage() {
 
     // Validate contact persons emails
     for (const [index, person] of formData.contact_persons.entries()) {
+      const hasContactPersonData = [person.name, person.email, person.phone].some((value) => value.trim());
+      if (!hasContactPersonData) {
+        continue;
+      }
+
+      if (!person.name.trim()) {
+        setError(`Please enter a name for contact person ${index + 1}`);
+        return false;
+      }
+
       if (person.email && !isValidEmail(person.email)) {
         setError(`Please enter a valid email address for contact person ${index + 1}`);
         return false;
       }
     }
 
-    // No validation for mobile/account number/IFSC as requested.
+    for (const [index, bank] of formData.bank_details.entries()) {
+      const hasBankRowData = [
+        bank.bank_name,
+        bank.branch,
+        bank.account_number,
+        bank.account_holder_name,
+        bank.ifsc_code,
+      ].some((value) => value.trim());
+
+      if (!hasBankRowData) {
+        continue;
+      }
+
+      const ifscCode = bank.ifsc_code.trim().toUpperCase();
+      if (ifscCode && ifscCode.length !== 11) {
+        setError(`Bank detail ${index + 1}: IFSC code must be exactly 11 characters`);
+        return false;
+      }
+    }
+
+    // No validation for mobile/account number apart from backend-required bank row completeness.
 
     if (normalizeCurrencyCode(formData.payment_type) !== "INR") {
       const rate = Number(formData.exchange_rate);
@@ -631,15 +665,14 @@ export default function CreateVendorPage() {
 
       // Prepare data for API
       const apiData: any = {
-        name: formData.name,
-        contact: formData.contact,
-        email: formData.email || "",
-        mobile: formData.mobile || "",
-        tax_number: formData.tax_number || "",
-        gst_registration_type: formData.gst_registration_type || "",
-        pan_number: formData.pan_number || "",
-        vendor_code: formData.vendor_code || "",
-        trade_name: "", // Add if needed
+        name: formData.name.trim(),
+        contact: formData.contact.trim(),
+        email: formData.email.trim() || undefined,
+        mobile: formData.mobile.trim() || undefined,
+        tax_number: formData.tax_number.trim().toUpperCase() || undefined,
+        gst_registration_type: formData.gst_registration_type.trim() || undefined,
+        pan_number: formData.pan_number.trim().toUpperCase() || undefined,
+        vendor_code: formData.vendor_code.trim() || undefined,
         
         // Convert to strings
         opening_balance: formData.opening_balance_mode === "split"
@@ -670,9 +703,9 @@ export default function CreateVendorPage() {
         contact_persons: formData.contact_persons
           .filter(p => p.name.trim() || p.email.trim() || p.phone.trim())
           .map(p => ({
-            name: p.name || "",
-            email: p.email || "",
-            phone: p.phone || ""
+            name: p.name.trim(),
+            email: p.email.trim() || undefined,
+            phone: p.phone.trim() || undefined
           })),
         
         // Bank details
@@ -685,32 +718,37 @@ export default function CreateVendorPage() {
             return Boolean(bankName && accountHolder && accountNumber.length >= 9);
           })
           .map(b => ({
-            bank_name: b.bank_name || "",
-            branch: b.branch || "",
-            account_number: b.account_number || "",
-            account_holder_name: b.account_holder_name || "",
-            ifsc_code: b.ifsc_code || "",
+            bank_name: b.bank_name.trim(),
+            branch: b.branch.trim() || undefined,
+            account_number: b.account_number.trim(),
+            account_holder_name: b.account_holder_name.trim(),
+            ifsc_code: b.ifsc_code.trim() ? b.ifsc_code.trim().toUpperCase() : undefined,
             account_type: b.account_type || "Savings",
             is_primary: b.is_primary || false
           })),
         
         // Address fields
-        billing_address: formData.billing_address || "",
-        billing_city: formData.billing_city || "",
-        billing_state: formData.billing_state || "",
-        billing_country: formData.billing_country || "India",
-        billing_zip: formData.billing_zip || "",
+        billing_address: formData.billing_address.trim() || undefined,
+        billing_city: formData.billing_city.trim() || undefined,
+        billing_state: formData.billing_state.trim() || undefined,
+        billing_country: formData.billing_country.trim() || "India",
+        billing_zip: formData.billing_zip.trim() || undefined,
         
-        shipping_address: sameAsBilling ? formData.billing_address : (formData.shipping_address || ""),
-        shipping_city: sameAsBilling ? formData.billing_city : (formData.shipping_city || ""),
-        shipping_state: sameAsBilling ? formData.billing_state : (formData.shipping_state || ""),
-        shipping_country: sameAsBilling ? formData.billing_country : (formData.shipping_country || "India"),
-        shipping_zip: sameAsBilling ? formData.billing_zip : (formData.shipping_zip || ""),
-        
-        // Additional fields for vendor
-        customer_type: "b2b",
-        contact_person: formData.contact_persons[0]?.name || "",
-        phone: formData.contact || "",
+        shipping_address: sameAsBilling
+          ? (formData.billing_address.trim() || undefined)
+          : (formData.shipping_address.trim() || undefined),
+        shipping_city: sameAsBilling
+          ? (formData.billing_city.trim() || undefined)
+          : (formData.shipping_city.trim() || undefined),
+        shipping_state: sameAsBilling
+          ? (formData.billing_state.trim() || undefined)
+          : (formData.shipping_state.trim() || undefined),
+        shipping_country: sameAsBilling
+          ? (formData.billing_country.trim() || "India")
+          : (formData.shipping_country.trim() || "India"),
+        shipping_zip: sameAsBilling
+          ? (formData.billing_zip.trim() || undefined)
+          : (formData.shipping_zip.trim() || undefined),
       };
       
       await vendorsApi.create(company.id, apiData);
@@ -1382,6 +1420,7 @@ export default function CreateVendorPage() {
                       onChange={(e) => handleBankDetailChange(index, "ifsc_code", e.target.value)}
                       placeholder={isIndiaCountry(formData.billing_country) ? "Enter IFSC code (e.g., SBIN0001234)" : "Enter IFSC / SWIFT / bank code"}
                       className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 outline-none focus:border-primary dark:border-dark-3"
+                      maxLength={11}
                       style={{ textTransform: 'uppercase' }}
                     />
                   </div>

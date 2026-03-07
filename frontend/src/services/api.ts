@@ -10,7 +10,13 @@ export function getErrorMessage(error: any, fallback: string = "An error occurre
   if (Array.isArray(detail)) {
     // Pydantic validation errors come as array of objects
     const firstError = detail[0];
-    return firstError?.msg || firstError?.message || fallback;
+    const loc = Array.isArray(firstError?.loc)
+      ? firstError.loc
+          .filter((part: string) => part !== "body")
+          .join(".")
+      : "";
+    const message = firstError?.msg || firstError?.message || fallback;
+    return loc ? `${loc}: ${message}` : message;
   } else if (typeof detail === "string") {
     return detail;
   } else if (typeof detail === "object" && detail?.msg) {
